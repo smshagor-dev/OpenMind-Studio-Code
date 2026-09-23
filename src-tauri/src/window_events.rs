@@ -47,7 +47,7 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
 
             // `window.close()` alone tears down the window but Tauri 2 does
             // not exit the process just because no windows remain (that's
-            // what lets tray-icon apps keep running). Openmind Studio has no
+            // what lets tray-icon apps keep running). OpenMind Studio has no
             // background/tray mode yet, so closing the main window should
             // quit the app, same as any single-window desktop editor.
             window.app_handle().exit(0);

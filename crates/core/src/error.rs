@@ -8,8 +8,8 @@ pub enum CoreError {
     #[error("failed to resolve the running executable's path")]
     ResolveExePath(#[source] std::io::Error),
 
-    #[error("failed to create data directory at {path}")]
-    CreateDataDir {
+    #[error("failed to create directory at {path}")]
+    CreateDir {
         path: PathBuf,
         #[source]
         source: std::io::Error,

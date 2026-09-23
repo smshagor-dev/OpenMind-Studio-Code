@@ -12,10 +12,10 @@ fn main() {
 
     let app_paths = AppPaths::resolve().expect("failed to resolve application paths");
     app_paths
-        .ensure_data_dir()
-        .expect("failed to create application data directory");
+        .ensure_dirs()
+        .expect("failed to create application directory layout");
 
-    tracing::info!(db_path = %app_paths.db_path.display(), "starting Openmind Studio");
+    tracing::info!(db_path = %app_paths.db_path.display(), "starting OpenMind Studio");
 
     tauri::Builder::default()
         .setup(move |app| {

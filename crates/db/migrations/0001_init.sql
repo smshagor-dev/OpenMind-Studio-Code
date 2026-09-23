@@ -1,4 +1,4 @@
--- Openmind Studio base schema.
+-- OpenMind Studio base schema.
 -- Everything persistent lives here (WAL mode, see openmind_db::Db::connect)
 -- except project/workspace source files themselves.
 --

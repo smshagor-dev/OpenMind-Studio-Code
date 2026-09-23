@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Openmind Studio",
+  "productName": "OpenMind Studio",
   "version": "0.1.0",
   "identifier": "com.openmindstudio.app",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Openmind Studio",
+        "title": "OpenMind Studio",
         "width": 1280,
         "height": 800,
         "minWidth": 640,
@@ -28,6 +28,10 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "OpenMind",
+    "copyright": "Copyright © 2026 OpenMind",
+    "shortDescription": "OpenMind Studio — a portable, native code editor",
+    "longDescription": "OpenMind Studio is a portable, native desktop code editor and part of the OpenMind ecosystem (OpenMind AI, OpenMind Runtime, OpenMind Extensions). It runs entirely from its own directory with no admin rights and no dependency on globally installed software.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
