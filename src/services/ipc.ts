@@ -106,6 +106,16 @@ export interface InstalledVersion {
   active: boolean;
   /** Every file the runtime definition requires is present; `false` means "repair me". */
   healthy: boolean;
+  /** What this install can do (pip, venv, ...), from what is actually on disk. */
+  features: FeatureStatus[];
+}
+
+export interface FeatureStatus {
+  id: string;
+  label: string;
+  available: boolean;
+  /** Why the feature is missing; empty when it's available. */
+  note: string;
 }
 
 export interface RuntimeStatus {

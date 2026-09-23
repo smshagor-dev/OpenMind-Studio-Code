@@ -45,6 +45,36 @@ pub struct Artifact {
     /// `node-v24-win-x64/` wrapper folder).
     #[serde(default)]
     pub strip_components: usize,
+    /// If set, only this folder of the archive is installed (a NuGet package's
+    /// `tools/`, say) and everything beside it is ignored.
+    #[serde(default)]
+    pub extract_root: Option<String>,
+}
+
+/// A command run once, from the freshly installed and checksum-verified
+/// runtime itself, to finish setting it up (e.g. `python -m ensurepip`).
+/// Runs in the install dir; a failure fails the whole install.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostInstallStep {
+    pub description: String,
+    /// Path of the executable relative to the install dir.
+    pub executable: String,
+    pub args: Vec<String>,
+}
+
+/// A capability of a runtime that an install may or may not have (pip for
+/// Python). Reported per installed version by checking `verify_file` exists,
+/// so the UI never claims support the install doesn't actually have.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Feature {
+    pub id: String,
+    pub label: String,
+    pub verify_file: String,
+    /// Shown when the file is absent — why this install lacks the feature.
+    #[serde(default)]
+    pub missing_note: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +115,11 @@ pub struct RuntimeManifest {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub notes: String,
+    /// Run in order, after the archive is in place, before the install counts.
+    #[serde(default)]
+    pub post_install: Vec<PostInstallStep>,
+    #[serde(default)]
+    pub features: Vec<Feature>,
     pub versions: Vec<RuntimeVersion>,
 }
 
@@ -144,6 +179,8 @@ impl RuntimeManifest {
             .bin_dirs
             .iter()
             .chain(&self.verify_files)
+            .chain(self.post_install.iter().map(|step| &step.executable))
+            .chain(self.features.iter().map(|feature| &feature.verify_file))
             .chain(std::iter::once(&self.version_command.executable))
         {
             if !is_safe_relative(path) {
@@ -160,6 +197,11 @@ impl RuntimeManifest {
                 return bad(format!("\"{}\" is not a valid version", version.version));
             }
             for artifact in &version.artifacts {
+                if let Some(root) = &artifact.extract_root {
+                    if !is_safe_relative(root) || root == "." {
+                        return bad(format!("extractRoot \"{root}\" must be a folder name"));
+                    }
+                }
                 if !artifact.url.to_ascii_lowercase().starts_with("https://") {
                     return Err(RuntimeError::InsecureUrl(artifact.url.clone()));
                 }
@@ -342,6 +384,47 @@ mod tests {
                 "{json}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_unsafe_extract_roots_setup_steps_and_feature_files() {
+        for json in [
+            valid_json().replace("\"archive\": \"zip\"", "\"archive\": \"zip\", \"extractRoot\": \"../x\""),
+            valid_json().replace("\"archive\": \"zip\"", "\"archive\": \"zip\", \"extractRoot\": \".\""),
+            valid_json().replace(
+                "\"binDirs\"",
+                "\"postInstall\": [{ \"description\": \"d\", \"executable\": \"C:/evil.exe\", \"args\": [] }], \"binDirs\"",
+            ),
+            valid_json().replace(
+                "\"binDirs\"",
+                "\"features\": [{ \"id\": \"f\", \"label\": \"f\", \"verifyFile\": \"../x\" }], \"binDirs\"",
+            ),
+        ] {
+            assert!(
+                matches!(
+                    RuntimeManifest::parse(&json),
+                    Err(RuntimeError::InvalidManifest(_))
+                ),
+                "{json}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_an_extract_root_setup_steps_and_features() {
+        let json = valid_json()
+            .replace("\"archive\": \"zip\"", "\"archive\": \"zip\", \"extractRoot\": \"tools\"")
+            .replace(
+                "\"binDirs\"",
+                "\"postInstall\": [{ \"description\": \"d\", \"executable\": \"demo.exe\", \"args\": [\"-x\"] }], \"features\": [{ \"id\": \"f\", \"label\": \"F\", \"verifyFile\": \"Scripts/f.exe\" }], \"binDirs\"",
+            );
+
+        let manifest = RuntimeManifest::parse(&json).expect("parse");
+
+        let artifact = manifest.artifact("1.0.0", "windows-x64").expect("artifact");
+        assert_eq!(artifact.extract_root.as_deref(), Some("tools"));
+        assert_eq!(manifest.post_install.len(), 1);
+        assert_eq!(manifest.features[0].missing_note, "");
     }
 
     #[test]

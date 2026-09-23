@@ -6,7 +6,7 @@ import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
 import { registerRuntimeCommands } from "./runtimeCommands";
-import { describeProgress, RuntimeService } from "./runtimeService";
+import { describeProgress, injectionStatus, RuntimeService } from "./runtimeService";
 
 function status(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
   return {
@@ -26,8 +26,8 @@ function status(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
 
 const INSTALLED = status({
   installed: [
-    { version: "24.21.0", path: "C:/rt/24.21.0", active: true, healthy: true },
-    { version: "24.20.0", path: "C:/rt/24.20.0", active: false, healthy: true },
+    { version: "24.21.0", path: "C:/rt/24.21.0", active: true, healthy: true, features: [] },
+    { version: "24.20.0", path: "C:/rt/24.20.0", active: false, healthy: true, features: [] },
   ],
   activeVersion: "24.21.0",
 });
@@ -63,6 +63,33 @@ describe("describeProgress", () => {
     expect(describeProgress(progress({ total: null })).percent).toBeNull();
     expect(describeProgress(progress({ total: 0 })).percent).toBeNull();
     expect(describeProgress(progress({ current: 900, total: 100 })).percent).toBe(100);
+  });
+});
+
+describe("injectionStatus", () => {
+  const entry = (overrides: Partial<InstalledVersion>): InstalledVersion => ({
+    version: "3.14.7",
+    path: "p",
+    active: true,
+    healthy: true,
+    features: [],
+    ...overrides,
+  });
+
+  it("only the active, healthy version is on new terminals' PATH", () => {
+    expect(injectionStatus(entry({}))).toEqual({
+      injected: true,
+      label: "In new terminals' PATH",
+    });
+    expect(injectionStatus(entry({ active: false }))).toMatchObject({ injected: false });
+    expect(injectionStatus(entry({ active: false })).label).toContain("not the active version");
+  });
+
+  it("a damaged install is not injected and says why", () => {
+    const view = injectionStatus(entry({ healthy: false }));
+
+    expect(view.injected).toBe(false);
+    expect(view.label).toContain("needs repair");
   });
 });
 
@@ -117,7 +144,7 @@ describe("RuntimeService", () => {
         () =>
           new Promise<InstalledVersion>((resolve) => {
             finish = () => {
-              resolve({ version: "24.21.0", path: "p", active: true, healthy: true });
+              resolve({ version: "24.21.0", path: "p", active: true, healthy: true, features: [] });
             };
           }),
       ),
@@ -177,7 +204,7 @@ describe("RuntimeService", () => {
         () =>
           new Promise<InstalledVersion>((resolve) => {
             finish = () => {
-              resolve({ version: "1", path: "p", active: true, healthy: true });
+              resolve({ version: "1", path: "p", active: true, healthy: true, features: [] });
             };
           }),
       ),
@@ -239,7 +266,7 @@ describe("RuntimeService", () => {
     it("repair is only enabled for an unhealthy install", () => {
       const service = make();
       const damaged = status({
-        installed: [{ version: "24.21.0", path: "p", active: true, healthy: false }],
+        installed: [{ version: "24.21.0", path: "p", active: true, healthy: false, features: [] }],
       });
 
       expect(service.repairAvailability(INSTALLED, "24.21.0").enabled).toBe(false);
@@ -251,8 +278,8 @@ describe("RuntimeService", () => {
       const service = make();
       const damaged = status({
         installed: [
-          { version: "1", path: "p", active: true, healthy: true },
-          { version: "2", path: "p", active: false, healthy: false },
+          { version: "1", path: "p", active: true, healthy: true, features: [] },
+          { version: "2", path: "p", active: false, healthy: false, features: [] },
         ],
       });
 

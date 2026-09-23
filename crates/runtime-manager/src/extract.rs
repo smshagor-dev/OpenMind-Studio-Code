@@ -45,13 +45,48 @@ pub fn safe_entry_path(
     Ok(Some(path))
 }
 
+/// Which archive entries to keep, and how to map them into the destination.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ExtractSelection<'a> {
+    /// Leading path components dropped from every kept entry.
+    pub strip_components: usize,
+    /// If set, only entries inside this folder of the archive are kept (the
+    /// folder itself is dropped from their path) — e.g. a NuGet package's
+    /// `tools/`, ignoring its metadata files.
+    pub only_under: Option<&'a str>,
+}
+
+/// The destination-relative path for an archive entry under `selection`, or
+/// `None` if the entry isn't part of the runtime. Safety is checked on the
+/// full name first, so a hostile entry is an error even if it would be skipped.
+pub fn select_entry(
+    name: &str,
+    selection: ExtractSelection<'_>,
+) -> Result<Option<PathBuf>, RuntimeError> {
+    let Some(full) = safe_entry_path(name, 0)? else {
+        return Ok(None);
+    };
+    let inner = match selection.only_under {
+        Some(root) => match full.strip_prefix(root) {
+            Ok(inner) => inner.to_path_buf(),
+            Err(_) => return Ok(None),
+        },
+        None => full,
+    };
+    let kept: PathBuf = inner
+        .components()
+        .skip(selection.strip_components)
+        .collect();
+    Ok((!kept.as_os_str().is_empty()).then_some(kept))
+}
+
 /// Extracts a ZIP into `dest` (created if needed). Reports `(entries done,
 /// total entries)`. Symlink entries are refused outright: a runtime archive
 /// has no business creating links that could later redirect a write.
 pub fn extract_zip(
     archive_path: &Path,
     dest: &Path,
-    strip_components: usize,
+    selection: ExtractSelection<'_>,
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<(), RuntimeError> {
     let file = File::open(archive_path).map_err(|err| RuntimeError::io(archive_path, err))?;
@@ -74,7 +109,7 @@ pub fn extract_zip(
                 entry.name()
             )));
         }
-        if let Some(relative) = safe_entry_path(entry.name(), strip_components)? {
+        if let Some(relative) = select_entry(entry.name(), selection)? {
             let target = dest.join(&relative);
             debug_assert!(target.starts_with(dest));
             if entry.is_dir() {
@@ -109,6 +144,13 @@ use std::io::Read;
 pub(crate) mod tests {
     use super::*;
     use std::io::Write;
+
+    fn sel(strip_components: usize) -> ExtractSelection<'static> {
+        ExtractSelection {
+            strip_components,
+            only_under: None,
+        }
+    }
 
     pub fn build_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
         let mut buffer = io::Cursor::new(Vec::new());
@@ -195,7 +237,7 @@ pub(crate) mod tests {
         let dest = dir.path().join("out");
         let mut last = (0, None);
 
-        extract_zip(&zip, &dest, 1, &mut |done, total| last = (done, total)).expect("extract");
+        extract_zip(&zip, &dest, sel(1), &mut |done, total| last = (done, total)).expect("extract");
 
         assert_eq!(fs::read(dest.join("node.exe")).expect("node"), b"MZ");
         assert_eq!(fs::read(dest.join("lib").join("x.js")).expect("x"), b"js");
@@ -211,7 +253,7 @@ pub(crate) mod tests {
         );
         let dest = dir.path().join("out");
 
-        let result = extract_zip(&zip, &dest, 0, &mut |_, _| {});
+        let result = extract_zip(&zip, &dest, sel(0), &mut |_, _| {});
 
         assert!(matches!(result, Err(RuntimeError::UnsafeArchive(_))));
         assert!(!dir.path().join("escaped.txt").exists());
@@ -223,7 +265,7 @@ pub(crate) mod tests {
         let path = dir.path().join("a.zip");
         fs::write(&path, b"this is not a zip").expect("write");
 
-        let result = extract_zip(&path, &dir.path().join("out"), 0, &mut |_, _| {});
+        let result = extract_zip(&path, &dir.path().join("out"), sel(0), &mut |_, _| {});
 
         assert!(matches!(result, Err(RuntimeError::InvalidArchive(_))));
     }
@@ -235,10 +277,53 @@ pub(crate) mod tests {
         let result = extract_zip(
             &dir.path().join("nope.zip"),
             &dir.path().join("out"),
-            0,
+            sel(0),
             &mut |_, _| {},
         );
 
         assert!(matches!(result, Err(RuntimeError::Io { .. })));
+    }
+
+    #[test]
+    fn only_under_keeps_just_that_folder_and_drops_package_metadata() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let zip = write_zip(
+            dir.path(),
+            &[
+                ("python.nuspec", b"meta"),
+                ("_rels/.rels", b"meta"),
+                ("tools/", b""),
+                ("tools/python.exe", b"MZ"),
+                ("tools/Lib/os.py", b"py"),
+            ],
+        );
+        let dest = dir.path().join("out");
+        let selection = ExtractSelection {
+            strip_components: 0,
+            only_under: Some("tools"),
+        };
+
+        extract_zip(&zip, &dest, selection, &mut |_, _| {}).expect("extract");
+
+        assert_eq!(fs::read(dest.join("python.exe")).expect("exe"), b"MZ");
+        assert_eq!(fs::read(dest.join("Lib").join("os.py")).expect("os"), b"py");
+        assert!(!dest.join("python.nuspec").exists());
+        assert!(!dest.join(".rels").exists());
+        assert!(!dest.join("_rels").exists());
+    }
+
+    #[test]
+    fn a_hostile_entry_outside_only_under_is_still_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let zip = write_zip(dir.path(), &[("tools/a.txt", b"ok"), ("../evil.txt", b"x")]);
+        let selection = ExtractSelection {
+            strip_components: 0,
+            only_under: Some("tools"),
+        };
+
+        let result = extract_zip(&zip, &dir.path().join("out"), selection, &mut |_, _| {});
+
+        assert!(matches!(result, Err(RuntimeError::UnsafeArchive(_))));
+        assert!(!dir.path().join("evil.txt").exists());
     }
 }

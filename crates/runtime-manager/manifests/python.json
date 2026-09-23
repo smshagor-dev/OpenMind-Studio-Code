@@ -1,24 +1,46 @@
 {
   "id": "python",
   "displayName": "Python",
-  "description": "Python interpreter (official embeddable distribution).",
+  "description": "Python interpreter with pip and venv (the python.org NuGet distribution).",
   "defaultVersion": "3.14.7",
   "versionCommand": { "executable": "python.exe", "args": ["--version"], "outputPrefix": "Python " },
   "binDirs": [".", "Scripts"],
-  "verifyFiles": ["python.exe"],
-  "env": {},
-  "notes": "python.org's embeddable ZIP does not include pip or tkinter, so `pip --version` will not work until pip is bootstrapped. python.org publishes only MD5/sigstore for these files, so each SHA256 in this manifest was computed from the official download when the version was pinned.",
+  "verifyFiles": ["python.exe", "Scripts/pip.exe"],
+  "env": { "PYTHONNOUSERSITE": "1" },
+  "postInstall": [
+    {
+      "description": "Create the pip/pip3 launchers from the wheel bundled in the package (offline)",
+      "executable": "python.exe",
+      "args": ["-m", "pip", "install", "--force-reinstall", "--no-index", "--no-deps", "--no-warn-script-location", "--disable-pip-version-check", "--find-links", "Lib/ensurepip/_bundled", "pip"]
+    }
+  ],
+  "features": [
+    {
+      "id": "pip",
+      "label": "pip",
+      "verifyFile": "Scripts/pip.exe",
+      "missingNote": "pip isn't set up in this install. Use Repair to reinstall it."
+    },
+    {
+      "id": "venv",
+      "label": "venv",
+      "verifyFile": "Lib/venv/__init__.py",
+      "missingNote": "This install has no venv module."
+    }
+  ],
+  "notes": "python.org's NuGet package: full standard library with venv and pip (the embeddable ZIP has no pip). After the checksum-verified archive is in place, setup recreates pip.exe offline from the bundled wheel. Packages you install stay inside this install, and the system Python's user packages are hidden from it (PYTHONNOUSERSITE=1). pip.exe records this folder's path, so if you move the whole OpenMind Studio folder, reinstall Python; `python -m pip` works either way. tkinter/IDLE aren't included. python.org publishes no SHA256 for these packages, so each hash was computed from the official download when the version was pinned.",
   "versions": [
     {
       "version": "3.14.7",
       "artifacts": [
         {
           "platform": "windows-x64",
-          "url": "https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip",
-          "sha256": "d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15",
-          "sizeBytes": 12673227,
+          "url": "https://api.nuget.org/v3-flatcontainer/python/3.14.7/python.3.14.7.nupkg",
+          "sha256": "46a4da5529a92d18ff894911f6e6033a8253198d705b8161bf28c9123c87d46b",
+          "sizeBytes": 15623417,
           "archive": "zip",
-          "stripComponents": 0
+          "stripComponents": 0,
+          "extractRoot": "tools"
         }
       ]
     },
@@ -27,11 +49,12 @@
       "artifacts": [
         {
           "platform": "windows-x64",
-          "url": "https://www.python.org/ftp/python/3.13.13/python-3.13.13-embed-amd64.zip",
-          "sha256": "8766a8775746235e23cf5aee5027ab1060bb981d93110577adcf3508aa0cbd55",
-          "sizeBytes": 10950201,
+          "url": "https://api.nuget.org/v3-flatcontainer/python/3.13.13/python.3.13.13.nupkg",
+          "sha256": "c2347c2975f661b2dafceacc94218dfe87781955a3cd309c633d343b8c8dac31",
+          "sizeBytes": 14280522,
           "archive": "zip",
-          "stripComponents": 0
+          "stripComponents": 0,
+          "extractRoot": "tools"
         }
       ]
     }

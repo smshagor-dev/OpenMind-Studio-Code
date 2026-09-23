@@ -1,6 +1,6 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
+import type { InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
 
 export type RuntimeOperation = "install" | "repair" | "delete" | "activate";
 
@@ -39,6 +39,26 @@ export function describeProgress(progress: InstallProgress): ProgressView {
       : null;
   const label = PHASE_LABELS[progress.phase];
   return { label: percent === null ? `${label}…` : `${label} ${String(percent)}%`, percent };
+}
+
+export interface InjectionView {
+  injected: boolean;
+  label: string;
+}
+
+/**
+ * Whether new terminals get this install on their PATH. Mirrors the backend
+ * rule (`RuntimeManager::environment`): only the active, healthy version of a
+ * runtime is injected.
+ */
+export function injectionStatus(entry: InstalledVersion): InjectionView {
+  if (!entry.healthy) {
+    return { injected: false, label: "Not in terminal PATH — needs repair" };
+  }
+  if (!entry.active) {
+    return { injected: false, label: "Not in terminal PATH — not the active version" };
+  }
+  return { injected: true, label: "In new terminals' PATH" };
 }
 
 export interface Availability {

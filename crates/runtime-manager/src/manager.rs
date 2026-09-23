@@ -9,9 +9,10 @@ use serde::Serialize;
 use crate::detect::{detect_version, find_on_path};
 use crate::download::{download, verify_sha256, HttpClient};
 use crate::error::RuntimeError;
-use crate::extract::extract_zip;
+use crate::extract::{extract_zip, ExtractSelection};
 use crate::manifest::{RuntimeManifest, RuntimeRegistry};
 use crate::paths::RuntimePaths;
+use crate::postinstall;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -43,6 +44,18 @@ pub struct InstalledVersion {
     pub active: bool,
     /// Every file the manifest requires is present. `false` means "repair me".
     pub healthy: bool,
+    /// What this particular install can do (pip for Python, ...), from what's actually on disk.
+    pub features: Vec<FeatureStatus>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureStatus {
+    pub id: String,
+    pub label: String,
+    pub available: bool,
+    /// Why the feature is missing; empty when it's available.
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +175,7 @@ impl RuntimeManager {
                     path: dir.to_string_lossy().into_owned(),
                     active: entry.is_active,
                     healthy: is_healthy(&manifest, &dir),
+                    features: feature_statuses(&manifest, &dir),
                 });
             }
             statuses.push(RuntimeStatus {
@@ -352,6 +366,7 @@ impl RuntimeManager {
         let (kind_owned, version_owned) = (kind.to_string(), version.to_string());
         let job = {
             let (staging, final_dir) = (staging.clone(), final_dir.clone());
+            let manifest = manifest.clone();
             move || -> Result<(), RuntimeError> {
                 let report = |phase, current, total| {
                     progress(InstallProgress {
@@ -396,6 +411,7 @@ impl RuntimeManager {
             path: final_dir.to_string_lossy().into_owned(),
             active: entry.is_active,
             healthy: true,
+            features: feature_statuses(&manifest, &final_dir),
         })
     }
 
@@ -463,22 +479,65 @@ fn install_files(
     }
 
     remove_dir_if_exists(staging)?;
-    extract_zip(archive, staging, artifact.strip_components, &mut |c, t| {
+    let selection = ExtractSelection {
+        strip_components: artifact.strip_components,
+        only_under: artifact.extract_root.as_deref(),
+    };
+    extract_zip(archive, staging, selection, &mut |c, t| {
         report(Extract, c, t);
     })?;
-    for file in &manifest.verify_files {
-        if !staging.join(file).is_file() {
-            return Err(RuntimeError::InvalidArchive(format!(
-                "\"{file}\" is missing from the extracted runtime"
-            )));
-        }
+    // Files a setup step is going to create can't be checked yet; those installs
+    // are checked after the steps ran, below.
+    if manifest.post_install.is_empty() {
+        check_verify_files(manifest, staging)?;
     }
 
     report(Finalize, 0, None);
     remove_dir_if_exists(final_dir)?;
     fs::rename(staging, final_dir).map_err(|err| RuntimeError::io(final_dir, err))?;
+    if !manifest.post_install.is_empty() {
+        // Set up where it will live: tools like pip write launchers that
+        // record the interpreter's absolute path.
+        let finished = postinstall::run_steps(&manifest.post_install, final_dir, &manifest.env)
+            .and_then(|()| check_verify_files(manifest, final_dir));
+        if let Err(err) = finished {
+            let _ = fs::remove_dir_all(final_dir);
+            return Err(err);
+        }
+    }
     report(Done, 1, Some(1));
     Ok(())
+}
+
+fn check_verify_files(manifest: &RuntimeManifest, dir: &Path) -> Result<(), RuntimeError> {
+    for file in &manifest.verify_files {
+        if !dir.join(file).is_file() {
+            return Err(RuntimeError::InvalidArchive(format!(
+                "\"{file}\" is missing from the installed runtime"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn feature_statuses(manifest: &RuntimeManifest, dir: &Path) -> Vec<FeatureStatus> {
+    manifest
+        .features
+        .iter()
+        .map(|feature| {
+            let available = dir.join(&feature.verify_file).is_file();
+            FeatureStatus {
+                id: feature.id.clone(),
+                label: feature.label.clone(),
+                available,
+                note: if available {
+                    String::new()
+                } else {
+                    feature.missing_note.clone()
+                },
+            }
+        })
+        .collect()
 }
 
 fn is_healthy(manifest: &RuntimeManifest, dir: &Path) -> bool {

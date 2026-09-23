@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
-import { describeProgress } from "../services/runtimeService";
+import { describeProgress, injectionStatus } from "../services/runtimeService";
 
 /** Terminal > Manage Runtimes: install, switch, repair and remove portable toolchains. */
 export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
@@ -164,6 +164,7 @@ function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: Install
   const activate = service.activateAvailability(runtime, entry.version);
   const repair = service.repairAvailability(runtime, entry.version);
   const remove = service.deleteAvailability(runtime);
+  const injection = injectionStatus(entry);
 
   return (
     <li className="runtime-version">
@@ -206,6 +207,30 @@ function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: Install
       >
         Delete
       </button>
+      <div className="runtime-version__details">
+        <span
+          className={
+            injection.injected
+              ? "runtime-version__terminals"
+              : "runtime-version__terminals runtime-version__terminals--off"
+          }
+        >
+          {injection.label}
+        </span>
+        {entry.features.map((feature) => (
+          <span
+            key={feature.id}
+            className={
+              feature.available ? "runtime-feature" : "runtime-feature runtime-feature--missing"
+            }
+            title={feature.available ? `${feature.label} is available` : feature.note}
+          >
+            {feature.available
+              ? `${feature.label}: available`
+              : `${feature.label}: not available — ${feature.note}`}
+          </span>
+        ))}
+      </div>
     </li>
   );
 }

@@ -5,13 +5,14 @@ pub mod extract;
 pub mod manager;
 pub mod manifest;
 pub mod paths;
+pub mod postinstall;
 
 pub use detect::{detect_version, find_on_path, join_path};
 pub use download::{HttpClient, HttpResponse, UreqClient};
 pub use error::RuntimeError;
 pub use manager::{
-    InstallPhase, InstallProgress, InstalledVersion, RuntimeEnvironment, RuntimeManager,
-    RuntimeStatus,
+    FeatureStatus, InstallPhase, InstallProgress, InstalledVersion, RuntimeEnvironment,
+    RuntimeManager, RuntimeStatus,
 };
 pub use manifest::{current_platform, RuntimeManifest, RuntimeRegistry};
 pub use paths::RuntimePaths;

@@ -117,10 +117,31 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   symlinks; size cap) into an `.installing` staging folder that is renamed into place. The active
   version and install records live in the existing `installed_runtimes` table (no symlinks);
   `reconcile` adopts healthy copied-in installs and removes stale staging; delete recomputes the
-  folder from validated names, never from the stored path. `RuntimeManager::environment()` yields
+  folder from validated names, never from the stored path. A manifest can also declare an artifact
+  `extractRoot` (install only that folder of the archive, e.g. a NuGet package's `tools/`; safety
+  is still checked on every entry), `postInstall` setup steps (run once, by the checksum-verified
+  runtime itself, inside its final folder with the manifest's `env`; a failure removes the install)
+  and `features` (e.g. pip/venv — reported per installed version by checking a file exists, so the
+  UI never claims support an install lacks). Only healthy installs are injected. `RuntimeManager::environment()` yields
   `path_prepend` + env vars, which `commands::terminal` passes to the terminal crate; that prepends
   to the *spawned shell's* PATH only — the system PATH, Registry and Program Files are never
   touched. No admin needed.
+
+  **Python strategy (Milestone 5.5)**: python.org's *embeddable ZIP has no pip and no venv*, and
+  making it usable means hand-editing its `._pth` file — not done. Instead the manifest uses
+  python.org's official **NuGet package** (`api.nuget.org/v3-flatcontainer/python/<v>/python.<v>.nupkg`,
+  a zip; `extractRoot: "tools"`): the full standard library with `venv` and `pip` already inside
+  `Lib/site-packages`, but without the `Scripts/pip.exe` launcher. One post-install step recreates
+  the launchers offline (`python -m pip install --force-reinstall --no-index --no-deps
+  --find-links Lib/ensurepip/_bundled pip`); it runs after the folder is in its final place because
+  launchers record the interpreter's absolute path (so moving the whole app folder means
+  reinstalling Python — `python -m pip` keeps working). `PYTHONNOUSERSITE=1` is part of the
+  manifest `env` (injected into terminals and into the setup step): without it the portable
+  interpreter silently imported the *system* Python's `%APPDATA%\Python\Python314` user packages
+  (found by manual testing — `pip list` showed torch/scipy). Verified in the built app: `python`,
+  `pip`, `git` resolve to the portable copies first in `where.exe`; `pip install six` lands in the
+  runtime's own `site-packages`; `python -m venv` works; `pip list` shows only pip and six. Not
+  bundled: tkinter/IDLE. Git is MinGit (no bash, no GUI).
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -232,7 +253,10 @@ internals.
   stays disabled (no split panes yet). `TerminalPanel`/`XtermHost` are UI-only, like `MonacoHost`.
 - `RuntimeService` (`runtimeService.ts`) + `RuntimeManagerDialog` — UI-facing state (list,
   per-runtime working/progress/error) over the `runtime*` IPC commands and `runtime:progress`
-  events, plus pure `*Availability` predicates that give every disabled button a reason (tooltip).
+  events, plus pure `*Availability` predicates that give every disabled button a reason (tooltip)
+  and `injectionStatus` (mirrors the backend rule: only the active, healthy version is on new
+  terminals' PATH). Each installed version lists its features (pip/venv: available, or not
+  available with the reason).
   `runtime.manage` (`runtimeCommands.ts`) opens the dialog from the Terminal/Manage menus.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
@@ -465,10 +489,25 @@ migration file, check for stray running instances first, not just after somethin
   limitations: python.org's embeddable ZIP has no pip (noted in its manifest); python.org publishes
   no SHA256, so those hashes were computed from the official download when pinned; only Windows
   x64 artifacts are listed; WSL detection exists but WSL itself is broken on the dev machine.
+  (Update, Milestone 5.5: Python and Git were later verified end to end and Python moved to the
+  NuGet distribution with pip — the Python limitations in this entry are superseded.)
   Manual UI testing tip: port 1420 may be held by another dev server, so build the embedded-frontend
   debug exe (`pnpm tauri build --debug --no-bundle`) instead of `tauri dev`. 202 TypeScript tests,
   176 Rust tests.
-- [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
+- [x] **Milestone 5.5** — Runtime verification and Python/Git hardening. Python and Git were
+  installed, used and deleted through the real Runtime Manager UI in the built app: live progress,
+  terminal PATH injection first in `where.exe` for python/pip/git, `git init`/`git status` in a temp
+  folder (no global Git needed), `pip install`, `python -m venv`, persistence across restart,
+  delete removes the version folders and stops injection, registry User/Machine PATH byte-identical
+  before/after, no orphan processes on close. Python switched from the embeddable ZIP (no pip) to
+  the python.org NuGet package — see "Python strategy" under `openmind-runtime-manager`; that needed
+  three general manifest features (`extractRoot`, `postInstall`, `features`) and found a real
+  isolation bug (system user-site leaking in; fixed with `PYTHONNOUSERSITE`). An ignored
+  integration test (`crates/runtime-manager/tests/real_install.rs`, run with `cargo test -p
+  openmind-runtime-manager --test real_install -- --ignored`) downloads and exercises the real
+  Python and Git. Known limitations: only Windows x64 artifacts; Node was verified in Milestone 5
+  (not re-run by hand here); moving the app folder invalidates pip.exe (reinstall). 208 TypeScript
+  tests, 195 Rust tests (+1 ignored network test).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

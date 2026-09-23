@@ -65,7 +65,7 @@ describe("RuntimeManagerDialog", () => {
       runtime({
         id: "git",
         displayName: "Git",
-        installed: [{ version: "2.55.0.5", path: "p", active: true, healthy: true }],
+        installed: [{ version: "2.55.0.5", path: "p", active: true, healthy: true, features: [] }],
         activeVersion: "2.55.0.5",
         availableVersions: ["2.55.0.5"],
         defaultVersion: "2.55.0.5",
@@ -99,7 +99,7 @@ describe("RuntimeManagerDialog", () => {
   it("disables Install for an installed version and explains why", async () => {
     await open([
       runtime({
-        installed: [{ version: "24.21.0", path: "p", active: true, healthy: true }],
+        installed: [{ version: "24.21.0", path: "p", active: true, healthy: true, features: [] }],
         activeVersion: "24.21.0",
       }),
     ]);
@@ -154,8 +154,8 @@ describe("RuntimeManagerDialog", () => {
   describe("installed versions", () => {
     const two = runtime({
       installed: [
-        { version: "24.21.0", path: "p1", active: true, healthy: true },
-        { version: "24.20.0", path: "p2", active: false, healthy: true },
+        { version: "24.21.0", path: "p1", active: true, healthy: true, features: [] },
+        { version: "24.20.0", path: "p2", active: false, healthy: true, features: [] },
       ],
       activeVersion: "24.21.0",
     });
@@ -190,8 +190,8 @@ describe("RuntimeManagerDialog", () => {
       await open([
         runtime({
           installed: [
-            { version: "24.21.0", path: "p1", active: true, healthy: true },
-            { version: "24.20.0", path: "p2", active: false, healthy: false },
+            { version: "24.21.0", path: "p1", active: true, healthy: true, features: [] },
+            { version: "24.20.0", path: "p2", active: false, healthy: false, features: [] },
           ],
           activeVersion: "24.21.0",
         }),
@@ -204,6 +204,94 @@ describe("RuntimeManagerDialog", () => {
 
       fireEvent.click(within(row).getByRole("button", { name: "Repair" }));
       expect(ipc.runtimeRepair).toHaveBeenCalledWith("node", "24.20.0");
+    });
+  });
+
+  describe("Python and Git", () => {
+    const python = (overrides: Partial<RuntimeStatus["installed"][number]> = {}) =>
+      runtime({
+        id: "python",
+        displayName: "Python",
+        defaultVersion: "3.14.7",
+        availableVersions: ["3.14.7", "3.13.13"],
+        installed: [
+          {
+            version: "3.14.7",
+            path: "p",
+            active: true,
+            healthy: true,
+            features: [
+              { id: "pip", label: "pip", available: true, note: "" },
+              { id: "venv", label: "venv", available: true, note: "" },
+            ],
+            ...overrides,
+          },
+        ],
+        activeVersion: "3.14.7",
+      });
+
+    it("shows pip and venv as available, and that new terminals get the active version", async () => {
+      await open([python()]);
+
+      expect(screen.getByText("pip: available")).toBeInTheDocument();
+      expect(screen.getByText("venv: available")).toBeInTheDocument();
+      expect(screen.getByText("In new terminals' PATH")).toBeInTheDocument();
+    });
+
+    it("says plainly when pip is missing, with the reason, and offers Repair", async () => {
+      await open([
+        python({
+          healthy: false,
+          features: [
+            {
+              id: "pip",
+              label: "pip",
+              available: false,
+              note: "pip isn't set up in this install. Use Repair to reinstall it.",
+            },
+          ],
+        }),
+      ]);
+
+      expect(screen.getByText(/pip: not available — pip isn't set up/)).toBeInTheDocument();
+      expect(screen.getByText(/Not in terminal PATH — needs repair/)).toBeInTheDocument();
+      const row = screen.getByRole("listitem");
+      expect(within(row).getByRole("button", { name: "Repair" })).toBeEnabled();
+    });
+
+    it("installs Python and Git through the same Install button, and shows the runtime's error", async () => {
+      await open([
+        python({ version: "3.13.13", active: false }),
+        runtime({
+          id: "git",
+          displayName: "Git",
+          defaultVersion: "2.55.0.5",
+          availableVersions: ["2.55.0.5"],
+        }),
+      ]);
+      ipc.runtimeInstall = vi
+        .fn()
+        .mockRejectedValue("setup step failed: pip. Nothing was installed. Try again.");
+
+      const git = screen.getByRole("region", { name: "Git" });
+      fireEvent.click(within(git).getByRole("button", { name: "Install" }));
+
+      expect(ipc.runtimeInstall).toHaveBeenCalledWith("git", "2.55.0.5");
+      expect(await within(git).findByRole("alert")).toHaveTextContent("Nothing was installed");
+    });
+
+    it("a Git install that is not active is labelled as such", async () => {
+      await open([
+        runtime({
+          id: "git",
+          displayName: "Git",
+          installed: [
+            { version: "2.55.0.5", path: "p", active: false, healthy: true, features: [] },
+          ],
+        }),
+      ]);
+
+      expect(screen.getByText(/not the active version/)).toBeInTheDocument();
     });
   });
 

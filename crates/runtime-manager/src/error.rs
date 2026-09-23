@@ -36,6 +36,9 @@ pub enum RuntimeError {
     #[error("the archive is not a valid runtime: {0}")]
     InvalidArchive(String),
 
+    #[error("setup step \"{description}\" failed: {detail}")]
+    PostInstall { description: String, detail: String },
+
     #[error("invalid runtime manifest: {0}")]
     InvalidManifest(String),
 
@@ -73,6 +76,9 @@ impl RuntimeError {
             }
             Self::UnsafeArchive(_) | Self::InvalidArchive(_) => {
                 "The download was rejected and nothing was installed. Try again, or update the runtime definition."
+            }
+            Self::PostInstall { .. } => {
+                "Nothing was installed. Try again; if it keeps failing, check that security software isn't blocking the runtime from starting."
             }
             Self::InsecureUrl(_) | Self::InvalidManifest(_) => {
                 "Fix or remove the runtime definition under settings/runtime-manifests."

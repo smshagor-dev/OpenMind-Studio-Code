@@ -213,10 +213,25 @@
 
 .runtime-version {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 3px 0;
   font-size: 12px;
+}
+
+.runtime-version__details {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.runtime-version__terminals--off,
+.runtime-feature--missing {
+  color: #cca700;
 }
 
 .runtime-version__spacer {
