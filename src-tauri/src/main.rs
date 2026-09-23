@@ -6,6 +6,7 @@ mod window_events;
 
 use openmind_core::AppPaths;
 use openmind_db::Db;
+use openmind_runtime_manager::{RuntimeManager, RuntimePaths, RuntimeRegistry, UreqClient};
 use openmind_settings::{ThemeSettingService, WindowStateService, MAIN_WINDOW_LABEL};
 use openmind_terminal::TerminalRegistry;
 use openmind_workspace::{
@@ -63,6 +64,11 @@ fn main() {
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,
+            commands::runtime::runtime_list,
+            commands::runtime::runtime_install,
+            commands::runtime::runtime_repair,
+            commands::runtime::runtime_set_active,
+            commands::runtime::runtime_delete,
         ])
         .setup(move |app| {
             let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))
@@ -81,7 +87,21 @@ fn main() {
             window.show()?;
             window_events::register_close_handler(&window, window_state_service);
 
+            let (registry, manifest_warnings) = RuntimeRegistry::builtin()
+                .with_overrides(&app_paths.settings_dir.join("runtime-manifests"));
+            for warning in manifest_warnings {
+                tracing::warn!(%warning, "ignoring an invalid runtime definition");
+            }
+            let runtime = RuntimeManager::new(
+                db.clone(),
+                RuntimePaths::new(&app_paths.runtimes_dir, &app_paths.cache_dir),
+                registry,
+                std::sync::Arc::new(UreqClient::new()),
+                openmind_runtime_manager::current_platform(),
+            );
+
             app.manage(AppState {
+                runtime,
                 app_root: app_paths.root_dir.clone(),
                 terminal: TerminalRegistry::new(),
                 recent_files: RecentFilesService::new(db.clone()),

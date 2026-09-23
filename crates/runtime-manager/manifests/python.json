@@ -1,0 +1,39 @@
+{
+  "id": "python",
+  "displayName": "Python",
+  "description": "Python interpreter (official embeddable distribution).",
+  "defaultVersion": "3.14.7",
+  "versionCommand": { "executable": "python.exe", "args": ["--version"], "outputPrefix": "Python " },
+  "binDirs": [".", "Scripts"],
+  "verifyFiles": ["python.exe"],
+  "env": {},
+  "notes": "python.org's embeddable ZIP does not include pip or tkinter, so `pip --version` will not work until pip is bootstrapped. python.org publishes only MD5/sigstore for these files, so each SHA256 in this manifest was computed from the official download when the version was pinned.",
+  "versions": [
+    {
+      "version": "3.14.7",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://www.python.org/ftp/python/3.14.7/python-3.14.7-embed-amd64.zip",
+          "sha256": "d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15",
+          "sizeBytes": 12673227,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    },
+    {
+      "version": "3.13.13",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://www.python.org/ftp/python/3.13.13/python-3.13.13-embed-amd64.zip",
+          "sha256": "8766a8775746235e23cf5aee5027ab1060bb981d93110577adcf3508aa0cbd55",
+          "sizeBytes": 10950201,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

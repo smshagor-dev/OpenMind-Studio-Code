@@ -35,7 +35,7 @@ pub fn terminal_list_shells() -> Vec<ShellInfo> {
 }
 
 #[tauri::command]
-pub fn terminal_create(
+pub async fn terminal_create(
     shell: Option<ShellKind>,
     cwd: Option<String>,
     cols: u16,
@@ -44,12 +44,27 @@ pub fn terminal_create(
     state: State<'_, AppState>,
 ) -> Result<TerminalSessionInfo, String> {
     let id = TerminalRegistry::generate_id();
+    // Active portable runtimes go in front of the new shell's PATH — and only
+    // that shell's. A runtime problem never blocks opening a terminal.
+    let runtime = match state.runtime.environment().await {
+        Ok(environment) => environment,
+        Err(err) => {
+            tracing::warn!(
+                ?err,
+                "could not read the runtime environment for a new terminal"
+            );
+            Default::default()
+        }
+    };
+    let mut env = openmind_terminal::default_environment();
+    env.extend(runtime.vars);
     let request = CreateTerminalRequest {
         shell,
         cwd: cwd.map(std::path::PathBuf::from),
         cols,
         rows,
-        env: openmind_terminal::default_environment(),
+        env,
+        path_prepend: runtime.path_prepend,
     };
 
     let output_id = id.clone();

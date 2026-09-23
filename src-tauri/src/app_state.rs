@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use openmind_db::Db;
+use openmind_runtime_manager::RuntimeManager;
 use openmind_settings::ThemeSettingService;
 use openmind_terminal::TerminalRegistry;
 use openmind_workspace::{
@@ -29,4 +30,5 @@ pub struct AppState {
     pub workspace_folder: WorkspaceFolderService,
     pub explorer_state: ExplorerStateService,
     pub terminal: TerminalRegistry,
+    pub runtime: RuntimeManager,
 }

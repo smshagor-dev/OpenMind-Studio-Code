@@ -89,6 +89,39 @@ export interface TerminalSessionInfo {
   pid: number | null;
 }
 
+// Mirrors openmind_runtime_manager (camelCase).
+export type InstallPhase = "download" | "verify" | "extract" | "finalize" | "done";
+
+export interface InstallProgress {
+  kind: string;
+  version: string;
+  phase: InstallPhase;
+  current: number;
+  total: number | null;
+}
+
+export interface InstalledVersion {
+  version: string;
+  path: string;
+  active: boolean;
+  /** Every file the runtime definition requires is present; `false` means "repair me". */
+  healthy: boolean;
+}
+
+export interface RuntimeStatus {
+  id: string;
+  displayName: string;
+  description: string;
+  notes: string;
+  defaultVersion: string;
+  availableVersions: string[];
+  installed: InstalledVersion[];
+  activeVersion: string | null;
+  /** A copy of this tool already on the system PATH, if any. */
+  globalVersion: string | null;
+  busy: boolean;
+}
+
 /**
  * Everything the frontend needs from the backend, as an interface — so
  * services that depend on it (DocumentService, WorkspaceService,
@@ -160,6 +193,14 @@ export interface IpcClient {
   onTerminalOutput: (handler: (id: string, data: Uint8Array) => void) => Promise<() => void>;
   /** Subscribes to shell-exit notifications; resolves to the unsubscribe function. */
   onTerminalExit: (handler: (id: string, code: number | null) => void) => Promise<() => void>;
+
+  // Portable runtimes (Rust owns installs; progress arrives as pushed events)
+  runtimeList: () => Promise<RuntimeStatus[]>;
+  runtimeInstall: (kind: string, version: string | null) => Promise<InstalledVersion>;
+  runtimeRepair: (kind: string, version: string) => Promise<boolean>;
+  runtimeSetActive: (kind: string, version: string) => Promise<void>;
+  runtimeDelete: (kind: string, version: string) => Promise<void>;
+  onRuntimeProgress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
 
   // System clipboard (the webview's own clipboard API is unreliable inside Tauri)
   clipboardWriteText: (text: string) => Promise<void>;
@@ -284,6 +325,21 @@ export const tauriIpcClient: IpcClient = {
   onTerminalExit: (handler) =>
     listen<{ id: string; code: number | null }>("terminal:exit", (event) => {
       handler(event.payload.id, event.payload.code);
+    }),
+
+  runtimeList: () => invoke<RuntimeStatus[]>("runtime_list"),
+
+  runtimeInstall: (kind, version) => invoke<InstalledVersion>("runtime_install", { kind, version }),
+
+  runtimeRepair: (kind, version) => invoke<boolean>("runtime_repair", { kind, version }),
+
+  runtimeSetActive: (kind, version) => invoke("runtime_set_active", { kind, version }),
+
+  runtimeDelete: (kind, version) => invoke("runtime_delete", { kind, version }),
+
+  onRuntimeProgress: (handler) =>
+    listen<InstallProgress>("runtime:progress", (event) => {
+      handler(event.payload);
     }),
 
   clipboardWriteText: (text) => writeText(text),

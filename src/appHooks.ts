@@ -122,6 +122,22 @@ export function useCommandStateRefresh(): void {
   useEffect(() => container.editor.subscribe(bump), []);
 }
 
+/** `true` while the Runtime Manager dialog should be shown (opened by the `runtime.manage` command). */
+export function useRuntimeManagerDialog(): [boolean, () => void] {
+  const [open, setOpen] = useState(false);
+  useEffect(
+    () =>
+      container.events.on("showRuntimeManager", () => {
+        setOpen(true);
+      }),
+    [],
+  );
+  const close = useCallback(() => {
+    setOpen(false);
+  }, []);
+  return [open, close];
+}
+
 /** `true` while the About dialog should be shown (opened by the `help.about` command). */
 export function useAboutDialog(): [boolean, () => void] {
   const [open, setOpen] = useState(false);

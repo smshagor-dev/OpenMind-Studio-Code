@@ -10,9 +10,11 @@ import { tauriIpcClient } from "./ipc";
 import { KeybindingService } from "./keybindings";
 import { LayoutService } from "./layoutService";
 import { MarkerService } from "./markerService";
+import { RuntimeService } from "./runtimeService";
 import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
+import { registerRuntimeCommands } from "./runtimeCommands";
 import { registerTerminalCommands } from "./terminalCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
 import { WorkspaceService } from "./workspaceService";
@@ -30,6 +32,7 @@ const layout = new LayoutService(tauriIpcClient);
 const windowService = new WindowService(tauriWindowApi, tauriIpcClient);
 const keybindings = new KeybindingService(commands);
 const markers = new MarkerService();
+const runtime = new RuntimeService(tauriIpcClient, events);
 const terminal = new TerminalService(
   tauriIpcClient,
   events,
@@ -146,6 +149,7 @@ commands.register("explorer.revealActiveFile", async () => {
 });
 
 registerTerminalCommands(commands, terminal);
+registerRuntimeCommands(commands, events);
 
 registerWorkbenchCommands({
   commands,
@@ -186,5 +190,6 @@ export const container = {
   layout,
   window: windowService,
   terminal,
+  runtime,
   ipc: tauriIpcClient,
 };

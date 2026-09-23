@@ -61,7 +61,7 @@ export function AboutDialog({ onClose }: { onClose: () => void }) {
             type="button"
             className="modal__confirm--primary"
             onClick={() => {
-              navigator.clipboard.writeText(details).catch(() => undefined);
+              container.ipc.clipboardWriteText(details).catch(() => undefined);
             }}
           >
             Copy

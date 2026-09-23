@@ -40,6 +40,10 @@ pub struct CreateTerminalRequest {
     /// unchanged) — never a wholesale replacement, so PATH and everything
     /// else the shell needs stays intact.
     pub env: Vec<(String, String)>,
+    /// Folders put in front of the shell's PATH (portable runtimes). Only the
+    /// spawned shell sees the change — this process's and the system's PATH
+    /// are never modified.
+    pub path_prepend: Vec<PathBuf>,
 }
 
 /// Environment variables every terminal gets on top of the inherited
@@ -134,6 +138,10 @@ impl TerminalRegistry {
         cmd.cwd(&cwd);
         for (key, value) in &request.env {
             cmd.env(key, value);
+        }
+        if !request.path_prepend.is_empty() {
+            let existing = cmd.get_env("PATH").map(std::ffi::OsStr::to_os_string);
+            cmd.env("PATH", prepend_to_path(&request.path_prepend, existing));
         }
 
         let mut child = pair
@@ -281,6 +289,16 @@ fn make_killer(child: &(dyn Child + Send + Sync)) -> Killer {
     Killer::Direct(child.clone_killer())
 }
 
+/// `dirs` in front of `existing`, PATH-joined. Pure, so it's unit-tested
+/// without spawning anything.
+fn prepend_to_path(dirs: &[PathBuf], existing: Option<std::ffi::OsString>) -> std::ffi::OsString {
+    let mut all: Vec<PathBuf> = dirs.to_vec();
+    if let Some(existing) = existing {
+        all.extend(std::env::split_paths(&existing));
+    }
+    std::env::join_paths(all).unwrap_or_default()
+}
+
 fn resolve_cwd(requested: Option<&Path>, fallback: &Path) -> PathBuf {
     match requested {
         Some(path) if path.is_dir() => path.to_path_buf(),
@@ -394,6 +412,7 @@ mod tests {
                     cols: 80,
                     rows: 24,
                     env: default_environment(),
+                    path_prepend: Vec::new(),
                 },
                 &fallback,
                 |_| {},
@@ -483,20 +502,38 @@ mod tests {
         registry: &std::sync::Arc<TerminalRegistry>,
         on_exit: impl FnOnce(Option<i32>) + Send + 'static,
     ) -> TerminalSessionInfo {
+        create_answering(
+            registry,
+            CreateTerminalRequest {
+                shell: Some(ShellKind::Cmd),
+                cols: 80,
+                rows: 24,
+                ..Default::default()
+            },
+            |_| {},
+            on_exit,
+        )
+    }
+
+    /// Like `create`, but also plays xterm's part in answering ConPTY's
+    /// cursor-position query, and hands every output chunk to `on_output`.
+    #[cfg(windows)]
+    fn create_answering(
+        registry: &std::sync::Arc<TerminalRegistry>,
+        request: CreateTerminalRequest,
+        on_output: impl Fn(&[u8]) + Send + 'static,
+        on_exit: impl FnOnce(Option<i32>) + Send + 'static,
+    ) -> TerminalSessionInfo {
         let id = TerminalRegistry::generate_id();
         let responder = registry.clone();
         let responder_id = id.clone();
         registry
             .create(
                 id,
-                CreateTerminalRequest {
-                    shell: Some(ShellKind::Cmd),
-                    cols: 80,
-                    rows: 24,
-                    ..Default::default()
-                },
+                request,
                 &std::env::temp_dir(),
                 move |data| {
+                    on_output(data);
                     if data.windows(4).any(|w| w == b"[6n") {
                         // The query can arrive before `create` has recorded the
                         // session, so retry until the write is accepted.
@@ -569,6 +606,71 @@ mod tests {
         // The tab stays around until the user closes it, and closing an
         // already-exited session is clean.
         registry.close(&info.id).expect("close after exit");
+    }
+
+    #[test]
+    fn prepend_to_path_puts_runtime_folders_first_and_keeps_the_existing_path() {
+        let existing =
+            std::env::join_paths([PathBuf::from("/a"), PathBuf::from("/b")]).expect("join");
+
+        let joined = prepend_to_path(&[PathBuf::from("/rt")], Some(existing));
+
+        assert_eq!(
+            std::env::split_paths(&joined).collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("/rt"),
+                PathBuf::from("/a"),
+                PathBuf::from("/b")
+            ]
+        );
+        assert_eq!(
+            std::env::split_paths(&prepend_to_path(&[PathBuf::from("/rt")], None))
+                .collect::<Vec<_>>(),
+            vec![PathBuf::from("/rt")]
+        );
+    }
+
+    /// The point of the feature: a runtime folder handed to a new terminal is
+    /// really on that shell's PATH (a tool inside it runs by bare name) —
+    /// while this test process's own PATH is untouched.
+    #[cfg(windows)]
+    #[test]
+    fn a_shell_sees_injected_folders_on_its_path_and_the_parent_process_does_not() {
+        let tools = tempfile::tempdir().expect("tempdir");
+        std::fs::write(tools.path().join("omtool.cmd"), "@echo OMTOOL-RAN-OK\r\n").expect("tool");
+        let parent_path_before = std::env::var_os("PATH");
+        let registry = std::sync::Arc::new(TerminalRegistry::new());
+        let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let sink = output.clone();
+
+        let info = create_answering(
+            &registry,
+            CreateTerminalRequest {
+                shell: Some(ShellKind::Cmd),
+                cols: 200,
+                rows: 24,
+                path_prepend: vec![tools.path().to_path_buf()],
+                ..Default::default()
+            },
+            move |data| sink.lock().expect("lock").extend_from_slice(data),
+            |_| {},
+        );
+        registry.write(&info.id, b"omtool\r\n").expect("run tool");
+
+        let ran = (0..60).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            String::from_utf8_lossy(&output.lock().expect("lock")).contains("OMTOOL-RAN-OK")
+        });
+        registry.close(&info.id).expect("close");
+
+        assert!(
+            ran,
+            "the shell could not run a tool from an injected folder"
+        );
+        assert_eq!(std::env::var_os("PATH"), parent_path_before);
+        assert!(std::env::var_os("PATH").is_none_or(|path| !path
+            .to_string_lossy()
+            .contains(&*tools.path().to_string_lossy())));
     }
 
     #[test]

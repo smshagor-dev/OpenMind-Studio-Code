@@ -9,8 +9,8 @@ OpenMind Studio is the desktop IDE in the broader OpenMind ecosystem:
 
 - **OpenMind Studio** — Desktop IDE (this project)
 - **OpenMind AI** — AI Assistant (future; see the planned `openmind-ai` crate below)
-- **OpenMind Runtime** — Portable Runtime Manager (future; see the planned
-  `openmind-runtime-manager` crate below)
+- **OpenMind Runtime** — Portable Runtime Manager (foundation landed in Milestone 5 as the
+  `openmind-runtime-manager` crate)
 - **OpenMind Extensions** — extension ecosystem (future; see the planned `openmind-extensions`
   crate below)
 - **OpenMind Sync** — settings/session sync (future, not yet scoped into a milestone)
@@ -105,6 +105,22 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   asserts it dies. Non-Windows falls back to killing the direct child only (compiles, unverified).
   ConPTY asks its host for the cursor position (`ESC[6n`) and holds the shell back until answered —
   xterm.js replies automatically in the app; tests driving a real shell must answer it themselves.
+- `openmind-runtime-manager` (Milestone 5) — portable toolchains under `runtimes/<kind>/versions/
+  <version>/`, downloads cached in `cache/downloads/`. Runtime definitions are **data**: JSON
+  manifests embedded from `crates/runtime-manager/manifests/` (node/python/git) and overridable or
+  extendable by `settings/runtime-manifests/*.json` (invalid overrides are skipped with a warning),
+  so adding Go/Java/etc. or bumping a version needs no core logic change. Downloads go through an
+  `HttpClient` trait (real client `UreqClient`, `https_only`; tests use an in-memory server) with
+  Range-based resume into `.part` files; the SHA256 is verified (mismatch deletes the file) before
+  anything is extracted, and nothing downloaded is executed before that. Extraction (`extract.rs`)
+  validates every zip entry (`safe_entry_path`: no `..`, absolute, drive/stream `:`, NUL; refuses
+  symlinks; size cap) into an `.installing` staging folder that is renamed into place. The active
+  version and install records live in the existing `installed_runtimes` table (no symlinks);
+  `reconcile` adopts healthy copied-in installs and removes stale staging; delete recomputes the
+  folder from validated names, never from the stored path. `RuntimeManager::environment()` yields
+  `path_prepend` + env vars, which `commands::terminal` passes to the terminal crate; that prepends
+  to the *spawned shell's* PATH only — the system PATH, Registry and Program Files are never
+  touched. No admin needed.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -122,7 +138,6 @@ during the Milestone 1 → rebrand pass for exactly this reason.
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
-`openmind-runtime-manager` (portable Python/Node/Go/Rust/... runtime install/switch/repair),
 `openmind-lsp` (language server client + auto-download), `openmind-dap` (Debug Adapter Protocol
 client), `openmind-git` (Git client), `openmind-search`
 (indexed workspace/symbol search), `openmind-extensions` (extension host + sandboxing, backing the
@@ -215,6 +230,10 @@ internals.
   (Ctrl+`, checkable), `terminal.new` (Ctrl+Shift+`, optional shell-kind argument from the selector),
   `terminal.clear`, `terminal.kill`; `terminal.split` is intentionally unregistered so its menu entry
   stays disabled (no split panes yet). `TerminalPanel`/`XtermHost` are UI-only, like `MonacoHost`.
+- `RuntimeService` (`runtimeService.ts`) + `RuntimeManagerDialog` — UI-facing state (list,
+  per-runtime working/progress/error) over the `runtime*` IPC commands and `runtime:progress`
+  events, plus pure `*Availability` predicates that give every disabled button a reason (tooltip).
+  `runtime.manage` (`runtimeCommands.ts`) opens the dialog from the Terminal/Manage menus.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -433,7 +452,23 @@ migration file, check for stray running instances first, not just after somethin
   empty and any handler matching on `code` (Ctrl+C/V/`) silently doesn't fire; drive chords with
   `keybd_event` + `MapVirtualKey` scan codes instead. After a synthetic window activation the first
   mouse press is swallowed as an activation click. 174 TypeScript tests, 117 Rust tests.
-- [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).
+- [x] **Milestone 5** — Portable Runtime Manager foundation: new `openmind-runtime-manager` crate
+  (manifests, HTTPS resume-capable downloads, SHA256 verify, safe zip extraction, DB-backed
+  install/active-version records, repair/delete, PATH injection), `installed_runtimes` repository in
+  `openmind-db`, `path_prepend` support in `openmind-terminal`, and a frontend `RuntimeService` +
+  `RuntimeManagerDialog` (Terminal > Manage Runtimes). Node.js, Python (embeddable) and Git (MinGit)
+  ship as manifests. **Verified by hand in the built app for Node only**: install with live
+  progress, new terminal `node`/`npm --version` via injection, registry User/Machine PATH
+  byte-identical, persistence across restart, delete falls back to the global node, clean exit
+  with no orphan descendants. Python and Git use the same code path and are covered by manifest
+  validation and fake-HTTP-client tests, but their real downloads were not exercised. Known
+  limitations: python.org's embeddable ZIP has no pip (noted in its manifest); python.org publishes
+  no SHA256, so those hashes were computed from the official download when pinned; only Windows
+  x64 artifacts are listed; WSL detection exists but WSL itself is broken on the dev machine.
+  Manual UI testing tip: port 1420 may be held by another dev server, so build the embedded-frontend
+  debug exe (`pnpm tauri build --debug --no-bundle`) instead of `tauri dev`. 202 TypeScript tests,
+  176 Rust tests.
+- [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

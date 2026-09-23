@@ -1,0 +1,510 @@
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use openmind_db::{Db, InstalledRuntimeEntry, InstalledRuntimesRepository};
+use serde::Serialize;
+
+use crate::detect::{detect_version, find_on_path};
+use crate::download::{download, verify_sha256, HttpClient};
+use crate::error::RuntimeError;
+use crate::extract::extract_zip;
+use crate::manifest::{RuntimeManifest, RuntimeRegistry};
+use crate::paths::RuntimePaths;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InstallPhase {
+    Download,
+    Verify,
+    Extract,
+    Finalize,
+    Done,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallProgress {
+    pub kind: String,
+    pub version: String,
+    pub phase: InstallPhase,
+    pub current: u64,
+    pub total: Option<u64>,
+}
+
+pub type ProgressSink = Arc<dyn Fn(InstallProgress) + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstalledVersion {
+    pub version: String,
+    pub path: String,
+    pub active: bool,
+    /// Every file the manifest requires is present. `false` means "repair me".
+    pub healthy: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeStatus {
+    pub id: String,
+    pub display_name: String,
+    pub description: String,
+    pub notes: String,
+    pub default_version: String,
+    /// Versions that have a download for this platform.
+    pub available_versions: Vec<String>,
+    pub installed: Vec<InstalledVersion>,
+    pub active_version: Option<String>,
+    /// A copy of this tool already on the system PATH, if any (informational).
+    pub global_version: Option<String>,
+    /// Some operation on this runtime is running right now.
+    pub busy: bool,
+}
+
+/// What a launched process needs to see the active runtimes: folders to put
+/// in front of PATH and extra variables. Handed to whatever starts the
+/// process (the terminal) — the real system PATH is never edited.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeEnvironment {
+    pub path_prepend: Vec<PathBuf>,
+    pub vars: Vec<(String, String)>,
+}
+
+struct BusyGuard {
+    busy: Arc<Mutex<HashSet<(String, String)>>>,
+    key: (String, String),
+}
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.busy.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
+/// Installs, verifies, repairs, switches and removes portable runtimes.
+/// Cheap to clone (everything inside is shared).
+#[derive(Clone)]
+pub struct RuntimeManager {
+    db: Db,
+    paths: RuntimePaths,
+    registry: Arc<RuntimeRegistry>,
+    client: Arc<dyn HttpClient>,
+    platform: String,
+    busy: Arc<Mutex<HashSet<(String, String)>>>,
+}
+
+impl RuntimeManager {
+    pub fn new(
+        db: Db,
+        paths: RuntimePaths,
+        registry: RuntimeRegistry,
+        client: Arc<dyn HttpClient>,
+        platform: &str,
+    ) -> Self {
+        Self {
+            db,
+            paths,
+            registry: Arc::new(registry),
+            client,
+            platform: platform.to_string(),
+            busy: Arc::default(),
+        }
+    }
+
+    pub fn registry(&self) -> &RuntimeRegistry {
+        &self.registry
+    }
+
+    /// Every known runtime with what's installed. Also reconciles the
+    /// database with disk first, so a `runtimes/` folder copied in from
+    /// another portable install just shows up, and leftover half-installs
+    /// from a crash are cleaned away.
+    pub async fn list(&self) -> Result<Vec<RuntimeStatus>, RuntimeError> {
+        self.reconcile().await?;
+        let entries = InstalledRuntimesRepository::new(self.db.pool())
+            .list()
+            .await?;
+        let busy: HashSet<String> = self
+            .busy
+            .lock()
+            .map(|set| set.iter().map(|(kind, _)| kind.clone()).collect())
+            .unwrap_or_default();
+
+        let manifests: Vec<RuntimeManifest> = self.registry.all().cloned().collect();
+        let globals = tokio::task::spawn_blocking({
+            let manifests = manifests.clone();
+            move || {
+                manifests
+                    .iter()
+                    .map(|m| (m.id.clone(), global_version(m)))
+                    .collect::<Vec<_>>()
+            }
+        })
+        .await
+        .unwrap_or_default();
+
+        let mut statuses = Vec::new();
+        for manifest in manifests {
+            let mine: Vec<&InstalledRuntimeEntry> = entries
+                .iter()
+                .filter(|entry| entry.kind == manifest.id)
+                .collect();
+            let mut installed = Vec::new();
+            for entry in &mine {
+                let dir = self.paths.version_dir(&manifest.id, &entry.version)?;
+                installed.push(InstalledVersion {
+                    version: entry.version.clone(),
+                    path: dir.to_string_lossy().into_owned(),
+                    active: entry.is_active,
+                    healthy: is_healthy(&manifest, &dir),
+                });
+            }
+            statuses.push(RuntimeStatus {
+                available_versions: manifest
+                    .versions_for(&self.platform)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                active_version: mine.iter().find(|e| e.is_active).map(|e| e.version.clone()),
+                global_version: globals
+                    .iter()
+                    .find(|(id, _)| *id == manifest.id)
+                    .and_then(|(_, version)| version.clone()),
+                busy: busy.contains(&manifest.id),
+                id: manifest.id,
+                display_name: manifest.display_name,
+                description: manifest.description,
+                notes: manifest.notes,
+                default_version: manifest.default_version,
+                installed,
+            });
+        }
+        Ok(statuses)
+    }
+
+    pub async fn install(
+        &self,
+        kind: &str,
+        version: Option<&str>,
+        progress: ProgressSink,
+    ) -> Result<InstalledVersion, RuntimeError> {
+        let manifest = self.registry.get(kind)?;
+        let version = version.unwrap_or(&manifest.default_version).to_string();
+        let _guard = self.acquire(kind, &version)?;
+        self.install_inner(kind, &version, progress).await
+    }
+
+    /// Makes sure an installed version is intact: healthy installs are left
+    /// alone; damaged or partial ones are wiped and installed again (reusing
+    /// the verified cached download when there is one). Returns whether
+    /// anything had to be repaired.
+    pub async fn repair(
+        &self,
+        kind: &str,
+        version: &str,
+        progress: ProgressSink,
+    ) -> Result<bool, RuntimeError> {
+        let manifest = self.registry.get(kind)?.clone();
+        let _guard = self.acquire(kind, version)?;
+        let dir = self.paths.version_dir(kind, version)?;
+        let recorded = InstalledRuntimesRepository::new(self.db.pool())
+            .get(kind, version)
+            .await?
+            .is_some();
+        if !recorded && !dir.exists() {
+            return Err(RuntimeError::NotInstalled {
+                kind: kind.into(),
+                version: version.into(),
+            });
+        }
+        if recorded && is_healthy(&manifest, &dir) {
+            return Ok(false);
+        }
+        remove_dir_if_exists(&dir)?;
+        self.install_inner(kind, version, progress).await?;
+        Ok(true)
+    }
+
+    pub async fn set_active(&self, kind: &str, version: &str) -> Result<(), RuntimeError> {
+        self.registry.get(kind)?;
+        let switched = InstalledRuntimesRepository::new(self.db.pool())
+            .set_active(kind, version)
+            .await?;
+        if switched {
+            Ok(())
+        } else {
+            Err(RuntimeError::NotInstalled {
+                kind: kind.into(),
+                version: version.into(),
+            })
+        }
+    }
+
+    /// Deletes one installed version's files, then its record. The folder to
+    /// delete is always recomputed from the (validated) kind and version —
+    /// never taken from the database — so a tampered record can't point the
+    /// delete somewhere else.
+    pub async fn delete(&self, kind: &str, version: &str) -> Result<(), RuntimeError> {
+        self.registry.get(kind)?;
+        let _guard = self.acquire(kind, version)?;
+        let dir = self.paths.version_dir(kind, version)?;
+        let recorded = InstalledRuntimesRepository::new(self.db.pool())
+            .get(kind, version)
+            .await?
+            .is_some();
+        if !recorded && !dir.exists() {
+            return Err(RuntimeError::NotInstalled {
+                kind: kind.into(),
+                version: version.into(),
+            });
+        }
+        remove_dir_if_exists(&dir)?;
+        InstalledRuntimesRepository::new(self.db.pool())
+            .remove(kind, version)
+            .await?;
+        Ok(())
+    }
+
+    /// The environment for a process launched by OpenMind Studio: the active
+    /// version of each installed, healthy runtime.
+    pub async fn environment(&self) -> Result<RuntimeEnvironment, RuntimeError> {
+        let entries = InstalledRuntimesRepository::new(self.db.pool())
+            .list()
+            .await?;
+        let mut environment = RuntimeEnvironment::default();
+        for entry in entries.iter().filter(|entry| entry.is_active) {
+            let Ok(manifest) = self.registry.get(&entry.kind) else {
+                continue;
+            };
+            let Ok(dir) = self.paths.version_dir(&entry.kind, &entry.version) else {
+                continue;
+            };
+            if !is_healthy(manifest, &dir) {
+                continue;
+            }
+            for bin in &manifest.bin_dirs {
+                environment.path_prepend.push(if bin == "." {
+                    dir.clone()
+                } else {
+                    dir.join(bin)
+                });
+            }
+            for (key, value) in &manifest.env {
+                environment
+                    .vars
+                    .push((key.clone(), value.replace("{dir}", &dir.to_string_lossy())));
+            }
+        }
+        Ok(environment)
+    }
+
+    fn acquire(&self, kind: &str, version: &str) -> Result<BusyGuard, RuntimeError> {
+        let key = (kind.to_string(), version.to_string());
+        let mut set = self.busy.lock().map_err(|_| RuntimeError::Busy {
+            kind: kind.into(),
+            version: version.into(),
+        })?;
+        if !set.insert(key.clone()) {
+            return Err(RuntimeError::Busy {
+                kind: kind.into(),
+                version: version.into(),
+            });
+        }
+        Ok(BusyGuard {
+            busy: self.busy.clone(),
+            key,
+        })
+    }
+
+    async fn install_inner(
+        &self,
+        kind: &str,
+        version: &str,
+        progress: ProgressSink,
+    ) -> Result<InstalledVersion, RuntimeError> {
+        let manifest = self.registry.get(kind)?.clone();
+        let artifact = match manifest.artifact(version, &self.platform) {
+            Some(artifact) => artifact.clone(),
+            None if manifest.versions.iter().any(|v| v.version == version) => {
+                return Err(RuntimeError::UnsupportedPlatform {
+                    kind: kind.into(),
+                    version: version.into(),
+                    platform: self.platform.clone(),
+                });
+            }
+            None => {
+                return Err(RuntimeError::UnknownVersion {
+                    kind: kind.into(),
+                    version: version.into(),
+                });
+            }
+        };
+        let final_dir = self.paths.version_dir(kind, version)?;
+        let staging = self.paths.staging_dir(kind, version)?;
+        let archive = self.paths.download_path(&artifact.sha256, &artifact.url);
+
+        let client = self.client.clone();
+        let (kind_owned, version_owned) = (kind.to_string(), version.to_string());
+        let job = {
+            let (staging, final_dir) = (staging.clone(), final_dir.clone());
+            move || -> Result<(), RuntimeError> {
+                let report = |phase, current, total| {
+                    progress(InstallProgress {
+                        kind: kind_owned.clone(),
+                        version: version_owned.clone(),
+                        phase,
+                        current,
+                        total,
+                    });
+                };
+                install_files(
+                    client.as_ref(),
+                    &manifest,
+                    &artifact,
+                    &archive,
+                    &staging,
+                    &final_dir,
+                    &report,
+                )
+            }
+        };
+        let outcome = tokio::task::spawn_blocking(job)
+            .await
+            .map_err(|err| RuntimeError::Download(format!("install task failed: {err}")))?;
+        if let Err(err) = outcome {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(err);
+        }
+
+        let repo = InstalledRuntimesRepository::new(self.db.pool());
+        repo.record(kind, version, &final_dir.to_string_lossy())
+            .await?;
+        let entry = repo
+            .get(kind, version)
+            .await?
+            .ok_or_else(|| RuntimeError::NotInstalled {
+                kind: kind.into(),
+                version: version.into(),
+            })?;
+        Ok(InstalledVersion {
+            version: entry.version,
+            path: final_dir.to_string_lossy().into_owned(),
+            active: entry.is_active,
+            healthy: true,
+        })
+    }
+
+    async fn reconcile(&self) -> Result<(), RuntimeError> {
+        let repo = InstalledRuntimesRepository::new(self.db.pool());
+        let known = repo.list().await?;
+        let in_flight: HashSet<(String, String)> =
+            self.busy.lock().map(|set| set.clone()).unwrap_or_default();
+        for manifest in self.registry.all() {
+            let versions_dir = self.paths.versions_dir(&manifest.id)?;
+            let Ok(entries) = fs::read_dir(&versions_dir) else {
+                continue;
+            };
+            for entry in entries.filter_map(Result::ok) {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if let Some(version) = name.strip_suffix(".installing") {
+                    if !in_flight.contains(&(manifest.id.clone(), version.to_string())) {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                    continue;
+                }
+                let Ok(dir) = self.paths.version_dir(&manifest.id, &name) else {
+                    continue;
+                };
+                let recorded = known
+                    .iter()
+                    .any(|k| k.kind == manifest.id && k.version == name);
+                if !recorded && is_healthy(manifest, &dir) {
+                    repo.record(&manifest.id, &name, &dir.to_string_lossy())
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Download → verify → extract → swap into place. Runs on a blocking thread.
+/// Nothing is executed and nothing outside `staging`/`final_dir` is written.
+fn install_files(
+    client: &dyn HttpClient,
+    manifest: &RuntimeManifest,
+    artifact: &crate::manifest::Artifact,
+    archive: &Path,
+    staging: &Path,
+    final_dir: &Path,
+    report: &dyn Fn(InstallPhase, u64, Option<u64>),
+) -> Result<(), RuntimeError> {
+    use InstallPhase::*;
+
+    // A previously downloaded copy is reused only if it still matches.
+    let cached = archive.exists()
+        && verify_sha256(archive, &artifact.sha256, &mut |c, t| report(Verify, c, t)).is_ok();
+    if !cached {
+        download(
+            client,
+            &artifact.url,
+            archive,
+            artifact.size_bytes,
+            &mut |c, t| {
+                report(Download, c, t);
+            },
+        )?;
+        verify_sha256(archive, &artifact.sha256, &mut |c, t| report(Verify, c, t))?;
+    }
+
+    remove_dir_if_exists(staging)?;
+    extract_zip(archive, staging, artifact.strip_components, &mut |c, t| {
+        report(Extract, c, t);
+    })?;
+    for file in &manifest.verify_files {
+        if !staging.join(file).is_file() {
+            return Err(RuntimeError::InvalidArchive(format!(
+                "\"{file}\" is missing from the extracted runtime"
+            )));
+        }
+    }
+
+    report(Finalize, 0, None);
+    remove_dir_if_exists(final_dir)?;
+    fs::rename(staging, final_dir).map_err(|err| RuntimeError::io(final_dir, err))?;
+    report(Done, 1, Some(1));
+    Ok(())
+}
+
+fn is_healthy(manifest: &RuntimeManifest, dir: &Path) -> bool {
+    dir.is_dir()
+        && manifest
+            .verify_files
+            .iter()
+            .all(|file| dir.join(file).is_file())
+}
+
+fn remove_dir_if_exists(dir: &Path) -> Result<(), RuntimeError> {
+    match fs::remove_dir_all(dir) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(RuntimeError::io(dir, err)),
+    }
+}
+
+fn global_version(manifest: &RuntimeManifest) -> Option<String> {
+    let name = Path::new(&manifest.version_command.executable)
+        .file_stem()?
+        .to_string_lossy()
+        .into_owned();
+    let exe = find_on_path(&name)?;
+    detect_version(&exe, &manifest.version_command)
+}
+
+#[cfg(test)]
+mod tests;

@@ -1,0 +1,26 @@
+{
+  "id": "git",
+  "displayName": "Git",
+  "description": "Git command-line client (MinGit, the portable Git for Windows build).",
+  "defaultVersion": "2.55.0.5",
+  "versionCommand": { "executable": "cmd/git.exe", "args": ["--version"], "outputPrefix": "git version " },
+  "binDirs": ["cmd"],
+  "verifyFiles": ["cmd/git.exe"],
+  "env": {},
+  "notes": "MinGit from the git-for-windows GitHub release; SHA256 from the release asset digest. MinGit has no bash or GUI.",
+  "versions": [
+    {
+      "version": "2.55.0.5",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip",
+          "sha256": "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e",
+          "sizeBytes": 38989688,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

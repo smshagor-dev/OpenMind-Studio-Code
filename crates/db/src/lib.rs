@@ -1,6 +1,7 @@
 pub mod editor_settings;
 pub mod error;
 pub mod explorer_state;
+pub mod installed_runtimes;
 pub mod opened_projects;
 pub mod pinned_folders;
 pub mod recent_files;
@@ -16,6 +17,7 @@ use sqlx::SqlitePool;
 pub use editor_settings::EditorSettingsRepository;
 pub use error::DbError;
 pub use explorer_state::{ExplorerStateRepository, ExplorerStateRow};
+pub use installed_runtimes::{InstalledRuntimeEntry, InstalledRuntimesRepository};
 pub use opened_projects::{OpenedProjectEntry, OpenedProjectsRepository};
 pub use pinned_folders::{PinnedFolderEntry, PinnedFoldersRepository};
 pub use recent_files::{RecentFileEntry, RecentFilesRepository};
