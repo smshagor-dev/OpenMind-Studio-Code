@@ -1,11 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_state;
+mod commands;
 mod window_events;
 
 use openmind_core::AppPaths;
 use openmind_db::Db;
-use openmind_settings::{WindowStateService, MAIN_WINDOW_LABEL};
+use openmind_settings::{ThemeSettingService, WindowStateService, MAIN_WINDOW_LABEL};
+use openmind_workspace::{RecentFilesService, SessionService};
 use tauri::Manager;
+
+use app_state::AppState;
 
 fn main() {
     openmind_core::init_logging();
@@ -18,10 +23,21 @@ fn main() {
     tracing::info!(db_path = %app_paths.db_path.display(), "starting OpenMind Studio");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            commands::document::document_open,
+            commands::document::document_save,
+            commands::workspace::recent_files_list,
+            commands::workspace::recent_files_clear,
+            commands::workspace::session_load,
+            commands::workspace::session_save,
+            commands::theme::theme_get,
+            commands::theme::theme_set,
+        ])
         .setup(move |app| {
             let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))
                 .expect("failed to connect to database");
-            let window_state_service = WindowStateService::new(db);
+            let window_state_service = WindowStateService::new(db.clone());
 
             let window = app
                 .get_webview_window(MAIN_WINDOW_LABEL)
@@ -34,6 +50,12 @@ fn main() {
             window_events::apply_window_state(&window, &saved_state)?;
             window.show()?;
             window_events::register_close_handler(&window, window_state_service);
+
+            app.manage(AppState {
+                recent_files: RecentFilesService::new(db.clone()),
+                session: SessionService::new(db.clone()),
+                theme: ThemeSettingService::new(db),
+            });
 
             Ok(())
         })

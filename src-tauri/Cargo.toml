@@ -16,6 +16,10 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 openmind-core = { version = "0.1.0", path = "../crates/core" }
 openmind-db = { version = "0.1.0", path = "../crates/db" }
+openmind-fs = { version = "0.1.0", path = "../crates/fs" }
 openmind-settings = { version = "0.1.0", path = "../crates/settings" }
+openmind-workspace = { version = "0.1.0", path = "../crates/workspace" }
+serde = { workspace = true, features = ["derive"] }
 tauri = { version = "2.11.6", features = [] }
+tauri-plugin-dialog = "2.7.3"
 tracing.workspace = true

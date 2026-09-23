@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 openmind-db = { version = "0.1.0", path = "../db" }
+serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
 

@@ -33,7 +33,14 @@ no TODO-as-implementation, no mock logic standing in for a real feature.
 - SQLite via `sqlx` (async, `runtime-tokio`, statically linked/bundled — no system SQLite
   dependency), **WAL journal mode**
 - React 19 + TypeScript (strict, no `any`) + Vite + pnpm
-- Monaco Editor (from Milestone 2 onward), Tree-sitter (from language-support milestones onward)
+- Monaco Editor (landed Milestone 2), Tree-sitter (from language-support milestones onward)
+
+**Known issue**: this project's Vite 8 (Rolldown bundler) fails to bundle a web worker that
+imports from a node_modules package (`?worker`/`?url` suffixes and bare `new URL(...)` specifiers
+all fail the same way — confirmed a Rolldown-specific resolver bug, not an app bug). Monaco
+therefore runs without a custom `MonacoEnvironment.getWorker` — a real, Monaco-supported
+main-thread fallback (console warning, no crash), not a mock. Revisit when LSP-adjacent work
+(Milestone 7) needs the language-service workers, or when Rolldown's worker resolution improves.
 
 ## Architecture
 
@@ -49,13 +56,18 @@ except through well-defined public APIs; no circular crate dependencies (enforce
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern.
 - `openmind-settings` — business logic over `openmind-db` (defaults, validation, persistence)
-  for user/workspace/window settings.
-- `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root,
-  Tauri commands, window/event wiring. Frontend-facing IPC surface lives here, not in the domain
-  crates. No `#[tauri::command]`s exist yet (Milestone 1 has no frontend-initiated calls into
-  Rust); once they land, namespace command names by domain (`document_open`, `document_save`,
-  `workspace_open_folder`, ...) rather than a flat/generic verb set, so the IPC surface stays
-  readable as it grows.
+  for user/workspace/window/theme settings.
+- `openmind-fs` — file I/O with encoding detection (BOM-sniffed UTF-8/UTF-16LE/UTF-16BE, else
+  Windows-1252 fallback) and line-ending detection (LF/CRLF/CR/Mixed). Pure I/O + detection, no
+  persistence, no knowledge of "documents" or tabs — that's the frontend's `DocumentService`.
+- `openmind-workspace` — business logic over `openmind-db` for session/recent-files concerns:
+  `RecentFilesService` (MRU list, ordered by row id not wall-clock time — see
+  `crates/db/src/recent_files.rs` for why), `SessionService` (owns the `SessionSnapshot` JSON
+  shape stored in `session_restore`).
+- `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
+  (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
+  (`commands::document::*`, `commands::workspace::*`, `commands::theme::*`), window/event wiring.
+  Frontend-facing IPC surface lives here, not in the domain crates.
 
 Only depend on a workspace crate you actually call into — an unused `[dependencies]` entry is a
 lint away from a compile warning and dead weight either way; two path deps were caught and removed
@@ -64,16 +76,49 @@ during the Milestone 1 → rebrand pass for exactly this reason.
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
-`openmind-fs` (async file system service + watcher), `openmind-workspace` (project/workspace
-model, multi-root), `openmind-runtime-manager` (portable Python/Node/Go/Rust/... runtime
-install/switch/repair), `openmind-lsp` (language server client + auto-download), `openmind-dap`
-(Debug Adapter Protocol client), `openmind-terminal` (PTY sessions), `openmind-git` (Git client),
-`openmind-search` (indexed workspace/symbol search), `openmind-extensions` (extension host +
-sandboxing, backing the OpenMind Extensions ecosystem), `openmind-ai` (AI provider plugin
-architecture, including the future OpenMind AI provider), `openmind-plugin-host`.
+`openmind-runtime-manager` (portable Python/Node/Go/Rust/... runtime install/switch/repair),
+`openmind-lsp` (language server client + auto-download), `openmind-dap` (Debug Adapter Protocol
+client), `openmind-terminal` (PTY sessions), `openmind-git` (Git client), `openmind-search`
+(indexed workspace/symbol search), `openmind-extensions` (extension host + sandboxing, backing the
+OpenMind Extensions ecosystem), `openmind-ai` (AI provider plugin architecture, including the
+future OpenMind AI provider), `openmind-plugin-host`.
 
-Frontend gains matching feature folders under `src/features/*` as each lands (no empty folders
-pre-created either).
+## Frontend architecture
+
+React components render; they never own business logic (Monaco itself is UI-only too — see
+`src/editor/MonacoHost.tsx`, which just mounts/tears down an editor instance and knows nothing
+about documents, files, or IPC). All logic lives in `src/services/`, composed once in
+`src/services/container.ts` (the frontend's composition root) and consumed by components via
+`useSyncExternalStore` or plain subscriptions — never by a component reaching into service
+internals.
+
+- `EventBus<TEvents>` (`eventBus.ts`) — generic typed pub/sub; the app's shared instance is typed
+  by `AppEvents` (`events.ts`) so services can react to each other without depending on each other
+  directly (e.g. `WorkspaceService` re-deriving tabs when `DocumentService` reports a dirty-state
+  change).
+- `CommandRegistry` (`commandRegistry.ts`) — named, executable commands
+  (`file.new`/`file.open`/`file.save`/`file.saveAs`/`file.closeActiveTab`/`view.toggleTheme`),
+  registered once in `container.ts`. Keyboard shortcuts and UI buttons both call
+  `commands.execute(id)`, never a service method directly — this is the seam a future command
+  palette/menu system hangs off.
+- `BufferManager` (`bufferManager.ts`) — owns Monaco `ITextModel` lifecycle. Knows nothing about
+  files or paths.
+- `DocumentService` (`documentService.ts`) — the "Document Manager": document identity
+  (path/encoding/line-ending), dirty tracking (buffer content vs. last-saved content), open/save/
+  save-as orchestration between `BufferManager` and `IpcClient`.
+- `WorkspaceService` (`workspaceService.ts`) — tab order + active tab, recent-files loading,
+  session restore/persist. Persists the session after *every* mutation (open/close/save-as), not
+  only on app close, so it survives a crash or force-quit.
+- `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
+  built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
+- `ipc.ts` — `IpcClient` interface (property/arrow-function-typed, not method-shorthand — avoids
+  eslint's `unbound-method` false-positive on bare method references in tests) + the real
+  `tauriIpcClient` implementation. Services take an `IpcClient` via constructor injection, so
+  tests substitute a fake implementation instead of needing a real Tauri runtime.
+
+Every service is unit-tested independent of React (`*.test.ts` next to each file); `App.test.tsx`
+is a thin smoke test on top, with `@tauri-apps/api/core` and `@tauri-apps/plugin-dialog` mocked at
+the module level.
 
 ## Persistence
 
@@ -93,9 +138,12 @@ OpenMind Studio/
     settings/                 user-editable JSON config export (future milestone)
 ```
 
-Only `data/` (and, within it, the `window_state` table) is read/written today; the rest of the
-layout is created up front — matching the directories the product spec requires — but stays empty
-until the milestone that owns it lands. Don't write into `logs/`, `cache/`, etc. speculatively.
+Only `data/` is read/written so far (`logs/`, `cache/`, `runtimes/`, `extensions/`, `themes/`,
+`settings/` are created up front but stay empty until the milestone that owns each one lands —
+don't write into them speculatively). Within `data/openmind-studio.db`, tables now live in
+(as of Milestone 2): `window_state`, `recent_files` (global MRU list — no project scoping yet,
+every row has `project_id = NULL`; see `crates/db/src/recent_files.rs`), `session_restore` (one
+row, opaque JSON owned by `openmind_workspace::SessionSnapshot`), `theme` (one row).
 
 SQLite (WAL mode) holds every persistent concern **except project/workspace files themselves and
 the on-disk assets listed above**. The full schema (see `crates/db/migrations/0001_init.sql`)
@@ -152,7 +200,12 @@ recreate.)
   product-name/icon pass, then a complete pass fixing capitalization everywhere and adding the
   full portable directory layout (`logs/`, `cache/`, `runtimes/`, `extensions/`, `themes/`,
   `settings/` alongside `data/`) documented under "Persistence" above.
-- [ ] Milestone 2 — Monaco editor core (mount, open/save a file, tabs, basic theme).
+- [x] **Milestone 2** — Editor foundation: Monaco mounted (UI-only, no business logic — see
+  "Frontend architecture" above), `openmind-fs` (encoding + line-ending detection),
+  `openmind-workspace` (recent files, session), `theme` table wired up, document
+  open/save/save-as via native dialogs, dirty-state tracking, multiple tabs, recent files, session
+  restore (persisted continuously, not just on close), Command Registry + EventBus foundations.
+  44 Rust tests + 43 TypeScript tests (every service unit-tested independent of React).
 - [ ] Milestone 3 — Explorer (file tree, CRUD, drag/drop, context menu, git decorations).
 - [ ] Milestone 4 — Integrated terminal (PTY: cmd/PowerShell/Git Bash/WSL, multiplexed).
 - [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).

@@ -1,4 +1,7 @@
 pub mod error;
+pub mod recent_files;
+pub mod session;
+pub mod theme;
 pub mod window_state;
 
 use std::path::Path;
@@ -7,6 +10,9 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::SqlitePool;
 
 pub use error::DbError;
+pub use recent_files::{RecentFileEntry, RecentFilesRepository};
+pub use session::SessionRepository;
+pub use theme::ThemeRepository;
 pub use window_state::{WindowState, WindowStateRepository};
 
 /// A connected, migrated, WAL-mode SQLite database.

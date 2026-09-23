@@ -1,0 +1,136 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { BufferManager } from "./bufferManager";
+import { DocumentService } from "./documentService";
+import { EventBus } from "./eventBus";
+import type { AppEvents } from "./events";
+import type { IpcClient, OpenedDocument } from "./ipc";
+
+function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
+  return {
+    openDocumentDialog: vi.fn().mockResolvedValue(null),
+    saveDocumentDialog: vi.fn().mockResolvedValue(null),
+    documentOpen: vi.fn(),
+    documentSave: vi.fn().mockResolvedValue(undefined),
+    recentFilesList: vi.fn().mockResolvedValue([]),
+    recentFilesClear: vi.fn().mockResolvedValue(undefined),
+    sessionLoad: vi.fn().mockResolvedValue({ openPaths: [], activePath: null }),
+    sessionSave: vi.fn().mockResolvedValue(undefined),
+    themeGet: vi.fn().mockResolvedValue("dark"),
+    themeSet: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  };
+}
+
+const OPENED: OpenedDocument = {
+  path: "C:/proj/main.rs",
+  content: "fn main() {}",
+  encoding: "utf8",
+  lineEnding: "lf",
+};
+
+describe("DocumentService", () => {
+  let buffers: BufferManager;
+  let events: EventBus<AppEvents>;
+
+  beforeEach(() => {
+    buffers = new BufferManager();
+    events = new EventBus<AppEvents>();
+  });
+
+  it("createUntitled starts a clean, unnamed document", () => {
+    const service = new DocumentService(createFakeIpc(), buffers, events);
+
+    const id = service.createUntitled();
+    const snapshot = service.snapshot(id);
+
+    expect(snapshot.path).toBeNull();
+    expect(snapshot.title).toBe("Untitled");
+    expect(snapshot.dirty).toBe(false);
+  });
+
+  it("openFromPath reads the file via IPC and creates a clean document", async () => {
+    const ipc = createFakeIpc({ documentOpen: vi.fn().mockResolvedValue(OPENED) });
+    const service = new DocumentService(ipc, buffers, events);
+
+    const id = await service.openFromPath(OPENED.path);
+    const snapshot = service.snapshot(id);
+
+    expect(ipc.documentOpen).toHaveBeenCalledWith(OPENED.path);
+    expect(snapshot.path).toBe(OPENED.path);
+    expect(snapshot.title).toBe("main.rs");
+    expect(snapshot.dirty).toBe(false);
+    expect(buffers.getValue(id)).toBe(OPENED.content);
+  });
+
+  it("openFromPath reuses the existing document instead of reopening", async () => {
+    const ipc = createFakeIpc({ documentOpen: vi.fn().mockResolvedValue(OPENED) });
+    const service = new DocumentService(ipc, buffers, events);
+
+    const first = await service.openFromPath(OPENED.path);
+    const second = await service.openFromPath(OPENED.path);
+
+    expect(second).toBe(first);
+    expect(ipc.documentOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it("editing the buffer marks the document dirty and emits an event", () => {
+    const service = new DocumentService(createFakeIpc(), buffers, events);
+    const id = service.createUntitled();
+    const dirtyChanges: boolean[] = [];
+    events.on("documentDirtyChanged", (payload) => dirtyChanges.push(payload.dirty));
+
+    buffers.setValue(id, "new content");
+
+    expect(service.isDirty(id)).toBe(true);
+    expect(dirtyChanges).toEqual([true]);
+  });
+
+  it("save() on a document with a path writes via IPC and clears dirty", async () => {
+    const ipc = createFakeIpc({ documentOpen: vi.fn().mockResolvedValue(OPENED) });
+    const service = new DocumentService(ipc, buffers, events);
+    const id = await service.openFromPath(OPENED.path);
+    buffers.setValue(id, "changed");
+
+    await service.save(id);
+
+    expect(ipc.documentSave).toHaveBeenCalledWith(OPENED.path, "changed", "utf8");
+    expect(service.isDirty(id)).toBe(false);
+  });
+
+  it("save() on an untitled document delegates to saveAs", async () => {
+    const ipc = createFakeIpc({ saveDocumentDialog: vi.fn().mockResolvedValue("C:/new.txt") });
+    const service = new DocumentService(ipc, buffers, events);
+    const id = service.createUntitled();
+    buffers.setValue(id, "hello");
+
+    await service.save(id);
+
+    expect(ipc.saveDocumentDialog).toHaveBeenCalled();
+    expect(ipc.documentSave).toHaveBeenCalledWith("C:/new.txt", "hello", "utf8");
+    expect(service.snapshot(id).path).toBe("C:/new.txt");
+    expect(service.isDirty(id)).toBe(false);
+  });
+
+  it("saveAs() does nothing when the dialog is cancelled", async () => {
+    const ipc = createFakeIpc({ saveDocumentDialog: vi.fn().mockResolvedValue(null) });
+    const service = new DocumentService(ipc, buffers, events);
+    const id = service.createUntitled();
+    buffers.setValue(id, "hello");
+
+    await service.saveAs(id);
+
+    expect(ipc.documentSave).not.toHaveBeenCalled();
+    expect(service.snapshot(id).path).toBeNull();
+  });
+
+  it("close() disposes the buffer and forgets the document", () => {
+    const service = new DocumentService(createFakeIpc(), buffers, events);
+    const id = service.createUntitled();
+
+    service.close(id);
+
+    expect(buffers.get(id)).toBeUndefined();
+    expect(() => service.snapshot(id)).toThrow(/does not exist/);
+  });
+});

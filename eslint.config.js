@@ -26,6 +26,7 @@ export default tseslint.config(
       ...reactRefresh.configs.vite.rules,
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/explicit-function-return-type": "off",
+      "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
     },
   },
 );
