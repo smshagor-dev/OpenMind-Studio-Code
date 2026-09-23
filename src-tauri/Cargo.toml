@@ -23,6 +23,7 @@ openmind-terminal = { version = "0.1.0", path = "../crates/terminal" }
 openmind-workspace = { version = "0.1.0", path = "../crates/workspace" }
 serde = { workspace = true, features = ["derive"] }
 tauri = { version = "2.11.6", features = [] }
+tauri-plugin-clipboard-manager = "2.3.3"
 tauri-plugin-dialog = "2.7.3"
 tokio = { version = "1.53.1", features = ["time"] }
 tracing.workspace = true

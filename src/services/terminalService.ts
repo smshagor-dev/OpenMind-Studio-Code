@@ -126,6 +126,13 @@ export class TerminalService {
 
   /** Opens a new terminal (in the open workspace folder, if any) and shows the panel. */
   async createTerminal(shell?: ShellKind): Promise<string | null> {
+    if (shell !== undefined && !this.state.shells.some((candidate) => candidate.kind === shell)) {
+      // Only shells found on this machine are ever offered, so this is a stale or foreign request.
+      this.events.emit("appError", {
+        message: "Can't start a terminal: that shell isn't available on this machine.",
+      });
+      return null;
+    }
     const kind = shell ?? this.state.lastShell;
     const cwd = this.getCwd();
     const info = await safely(
@@ -223,11 +230,33 @@ export class TerminalService {
   }
 
   write(id: string, data: string): void {
+    // An exited shell has no stdin left; typing into its tab is a quiet no-op, not an error toast.
+    if (this.state.sessions.some((session) => session.id === id && session.exited)) {
+      return;
+    }
     void safely(this.events, () => this.ipc.terminalWrite(id, data), "send input", undefined);
   }
 
   resize(id: string, cols: number, rows: number): void {
     void safely(this.events, () => this.ipc.terminalResize(id, cols, rows), "resize", undefined);
+  }
+
+  /** Copies terminal text to the system clipboard; a failure is reported, not swallowed. */
+  async copyToClipboard(text: string): Promise<void> {
+    if (text === "") {
+      return;
+    }
+    await safely(
+      this.events,
+      () => this.ipc.clipboardWriteText(text),
+      "copy to the clipboard",
+      undefined,
+    );
+  }
+
+  /** The clipboard's text, for the view of the terminal being pasted into (never any other). */
+  async readClipboard(): Promise<string> {
+    return safely(this.events, () => this.ipc.clipboardReadText(), "read the clipboard", "");
   }
 
   clear(id: string): void {

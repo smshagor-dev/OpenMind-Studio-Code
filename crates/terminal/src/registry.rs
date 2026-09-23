@@ -14,6 +14,7 @@ use crate::shell::{default_shell, resolve_executable, ShellKind};
 use crate::job::ProcessTree;
 
 const READ_BUFFER_SIZE: usize = 8192;
+const EXIT_OUTPUT_DRAIN: std::time::Duration = std::time::Duration::from_millis(150);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,9 +161,10 @@ impl TerminalRegistry {
         };
 
         // portable-pty's reader is a blocking `Read`, so it needs its own OS
-        // thread; this is the only place terminal output is produced, and it
-        // naturally ends (and reports the exit code) once the shell process
-        // exits and the pty reports EOF.
+        // thread; this is the only place terminal output is produced. On
+        // Windows (ConPTY) it does *not* see EOF when the shell exits — the
+        // pipe stays open until the master is dropped — so it can't be what
+        // detects the exit; it just ends once the session is closed.
         let thread_id = id.clone();
         std::thread::Builder::new()
             .name(format!("openmind-terminal-{thread_id}"))
@@ -170,15 +172,24 @@ impl TerminalRegistry {
                 let mut buf = [0u8; READ_BUFFER_SIZE];
                 loop {
                     match reader.read(&mut buf) {
-                        Ok(0) => break,
+                        Ok(0) | Err(_) => break,
                         Ok(n) => on_output(&buf[..n]),
-                        Err(_) => break,
                     }
                 }
-                let code = child.wait().ok().map(|status| status.exit_code() as i32);
-                on_exit(code);
             })
             .expect("failed to spawn terminal reader thread");
+
+        // Exit is detected by waiting on the child process itself. The short
+        // pause lets the reader deliver whatever the shell printed as it
+        // exited before the exit notification goes out behind it.
+        std::thread::Builder::new()
+            .name(format!("openmind-terminal-wait-{thread_id}"))
+            .spawn(move || {
+                let code = child.wait().ok().map(|status| status.exit_code() as i32);
+                std::thread::sleep(EXIT_OUTPUT_DRAIN);
+                on_exit(code);
+            })
+            .expect("failed to spawn terminal exit-watcher thread");
 
         self.sessions
             .lock()
@@ -340,6 +351,36 @@ mod tests {
     }
 
     #[test]
+    fn creating_a_session_with_an_unavailable_shell_fails_cleanly_and_leaves_no_session() {
+        let registry = TerminalRegistry::new();
+        let id = TerminalRegistry::generate_id();
+
+        for shell in crate::shell::detect_shells()
+            .into_iter()
+            .filter(|shell| !shell.available)
+        {
+            let result = registry.create(
+                id.clone(),
+                CreateTerminalRequest {
+                    shell: Some(shell.kind),
+                    cols: 80,
+                    rows: 24,
+                    ..Default::default()
+                },
+                &std::env::temp_dir(),
+                |_| {},
+                |_| {},
+            );
+
+            assert!(matches!(result, Err(TerminalError::ShellUnavailable)));
+            assert!(matches!(
+                registry.write(&id, b"x"),
+                Err(TerminalError::NotFound(_))
+            ));
+        }
+    }
+
+    #[test]
     fn a_bad_cwd_falls_back_instead_of_failing_the_spawn() {
         let registry = TerminalRegistry::new();
         let fallback = std::env::temp_dir();
@@ -434,6 +475,14 @@ mod tests {
     fn create_answering_cursor_queries(
         registry: &std::sync::Arc<TerminalRegistry>,
     ) -> TerminalSessionInfo {
+        create_answering_cursor_queries_with_exit(registry, |_| {})
+    }
+
+    #[cfg(windows)]
+    fn create_answering_cursor_queries_with_exit(
+        registry: &std::sync::Arc<TerminalRegistry>,
+        on_exit: impl FnOnce(Option<i32>) + Send + 'static,
+    ) -> TerminalSessionInfo {
         let id = TerminalRegistry::generate_id();
         let responder = registry.clone();
         let responder_id = id.clone();
@@ -463,7 +512,7 @@ mod tests {
                         });
                     }
                 },
-                |_| {},
+                on_exit,
             )
             .expect("create")
     }
@@ -498,6 +547,28 @@ mod tests {
         output
             .map(|out| String::from_utf8_lossy(&out.stdout).contains(&pid.to_string()))
             .unwrap_or(false)
+    }
+
+    /// Regression: on Windows the pty's output pipe never reports EOF while
+    /// the master is open, so exit has to be detected from the child process.
+    #[cfg(windows)]
+    #[test]
+    fn a_shell_that_exits_on_its_own_is_reported_even_though_the_pty_stays_open() {
+        let registry = std::sync::Arc::new(TerminalRegistry::new());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let info = create_answering_cursor_queries_with_exit(&registry, move |code| {
+            let _ = tx.send(code);
+        });
+
+        registry.write(&info.id, b"exit 7\r\n").expect("write exit");
+
+        let code = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the exit was never reported");
+        assert_eq!(code, Some(7));
+        // The tab stays around until the user closes it, and closing an
+        // already-exited session is clean.
+        registry.close(&info.id).expect("close after exit");
     }
 
     #[test]

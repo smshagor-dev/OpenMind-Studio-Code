@@ -409,8 +409,30 @@ migration file, check for stray running instances first, not just after somethin
   (screenshots + process-ancestry tracing): PowerShell opened in the workspace folder, `node`/`python`
   ran, two terminals switched, closing one killed only its shell/conhost/`ping` grandchild, closing the
   app left no shell or child behind, and relaunch restored the panel without auto-starting a shell.
-  Not done: split terminal (menu entry stays disabled), Git Bash/WSL unverified on this machine
-  (detection only), non-Windows kill is direct-child only. 161 TypeScript tests, 112 Rust tests.
+  Not done: split terminal (menu entry stays disabled), non-Windows kill is direct-child only. 161 TypeScript tests, 112 Rust tests.
+- [x] **Milestone 4.5** — Terminal UX verification and shell polish. Every terminal UI behavior
+  Milestone 4 hadn't checked was exercised in the real app (maximized window, synthesized input,
+  screenshots, process-ancestry checks): shell selector (lists all four shells here, creates the
+  chosen one), resize handle (panel height persists across relaunch), copy, paste, exited-tab
+  indicator, closing an exited tab, PowerShell, cmd, Git Bash (bash 5.3.15, starts in the workspace
+  folder), WSL, `Ctrl+``/`Ctrl+Shift+``, and the Terminal menu (Split disabled). Three real bugs
+  found and fixed: (1) **shell exit was never reported on Windows** — ConPTY's output pipe doesn't hit
+  EOF while the master is open, and exit detection waited for that EOF, so an exited shell's tab
+  stayed "running" forever; exit is now detected by a dedicated thread waiting on the child process
+  (regression test: a real `cmd.exe` running `exit 7` must be reported as `Some(7)`). (2) **Copy did
+  nothing** — `navigator.clipboard.writeText` doesn't work inside the webview (also silently broke the
+  explorer's "Copy Path"); both now go through `tauri-plugin-clipboard-manager`
+  (`IpcClient.clipboardWriteText/ReadText`, permissions in `capabilities/default.json`), and terminal
+  paste reads the same way and calls `terminal.paste` for that view's terminal only, with the browser's
+  own paste suppressed so it can't paste twice. (3) Typing into an exited terminal sent input to a dead
+  session and raised an error toast; it's now a quiet no-op, and requesting a shell that isn't in the
+  available list is refused before touching the backend. Findings worth keeping: WSL here has a broken
+  distro (`ext4.vhdx` missing) — the app handled it correctly (WSL prints its error, the tab shows
+  "exited"); closing the last terminal hides the panel (VS Code behavior); and **UI test harness
+  caveat** — `SendKeys` synthesizes key events with no scan code, so the browser's `event.code` is
+  empty and any handler matching on `code` (Ctrl+C/V/`) silently doesn't fire; drive chords with
+  `keybd_event` + `MapVirtualKey` scan codes instead. After a synthetic window activation the first
+  mouse press is swallowed as an activation click. 174 TypeScript tests, 117 Rust tests.
 - [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.

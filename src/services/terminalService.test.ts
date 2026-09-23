@@ -219,6 +219,76 @@ describe("TerminalService", () => {
     expect(clear).toHaveBeenCalled();
   });
 
+  it("refuses a shell that isn't available without ever calling the backend", async () => {
+    const service = makeService();
+    const errors: string[] = [];
+    events.on("appError", ({ message }) => errors.push(message));
+    await service.initialize();
+
+    const id = await service.createTerminal("wsl");
+
+    expect(id).toBeNull();
+    expect(ipc.terminalCreate).not.toHaveBeenCalled();
+    expect(errors).toHaveLength(1);
+  });
+
+  it("input typed into an exited terminal is dropped instead of erroring", async () => {
+    const service = makeService();
+    await service.initialize();
+    const id = (await service.createTerminal()) ?? "";
+    exitHandler(id, 0);
+
+    service.write(id, "ls\r");
+
+    expect(ipc.terminalWrite).not.toHaveBeenCalled();
+  });
+
+  it("closing an already-exited terminal still cleans up without error", async () => {
+    const service = makeService();
+    const errors: string[] = [];
+    events.on("appError", ({ message }) => errors.push(message));
+    await service.initialize();
+    const id = (await service.createTerminal()) ?? "";
+    exitHandler(id, 0);
+
+    await service.closeTerminal(id);
+
+    expect(ipc.terminalClose).toHaveBeenCalledWith(id);
+    expect(errors).toHaveLength(0);
+    expect(service.getState().sessions).toHaveLength(0);
+  });
+
+  it("copyToClipboard writes the selection to the system clipboard and skips empty text", async () => {
+    const service = makeService();
+
+    await service.copyToClipboard("selected text");
+    await service.copyToClipboard("");
+
+    expect(ipc.clipboardWriteText).toHaveBeenCalledTimes(1);
+    expect(ipc.clipboardWriteText).toHaveBeenCalledWith("selected text");
+  });
+
+  it("a clipboard failure surfaces as appError instead of failing silently", async () => {
+    const service = makeService({
+      clipboardWriteText: vi.fn().mockRejectedValue(new Error("clipboard busy")),
+      clipboardReadText: vi.fn().mockRejectedValue(new Error("clipboard busy")),
+    });
+    const errors: string[] = [];
+    events.on("appError", ({ message }) => errors.push(message));
+
+    await service.copyToClipboard("x");
+    const pasted = await service.readClipboard();
+
+    expect(pasted).toBe("");
+    expect(errors).toHaveLength(2);
+  });
+
+  it("readClipboard returns the clipboard text for the view to paste", async () => {
+    const service = makeService({ clipboardReadText: vi.fn().mockResolvedValue("pasted text") });
+
+    expect(await service.readClipboard()).toBe("pasted text");
+  });
+
   it("forwards input and resize to the backend", async () => {
     const service = makeService();
     await service.initialize();

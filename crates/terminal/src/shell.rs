@@ -142,6 +142,32 @@ mod tests {
     }
 
     #[test]
+    fn detect_shells_lists_shells_in_a_stable_order_with_windows_defaults_first() {
+        let kinds: Vec<ShellKind> = detect_shells().into_iter().map(|s| s.kind).collect();
+
+        assert_eq!(
+            kinds,
+            vec![
+                ShellKind::PowerShell,
+                ShellKind::Cmd,
+                ShellKind::GitBash,
+                ShellKind::Wsl
+            ]
+        );
+    }
+
+    #[test]
+    fn default_shell_is_always_one_that_is_actually_available() {
+        let default = default_shell();
+
+        let info = detect_shells()
+            .into_iter()
+            .find(|shell| shell.kind == default)
+            .expect("default shell is one of the known kinds");
+        assert!(info.available || default == ShellKind::Cmd);
+    }
+
+    #[test]
     fn resolve_executable_fails_cleanly_for_a_kind_that_is_not_installed() {
         // GitBash/Wsl aren't guaranteed present on a CI/dev box; whichever of
         // them detect_shells() reports as unavailable must fail through the

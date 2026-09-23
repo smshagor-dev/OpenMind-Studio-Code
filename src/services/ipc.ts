@@ -1,6 +1,7 @@
 import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 // Mirrors openmind_fs::TextEncoding (#[serde(rename_all = "kebab-case")]).
@@ -160,6 +161,10 @@ export interface IpcClient {
   /** Subscribes to shell-exit notifications; resolves to the unsubscribe function. */
   onTerminalExit: (handler: (id: string, code: number | null) => void) => Promise<() => void>;
 
+  // System clipboard (the webview's own clipboard API is unreliable inside Tauri)
+  clipboardWriteText: (text: string) => Promise<void>;
+  clipboardReadText: () => Promise<string>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
 }
@@ -280,6 +285,10 @@ export const tauriIpcClient: IpcClient = {
     listen<{ id: string; code: number | null }>("terminal:exit", (event) => {
       handler(event.payload.id, event.payload.code);
     }),
+
+  clipboardWriteText: (text) => writeText(text),
+
+  clipboardReadText: () => readText(),
 
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };

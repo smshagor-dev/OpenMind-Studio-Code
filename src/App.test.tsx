@@ -20,6 +20,11 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => undefined),
 }));
 
+vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
+  readText: vi.fn().mockResolvedValue(""),
+  writeText: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn().mockResolvedValue(null),
   save: vi.fn().mockResolvedValue(null),

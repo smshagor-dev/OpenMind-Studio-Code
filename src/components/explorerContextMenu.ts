@@ -21,7 +21,7 @@ function item(
 const SEPARATOR: PopupItem = { kind: "separator" };
 
 function copyText(text: string): void {
-  navigator.clipboard.writeText(text).catch((error: unknown) => {
+  container.ipc.clipboardWriteText(text).catch((error: unknown) => {
     container.events.emit("appError", {
       message: `Couldn't copy to the clipboard: ${String(error)}`,
     });

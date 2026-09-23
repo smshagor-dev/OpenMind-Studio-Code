@@ -48,12 +48,21 @@ export function XtermHost({ id, active, themeKind }: XtermHostProps) {
       // consuming them so they still reach the window keybinding listener.
       if (event.ctrlKey && event.code === "Backquote") return false;
       const ctrl = event.ctrlKey || event.metaKey;
+      // Copy: with a selection Ctrl+C / Ctrl+Shift+C copy it (via the system clipboard, since the
+      // webview's own clipboard API doesn't work here); without one, Ctrl+C stays the shell's interrupt.
       if (ctrl && event.code === "KeyC" && (event.shiftKey || terminal.hasSelection())) {
-        void navigator.clipboard.writeText(terminal.getSelection());
+        void container.terminal.copyToClipboard(terminal.getSelection());
         return false;
       }
-      // Ctrl+V / Ctrl+Shift+V: let the browser's native paste event reach xterm.
-      if (ctrl && event.code === "KeyV") return false;
+      // Paste goes into this view's terminal only. `preventDefault` stops the browser's own paste
+      // event from also firing and pasting a second time.
+      if (ctrl && event.code === "KeyV") {
+        event.preventDefault();
+        void container.terminal.readClipboard().then((text) => {
+          if (text !== "") terminal.paste(text);
+        });
+        return false;
+      }
       return true;
     });
 
