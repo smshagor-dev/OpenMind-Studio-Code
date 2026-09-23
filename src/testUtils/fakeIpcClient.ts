@@ -41,6 +41,13 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     fsDuplicate: vi.fn(),
     settingsGet: vi.fn().mockResolvedValue(null),
     settingsSet: vi.fn().mockResolvedValue(undefined),
+    terminalListShells: vi.fn().mockResolvedValue([]),
+    terminalCreate: vi.fn(),
+    terminalWrite: vi.fn().mockResolvedValue(undefined),
+    terminalResize: vi.fn().mockResolvedValue(undefined),
+    terminalClose: vi.fn().mockResolvedValue(undefined),
+    onTerminalOutput: vi.fn().mockResolvedValue(() => undefined),
+    onTerminalExit: vi.fn().mockResolvedValue(() => undefined),
     appInfo: vi.fn().mockResolvedValue({ version: "0.0.0-test", tauriVersion: "2.0.0" }),
     ...overrides,
   };

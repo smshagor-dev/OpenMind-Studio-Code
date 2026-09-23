@@ -10,8 +10,10 @@ import { tauriIpcClient } from "./ipc";
 import { KeybindingService } from "./keybindings";
 import { LayoutService } from "./layoutService";
 import { MarkerService } from "./markerService";
+import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
+import { registerTerminalCommands } from "./terminalCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
 import { WorkspaceService } from "./workspaceService";
 
@@ -28,6 +30,11 @@ const layout = new LayoutService(tauriIpcClient);
 const windowService = new WindowService(tauriWindowApi, tauriIpcClient);
 const keybindings = new KeybindingService(commands);
 const markers = new MarkerService();
+const terminal = new TerminalService(
+  tauriIpcClient,
+  events,
+  () => workspace.getActiveWorkspace()?.path ?? null,
+);
 
 // Keep the explorer tree in sync with whichever folder is currently open.
 workspace.subscribeWorkspace(() => {
@@ -138,6 +145,8 @@ commands.register("explorer.revealActiveFile", async () => {
   }
 });
 
+registerTerminalCommands(commands, terminal);
+
 registerWorkbenchCommands({
   commands,
   events,
@@ -176,5 +185,6 @@ export const container = {
   editor,
   layout,
   window: windowService,
+  terminal,
   ipc: tauriIpcClient,
 };

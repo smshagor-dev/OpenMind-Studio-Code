@@ -257,3 +257,148 @@
   background-color: var(--toolbar-hover-bg);
   color: var(--fg);
 }
+
+/* --- Workbench main column: editor group above the terminal panel --- */
+
+.workbench__main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workbench__main > .editor-group {
+  min-height: 0;
+}
+
+/* --- Integrated terminal --- */
+
+.terminal-panel {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background-color: var(--editor-bg);
+  border-top: 1px solid var(--border);
+}
+
+.terminal-panel--hidden {
+  display: none;
+}
+
+.terminal-panel__sash {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 5;
+}
+
+.terminal-panel__sash:hover {
+  background-color: var(--focus-border);
+}
+
+.terminal-panel__header {
+  flex: 0 0 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+
+.terminal-panel__tabs {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  height: 35px;
+  color: var(--tab-inactive-fg);
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.terminal-tab--active {
+  color: var(--tab-active-fg);
+  border-bottom-color: var(--focus-border);
+}
+
+.terminal-tab__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #3fb950;
+}
+
+.terminal-tab__dot--exited {
+  background-color: var(--fg-muted);
+}
+
+.terminal-tab__status {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.terminal-tab__close,
+.terminal-panel__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--icon-fg);
+  cursor: pointer;
+}
+
+.terminal-tab__close:hover,
+.terminal-panel__action:hover:not(:disabled) {
+  background-color: var(--toolbar-hover-bg);
+}
+
+.terminal-panel__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.terminal-panel__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.terminal-panel__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.terminal-panel__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.xterm-host {
+  position: absolute;
+  inset: 0 0 0 12px;
+}
+
+.xterm-host--hidden {
+  display: none;
+}

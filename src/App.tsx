@@ -15,6 +15,7 @@ import { EditorGroup } from "./components/EditorGroup";
 import { ErrorToast } from "./components/ErrorToast";
 import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
+import { TerminalPanel } from "./components/TerminalPanel";
 import { TitleBar } from "./components/TitleBar";
 import { buildMenuBar } from "./services/menus";
 
@@ -78,15 +79,18 @@ export function App() {
             workspace={activeWorkspace}
           />
         ) : null}
-        <EditorGroup
-          ready={ready}
-          tabs={workspaceState.tabs}
-          activeTab={activeTab}
-          rootPath={activeWorkspace?.path ?? null}
-          breadcrumbsVisible={layout.breadcrumbsVisible}
-          themeKind={themeKind}
-          recents={recents}
-        />
+        <div className="workbench__main">
+          <EditorGroup
+            ready={ready}
+            tabs={workspaceState.tabs}
+            activeTab={activeTab}
+            rootPath={activeWorkspace?.path ?? null}
+            breadcrumbsVisible={layout.breadcrumbsVisible}
+            themeKind={themeKind}
+            recents={recents}
+          />
+          <TerminalPanel themeKind={themeKind} />
+        </div>
       </div>
       {layout.statusBarVisible ? (
         <StatusBar activeDocument={activeTab} hasWorkspace={activeWorkspace !== null} />

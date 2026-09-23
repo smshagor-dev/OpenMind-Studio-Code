@@ -1,5 +1,8 @@
+use std::path::PathBuf;
+
 use openmind_db::Db;
 use openmind_settings::ThemeSettingService;
+use openmind_terminal::TerminalRegistry;
 use openmind_workspace::{
     ExplorerStateService, RecentFilesService, SessionService, WorkspaceFolderService,
 };
@@ -17,9 +20,13 @@ use openmind_workspace::{
 /// dedicated service wrapper.
 pub struct AppState {
     pub db: Db,
+    /// The portable app root (`AppPaths::root_dir`) — the always-valid fallback
+    /// working directory for terminals whose requested cwd is missing.
+    pub app_root: PathBuf,
     pub recent_files: RecentFilesService,
     pub session: SessionService,
     pub theme: ThemeSettingService,
     pub workspace_folder: WorkspaceFolderService,
     pub explorer_state: ExplorerStateService,
+    pub terminal: TerminalRegistry,
 }

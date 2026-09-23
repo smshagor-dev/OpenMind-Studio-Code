@@ -7,6 +7,7 @@ mod window_events;
 use openmind_core::AppPaths;
 use openmind_db::Db;
 use openmind_settings::{ThemeSettingService, WindowStateService, MAIN_WINDOW_LABEL};
+use openmind_terminal::TerminalRegistry;
 use openmind_workspace::{
     ExplorerStateService, RecentFilesService, SessionService, WorkspaceFolderService,
 };
@@ -56,6 +57,11 @@ fn main() {
             commands::settings::workspace_pin_folder,
             commands::settings::workspace_unpin_folder,
             commands::settings::workspace_list_pinned_folders,
+            commands::terminal::terminal_list_shells,
+            commands::terminal::terminal_create,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_close,
         ])
         .setup(move |app| {
             let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))
@@ -75,6 +81,8 @@ fn main() {
             window_events::register_close_handler(&window, window_state_service);
 
             app.manage(AppState {
+                app_root: app_paths.root_dir.clone(),
+                terminal: TerminalRegistry::new(),
                 recent_files: RecentFilesService::new(db.clone()),
                 session: SessionService::new(db.clone()),
                 theme: ThemeSettingService::new(db.clone()),

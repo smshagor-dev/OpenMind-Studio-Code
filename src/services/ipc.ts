@@ -1,5 +1,6 @@
 import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 // Mirrors openmind_fs::TextEncoding (#[serde(rename_all = "kebab-case")]).
@@ -69,6 +70,24 @@ export interface PinnedFolderEntry {
   label: string | null;
 }
 
+// Mirrors openmind_terminal::ShellKind (camelCase).
+export type ShellKind = "powerShell" | "cmd" | "gitBash" | "wsl";
+
+// Mirrors openmind_terminal::ShellInfo.
+export interface ShellInfo {
+  kind: ShellKind;
+  label: string;
+  available: boolean;
+}
+
+// Mirrors openmind_terminal::TerminalSessionInfo.
+export interface TerminalSessionInfo {
+  id: string;
+  shell: ShellKind;
+  cwd: string;
+  pid: number | null;
+}
+
 /**
  * Everything the frontend needs from the backend, as an interface — so
  * services that depend on it (DocumentService, WorkspaceService,
@@ -125,6 +144,22 @@ export interface IpcClient {
   settingsGet: (key: string) => Promise<string | null>;
   settingsSet: (key: string, value: string) => Promise<void>;
 
+  // Terminal (PTY sessions live in Rust; output/exit arrive as pushed events)
+  terminalListShells: () => Promise<ShellInfo[]>;
+  terminalCreate: (
+    shell: ShellKind | null,
+    cwd: string | null,
+    cols: number,
+    rows: number,
+  ) => Promise<TerminalSessionInfo>;
+  terminalWrite: (id: string, data: string) => Promise<void>;
+  terminalResize: (id: string, cols: number, rows: number) => Promise<void>;
+  terminalClose: (id: string) => Promise<void>;
+  /** Subscribes to raw PTY output; resolves to the unsubscribe function. */
+  onTerminalOutput: (handler: (id: string, data: Uint8Array) => void) => Promise<() => void>;
+  /** Subscribes to shell-exit notifications; resolves to the unsubscribe function. */
+  onTerminalExit: (handler: (id: string, code: number | null) => void) => Promise<() => void>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
 }
@@ -132,6 +167,15 @@ export interface IpcClient {
 export interface AppInfo {
   version: string;
   tauriVersion: string;
+}
+
+function decodeBase64(encoded: string): Uint8Array {
+  const binary = atob(encoded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 export const tauriIpcClient: IpcClient = {
@@ -215,6 +259,27 @@ export const tauriIpcClient: IpcClient = {
   settingsGet: (key) => invoke<string | null>("settings_get", { key }),
 
   settingsSet: (key, value) => invoke("settings_set", { key, value }),
+
+  terminalListShells: () => invoke<ShellInfo[]>("terminal_list_shells"),
+
+  terminalCreate: (shell, cwd, cols, rows) =>
+    invoke<TerminalSessionInfo>("terminal_create", { shell, cwd, cols, rows }),
+
+  terminalWrite: (id, data) => invoke("terminal_write", { id, data }),
+
+  terminalResize: (id, cols, rows) => invoke("terminal_resize", { id, cols, rows }),
+
+  terminalClose: (id) => invoke("terminal_close", { id }),
+
+  onTerminalOutput: (handler) =>
+    listen<{ id: string; data: string }>("terminal:output", (event) => {
+      handler(event.payload.id, decodeBase64(event.payload.data));
+    }),
+
+  onTerminalExit: (handler) =>
+    listen<{ id: string; code: number | null }>("terminal:exit", (event) => {
+      handler(event.payload.id, event.payload.code);
+    }),
 
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };

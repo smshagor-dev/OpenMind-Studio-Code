@@ -91,10 +91,26 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   per-workspace expanded/selected tree state, keyed by path; resolves the internal numeric
   `opened_projects.id` internally so callers never see it, and deliberately never touches
   `opened_projects`' recency — saving tree state isn't "opening" the workspace again).
+- `openmind-terminal` (Milestone 4) — real PTY sessions via `portable-pty` (ConPTY on Windows).
+  Tauri-agnostic: `TerminalRegistry::create(id, request, fallback_cwd, on_output, on_exit)` takes
+  plain closures, so the command layer decides how output is forwarded. Owns shell detection
+  (`detect_shells`: PowerShell/cmd always, Git Bash/WSL only if found on disk/PATH — no registry,
+  no admin, no process spawning), cwd validation (a missing/non-directory cwd silently falls back to
+  the portable app root rather than failing), the injected environment (`default_environment`:
+  `TERM`/`COLORTERM` only — inherited env passes through untouched, PATH is never modified), and
+  process-tree cleanup. `portable-pty`'s own `kill()` only `TerminateProcess`es the direct child
+  (verified in its `win/mod.rs`), which would orphan e.g. a `node` started inside the shell, so on
+  Windows every session's shell is put in a Job Object (`job.rs`, `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`)
+  and closing a session terminates the job; a registry test spawns a real `ping` grandchild and
+  asserts it dies. Non-Windows falls back to killing the direct child only (compiles, unverified).
+  ConPTY asks its host for the cursor position (`ESC[6n`) and holds the shell back until answered —
+  xterm.js replies automatically in the app; tests driving a real shell must answer it themselves.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
-  `commands::settings::*`, `commands::theme::*`), window/event wiring. Frontend-facing IPC surface
+  `commands::settings::*`, `commands::theme::*`, `commands::terminal::*` — output/exit are pushed
+  as `terminal:output` (base64 bytes: a chunk can split a UTF-8/escape sequence) and
+  `terminal:exit` events), window/event wiring. Frontend-facing IPC surface
   lives here, not in the domain crates. `commands::settings` also holds two thin repository
   passthroughs (`EditorSettingsRepository` generic key-value, `PinnedFoldersRepository`) with no
   service-layer logic to justify a dedicated service — `AppState.db` exists for exactly this case.
@@ -108,7 +124,7 @@ pre-scaffold empty crates)
 
 `openmind-runtime-manager` (portable Python/Node/Go/Rust/... runtime install/switch/repair),
 `openmind-lsp` (language server client + auto-download), `openmind-dap` (Debug Adapter Protocol
-client), `openmind-terminal` (PTY sessions), `openmind-git` (Git client), `openmind-search`
+client), `openmind-git` (Git client), `openmind-search`
 (indexed workspace/symbol search), `openmind-extensions` (extension host + sandboxing, backing the
 OpenMind Extensions ecosystem), `openmind-ai` (AI provider plugin architecture, including the
 future OpenMind AI provider), `openmind-plugin-host`.
@@ -188,6 +204,17 @@ internals.
   clipboard (`setClipboard`/`paste` — cut moves, copy into the same folder duplicates).
   `explorerTree.ts` holds the pure helpers: `visibleTreeRows` (keyboard-navigation order),
   `isSameOrDescendant` (no dropping a folder into itself), `pathSegments` (breadcrumbs).
+- `TerminalService` (`terminalService.ts`, Milestone 4) — the integrated terminal's UI-facing
+  state (panel visibility/height, session list, active session, available shells) mirroring the Rust
+  registry over IPC. Never spawns anything on launch (only `terminal.new`/`terminal.toggle` do, i.e.
+  explicit user actions); persists only panel visibility/height and the last shell as one JSON value
+  (`terminal.state` in `editor_settings` — no migration needed), never output or commands. Output goes
+  to a per-session `TerminalSink` the xterm view registers via `attachSink` (buffered only until it
+  attaches; late output from an already-closed session is dropped). New terminals start in the open
+  workspace folder via an injected `getCwd`. `terminalCommands.ts` registers `terminal.toggle`
+  (Ctrl+`, checkable), `terminal.new` (Ctrl+Shift+`, optional shell-kind argument from the selector),
+  `terminal.clear`, `terminal.kill`; `terminal.split` is intentionally unregistered so its menu entry
+  stays disabled (no split panes yet). `TerminalPanel`/`XtermHost` are UI-only, like `MonacoHost`.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -372,7 +399,18 @@ migration file, check for stray running instances first, not just after somethin
   service) — avoid them in test fixtures that exercise a real `BufferManager`/`DocumentService`
   the same way. Verified with 20 consecutive clean `pnpm test` runs. 136 TypeScript tests
   (unchanged — no test added or removed, only two fixtures' languages changed), 99 Rust tests.
-- [ ] Milestone 4 — Integrated terminal (PTY: cmd/PowerShell/Git Bash/WSL, multiplexed).
+- [x] **Milestone 4** — Integrated terminal: new `openmind-terminal` crate (real ConPTY sessions,
+  shell detection, cwd validation, Job-Object process-tree kill — 13 Rust tests including real
+  `cmd.exe` sessions and a grandchild-kill check), five Tauri commands + push events, kill-all on
+  window close (`window_events.rs`, before the existing `destroy()`/`exit()`), and on the frontend
+  `TerminalService`, xterm.js (`@xterm/xterm` + fit addon) bottom panel with tabs, active indicator,
+  shell selector (only available shells listed), resize sash, clear/kill, copy/paste, exited-state
+  indicator, Ctrl+`/Ctrl+Shift+`, and the Terminal menu entries. Verified against the real app
+  (screenshots + process-ancestry tracing): PowerShell opened in the workspace folder, `node`/`python`
+  ran, two terminals switched, closing one killed only its shell/conhost/`ping` grandchild, closing the
+  app left no shell or child behind, and relaunch restored the panel without auto-starting a shell.
+  Not done: split terminal (menu entry stays disabled), Git Bash/WSL unverified on this machine
+  (detection only), non-Windows kill is direct-child only. 161 TypeScript tests, 112 Rust tests.
 - [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.

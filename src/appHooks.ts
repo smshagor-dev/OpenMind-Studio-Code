@@ -19,6 +19,7 @@ export function useAppStartup(): boolean {
         container.theme.initialize(),
         container.layout.initialize(),
         container.editor.initialize(),
+        container.terminal.initialize(),
       ]);
       container.window.initialize().then(
         (stop) => {

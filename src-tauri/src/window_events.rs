@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::app_state::AppState;
 use openmind_db::WindowState;
 use openmind_settings::WindowStateService;
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
@@ -62,6 +63,10 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
                     tracing::error!(?err, "failed to read window geometry before close");
                 }
             }
+
+            // Kill every terminal's whole process tree first so no shell (or
+            // anything it spawned) can outlive the window.
+            window.app_handle().state::<AppState>().terminal.kill_all();
 
             // `.destroy()`, not `.close()`: `.close()` re-emits
             // `CloseRequested` (documented behavior — "like a

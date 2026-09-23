@@ -14,10 +14,12 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.23.1"
 openmind-core = { version = "0.1.0", path = "../crates/core" }
 openmind-db = { version = "0.1.0", path = "../crates/db" }
 openmind-fs = { version = "0.1.0", path = "../crates/fs" }
 openmind-settings = { version = "0.1.0", path = "../crates/settings" }
+openmind-terminal = { version = "0.1.0", path = "../crates/terminal" }
 openmind-workspace = { version = "0.1.0", path = "../crates/workspace" }
 serde = { workspace = true, features = ["derive"] }
 tauri = { version = "2.11.6", features = [] }

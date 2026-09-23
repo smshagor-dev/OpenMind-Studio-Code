@@ -10,9 +10,14 @@ vi.mock("@tauri-apps/api/core", () => ({
       return Promise.resolve([]);
     if (command === "workspace_active_folder") return Promise.resolve(null);
     if (command === "workspace_list_pinned_folders") return Promise.resolve([]);
+    if (command === "terminal_list_shells") return Promise.resolve([]);
     if (command === "settings_get") return Promise.resolve(null);
     return Promise.resolve(undefined);
   }),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => undefined),
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({

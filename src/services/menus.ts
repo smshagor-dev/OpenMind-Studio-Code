@@ -314,6 +314,8 @@ const TERMINAL_MENU: TopLevelMenu = {
   items: [
     cmd("New Terminal", "terminal.new"),
     cmd("Split Terminal", "terminal.split"),
+    cmd("Clear Terminal", "terminal.clear"),
+    cmd("Kill Terminal", "terminal.kill"),
     SEPARATOR,
     cmd("Run Task...", "tasks.run"),
     cmd("Run Build Task...", "tasks.runBuild"),
