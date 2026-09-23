@@ -20,7 +20,7 @@ fn every_builtin_artifact_is_https_with_a_full_sha256() {
 }
 
 #[test]
-fn python_is_the_nuget_distribution_with_pip_and_venv_set_up_offline() {
+fn python_is_the_nuget_distribution_with_relocatable_pip_and_venv() {
     let registry = RuntimeRegistry::builtin();
     let python = registry.get("python").expect("python");
 
@@ -30,19 +30,41 @@ fn python_is_the_nuget_distribution_with_pip_and_venv_set_up_offline() {
     assert!(artifact.url.contains("nuget.org"), "{}", artifact.url);
     assert_eq!(artifact.extract_root.as_deref(), Some("tools"));
 
-    // pip.exe is created by a setup step, so an install without it is unhealthy.
-    assert!(python.verify_files.iter().any(|f| f == "Scripts/pip.exe"));
-    let step = python.post_install.first().expect("pip launcher step");
-    assert_eq!(step.executable, "python.exe");
-    assert!(
-        step.args.iter().any(|a| a == "--no-index"),
-        "must be offline"
+    // pip is inside the package; no absolute-path pip.exe is generated or required.
+    assert!(python.post_install.is_empty());
+    assert!(!python.verify_files.iter().any(|f| f.contains("pip.exe")));
+    assert!(python
+        .verify_files
+        .iter()
+        .any(|f| f == "Lib/site-packages/pip/__init__.py"));
+
+    // pip / pip3 are relative-path shims over `python.exe -m pip`.
+    let shims: Vec<(&str, &str, Vec<&str>)> = python
+        .shims
+        .iter()
+        .map(|s| {
+            (
+                s.name.as_str(),
+                s.target.as_str(),
+                s.args.iter().map(String::as_str).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        shims,
+        [
+            ("pip", "python.exe", vec!["-m", "pip"]),
+            ("pip3", "python.exe", vec!["-m", "pip"]),
+        ]
     );
 
     let features: Vec<&str> = python.features.iter().map(|f| f.id.as_str()).collect();
     assert_eq!(features, ["pip", "venv"]);
-    // Scripts comes after the interpreter folder; both are injected.
     assert_eq!(python.bin_dirs, [".", "Scripts"]);
+    assert_eq!(
+        python.env.get("PYTHONNOUSERSITE").map(String::as_str),
+        Some("1")
+    );
 }
 
 #[test]

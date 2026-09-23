@@ -41,7 +41,15 @@ fn run(
     environment: &RuntimeEnvironment,
     cwd: &Path,
 ) -> (bool, String) {
-    let output = Command::new(program)
+    // `pip` is a `.cmd` shim, which needs a shell to be found and run.
+    let mut command = if program == "pip" {
+        let mut command = Command::new("cmd");
+        command.args(["/C", "pip"]);
+        command
+    } else {
+        Command::new(program)
+    };
+    let output = command
         .args(args)
         .current_dir(cwd)
         .envs(environment.vars.iter().cloned())
@@ -113,6 +121,44 @@ async fn python_installs_with_pip_and_venv_and_git_can_init_a_repo() {
     let (ok, text) = run("git", &["status"], dirs, &work);
     assert!(ok && text.contains("No commits yet"), "{text}");
 
+    // Move the whole runtimes folder (as moving the app folder would) and check
+    // that the commands keep working, from the new location, via a new manager.
+    let moved_root = dir.path().join("moved");
+    std::fs::create_dir_all(&moved_root).expect("moved");
+    std::fs::rename(dir.path().join("runtimes"), moved_root.join("runtimes")).expect("move");
+    let moved = RuntimeManager::new(
+        Db::connect(&dir.path().join("data").join("test.db"))
+            .await
+            .expect("db"),
+        RuntimePaths::new(moved_root.join("runtimes"), moved_root.join("cache")),
+        RuntimeRegistry::builtin(),
+        Arc::new(UreqClient::new()),
+        current_platform(),
+    );
+    let moved_env = moved.environment().await.expect("moved environment");
+    assert!(moved_env
+        .path_prepend
+        .iter()
+        .all(|p| p.starts_with(&moved_root)));
+    let moved_env = &moved_env;
+    let (ok, text) = run("pip", &["--version"], moved_env, &work);
+    assert!(ok && text.contains("moved"), "pip after the move: {text}");
+    let (ok, text) = run(
+        "pip",
+        &["install", "six", "--disable-pip-version-check", "-q"],
+        moved_env,
+        &work,
+    );
+    assert!(ok, "pip install after the move: {text}");
+    let (ok, text) = run("python", &["-m", "pip", "--version"], moved_env, &work);
+    assert!(ok && text.contains("moved"), "{text}");
+    let (ok, text) = run("git", &["--version"], moved_env, &work);
+    assert!(
+        ok && text.starts_with("git version"),
+        "git after the move: {text}"
+    );
+    let manager = moved;
+
     manager
         .delete("python", &python.version)
         .await
@@ -121,8 +167,15 @@ async fn python_installs_with_pip_and_venv_and_git_can_init_a_repo() {
         .delete("git", &git.version)
         .await
         .expect("delete git");
+    assert!(!moved_root
+        .join("runtimes")
+        .join("python")
+        .join("shims")
+        .join(&python.version)
+        .exists());
     assert!(!dir
         .path()
+        .join("moved")
         .join("runtimes")
         .join("python")
         .join("versions")

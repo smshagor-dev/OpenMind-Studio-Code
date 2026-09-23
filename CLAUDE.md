@@ -122,26 +122,48 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   is still checked on every entry), `postInstall` setup steps (run once, by the checksum-verified
   runtime itself, inside its final folder with the manifest's `env`; a failure removes the install)
   and `features` (e.g. pip/venv — reported per installed version by checking a file exists, so the
-  UI never claims support an install lacks). Only healthy installs are injected. `RuntimeManager::environment()` yields
+  UI never claims support an install lacks). Only healthy installs are injected. `shims` declare
+  command launchers (see "Relocation" below). `RuntimeManager::environment()` yields
   `path_prepend` + env vars, which `commands::terminal` passes to the terminal crate; that prepends
   to the *spawned shell's* PATH only — the system PATH, Registry and Program Files are never
   touched. No admin needed.
 
-  **Python strategy (Milestone 5.5)**: python.org's *embeddable ZIP has no pip and no venv*, and
-  making it usable means hand-editing its `._pth` file — not done. Instead the manifest uses
-  python.org's official **NuGet package** (`api.nuget.org/v3-flatcontainer/python/<v>/python.<v>.nupkg`,
-  a zip; `extractRoot: "tools"`): the full standard library with `venv` and `pip` already inside
-  `Lib/site-packages`, but without the `Scripts/pip.exe` launcher. One post-install step recreates
-  the launchers offline (`python -m pip install --force-reinstall --no-index --no-deps
-  --find-links Lib/ensurepip/_bundled pip`); it runs after the folder is in its final place because
-  launchers record the interpreter's absolute path (so moving the whole app folder means
-  reinstalling Python — `python -m pip` keeps working). `PYTHONNOUSERSITE=1` is part of the
-  manifest `env` (injected into terminals and into the setup step): without it the portable
-  interpreter silently imported the *system* Python's `%APPDATA%\Python\Python314` user packages
-  (found by manual testing — `pip list` showed torch/scipy). Verified in the built app: `python`,
-  `pip`, `git` resolve to the portable copies first in `where.exe`; `pip install six` lands in the
-  runtime's own `site-packages`; `python -m venv` works; `pip list` shows only pip and six. Not
-  bundled: tkinter/IDLE. Git is MinGit (no bash, no GUI).
+  **Python strategy (Milestones 5.5/5.6)**: python.org's *embeddable ZIP has no pip and no venv*,
+  and making it usable means hand-editing its `._pth` file — not done. The manifest uses python.org's
+  official **NuGet package** (`api.nuget.org/v3-flatcontainer/python/<v>/python.<v>.nupkg`, a zip;
+  `extractRoot: "tools"`): the full standard library with `venv` and `pip` already inside
+  `Lib/site-packages`. It ships pip *without* a `Scripts/pip.exe`; pip's own launchers record the
+  interpreter's absolute path and so break when the app folder moves, so none are generated —
+  `pip`/`pip3` are runtime **shims** instead (below). `PYTHONNOUSERSITE=1` is part of the manifest
+  `env` (injected into terminals): without it the portable interpreter silently imported the
+  *system* Python's `%APPDATA%\Python\Python314` user packages (found by manual testing — `pip list`
+  showed torch/scipy). Verified in the built app: `python`, `pip`, `git` resolve to the portable
+  copies first in `where.exe`; `pip install six` lands in the runtime's own `site-packages`;
+  `python -m venv` works; `pip list` shows only pip and six. Not bundled: tkinter/IDLE. Git is
+  MinGit (no bash, no GUI). `postInstall` still exists as a generic mechanism (tested), but no
+  built-in manifest uses it now.
+
+  **Relocation (Milestone 5.6)**: the whole app folder can be moved (or copied to a USB drive) and
+  everything keeps working, with no migration. Nothing persistent depends on an absolute path: the
+  DB's `installed_runtimes.path` column is informational (written at install, never read for
+  behavior — every path is recomputed from the current `AppPaths` root + validated kind/version, as
+  delete always did), active/installed state is keyed by kind+version, and `PATH`/env are computed at
+  terminal launch. The one thing that *does* embed a path is a generated launcher, hence shims: a
+  manifest `shims` entry (`name`, `target`, fixed `args`; validated to letters/digits/`-_.=` so
+  nothing can inject script text) makes `runtimes/<kind>/shims/<version>/<name>.cmd` (Windows;
+  `sh` script elsewhere) that calls `"%~dp0..\..\versions\<version>\<target>" <args> %*` —
+  relative to the shim's own location, which is why `shims/<v>` and `versions/<v>` must stay
+  siblings (`RuntimePaths::shim_dir`). Shims are written after the archive is verified and extracted;
+  if writing fails the install fails and is cleaned up. An install counts as healthy only with its
+  files *and* its shims. Missing shims of an otherwise intact install are recreated silently-but-
+  logged whenever the list is loaded, a terminal is launched or on reconcile (this is also how an
+  install from before shims existed gains them), and `repair` recreates them without reinstalling;
+  if recreation fails the install is reported unhealthy, never half-working. Delete removes the
+  shim folder; stray shim folders of removed versions are cleaned by reconcile. Injection order is
+  shims, then the manifest's `binDirs` (`versions/<v>`, `versions/<v>/Scripts`), then the existing
+  PATH. Known limitation: launchers that *other tools* generate later (e.g. `pip install black`
+  creates `Scripts/black.exe`) still bake in absolute paths and break after a move — run them as
+  `python -m black`; venvs created in a project are likewise not relocatable (Python's own design).
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -506,8 +528,22 @@ migration file, check for stray running instances first, not just after somethin
   integration test (`crates/runtime-manager/tests/real_install.rs`, run with `cargo test -p
   openmind-runtime-manager --test real_install -- --ignored`) downloads and exercises the real
   Python and Git. Known limitations: only Windows x64 artifacts; Node was verified in Milestone 5
-  (not re-run by hand here); moving the app folder invalidates pip.exe (reinstall). 208 TypeScript
-  tests, 195 Rust tests (+1 ignored network test).
+  (not re-run by hand here); moving the app folder invalidated pip.exe (fixed in 5.6). 208
+  TypeScript tests, 195 Rust tests (+1 ignored network test).
+- [x] **Milestone 5.6** — Runtime relocation hardening: installed runtimes survive moving the whole
+  app folder. Added the generic manifest `shims` concept (relative-path command launchers, see
+  "Relocation" under `openmind-runtime-manager`), moved Python's `pip`/`pip3` onto it and dropped the
+  absolute-path `pip.exe` generation (and with it Python's `postInstall` step and its `pip.exe`
+  verify file; pip's presence is now checked as `Lib/site-packages/pip`). Verified for real: the app
+  was copied to a fresh folder, Python + Node + Git installed through the UI, a terminal ran
+  `python`/`pip`/`pip install six`/`python -m pip`/`node`/`npm`/`git` from there, the *whole folder
+  was moved* to a different path (with a space in it), and from the new location the same script gave
+  the same results with the new portable paths first in `where.exe`, no system/user site-packages
+  in `pip list`, and no registry PATH change; deleting Python from the UI removed its version and
+  shim folders. The ignored real-network test also moves the runtimes folder and re-runs pip via the
+  shim. UI: the pip feature now reads "pip (relocatable launcher): available". 209 TypeScript tests,
+  206 Rust tests (+1 ignored network test). Testing note: the UI-driving script picked the wrong
+  window once when another window took focus — check the foreground window before scripted clicks.
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

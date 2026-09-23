@@ -6,6 +6,7 @@ pub mod manager;
 pub mod manifest;
 pub mod paths;
 pub mod postinstall;
+pub mod shims;
 
 pub use detect::{detect_version, find_on_path, join_path};
 pub use download::{HttpClient, HttpResponse, UreqClient};

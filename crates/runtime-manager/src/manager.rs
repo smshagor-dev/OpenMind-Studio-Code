@@ -13,6 +13,7 @@ use crate::extract::{extract_zip, ExtractSelection};
 use crate::manifest::{RuntimeManifest, RuntimeRegistry};
 use crate::paths::RuntimePaths;
 use crate::postinstall;
+use crate::shims::{shims_present, write_shims};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -174,7 +175,7 @@ impl RuntimeManager {
                     version: entry.version.clone(),
                     path: dir.to_string_lossy().into_owned(),
                     active: entry.is_active,
-                    healthy: is_healthy(&manifest, &dir),
+                    healthy: self.ensure_shims(&manifest, &manifest.id, &entry.version),
                     features: feature_statuses(&manifest, &dir),
                 });
             }
@@ -237,9 +238,16 @@ impl RuntimeManager {
             });
         }
         if recorded && is_healthy(&manifest, &dir) {
-            return Ok(false);
+            // Files are fine; the only thing that can be missing is a shim.
+            let shim_dir = self.paths.shim_dir(kind, version)?;
+            if shims_present(&manifest, &shim_dir) {
+                return Ok(false);
+            }
+            write_shims(&manifest, version, &shim_dir)?;
+            return Ok(true);
         }
         remove_dir_if_exists(&dir)?;
+        remove_dir_if_exists(&self.paths.shim_dir(kind, version)?)?;
         self.install_inner(kind, version, progress).await?;
         Ok(true)
     }
@@ -278,6 +286,7 @@ impl RuntimeManager {
             });
         }
         remove_dir_if_exists(&dir)?;
+        remove_dir_if_exists(&self.paths.shim_dir(kind, version)?)?;
         InstalledRuntimesRepository::new(self.db.pool())
             .remove(kind, version)
             .await?;
@@ -298,8 +307,15 @@ impl RuntimeManager {
             let Ok(dir) = self.paths.version_dir(&entry.kind, &entry.version) else {
                 continue;
             };
-            if !is_healthy(manifest, &dir) {
+            if !self.ensure_shims(manifest, &entry.kind, &entry.version) {
                 continue;
+            }
+            // Shims first: their commands must win over launchers a tool
+            // generated with absolute paths (which break when the app moves).
+            if !manifest.shims.is_empty() {
+                if let Ok(shim_dir) = self.paths.shim_dir(&entry.kind, &entry.version) {
+                    environment.path_prepend.push(shim_dir);
+                }
             }
             for bin in &manifest.bin_dirs {
                 environment.path_prepend.push(if bin == "." {
@@ -315,6 +331,36 @@ impl RuntimeManager {
             }
         }
         Ok(environment)
+    }
+
+    /// Whether this install is fully usable: its files are all there and so
+    /// are its shims. Missing shims of an otherwise intact install are simply
+    /// written again (they're derived from the manifest and the install's own
+    /// location, so this is also what makes a moved app folder work); if that
+    /// fails the install is reported unhealthy, never quietly half-working.
+    fn ensure_shims(&self, manifest: &RuntimeManifest, kind: &str, version: &str) -> bool {
+        let (Ok(dir), Ok(shim_dir)) = (
+            self.paths.version_dir(kind, version),
+            self.paths.shim_dir(kind, version),
+        ) else {
+            return false;
+        };
+        if !is_healthy(manifest, &dir) {
+            return false;
+        }
+        if shims_present(manifest, &shim_dir) {
+            return true;
+        }
+        match write_shims(manifest, version, &shim_dir) {
+            Ok(()) => {
+                tracing::info!(kind, version, "recreated missing runtime shims");
+                true
+            }
+            Err(err) => {
+                tracing::warn!(kind, version, error = %err, "couldn't recreate runtime shims");
+                false
+            }
+        }
     }
 
     fn acquire(&self, kind: &str, version: &str) -> Result<BusyGuard, RuntimeError> {
@@ -395,6 +441,15 @@ impl RuntimeManager {
             let _ = fs::remove_dir_all(&staging);
             return Err(err);
         }
+        // Commands are generated only now: the archive is verified, extracted
+        // and set up. A failure here fails the install instead of leaving a
+        // runtime whose commands don't exist.
+        let shim_dir = self.paths.shim_dir(kind, version)?;
+        if let Err(err) = write_shims(&manifest, version, &shim_dir) {
+            let _ = fs::remove_dir_all(&final_dir);
+            let _ = fs::remove_dir_all(&shim_dir);
+            return Err(err);
+        }
 
         let repo = InstalledRuntimesRepository::new(self.db.pool());
         repo.record(kind, version, &final_dir.to_string_lossy())
@@ -422,6 +477,14 @@ impl RuntimeManager {
             self.busy.lock().map(|set| set.clone()).unwrap_or_default();
         for manifest in self.registry.all() {
             let versions_dir = self.paths.versions_dir(&manifest.id)?;
+            // Shims of a version that no longer exists are just clutter.
+            if let Ok(shim_entries) = fs::read_dir(self.paths.shims_root(&manifest.id)?) {
+                for shim_entry in shim_entries.filter_map(Result::ok) {
+                    if !versions_dir.join(shim_entry.file_name()).is_dir() {
+                        let _ = fs::remove_dir_all(shim_entry.path());
+                    }
+                }
+            }
             let Ok(entries) = fs::read_dir(&versions_dir) else {
                 continue;
             };
@@ -439,7 +502,7 @@ impl RuntimeManager {
                 let recorded = known
                     .iter()
                     .any(|k| k.kind == manifest.id && k.version == name);
-                if !recorded && is_healthy(manifest, &dir) {
+                if !recorded && self.ensure_shims(manifest, &manifest.id, &name) {
                     repo.record(&manifest.id, &name, &dir.to_string_lossy())
                         .await?;
                 }

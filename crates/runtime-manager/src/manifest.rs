@@ -63,6 +63,21 @@ pub struct PostInstallStep {
     pub args: Vec<String>,
 }
 
+/// A tiny launcher generated per installed version so a command keeps working
+/// when the whole app folder is moved: it locates its runtime relative to
+/// itself, unlike launchers a tool generates with an absolute path baked in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shim {
+    /// The command name (`pip`), without extension.
+    pub name: String,
+    /// Executable to run, relative to the install dir.
+    pub target: String,
+    /// Fixed arguments placed before the caller's own (`-m pip`).
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 /// A capability of a runtime that an install may or may not have (pip for
 /// Python). Reported per installed version by checking `verify_file` exists,
 /// so the UI never claims support the install doesn't actually have.
@@ -120,6 +135,10 @@ pub struct RuntimeManifest {
     pub post_install: Vec<PostInstallStep>,
     #[serde(default)]
     pub features: Vec<Feature>,
+    /// Command launchers generated after install (see [`Shim`]). Their folder
+    /// goes first on the injected PATH.
+    #[serde(default)]
+    pub shims: Vec<Shim>,
     pub versions: Vec<RuntimeVersion>,
 }
 
@@ -181,11 +200,26 @@ impl RuntimeManifest {
             .chain(&self.verify_files)
             .chain(self.post_install.iter().map(|step| &step.executable))
             .chain(self.features.iter().map(|feature| &feature.verify_file))
+            .chain(self.shims.iter().map(|shim| &shim.target))
             .chain(std::iter::once(&self.version_command.executable))
         {
             if !is_safe_relative(path) {
                 return bad(format!(
                     "\"{path}\" must be a relative path inside the install"
+                ));
+            }
+        }
+        for shim in &self.shims {
+            let plain = |arg: &str| {
+                !arg.is_empty()
+                    && arg
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '='))
+            };
+            if !is_safe_component(&shim.name) || !shim.args.iter().all(|arg| plain(arg)) {
+                return bad(format!(
+                    "shim \"{}\": names and arguments may only use letters, digits and - _ . =",
+                    shim.name
                 ));
             }
         }
@@ -425,6 +459,38 @@ mod tests {
         assert_eq!(artifact.extract_root.as_deref(), Some("tools"));
         assert_eq!(manifest.post_install.len(), 1);
         assert_eq!(manifest.features[0].missing_note, "");
+    }
+
+    #[test]
+    fn rejects_shims_that_could_inject_script_text_or_escape_the_install() {
+        let shim = |name: &str, target: &str, args: &str| {
+            valid_json().replace(
+                "\"binDirs\"",
+                &format!(
+                    "\"shims\": [{{ \"name\": \"{name}\", \"target\": \"{target}\", \"args\": {args} }}], \"binDirs\""
+                ),
+            )
+        };
+        for json in [
+            shim("pip", "python.exe", r#"["-m", "pip & calc"]"#),
+            shim("pip", "python.exe", r#"["%PATH%"]"#),
+            shim("pip", "python.exe", r#"["\"quoted\""]"#),
+            shim("pip", "../python.exe", "[]"),
+            shim("pip", "C:/python.exe", "[]"),
+            shim("..", "python.exe", "[]"),
+            shim("a b", "python.exe", "[]"),
+        ] {
+            assert!(
+                matches!(
+                    RuntimeManifest::parse(&json),
+                    Err(RuntimeError::InvalidManifest(_))
+                ),
+                "{json}"
+            );
+        }
+        let ok = RuntimeManifest::parse(&shim("pip3", "python.exe", r#"["-m", "pip"]"#))
+            .expect("valid shim");
+        assert_eq!(ok.shims[0].name, "pip3");
     }
 
     #[test]

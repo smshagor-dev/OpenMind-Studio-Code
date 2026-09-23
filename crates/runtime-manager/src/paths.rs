@@ -43,6 +43,22 @@ impl RuntimePaths {
         Ok(self.versions_dir(kind)?.join(version))
     }
 
+    /// Where a version's command shims live. Its layout is load-bearing: a
+    /// shim reaches its runtime as `../../versions/<version>/` from here, so
+    /// the two folders must stay siblings under the same `<kind>` folder.
+    pub fn shim_dir(&self, kind: &str, version: &str) -> Result<PathBuf, RuntimeError> {
+        check(version)?;
+        Ok(self
+            .runtimes_dir
+            .join(check_kind(kind)?)
+            .join("shims")
+            .join(version))
+    }
+
+    pub fn shims_root(&self, kind: &str) -> Result<PathBuf, RuntimeError> {
+        Ok(self.runtimes_dir.join(check_kind(kind)?).join("shims"))
+    }
+
     pub fn staging_dir(&self, kind: &str, version: &str) -> Result<PathBuf, RuntimeError> {
         check(version)?;
         Ok(self
@@ -61,6 +77,11 @@ impl RuntimePaths {
         self.downloads_dir()
             .join(format!("{}-{name}", &sha256[..sha256.len().min(16)]))
     }
+}
+
+fn check_kind(kind: &str) -> Result<&str, RuntimeError> {
+    check(kind)?;
+    Ok(kind)
 }
 
 fn check(component: &str) -> Result<(), RuntimeError> {
@@ -101,6 +122,40 @@ mod tests {
             paths.downloads_dir(),
             Path::new("/app/cache").join("downloads")
         );
+    }
+
+    #[test]
+    fn shims_sit_beside_their_version_so_a_relative_path_reaches_it() {
+        let paths = paths();
+
+        let shims = paths.shim_dir("python", "3.14.7").expect("shims");
+        let version = paths.version_dir("python", "3.14.7").expect("version");
+
+        assert_eq!(
+            shims,
+            Path::new("/app/runtimes")
+                .join("python")
+                .join("shims")
+                .join("3.14.7")
+        );
+        // What the shim script does: `%~dp0..\..ersions\<version>`.
+        assert_eq!(
+            shims.join("..").join("..").join("versions").join("3.14.7"),
+            Path::new("/app/runtimes")
+                .join("python")
+                .join("shims")
+                .join("3.14.7")
+                .join("..")
+                .join("..")
+                .join("versions")
+                .join("3.14.7")
+        );
+        assert_eq!(
+            shims.parent().and_then(Path::parent),
+            version.parent().and_then(Path::parent)
+        );
+        assert!(paths.shim_dir("python", "..").is_err());
+        assert!(paths.shim_dir("../x", "1").is_err());
     }
 
     #[test]

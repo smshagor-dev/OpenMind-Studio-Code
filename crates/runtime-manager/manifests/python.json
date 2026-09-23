@@ -3,23 +3,48 @@
   "displayName": "Python",
   "description": "Python interpreter with pip and venv (the python.org NuGet distribution).",
   "defaultVersion": "3.14.7",
-  "versionCommand": { "executable": "python.exe", "args": ["--version"], "outputPrefix": "Python " },
-  "binDirs": [".", "Scripts"],
-  "verifyFiles": ["python.exe", "Scripts/pip.exe"],
-  "env": { "PYTHONNOUSERSITE": "1" },
-  "postInstall": [
+  "versionCommand": {
+    "executable": "python.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "Python "
+  },
+  "binDirs": [
+    ".",
+    "Scripts"
+  ],
+  "verifyFiles": [
+    "python.exe",
+    "Lib/site-packages/pip/__init__.py"
+  ],
+  "env": {
+    "PYTHONNOUSERSITE": "1"
+  },
+  "shims": [
     {
-      "description": "Create the pip/pip3 launchers from the wheel bundled in the package (offline)",
-      "executable": "python.exe",
-      "args": ["-m", "pip", "install", "--force-reinstall", "--no-index", "--no-deps", "--no-warn-script-location", "--disable-pip-version-check", "--find-links", "Lib/ensurepip/_bundled", "pip"]
+      "name": "pip",
+      "target": "python.exe",
+      "args": [
+        "-m",
+        "pip"
+      ]
+    },
+    {
+      "name": "pip3",
+      "target": "python.exe",
+      "args": [
+        "-m",
+        "pip"
+      ]
     }
   ],
   "features": [
     {
       "id": "pip",
-      "label": "pip",
-      "verifyFile": "Scripts/pip.exe",
-      "missingNote": "pip isn't set up in this install. Use Repair to reinstall it."
+      "label": "pip (relocatable launcher)",
+      "verifyFile": "Lib/site-packages/pip/__init__.py",
+      "missingNote": "pip isn't in this install. Use Repair to reinstall it."
     },
     {
       "id": "venv",
@@ -28,7 +53,7 @@
       "missingNote": "This install has no venv module."
     }
   ],
-  "notes": "python.org's NuGet package: full standard library with venv and pip (the embeddable ZIP has no pip). After the checksum-verified archive is in place, setup recreates pip.exe offline from the bundled wheel. Packages you install stay inside this install, and the system Python's user packages are hidden from it (PYTHONNOUSERSITE=1). pip.exe records this folder's path, so if you move the whole OpenMind Studio folder, reinstall Python; `python -m pip` works either way. tkinter/IDLE aren't included. python.org publishes no SHA256 for these packages, so each hash was computed from the official download when the version was pinned.",
+  "notes": "python.org's NuGet package: full standard library with venv and pip (the embeddable ZIP has no pip). `pip` and `pip3` are small launchers OpenMind Studio writes next to the runtime; they find Python relative to themselves, so they keep working if you move the whole OpenMind Studio folder. Packages you install stay inside this install, and the system Python's user packages are hidden from it (PYTHONNOUSERSITE=1). Command launchers that pip itself creates for other packages (for example `black.exe`) record absolute paths and stop working after a move; run them as `python -m <name>`. tkinter/IDLE aren't included. python.org publishes no SHA256 for these packages, so each hash was computed from the official download when the version was pinned.",
   "versions": [
     {
       "version": "3.14.7",

@@ -238,6 +238,17 @@ describe("RuntimeManagerDialog", () => {
       expect(screen.getByText("In new terminals' PATH")).toBeInTheDocument();
     });
 
+    it("labels the pip launcher as relocatable and still reports it available", async () => {
+      await open([
+        python({
+          features: [{ id: "pip", label: "pip (relocatable launcher)", available: true, note: "" }],
+        }),
+      ]);
+
+      expect(screen.getByText("pip (relocatable launcher): available")).toBeInTheDocument();
+      expect(screen.getByText("In new terminals' PATH")).toBeInTheDocument();
+    });
+
     it("says plainly when pip is missing, with the reason, and offers Repair", async () => {
       await open([
         python({
