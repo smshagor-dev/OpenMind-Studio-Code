@@ -1,0 +1,38 @@
+# Rust
+/target/
+src-tauri/target/
+src-tauri/gen/
+Cargo.lock.bak
+
+# Machine-local cargo override (e.g. redirecting target-dir off a full drive)
+/.cargo/config.toml
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# App data (portable SQLite store, never committed)
+/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Env
+.env
+.env.local
