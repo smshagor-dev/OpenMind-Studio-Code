@@ -1,7 +1,7 @@
 import type { DocumentService, DocumentSnapshot } from "./documentService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { IpcClient, RecentFileInfo, WorkspaceInfo } from "./ipc";
+import type { IpcClient, PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./ipc";
 import { safely } from "./safely";
 
 export interface WorkspaceState {
@@ -246,6 +246,20 @@ export class WorkspaceService {
       this.events.emit("workspaceFolderChanged", { workspace: info });
     }
     return info;
+  }
+
+  async pinFolder(path: string, label?: string): Promise<void> {
+    await safely(this.events, () => this.ipc.pinFolder(path, label), `pin "${path}"`, undefined);
+    this.events.emit("pinnedFoldersChanged", undefined);
+  }
+
+  async unpinFolder(path: string): Promise<void> {
+    await safely(this.events, () => this.ipc.unpinFolder(path), `unpin "${path}"`, undefined);
+    this.events.emit("pinnedFoldersChanged", undefined);
+  }
+
+  async loadPinnedFolders(): Promise<PinnedFolderEntry[]> {
+    return safely(this.events, () => this.ipc.listPinnedFolders(), "load pinned folders", []);
   }
 
   private rememberClosed(id: string): void {

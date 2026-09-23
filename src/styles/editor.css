@@ -231,8 +231,29 @@
 }
 
 .welcome__recent-path {
+  flex: 1 1 auto;
   color: var(--fg-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.welcome__unpin {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.welcome__unpin:hover {
+  background-color: var(--toolbar-hover-bg);
+  color: var(--fg);
 }

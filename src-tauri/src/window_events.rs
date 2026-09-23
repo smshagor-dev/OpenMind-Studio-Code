@@ -1,6 +1,17 @@
+use std::time::Duration;
+
 use openmind_db::WindowState;
 use openmind_settings::WindowStateService;
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
+
+/// Ceiling on the close-time window-state write. Everything else the app
+/// persists (session, explorer state, active workspace) is already saved
+/// continuously as it changes — see CLAUDE.md's Persistence section — so
+/// window geometry, captured only at the moment of close, is the one save
+/// this handler is actually responsible for completing before exit. If
+/// SQLite is somehow stuck, this bounds how long "closing" can hang rather
+/// than letting the app linger forever.
+const SAVE_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Apply a previously-saved (or default) geometry to `window` before it's
 /// shown, so the user never sees a flash of the wrong size/position.
@@ -19,9 +30,9 @@ pub fn apply_window_state(window: &WebviewWindow, state: &WindowState) -> tauri:
     Ok(())
 }
 
-/// Persist the window's current geometry before it actually closes.
-/// `CloseRequested` is deferred (`prevent_close`) so the async save can
-/// finish before the window is torn down.
+/// Persist the window's current geometry before it actually closes, then
+/// shut the app down. `CloseRequested` is deferred (`prevent_close`) so the
+/// async save can finish first.
 pub fn register_close_handler(window: &WebviewWindow, service: WindowStateService) {
     let handled_window = window.clone();
 
@@ -35,21 +46,49 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
         let service = service.clone();
         tauri::async_runtime::spawn(async move {
             match current_window_state(&window) {
-                Ok(state) => {
-                    if let Err(err) = service.save(&state).await {
+                Ok(state) => match tokio::time::timeout(SAVE_TIMEOUT, service.save(&state)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(err)) => {
                         tracing::error!(?err, "failed to persist window state on close");
                     }
-                }
+                    Err(_) => {
+                        tracing::error!(
+                            timeout_secs = SAVE_TIMEOUT.as_secs(),
+                            "timed out persisting window state on close"
+                        );
+                    }
+                },
                 Err(err) => {
                     tracing::error!(?err, "failed to read window geometry before close");
                 }
             }
 
-            // `window.close()` alone tears down the window but Tauri 2 does
-            // not exit the process just because no windows remain (that's
-            // what lets tray-icon apps keep running). OpenMind Studio has no
-            // background/tray mode yet, so closing the main window should
-            // quit the app, same as any single-window desktop editor.
+            // `.destroy()`, not `.close()`: `.close()` re-emits
+            // `CloseRequested` (documented behavior — "like a
+            // user-initiated close request so you can intercept it"),
+            // which would recurse straight back into this same handler.
+            // `.destroy()` force-closes without emitting events, running
+            // native teardown directly rather than going through
+            // `AppHandle::cleanup_before_exit`'s hide-and-clear-resources
+            // path. See CLAUDE.md's shutdown note: the WebView2-orphan
+            // report from Milestone 3 turned out to be a misdiagnosis (it
+            // was counting Windows Search's and other apps' *own*
+            // `msedgewebview2.exe` processes, not this app's), so this call
+            // is a defensive improvement, not a fix for a confirmed bug —
+            // process-ancestry testing showed the app's own WebView2
+            // children already exited cleanly without it.
+            if let Err(err) = window.destroy() {
+                tracing::error!(?err, "failed to destroy window before exit");
+            }
+
+            // Tauri 2 doesn't exit the process just because no windows
+            // remain (that's what lets tray-icon apps keep running).
+            // OpenMind Studio has no background/tray mode yet, so closing
+            // the main window should quit the app, same as any
+            // single-window desktop editor. `AppHandle::exit` runs the
+            // graceful `RunEvent::ExitRequested`/`RunEvent::Exit` sequence
+            // (which includes `cleanup_before_exit`) rather than calling
+            // `std::process::exit` directly.
             window.app_handle().exit(0);
         });
     });

@@ -14,6 +14,8 @@ export interface AppEvents extends Record<string, unknown> {
   themeChanged: { theme: ThemeKind };
   workspaceFolderChanged: { workspace: WorkspaceInfo | null };
   explorerChanged: undefined;
+  /** A folder was pinned or unpinned — StartPage and any explorer pin toggle should re-read the list. */
+  pinnedFoldersChanged: undefined;
   /** A caught, non-fatal error to surface to the user (e.g. a toast) — never thrown, so a failed
    * explorer/document operation never crashes the app or fails silently. */
   appError: { message: string };

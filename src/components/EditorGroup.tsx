@@ -64,6 +64,7 @@ function EditorContent({ ready, activeId, themeKind, recents }: EditorContentPro
         <StartPage
           recentFiles={recents.files}
           recentFolders={recents.folders}
+          pinnedFolders={recents.pinnedFolders}
           onNewFile={() => {
             container.run("file.new");
           }}
@@ -75,6 +76,7 @@ function EditorContent({ ready, activeId, themeKind, recents }: EditorContentPro
           }}
           onOpenRecentFile={(path) => void container.workspace.openPath(path)}
           onOpenRecentFolder={(path) => void container.workspace.openFolder(path)}
+          onUnpinFolder={(path) => void container.workspace.unpinFolder(path)}
         />
       </div>
     );

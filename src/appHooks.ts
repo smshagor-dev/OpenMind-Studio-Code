@@ -2,7 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalSt
 
 import type { ToastMessage } from "./components/ErrorToast";
 import { container } from "./services/container";
-import type { RecentFileInfo, WorkspaceInfo } from "./services/ipc";
+import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./services/ipc";
 
 const TOAST_LIFETIME_MS = 6000;
 
@@ -88,19 +88,26 @@ export function useToasts(): [ToastMessage[], (id: number) => void] {
 export interface Recents {
   files: RecentFileInfo[];
   folders: WorkspaceInfo[];
+  pinnedFolders: PinnedFolderEntry[];
 }
 
-/** Recent files/folders for the Welcome page and File > Open Recent; `refresh` re-reads them. */
+/**
+ * Recent files/folders/pinned folders for the Welcome page and File > Open
+ * Recent; `refresh` re-reads them, and pinning/unpinning a folder anywhere in
+ * the app (e.g. the explorer's header toggle) triggers a re-read too.
+ */
 export function useRecents(): [Recents, () => void] {
-  const [recents, setRecents] = useState<Recents>({ files: [], folders: [] });
+  const [recents, setRecents] = useState<Recents>({ files: [], folders: [], pinnedFolders: [] });
   const refresh = useCallback(() => {
     void Promise.all([
       container.workspace.loadRecentFiles(),
       container.workspace.loadRecentFolders(),
-    ]).then(([files, folders]) => {
-      setRecents({ files, folders });
+      container.workspace.loadPinnedFolders(),
+    ]).then(([files, folders, pinnedFolders]) => {
+      setRecents({ files, folders, pinnedFolders });
     });
   }, []);
+  useEffect(() => container.events.on("pinnedFoldersChanged", refresh), [refresh]);
   return [recents, refresh];
 }
 

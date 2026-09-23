@@ -5,7 +5,7 @@ import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService
 import { ConfirmDialog } from "./ConfirmDialog";
 import { explorerContextMenu, type ExplorerMenuActions } from "./explorerContextMenu";
 import { FileTree } from "./FileTree";
-import { CollapseAllIcon, NewFileIcon, NewFolderIcon, RefreshIcon } from "./icons";
+import { CollapseAllIcon, NewFileIcon, NewFolderIcon, PinIcon, RefreshIcon } from "./icons";
 import { MenuPopup } from "./MenuPopup";
 import { type PaneAction, PaneSection } from "./PaneSection";
 import { useDismissOnOutside } from "./useDismissOnOutside";
@@ -31,6 +31,7 @@ export function ExplorerPanel({
   );
   const ui = useExplorerInteractions(snapshot);
   const [focusToken, setFocusToken] = useState(0);
+  const pinned = usePinnedState(snapshot.rootPath);
 
   useEffect(
     () =>
@@ -52,7 +53,11 @@ export function ExplorerPanel({
       expanded={expanded}
       onToggle={onToggle}
       grow
-      actions={folderActions(ui.actions)}
+      actions={folderActions(ui.actions, {
+        pinned,
+        rootPath,
+        rootName: snapshot.rootName,
+      })}
     >
       <div
         className="explorer-panel"
@@ -93,7 +98,13 @@ export function ExplorerPanel({
   );
 }
 
-function folderActions(actions: ExplorerMenuActions): PaneAction[] {
+interface FolderPinState {
+  pinned: boolean;
+  rootPath: string;
+  rootName: string | null;
+}
+
+function folderActions(actions: ExplorerMenuActions, pin: FolderPinState): PaneAction[] {
   return [
     {
       label: "New File...",
@@ -123,7 +134,45 @@ function folderActions(actions: ExplorerMenuActions): PaneAction[] {
         container.run("explorer.collapseAll");
       },
     },
+    {
+      label: pin.pinned ? "Unpin Folder" : "Pin Folder",
+      icon: <PinIcon filled={pin.pinned} />,
+      onRun: () => {
+        if (pin.pinned) {
+          void container.workspace.unpinFolder(pin.rootPath);
+        } else {
+          void container.workspace.pinFolder(pin.rootPath, pin.rootName ?? undefined);
+        }
+      },
+    },
   ];
+}
+
+/** Whether `rootPath` is currently pinned; re-reads on mount, root change, and `pinnedFoldersChanged`. */
+function usePinnedState(rootPath: string | null): boolean {
+  const [pinned, setPinned] = useState(false);
+
+  useEffect(() => {
+    if (!rootPath) {
+      return;
+    }
+    let cancelled = false;
+    const refresh = () => {
+      void container.workspace.loadPinnedFolders().then((entries) => {
+        if (!cancelled) {
+          setPinned(entries.some((entry) => entry.path === rootPath));
+        }
+      });
+    };
+    refresh();
+    const unsubscribe = container.events.on("pinnedFoldersChanged", refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [rootPath]);
+
+  return pinned;
 }
 
 /** Ctrl+C / Ctrl+X / Ctrl+V on the focused tree — the explorer clipboard, like VS Code. */

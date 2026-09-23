@@ -1,14 +1,16 @@
-import type { RecentFileInfo, WorkspaceInfo } from "../services/ipc";
-import { NewFileIcon, NewFolderIcon } from "./icons";
+import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "../services/ipc";
+import { NewFileIcon, NewFolderIcon, PinIcon } from "./icons";
 
 interface StartPageProps {
   recentFiles: RecentFileInfo[];
   recentFolders: WorkspaceInfo[];
+  pinnedFolders: PinnedFolderEntry[];
   onNewFile: () => void;
   onOpenFile: () => void;
   onOpenFolder: () => void;
   onOpenRecentFile: (path: string) => void;
   onOpenRecentFolder: (path: string) => void;
+  onUnpinFolder: (path: string) => void;
 }
 
 const RECENT_LIMIT = 8;
@@ -25,7 +27,7 @@ function baseName(path: string): string {
 
 /** Shown when no editor is open — laid out like VS Code's Welcome page (Start + Recent). */
 export function StartPage(props: StartPageProps) {
-  const { recentFiles, recentFolders, onOpenRecentFile, onOpenRecentFolder } = props;
+  const { recentFiles, recentFolders, pinnedFolders, onOpenRecentFile, onOpenRecentFolder } = props;
   return (
     <div className="welcome">
       <div className="welcome__inner">
@@ -55,6 +57,39 @@ export function StartPage(props: StartPageProps) {
                 </li>
               </ul>
             </section>
+            {pinnedFolders.length > 0 ? (
+              <section className="welcome__section">
+                <h2>Pinned</h2>
+                <ul className="welcome__list">
+                  {pinnedFolders.map((folder) => (
+                    <li key={`pinned:${folder.path}`} className="welcome__recent">
+                      <button
+                        type="button"
+                        className="welcome__link"
+                        title={folder.path}
+                        onClick={() => {
+                          onOpenRecentFolder(folder.path);
+                        }}
+                      >
+                        {folder.label ?? baseName(folder.path)}
+                      </button>
+                      <span className="welcome__recent-path">{parentDir(folder.path)}</span>
+                      <button
+                        type="button"
+                        className="welcome__unpin"
+                        title="Unpin Folder"
+                        aria-label="Unpin Folder"
+                        onClick={() => {
+                          props.onUnpinFolder(folder.path);
+                        }}
+                      >
+                        <PinIcon filled size={12} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
             {recentFolders.length > 0 || recentFiles.length > 0 ? (
               <section className="welcome__section">
                 <h2>Recent</h2>

@@ -9,6 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "recent_folders_list" || command === "workspace_recent_folders")
       return Promise.resolve([]);
     if (command === "workspace_active_folder") return Promise.resolve(null);
+    if (command === "workspace_list_pinned_folders") return Promise.resolve([]);
     if (command === "settings_get") return Promise.resolve(null);
     return Promise.resolve(undefined);
   }),

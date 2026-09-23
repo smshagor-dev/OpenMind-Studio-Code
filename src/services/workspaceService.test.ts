@@ -5,7 +5,7 @@ import { BufferManager } from "./bufferManager";
 import { DocumentService } from "./documentService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { OpenedDocument, SessionSnapshot, WorkspaceInfo } from "./ipc";
+import type { OpenedDocument, PinnedFolderEntry, SessionSnapshot, WorkspaceInfo } from "./ipc";
 import { WorkspaceService } from "./workspaceService";
 
 function openedDocFor(path: string): OpenedDocument {
@@ -221,6 +221,54 @@ describe("WorkspaceService", () => {
     const workspace = new WorkspaceService(documents, ipc, events);
 
     expect(await workspace.loadRecentFolders()).toEqual(folders);
+  });
+
+  it("pinFolder calls IPC with the path and label, then notifies pinnedFoldersChanged", async () => {
+    const ipc = createFakeIpc();
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+    const listener = vi.fn();
+    events.on("pinnedFoldersChanged", listener);
+
+    await workspace.pinFolder("C:/proj", "proj");
+
+    expect(ipc.pinFolder).toHaveBeenCalledWith("C:/proj", "proj");
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("unpinFolder calls IPC with the path, then notifies pinnedFoldersChanged", async () => {
+    const ipc = createFakeIpc();
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+    const listener = vi.fn();
+    events.on("pinnedFoldersChanged", listener);
+
+    await workspace.unpinFolder("C:/proj");
+
+    expect(ipc.unpinFolder).toHaveBeenCalledWith("C:/proj");
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("loadPinnedFolders returns the pinned folders from IPC", async () => {
+    const pinned: PinnedFolderEntry[] = [{ path: "C:/proj", label: "proj" }];
+    const ipc = createFakeIpc({ listPinnedFolders: vi.fn().mockResolvedValue(pinned) });
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+
+    expect(await workspace.loadPinnedFolders()).toEqual(pinned);
+  });
+
+  it("loadPinnedFolders emits appError and returns an empty list instead of throwing when IPC fails", async () => {
+    const ipc = createFakeIpc({
+      listPinnedFolders: vi.fn().mockRejectedValue(new Error("db unavailable")),
+    });
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+    const errors: string[] = [];
+    events.on("appError", ({ message }) => errors.push(message));
+
+    expect(await workspace.loadPinnedFolders()).toEqual([]);
+    expect(errors.length).toBe(1);
   });
 
   it("dispose stops reacting to dirty-state changes", () => {

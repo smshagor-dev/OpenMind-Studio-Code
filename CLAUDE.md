@@ -42,17 +42,22 @@ therefore runs without a custom `MonacoEnvironment.getWorker` — a real, Monaco
 main-thread fallback (console warning, no crash), not a mock. Revisit when LSP-adjacent work
 (Milestone 7) needs the language-service workers, or when Rolldown's worker resolution improves.
 
-**Known issue**: closing the main window leaves WebView2's child processes (GPU/renderer/network
-helpers — normal Chromium-style multi-process architecture, ~10+ of them) running as orphans;
-`tasklist` shows them still alive well after `openmind-studio.exe` itself has exited. Root cause:
-`window_events.rs`'s close handler calls `app_handle.exit(0)`, which maps to `std::process::exit`
-— that terminates immediately without running Rust's normal `Drop` sequence for the window/webview
-objects, skipping whatever graceful COM teardown would otherwise tell WebView2's children to exit.
-This exists *because* of the Milestone 2 fix for "the process never exits on close" (`window.close()`
-alone left the whole app running); swapping back to it would reintroduce that bug. Needs a real
-fix (e.g. an explicit webview/window teardown step before `exit()`, or asking Tauri/WebView2 for
-its recommended graceful-shutdown sequence) rather than a rushed one — until then, expect to
-periodically `taskkill /IM msedgewebview2.exe /F` during heavy `tauri dev` iteration.
+**Retracted (Milestone 3.5)**: Milestone 3's retrospective reported WebView2 child processes
+(GPU/renderer/network helpers) as orphaned after close, and blamed `app_handle.exit(0)` for
+mapping to `std::process::exit` and skipping Drop-based teardown. Both claims were wrong. Reading
+Tauri 2.11.6's source directly showed `AppHandle::exit()` calls `request_exit()`, which runs the
+graceful `RunEvent::ExitRequested` → `RunEvent::Exit` → `cleanup_before_exit()` sequence, not
+`std::process::exit`. And the original "~10+ orphans" observation came from `tasklist /IM
+msedgewebview2.exe`, which matches every process sharing that image name system-wide — Windows
+Search's `SearchHost.exe` WebView2 host, Microsoft 365 Copilot's own WebView2 instance, etc., not
+just this app's children. Process-ancestry tracing (PowerShell `Get-CimInstance Win32_Process
+-Filter "ParentProcessId=$parentId"`, walking from the app's own PID) in a controlled A/B
+comparison showed the app's real WebView2 descendants exit cleanly on close, with or without
+extra teardown code. `window_events.rs` still calls `window.destroy()` before `app_handle.exit(0)`
+and wraps the close-time state save in a `tokio::time::timeout` — kept as defensive hardening
+(avoids `.close()`'s event-recursion risk; bounds a stuck save) rather than as a fix for a bug
+that turned out not to exist. Lesson: verify a "known issue" with process-ancestry tracing, not
+`tasklist` name-filtering, before trusting it in a future retrospective.
 
 ## Architecture
 
@@ -155,8 +160,10 @@ internals.
   (path/encoding/line-ending), dirty tracking (buffer content vs. last-saved content), open/save/
   save-as orchestration between `BufferManager` and `IpcClient`.
 - `WorkspaceService` (`workspaceService.ts`) — tab order + active tab, the active workspace
-  *folder* (Milestone 3: `openFolder`/`closeFolder`/`loadRecentFolders`/`restoreActiveWorkspace`),
-  and session/recent-files/recent-folders persistence. Persists the session after *every* mutation
+  *folder* (Milestone 3: `openFolder`/`closeFolder`/`loadRecentFolders`/`restoreActiveWorkspace`;
+  Milestone 3.5: `pinFolder`/`unpinFolder`/`loadPinnedFolders`, emitting `pinnedFoldersChanged` so
+  the explorer's pin toggle and the Start Page's Pinned section stay in sync), and
+  session/recent-files/recent-folders persistence. Persists the session after *every* mutation
   (open/close/save-as), not only on app close, so it survives a crash or force-quit.
 - `FileSystemService` (`fileSystemService.ts`) — the dedicated file/folder CRUD service (read dir,
   metadata, binary check, create/rename/delete/move/copy/duplicate). Pure IPC wrapper plus one
@@ -239,9 +246,9 @@ currently-open workspace folder), `theme` (one row), `opened_projects` (Mileston
 folders; `touch_seq` monotonic counter, not `last_opened_at`/`id`, drives "most recent" ordering,
 see the migration comment in `0002_workspace_explorer.sql` for why), `explorer_state` (Milestone
 3 — one row per workspace folder, expanded/selected tree state), `editor_settings` (Milestone 3 —
-generic key-value; currently just `sidebar.visible`), `pinned_folders` (Milestone 3 — repository
-+ commands exist and are tested; no UI surfaces pin/unpin yet, so nothing writes to it in normal
-use — that's a deliberate "backend ready, UI deferred" state, not dead code).
+generic key-value; currently just `sidebar.visible`), `pinned_folders` (Milestone 3 backend,
+Milestone 3.5 UI — `WorkspaceService.pinFolder`/`unpinFolder`/`loadPinnedFolders`, a pin/unpin
+toggle in the explorer's folder-header actions, and a Pinned section on the Start Page).
 
 SQLite (WAL mode) holds every persistent concern **except project/workspace files themselves and
 the on-disk assets listed above**. The full base schema (see
@@ -326,14 +333,19 @@ migration file, check for stray running instances first, not just after somethin
   picker; neither was a small enough addition to call "safely achievable" within this milestone,
   so it's left as ready backend for whichever UI approach a future pass picks.
   99 Rust tests + 66 TypeScript tests.
-- [x] **Milestone 3.5** — VS Code workbench UI: custom title bar with VS Code's full menu bar
-  (every section/submenu; entries for later milestones disabled until their command registers),
-  command center, window controls; VS Code explorer (Open Editors, 8px-indent tree with indent
-  guides, Seti-style icons, keyboard navigation, copy/cut/paste, drag-and-drop move with confirm —
-  the Milestone 3 "Move has no UI" gap), resizable/movable side bar, VS Code tabs, breadcrumbs,
-  status bar, About dialog, Dark+/Light+ chrome. Edit/Selection/Go menus drive Monaco's own
-  actions. Known limitation: moving/renaming a file that's open in a tab doesn't retarget the tab.
-  132 TypeScript tests.
+- [x] **Milestone 3.5** — VS Code workbench UI + shutdown stability: custom title bar with VS
+  Code's full menu bar (every section/submenu; entries for later milestones disabled until their
+  command registers), command center, window controls; VS Code explorer (Open Editors, 8px-indent
+  tree with indent guides, Seti-style icons, keyboard navigation, copy/cut/paste, drag-and-drop
+  move with confirm — the Milestone 3 "Move has no UI" gap), resizable/movable side bar, VS Code
+  tabs, breadcrumbs, status bar, About dialog, Dark+/Light+ chrome. Edit/Selection/Go menus drive
+  Monaco's own actions. A pin/unpin toggle in the explorer's folder-header actions and a Pinned
+  section on the Start Page close the Milestone 3 "backend ready, UI deferred" gap for
+  `pinned_folders`. `window_events.rs` was also audited for clean shutdown: the Milestone 3
+  WebView2-orphan report turned out to be a false positive (see the retraction under "Tech stack"
+  above) — `window.destroy()` and a `tokio::time::timeout` on the close-time state save were kept
+  as defensive hardening regardless. Known limitation: moving/renaming a file that's open in a tab
+  doesn't retarget the tab. 136 TypeScript tests, 99 Rust tests.
 - [ ] Milestone 4 — Integrated terminal (PTY: cmd/PowerShell/Git Bash/WSL, multiplexed).
 - [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).

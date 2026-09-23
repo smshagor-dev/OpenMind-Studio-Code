@@ -98,6 +98,17 @@ export function NewFolderIcon(props: IconProps) {
   );
 }
 
+export function PinIcon({ filled, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <Svg {...props}>
+      <path
+        d="M9.5 1.5 14 6l-2.3 2.3.8 2.3-1.4 1.4-2.6-2.6-3.4 3.4-1.2-1.2 3.4-3.4-2.6-2.6L5.9 4l2.3.8z"
+        fill={filled ? "currentColor" : "none"}
+      />
+    </Svg>
+  );
+}
+
 export function RefreshIcon(props: IconProps) {
   return (
     <Svg {...props}>
