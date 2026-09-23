@@ -1,0 +1,214 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { ExplorerService } from "./explorerService";
+import { EventBus } from "./eventBus";
+import type { AppEvents } from "./events";
+import { FileSystemService } from "./fileSystemService";
+import type { DirEntryInfo } from "./ipc";
+
+function entry(path: string, name: string, isDir: boolean): DirEntryInfo {
+  return { path, name, isDir, isSymlink: false };
+}
+
+describe("ExplorerService", () => {
+  let events: EventBus<AppEvents>;
+
+  beforeEach(() => {
+    events = new EventBus<AppEvents>();
+  });
+
+  it("setRoot loads the root directory's children", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi
+        .fn()
+        .mockResolvedValue([
+          entry("C:/proj/src", "src", true),
+          entry("C:/proj/README.md", "README.md", false),
+        ]),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+
+    await service.setRoot("C:/proj", "proj");
+
+    const snapshot = service.getSnapshot();
+    expect(snapshot.rootPath).toBe("C:/proj");
+    expect(snapshot.childrenByPath.get("C:/proj")).toEqual(["C:/proj/src", "C:/proj/README.md"]);
+  });
+
+  it("setRoot restores persisted expanded/selected state and loads those children too", async () => {
+    const ipc = createFakeIpc({
+      explorerStateLoad: vi
+        .fn()
+        .mockResolvedValue({ expandedPaths: ["C:/proj/src"], selectedPath: "C:/proj/src/a.ts" }),
+      fsReadDir: vi.fn().mockImplementation((path: string) => {
+        if (path === "C:/proj") return Promise.resolve([entry("C:/proj/src", "src", true)]);
+        if (path === "C:/proj/src")
+          return Promise.resolve([entry("C:/proj/src/a.ts", "a.ts", false)]);
+        return Promise.resolve([]);
+      }),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+
+    await service.setRoot("C:/proj", "proj");
+
+    const snapshot = service.getSnapshot();
+    expect(snapshot.expandedPaths.has("C:/proj/src")).toBe(true);
+    expect(snapshot.selectedPath).toBe("C:/proj/src/a.ts");
+    expect(snapshot.childrenByPath.get("C:/proj/src")).toEqual(["C:/proj/src/a.ts"]);
+  });
+
+  it("toggleExpand loads children on expand and persists state", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi.fn().mockImplementation((path: string) => {
+        if (path === "C:/proj") return Promise.resolve([entry("C:/proj/src", "src", true)]);
+        return Promise.resolve([entry("C:/proj/src/a.ts", "a.ts", false)]);
+      }),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+
+    await service.toggleExpand("C:/proj/src");
+
+    expect(service.getSnapshot().expandedPaths.has("C:/proj/src")).toBe(true);
+    expect(service.getSnapshot().childrenByPath.get("C:/proj/src")).toEqual(["C:/proj/src/a.ts"]);
+    expect(ipc.explorerStateSave).toHaveBeenCalled();
+  });
+
+  it("toggleExpand collapses an already-expanded directory", async () => {
+    const ipc = createFakeIpc({ fsReadDir: vi.fn().mockResolvedValue([]) });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+    await service.toggleExpand("C:/proj/src");
+
+    await service.toggleExpand("C:/proj/src");
+
+    expect(service.getSnapshot().expandedPaths.has("C:/proj/src")).toBe(false);
+  });
+
+  it("collapseAll clears every expanded path", async () => {
+    const ipc = createFakeIpc({ fsReadDir: vi.fn().mockResolvedValue([]) });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+    await service.toggleExpand("C:/proj/a");
+    await service.toggleExpand("C:/proj/b");
+
+    await service.collapseAll();
+
+    expect(service.getSnapshot().expandedPaths.size).toBe(0);
+  });
+
+  it("select sets the selected path and persists it", async () => {
+    const ipc = createFakeIpc({ fsReadDir: vi.fn().mockResolvedValue([]) });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+
+    await service.select("C:/proj/a.ts");
+
+    expect(service.getSnapshot().selectedPath).toBe("C:/proj/a.ts");
+    expect(ipc.explorerStateSave).toHaveBeenCalled();
+  });
+
+  it("revealPath expands ancestor directories and selects the target", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi.fn().mockImplementation((path: string) => {
+        if (path === "C:/proj") return Promise.resolve([entry("C:/proj/src", "src", true)]);
+        if (path === "C:/proj/src")
+          return Promise.resolve([entry("C:/proj/src/deep", "deep", true)]);
+        if (path === "C:/proj/src/deep")
+          return Promise.resolve([entry("C:/proj/src/deep/a.ts", "a.ts", false)]);
+        return Promise.resolve([]);
+      }),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+
+    await service.revealPath("C:/proj/src/deep/a.ts");
+
+    const snapshot = service.getSnapshot();
+    expect(snapshot.expandedPaths.has("C:/proj/src")).toBe(true);
+    expect(snapshot.expandedPaths.has("C:/proj/src/deep")).toBe(true);
+    expect(snapshot.selectedPath).toBe("C:/proj/src/deep/a.ts");
+  });
+
+  it("createFile picks a unique name and refreshes the parent directory", async () => {
+    const readDir = vi.fn().mockImplementation((path: string) => {
+      if (path === "C:/proj")
+        return Promise.resolve([entry("C:/proj/Untitled", "Untitled", false)]);
+      return Promise.resolve([]);
+    });
+    const ipc = createFakeIpc({
+      fsReadDir: readDir,
+      fsCreateFile: vi.fn().mockResolvedValue("C:/proj/Untitled 2"),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+
+    const created = await service.createFile("C:/proj");
+
+    expect(ipc.fsCreateFile).toHaveBeenCalledWith("C:/proj", "C:/proj", "Untitled 2");
+    expect(created).toBe("C:/proj/Untitled 2");
+  });
+
+  it("rename, delete, move, and duplicate refresh the affected directories", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi.fn().mockResolvedValue([]),
+      fsRename: vi.fn().mockResolvedValue("C:/proj/b.ts"),
+      fsDelete: vi.fn().mockResolvedValue(undefined),
+      fsMove: vi.fn().mockResolvedValue("C:/proj/dest/a.ts"),
+      fsDuplicate: vi.fn().mockResolvedValue("C:/proj/a copy.ts"),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+    const readDirCallsBefore = (ipc.fsReadDir as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    await service.rename("C:/proj", "C:/proj/a.ts", "b.ts");
+    await service.deleteEntry("C:/proj", "C:/proj/b.ts");
+    await service.moveEntry("C:/proj", "C:/proj/a.ts", "C:/proj/dest");
+    await service.duplicate("C:/proj", "C:/proj/a.ts");
+
+    expect(ipc.fsRename).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "b.ts");
+    expect(ipc.fsDelete).toHaveBeenCalledWith("C:/proj", "C:/proj/b.ts");
+    expect(ipc.fsMove).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "C:/proj/dest");
+    expect(ipc.fsDuplicate).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "a copy.ts");
+    // rename(1) + delete(1) + move(2 dirs) + duplicate(1 sibling lookup + 1 refresh) = 6 reads
+    expect((ipc.fsReadDir as ReturnType<typeof vi.fn>).mock.calls.length - readDirCallsBefore).toBe(
+      6,
+    );
+  });
+
+  it("emits appError and keeps working when a read fails instead of throwing", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi.fn().mockRejectedValue(new Error("permission denied")),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    const errors: string[] = [];
+    events.on("appError", ({ message }) => errors.push(message));
+
+    await expect(service.setRoot("C:/proj", "proj")).resolves.toBeUndefined();
+
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]).toContain("permission denied");
+  });
+
+  it("notifies subscribers when the tree changes", async () => {
+    const ipc = createFakeIpc({ fsReadDir: vi.fn().mockResolvedValue([]) });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    const listener = vi.fn();
+    service.subscribe(listener);
+
+    await service.setRoot("C:/proj", "proj");
+
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("clear resets to the empty snapshot", async () => {
+    const ipc = createFakeIpc({ fsReadDir: vi.fn().mockResolvedValue([]) });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+
+    service.clear();
+
+    expect(service.getSnapshot().rootPath).toBeNull();
+  });
+});

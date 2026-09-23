@@ -42,4 +42,3 @@ if (typeof globalThis.ResizeObserver !== "function") {
   }
   globalThis.ResizeObserver = ResizeObserverStub;
 }
-

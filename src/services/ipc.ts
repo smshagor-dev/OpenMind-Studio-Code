@@ -30,11 +30,49 @@ export interface SessionSnapshot {
   activePath: string | null;
 }
 
+// Mirrors openmind_fs::DirEntryInfo (camelCase).
+export interface DirEntryInfo {
+  name: string;
+  path: string;
+  isDir: boolean;
+  isSymlink: boolean;
+}
+
+// Mirrors openmind_fs::PathMetadata (camelCase).
+export interface PathMetadata {
+  path: string;
+  isDir: boolean;
+  isFile: boolean;
+  isSymlink: boolean;
+  size: number;
+  readonly: boolean;
+  modified: string | null;
+}
+
+// Mirrors openmind_workspace::WorkspaceInfo (camelCase).
+export interface WorkspaceInfo {
+  id: number;
+  path: string;
+  name: string;
+}
+
+// Mirrors openmind_workspace::ExplorerState (camelCase).
+export interface ExplorerState {
+  expandedPaths: string[];
+  selectedPath: string | null;
+}
+
+// Mirrors openmind_db::PinnedFolderEntry (camelCase).
+export interface PinnedFolderEntry {
+  path: string;
+  label: string | null;
+}
+
 /**
  * Everything the frontend needs from the backend, as an interface — so
  * services that depend on it (DocumentService, WorkspaceService,
- * ThemeService) can be unit tested against a fake implementation instead of
- * a real Tauri runtime.
+ * FileSystemService, ExplorerService, ThemeService) can be unit tested
+ * against a fake implementation instead of a real Tauri runtime.
  */
 // Property (arrow-function-typed), not method-shorthand, syntax: this type
 // is implemented by plain object literals (`tauriIpcClient` below, and fake
@@ -42,16 +80,49 @@ export interface SessionSnapshot {
 // makes eslint's `unbound-method` rule flag every bare `ipc.someMethod`
 // reference (e.g. `expect(ipc.documentSave).toHaveBeenCalledWith(...)`).
 export interface IpcClient {
+  // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
+  openFolderDialog: () => Promise<string | null>;
+
+  // Documents
   documentOpen: (path: string) => Promise<OpenedDocument>;
   documentSave: (path: string, content: string, encoding: TextEncoding) => Promise<void>;
+
+  // Session / recent files / theme
   recentFilesList: () => Promise<RecentFileInfo[]>;
   recentFilesClear: () => Promise<void>;
   sessionLoad: () => Promise<SessionSnapshot>;
   sessionSave: (snapshot: SessionSnapshot) => Promise<void>;
   themeGet: () => Promise<ThemeKind>;
   themeSet: (theme: ThemeKind) => Promise<void>;
+
+  // Workspace folder
+  workspaceOpenFolder: (path: string) => Promise<WorkspaceInfo>;
+  workspaceCloseFolder: () => Promise<void>;
+  workspaceRecentFolders: () => Promise<WorkspaceInfo[]>;
+  workspaceActiveFolder: () => Promise<WorkspaceInfo | null>;
+  explorerStateLoad: (workspacePath: string) => Promise<ExplorerState>;
+  explorerStateSave: (workspacePath: string, state: ExplorerState) => Promise<void>;
+  pinFolder: (path: string, label: string | undefined) => Promise<void>;
+  unpinFolder: (path: string) => Promise<void>;
+  listPinnedFolders: () => Promise<PinnedFolderEntry[]>;
+
+  // File system (explorer CRUD)
+  fsReadDir: (path: string) => Promise<DirEntryInfo[]>;
+  fsMetadata: (path: string) => Promise<PathMetadata>;
+  fsIsBinary: (path: string) => Promise<boolean>;
+  fsCreateFile: (workspaceRoot: string, parentDir: string, name: string) => Promise<string>;
+  fsCreateFolder: (workspaceRoot: string, parentDir: string, name: string) => Promise<string>;
+  fsRename: (workspaceRoot: string, path: string, newName: string) => Promise<string>;
+  fsDelete: (workspaceRoot: string, path: string) => Promise<void>;
+  fsMove: (workspaceRoot: string, source: string, destDir: string) => Promise<string>;
+  fsCopy: (workspaceRoot: string, source: string, destDir: string) => Promise<string>;
+  fsDuplicate: (workspaceRoot: string, path: string, newName: string) => Promise<string>;
+
+  // Generic settings
+  settingsGet: (key: string) => Promise<string | null>;
+  settingsSet: (key: string, value: string) => Promise<void>;
 }
 
 export const tauriIpcClient: IpcClient = {
@@ -65,10 +136,14 @@ export const tauriIpcClient: IpcClient = {
     return selected ?? null;
   },
 
+  async openFolderDialog() {
+    const selected = await openDialog({ multiple: false, directory: true });
+    return typeof selected === "string" ? selected : null;
+  },
+
   documentOpen: (path) => invoke<OpenedDocument>("document_open", { path }),
 
-  documentSave: (path, content, encoding) =>
-    invoke("document_save", { path, content, encoding }),
+  documentSave: (path, content, encoding) => invoke("document_save", { path, content, encoding }),
 
   recentFilesList: () => invoke<RecentFileInfo[]>("recent_files_list"),
 
@@ -81,4 +156,54 @@ export const tauriIpcClient: IpcClient = {
   themeGet: () => invoke<ThemeKind>("theme_get"),
 
   themeSet: (theme) => invoke("theme_set", { theme }),
+
+  workspaceOpenFolder: (path) => invoke<WorkspaceInfo>("workspace_open_folder", { path }),
+
+  workspaceCloseFolder: () => invoke("workspace_close_folder"),
+
+  workspaceRecentFolders: () => invoke<WorkspaceInfo[]>("workspace_recent_folders"),
+
+  workspaceActiveFolder: () => invoke<WorkspaceInfo | null>("workspace_active_folder"),
+
+  explorerStateLoad: (workspacePath) =>
+    invoke<ExplorerState>("explorer_state_load", { workspacePath }),
+
+  explorerStateSave: (workspacePath, explorerState) =>
+    invoke("explorer_state_save", { workspacePath, explorerState }),
+
+  pinFolder: (path, label) => invoke("workspace_pin_folder", { path, label }),
+
+  unpinFolder: (path) => invoke("workspace_unpin_folder", { path }),
+
+  listPinnedFolders: () => invoke<PinnedFolderEntry[]>("workspace_list_pinned_folders"),
+
+  fsReadDir: (path) => invoke<DirEntryInfo[]>("fs_read_dir", { path }),
+
+  fsMetadata: (path) => invoke<PathMetadata>("fs_metadata", { path }),
+
+  fsIsBinary: (path) => invoke<boolean>("fs_is_binary", { path }),
+
+  fsCreateFile: (workspaceRoot, parentDir, name) =>
+    invoke<string>("fs_create_file", { workspaceRoot, parentDir, name }),
+
+  fsCreateFolder: (workspaceRoot, parentDir, name) =>
+    invoke<string>("fs_create_folder", { workspaceRoot, parentDir, name }),
+
+  fsRename: (workspaceRoot, path, newName) =>
+    invoke<string>("fs_rename", { workspaceRoot, path, newName }),
+
+  fsDelete: (workspaceRoot, path) => invoke("fs_delete", { workspaceRoot, path }),
+
+  fsMove: (workspaceRoot, source, destDir) =>
+    invoke<string>("fs_move", { workspaceRoot, source, destDir }),
+
+  fsCopy: (workspaceRoot, source, destDir) =>
+    invoke<string>("fs_copy", { workspaceRoot, source, destDir }),
+
+  fsDuplicate: (workspaceRoot, path, newName) =>
+    invoke<string>("fs_duplicate", { workspaceRoot, path, newName }),
+
+  settingsGet: (key) => invoke<string | null>("settings_get", { key }),
+
+  settingsSet: (key, value) => invoke("settings_set", { key, value }),
 };

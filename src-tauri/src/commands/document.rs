@@ -20,6 +20,15 @@ pub async fn document_open(
     path: String,
     state: State<'_, AppState>,
 ) -> Result<OpenedDocument, String> {
+    if openmind_fs::is_binary(Path::new(&path))
+        .await
+        .map_err(|err| err.to_string())?
+    {
+        return Err(format!(
+            "\"{path}\" looks like a binary file and can't be opened as text"
+        ));
+    }
+
     let result = openmind_fs::read_text_file(Path::new(&path))
         .await
         .map_err(|err| err.to_string())?;

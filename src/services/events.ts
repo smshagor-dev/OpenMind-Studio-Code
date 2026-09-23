@@ -1,5 +1,5 @@
 import type { DocumentSnapshot } from "./documentService";
-import type { ThemeKind } from "./ipc";
+import type { ThemeKind, WorkspaceInfo } from "./ipc";
 
 /**
  * The single shared event map for the app's `EventBus`. Kept centralized
@@ -12,4 +12,9 @@ export interface AppEvents extends Record<string, unknown> {
   documentSaved: { id: string; path: string };
   tabsChanged: { tabs: DocumentSnapshot[]; activeId: string | null };
   themeChanged: { theme: ThemeKind };
+  workspaceFolderChanged: { workspace: WorkspaceInfo | null };
+  explorerChanged: undefined;
+  /** A caught, non-fatal error to surface to the user (e.g. a toast) — never thrown, so a failed
+   * explorer/document operation never crashes the app or fails silently. */
+  appError: { message: string };
 }

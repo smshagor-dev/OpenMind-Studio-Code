@@ -111,11 +111,7 @@ export class DocumentService {
     this.documents.delete(id);
   }
 
-  private async writeAndMarkClean(
-    id: string,
-    doc: DocumentRecord,
-    path: string,
-  ): Promise<void> {
+  private async writeAndMarkClean(id: string, doc: DocumentRecord, path: string): Promise<void> {
     const content = this.buffers.getValue(id);
     await this.ipc.documentSave(path, content, doc.encoding);
     doc.path = path;

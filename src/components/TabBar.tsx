@@ -19,9 +19,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose }: TabBarProps) {
           key={tab.id}
           role="tab"
           aria-selected={tab.id === activeId}
-          className={
-            tab.id === activeId ? "tab-bar__tab tab-bar__tab--active" : "tab-bar__tab"
-          }
+          className={tab.id === activeId ? "tab-bar__tab tab-bar__tab--active" : "tab-bar__tab"}
           onClick={() => {
             onSelect(tab.id);
           }}

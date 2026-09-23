@@ -7,7 +7,9 @@ mod window_events;
 use openmind_core::AppPaths;
 use openmind_db::Db;
 use openmind_settings::{ThemeSettingService, WindowStateService, MAIN_WINDOW_LABEL};
-use openmind_workspace::{RecentFilesService, SessionService};
+use openmind_workspace::{
+    ExplorerStateService, RecentFilesService, SessionService, WorkspaceFolderService,
+};
 use tauri::Manager;
 
 use app_state::AppState;
@@ -31,8 +33,29 @@ fn main() {
             commands::workspace::recent_files_clear,
             commands::workspace::session_load,
             commands::workspace::session_save,
+            commands::workspace::workspace_open_folder,
+            commands::workspace::workspace_close_folder,
+            commands::workspace::workspace_recent_folders,
+            commands::workspace::workspace_active_folder,
+            commands::workspace::explorer_state_load,
+            commands::workspace::explorer_state_save,
             commands::theme::theme_get,
             commands::theme::theme_set,
+            commands::filesystem::fs_read_dir,
+            commands::filesystem::fs_metadata,
+            commands::filesystem::fs_is_binary,
+            commands::filesystem::fs_create_file,
+            commands::filesystem::fs_create_folder,
+            commands::filesystem::fs_rename,
+            commands::filesystem::fs_delete,
+            commands::filesystem::fs_move,
+            commands::filesystem::fs_copy,
+            commands::filesystem::fs_duplicate,
+            commands::settings::settings_get,
+            commands::settings::settings_set,
+            commands::settings::workspace_pin_folder,
+            commands::settings::workspace_unpin_folder,
+            commands::settings::workspace_list_pinned_folders,
         ])
         .setup(move |app| {
             let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))
@@ -54,7 +77,10 @@ fn main() {
             app.manage(AppState {
                 recent_files: RecentFilesService::new(db.clone()),
                 session: SessionService::new(db.clone()),
-                theme: ThemeSettingService::new(db),
+                theme: ThemeSettingService::new(db.clone()),
+                workspace_folder: WorkspaceFolderService::new(db.clone()),
+                explorer_state: ExplorerStateService::new(db.clone()),
+                db,
             });
 
             Ok(())

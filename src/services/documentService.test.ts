@@ -1,26 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { BufferManager } from "./bufferManager";
 import { DocumentService } from "./documentService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { IpcClient, OpenedDocument } from "./ipc";
-
-function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
-  return {
-    openDocumentDialog: vi.fn().mockResolvedValue(null),
-    saveDocumentDialog: vi.fn().mockResolvedValue(null),
-    documentOpen: vi.fn(),
-    documentSave: vi.fn().mockResolvedValue(undefined),
-    recentFilesList: vi.fn().mockResolvedValue([]),
-    recentFilesClear: vi.fn().mockResolvedValue(undefined),
-    sessionLoad: vi.fn().mockResolvedValue({ openPaths: [], activePath: null }),
-    sessionSave: vi.fn().mockResolvedValue(undefined),
-    themeGet: vi.fn().mockResolvedValue("dark"),
-    themeSet: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
+import type { OpenedDocument } from "./ipc";
 
 const OPENED: OpenedDocument = {
   path: "C:/proj/main.rs",

@@ -1,25 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { IpcClient } from "./ipc";
 import { ThemeService } from "./themeService";
-
-function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
-  return {
-    openDocumentDialog: vi.fn().mockResolvedValue(null),
-    saveDocumentDialog: vi.fn().mockResolvedValue(null),
-    documentOpen: vi.fn(),
-    documentSave: vi.fn().mockResolvedValue(undefined),
-    recentFilesList: vi.fn().mockResolvedValue([]),
-    recentFilesClear: vi.fn().mockResolvedValue(undefined),
-    sessionLoad: vi.fn().mockResolvedValue({ openPaths: [], activePath: null }),
-    sessionSave: vi.fn().mockResolvedValue(undefined),
-    themeGet: vi.fn().mockResolvedValue("dark"),
-    themeSet: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
 
 describe("ThemeService", () => {
   it("defaults to dark before initialize() runs", () => {

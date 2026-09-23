@@ -1,5 +1,8 @@
+use openmind_db::Db;
 use openmind_settings::ThemeSettingService;
-use openmind_workspace::{RecentFilesService, SessionService};
+use openmind_workspace::{
+    ExplorerStateService, RecentFilesService, SessionService, WorkspaceFolderService,
+};
 
 /// Shared application state, managed by Tauri and injected into commands via
 /// `tauri::State<AppState>`. This is the composition root's DI seam: as
@@ -7,8 +10,16 @@ use openmind_workspace::{RecentFilesService, SessionService};
 /// ad-hoc globals. `WindowStateService` isn't here — it's only ever used
 /// inside `main.rs`'s `setup` closure (load-on-launch, save-on-close), never
 /// from a command, so it stays local rather than adding an unread field.
+///
+/// `db` is the raw connection, kept alongside the services above for the
+/// handful of commands (`commands::settings`) that only need a thin
+/// repository passthrough with no service-layer logic to justify a
+/// dedicated service wrapper.
 pub struct AppState {
+    pub db: Db,
     pub recent_files: RecentFilesService,
     pub session: SessionService,
     pub theme: ThemeSettingService,
+    pub workspace_folder: WorkspaceFolderService,
+    pub explorer_state: ExplorerStateService,
 }

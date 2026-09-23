@@ -1,4 +1,8 @@
+pub mod editor_settings;
 pub mod error;
+pub mod explorer_state;
+pub mod opened_projects;
+pub mod pinned_folders;
 pub mod recent_files;
 pub mod session;
 pub mod theme;
@@ -9,7 +13,11 @@ use std::path::Path;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::SqlitePool;
 
+pub use editor_settings::EditorSettingsRepository;
 pub use error::DbError;
+pub use explorer_state::{ExplorerStateRepository, ExplorerStateRow};
+pub use opened_projects::{OpenedProjectEntry, OpenedProjectsRepository};
+pub use pinned_folders::{PinnedFolderEntry, PinnedFoldersRepository};
 pub use recent_files::{RecentFileEntry, RecentFilesRepository};
 pub use session::SessionRepository;
 pub use theme::ThemeRepository;
@@ -90,6 +98,7 @@ mod tests {
             "session_restore",
             "plugin_registry",
             "download_cache",
+            "explorer_state",
         ];
 
         for table in expected_tables {
