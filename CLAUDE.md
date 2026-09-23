@@ -353,6 +353,25 @@ migration file, check for stray running instances first, not just after somethin
   above) — `window.destroy()` and a `tokio::time::timeout` on the close-time state save were kept
   as defensive hardening regardless. Known limitation: moving/renaming a file that's open in a tab
   doesn't retarget the tab. 136 TypeScript tests, 99 Rust tests.
+- [x] **Milestone 3.6** — Editor Test Stability Gate: eliminated an intermittent "unhandled
+  rejection"/"EnvironmentTeardownError" that Vitest occasionally reported against an unrelated test
+  file. Root cause, found by instrumenting `process.on("unhandledRejection", ...)` around a
+  model-creation test: monaco-editor's TypeScript/JavaScript language service is registered lazily
+  (`languages.onLanguage`) and activates via a dynamic `import()` the first time any model uses
+  that language — real production code, working as designed in a browser, but jsdom has no
+  `Worker` and no real async module-loading environment, so that import can still be in flight when
+  Vitest tears down whichever test file happens to be running once the race loses. `editorService.test.ts`
+  triggered it by defaulting its model fixtures to `"typescript"`; `workbenchCommands.test.ts`
+  triggered it by opening a document at `"a.ts"` through a real `DocumentService`/`BufferManager`
+  (which maps `.ts` to Monaco's `"typescript"` language same as production code does). Fixed by
+  using languages with no worker-backed service (`"markdown"`, `.rs`) in both, since neither test
+  needed TypeScript's language service specifically — not by stubbing `Worker` (tried first; only
+  delays the same race rather than removing it, since the leak is in the dynamic `import()`, not
+  the `new Worker()` call after it) or suppressing the warning. The same hazard applies to
+  `"javascript"`/`"css"`/`"html"`/`"json"` (each has its own lazily-activated, worker-backed
+  service) — avoid them in test fixtures that exercise a real `BufferManager`/`DocumentService`
+  the same way. Verified with 20 consecutive clean `pnpm test` runs. 136 TypeScript tests
+  (unchanged — no test added or removed, only two fixtures' languages changed), 99 Rust tests.
 - [ ] Milestone 4 — Integrated terminal (PTY: cmd/PowerShell/Git Bash/WSL, multiplexed).
 - [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).

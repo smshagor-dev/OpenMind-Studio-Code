@@ -74,7 +74,11 @@ describe("registerWorkbenchCommands", () => {
   });
 
   it("file.revert is enabled only for a dirty active document", async () => {
-    const id = (await workspace.openPath("a.ts")) ?? "";
+    // ".rs", not ".ts": a real DocumentService maps ".ts" to Monaco's "typescript" language,
+    // which lazily loads a worker-backed language service that jsdom can't run and that leaks an
+    // async rejection past this test file's teardown — see CLAUDE.md's "Editor Test Stability
+    // Gate" milestone entry.
+    const id = (await workspace.openPath("a.rs")) ?? "";
     expect(commands.isEnabled("file.revert")).toBe(false);
 
     buffers.setValue(id, "edited");

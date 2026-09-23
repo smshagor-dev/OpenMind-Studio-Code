@@ -33,7 +33,11 @@ function createFakeEditor(model: monaco.editor.ITextModel | null) {
 
 describe("EditorService", () => {
   const models: monaco.editor.ITextModel[] = [];
-  function model(content: string, language = "typescript") {
+  // "markdown" (not e.g. "typescript"/"javascript"/"css"/"html"/"json"): those languages lazily
+  // load a worker-backed language service the first time a model uses them, which jsdom can't run
+  // (no real Worker/module-loading environment) and which leaks an async rejection past this test
+  // file's teardown — see the "Editor Test Stability Gate" entry in CLAUDE.md's milestone tracker.
+  function model(content: string, language = "markdown") {
     const created = monaco.editor.createModel(content, language);
     models.push(created);
     return created;
@@ -83,7 +87,7 @@ describe("EditorService", () => {
       column: 3,
       selectedChars: 2,
       selectionCount: 1,
-      languageId: "typescript",
+      languageId: "markdown",
     });
     expect(listener).toHaveBeenCalled();
   });
