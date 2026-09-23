@@ -134,8 +134,15 @@ internals.
   mapped to its Monaco action via `EDITOR_ACTIONS`, editor view toggles via `EDITOR_TOGGLES`,
   layout/zoom/full-screen/theme toggles, save-all/revert/reopen-closed/close-all). Commands carry
   optional `enabled`/`checked` predicates; a command id that was never registered reports disabled.
-  Keyboard shortcuts, UI buttons, menus and context-menu items all go through the registry
-  (`container.run(id)` = execute + surface failures as `appError`), never a service method directly.
+  Keyboard shortcuts, the menu bar, and toolbar buttons for actions with no per-invocation target
+  (Refresh Explorer, Collapse All, Save All, view toggles, ...) go through the registry
+  (`container.run(id)` = execute + surface failures as `appError`). The explorer's context menu and
+  its header's New File/New Folder/Pin buttons call `ExplorerService`/`WorkspaceService` directly
+  instead: those actions need a specific node (or the click-time selection) and, for New File/New
+  Folder/Rename, local UI state (`pendingEdit`) that a global command handler has no way to reach —
+  see `useExplorerInteractions.ts`. F2/Delete are bound inside `FileTree`'s own keydown handler for
+  the same reason (VS Code's list keyboard model, active only while the tree has focus), not as
+  global commands.
 - `KeybindingService` (`keybindings.ts`) — VS Code's Windows default keybindings, each owned by
   either `app` (dispatched by the window-level listener in `appHooks.ts`) or `editor` (Monaco
   already binds it natively; listed only so menus show the shortcut — dispatching it too would run
