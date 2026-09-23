@@ -58,7 +58,7 @@ mod tests {
     #[tokio::test]
     async fn connect_creates_data_dir_and_all_tables() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let nested_path = dir.path().join("nested").join("codeforge.db");
+        let nested_path = dir.path().join("nested").join("openmind-studio.db");
 
         let db = Db::connect(&nested_path).await.expect("connect");
 
@@ -100,7 +100,7 @@ mod tests {
     #[tokio::test]
     async fn connect_enables_wal_journal_mode() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let db_path = dir.path().join("codeforge.db");
+        let db_path = dir.path().join("openmind-studio.db");
 
         let db = Db::connect(&db_path).await.expect("connect");
 

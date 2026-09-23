@@ -1,4 +1,4 @@
-use codeforge_db::{Db, WindowState, WindowStateRepository};
+use openmind_db::{Db, WindowState, WindowStateRepository};
 
 use crate::error::SettingsError;
 

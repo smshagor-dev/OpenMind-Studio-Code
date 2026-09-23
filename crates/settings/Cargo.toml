@@ -1,5 +1,5 @@
 [package]
-name = "codeforge-settings"
+name = "openmind-settings"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,8 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-codeforge-core = { version = "0.1.0", path = "../core" }
-codeforge-db = { version = "0.1.0", path = "../db" }
+openmind-db = { version = "0.1.0", path = "../db" }
 thiserror.workspace = true
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
 

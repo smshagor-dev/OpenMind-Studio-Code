@@ -1,5 +1,5 @@
 [package]
-name = "codeforge-db"
+name = "openmind-db"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,7 +7,6 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-codeforge-core = { version = "0.1.0", path = "../core" }
 sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "derive", "macros"] }
 thiserror.workspace = true
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }

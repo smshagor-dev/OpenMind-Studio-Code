@@ -1,5 +1,5 @@
 [package]
-name = "codeforge-core"
+name = "openmind-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

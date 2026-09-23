@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-/// Shared error type for `codeforge-core`. Other crates define their own
+/// Shared error type for `openmind-core`. Other crates define their own
 /// error types and only reach for this one for the path/logging concerns
 /// this crate owns.
 #[derive(Debug, thiserror::Error)]

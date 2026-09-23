@@ -2,20 +2,20 @@
 
 mod window_events;
 
-use codeforge_core::AppPaths;
-use codeforge_db::Db;
-use codeforge_settings::{WindowStateService, MAIN_WINDOW_LABEL};
+use openmind_core::AppPaths;
+use openmind_db::Db;
+use openmind_settings::{WindowStateService, MAIN_WINDOW_LABEL};
 use tauri::Manager;
 
 fn main() {
-    codeforge_core::init_logging();
+    openmind_core::init_logging();
 
     let app_paths = AppPaths::resolve().expect("failed to resolve application paths");
     app_paths
         .ensure_data_dir()
         .expect("failed to create application data directory");
 
-    tracing::info!(db_path = %app_paths.db_path.display(), "starting CodeForge");
+    tracing::info!(db_path = %app_paths.db_path.display(), "starting Openmind Studio");
 
     tauri::Builder::default()
         .setup(move |app| {

@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { App } from "./App";
 
 describe("App", () => {
-  it("renders the CodeForge shell", () => {
+  it("renders the Openmind Studio shell", () => {
     render(<App />);
 
-    expect(screen.getByText("CodeForge")).toBeInTheDocument();
+    expect(screen.getByText("Openmind Studio")).toBeInTheDocument();
     expect(screen.getByLabelText("editor area")).toBeInTheDocument();
   });
 });

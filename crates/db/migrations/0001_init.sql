@@ -1,5 +1,5 @@
--- CodeForge base schema.
--- Everything persistent lives here (WAL mode, see codeforge_db::Db::connect)
+-- Openmind Studio base schema.
+-- Everything persistent lives here (WAL mode, see openmind_db::Db::connect)
 -- except project/workspace source files themselves.
 --
 -- Only `window_state` is read/written by application logic in Milestone 1.

@@ -1,5 +1,5 @@
-use codeforge_db::WindowState;
-use codeforge_settings::WindowStateService;
+use openmind_db::WindowState;
+use openmind_settings::WindowStateService;
 use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
 
 /// Apply a previously-saved (or default) geometry to `window` before it's
@@ -47,7 +47,7 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
 
             // `window.close()` alone tears down the window but Tauri 2 does
             // not exit the process just because no windows remain (that's
-            // what lets tray-icon apps keep running). CodeForge has no
+            // what lets tray-icon apps keep running). Openmind Studio has no
             // background/tray mode yet, so closing the main window should
             // quit the app, same as any single-window desktop editor.
             window.app_handle().exit(0);

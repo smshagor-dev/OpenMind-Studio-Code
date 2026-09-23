@@ -349,53 +349,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codeforge"
-version = "0.1.0"
-dependencies = [
- "codeforge-core",
- "codeforge-db",
- "codeforge-settings",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "codeforge-core"
-version = "0.1.0"
-dependencies = [
- "thiserror 2.0.20",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "codeforge-db"
-version = "0.1.0"
-dependencies = [
- "codeforge-core",
- "sqlx",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "codeforge-settings"
-version = "0.1.0"
-dependencies = [
- "codeforge-core",
- "codeforge-db",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2444,6 +2397,48 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
+
+[[package]]
+name = "openmind-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.20",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "openmind-db"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "openmind-settings"
+version = "0.1.0"
+dependencies = [
+ "openmind-db",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "openmind-studio"
+version = "0.1.0"
+dependencies = [
+ "openmind-core",
+ "openmind-db",
+ "openmind-settings",
+ "tauri",
+ "tauri-build",
+ "tracing",
+]
 
 [[package]]
 name = "option-ext"

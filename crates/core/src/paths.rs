@@ -5,7 +5,7 @@ use crate::error::CoreError;
 /// Portable filesystem layout for the application: every path is resolved
 /// relative to the directory containing the running executable, never a
 /// per-user OS directory (`%APPDATA%`, `~/.config`, ...). This is what lets
-/// CodeForge run entirely from its own folder without admin rights.
+/// Openmind Studio run entirely from its own folder without admin rights.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppPaths {
     pub exe_dir: PathBuf,
@@ -28,7 +28,7 @@ impl AppPaths {
             _ => PathBuf::from("."),
         };
         let data_dir = exe_dir.join("data");
-        let db_path = data_dir.join("codeforge.db");
+        let db_path = data_dir.join("openmind-studio.db");
 
         Self {
             exe_dir,
@@ -52,21 +52,21 @@ mod tests {
 
     #[test]
     fn resolves_data_dir_next_to_exe() {
-        let exe_path = Path::new("C:/Apps/CodeForge/codeforge.exe");
+        let exe_path = Path::new("C:/Apps/Openmind Studio/openmind-studio.exe");
 
         let paths = AppPaths::from_exe_path(exe_path);
 
-        assert_eq!(paths.exe_dir, Path::new("C:/Apps/CodeForge"));
-        assert_eq!(paths.data_dir, Path::new("C:/Apps/CodeForge/data"));
+        assert_eq!(paths.exe_dir, Path::new("C:/Apps/Openmind Studio"));
+        assert_eq!(paths.data_dir, Path::new("C:/Apps/Openmind Studio/data"));
         assert_eq!(
             paths.db_path,
-            Path::new("C:/Apps/CodeForge/data/codeforge.db")
+            Path::new("C:/Apps/Openmind Studio/data/openmind-studio.db")
         );
     }
 
     #[test]
     fn falls_back_to_current_dir_when_exe_has_no_parent() {
-        let exe_path = Path::new("codeforge.exe");
+        let exe_path = Path::new("openmind-studio.exe");
 
         let paths = AppPaths::from_exe_path(exe_path);
 

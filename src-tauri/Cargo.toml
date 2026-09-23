@@ -1,5 +1,5 @@
 [package]
-name = "codeforge"
+name = "openmind-studio"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,18 +7,15 @@ license.workspace = true
 authors.workspace = true
 
 [[bin]]
-name = "codeforge"
+name = "openmind-studio"
 path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-codeforge-core = { version = "0.1.0", path = "../crates/core" }
-codeforge-db = { version = "0.1.0", path = "../crates/db" }
-codeforge-settings = { version = "0.1.0", path = "../crates/settings" }
-serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
+openmind-core = { version = "0.1.0", path = "../crates/core" }
+openmind-db = { version = "0.1.0", path = "../crates/db" }
+openmind-settings = { version = "0.1.0", path = "../crates/settings" }
 tauri = { version = "2.11.6", features = [] }
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
 tracing.workspace = true
