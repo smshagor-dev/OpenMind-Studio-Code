@@ -106,6 +106,14 @@ export class DocumentService {
     };
   }
 
+  /** Replaces the buffer with the last-saved content (VS Code's "Revert File"). */
+  revert(id: string): void {
+    const doc = this.requireDocument(id);
+    if (this.buffers.getValue(id) !== doc.savedContent) {
+      this.buffers.setValue(id, doc.savedContent);
+    }
+  }
+
   close(id: string): void {
     this.buffers.dispose(id);
     this.documents.delete(id);

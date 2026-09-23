@@ -41,6 +41,7 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     fsDuplicate: vi.fn(),
     settingsGet: vi.fn().mockResolvedValue(null),
     settingsSet: vi.fn().mockResolvedValue(undefined),
+    appInfo: vi.fn().mockResolvedValue({ version: "0.0.0-test", tauriVersion: "2.0.0" }),
     ...overrides,
   };
 }

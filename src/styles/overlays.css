@@ -1,0 +1,131 @@
+/* --- Modal dialogs --- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 18vh;
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
+.modal {
+  width: min(460px, 90vw);
+  padding: 20px;
+  background-color: var(--menu-bg);
+  color: var(--menu-fg);
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  box-shadow: 0 0 20px var(--widget-shadow);
+}
+
+.modal h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.modal p {
+  margin: 0 0 20px;
+  font-size: 13px;
+}
+
+.modal--about {
+  text-align: center;
+}
+
+.modal__icon {
+  display: block;
+  margin: 0 auto 12px;
+}
+
+.modal__details {
+  margin: 0 0 20px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.modal--about .modal__actions {
+  justify-content: center;
+}
+
+.modal__actions button {
+  padding: 4px 14px;
+  line-height: 18px;
+  border: none;
+  border-radius: 2px;
+  background-color: var(--button-secondary-bg);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.modal__actions button:hover {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.modal__actions .modal__confirm--primary {
+  background-color: var(--button-bg);
+}
+
+.modal__actions .modal__confirm--primary:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.modal__actions .modal__confirm--danger {
+  background-color: var(--danger-bg);
+}
+
+/* --- Notification toasts --- */
+
+.error-toast-stack {
+  position: fixed;
+  right: 12px;
+  bottom: 34px;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 450px;
+}
+
+.error-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  background-color: var(--menu-bg);
+  color: var(--menu-fg);
+  border: 1px solid var(--menu-border);
+  border-left: 3px solid var(--error-fg);
+  border-radius: 4px;
+  font-size: 13px;
+  box-shadow: 0 0 8px var(--widget-shadow);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.error-toast__message {
+  flex: 1 1 auto;
+}
+
+.error-toast__dismiss {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}

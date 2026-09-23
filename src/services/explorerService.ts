@@ -38,8 +38,12 @@ const EMPTY_SNAPSHOT: ExplorerSnapshot = {
  * level at a time (`FileSystemService.readDir` per expand/refresh), so this
  * never recursively walks `node_modules`/`.git`/etc. on its own.
  */
+export type ClipboardMode = "copy" | "cut";
+
 export class ExplorerService {
   private snapshot: ExplorerSnapshot = EMPTY_SNAPSHOT;
+  /** The explorer's own Copy/Cut clipboard (an entry path, not file contents), as in VS Code. */
+  private clipboard: { path: string; mode: ClipboardMode } | null = null;
 
   constructor(
     private readonly fs: FileSystemService,
@@ -210,6 +214,47 @@ export class ExplorerService {
     await this.refresh(destDir);
   }
 
+  setClipboard(path: string, mode: ClipboardMode): void {
+    this.clipboard = { path, mode };
+  }
+
+  hasClipboard(): boolean {
+    return this.clipboard !== null;
+  }
+
+  /**
+   * Pastes the Copy/Cut entry into `destDir`: cut moves it (and clears the
+   * clipboard); copy into its own folder duplicates under a "copy" name,
+   * copy elsewhere keeps the original name.
+   */
+  async paste(destDir: string): Promise<void> {
+    const { rootPath } = this.snapshot;
+    const clip = this.clipboard;
+    if (!rootPath || !clip) {
+      return;
+    }
+    const sourceParent =
+      this.snapshot.nodesByPath.get(clip.path)?.parentPath ?? parentOf(clip.path);
+    if (clip.mode === "cut") {
+      this.clipboard = null;
+      if (sourceParent !== destDir) {
+        await this.moveEntry(sourceParent, clip.path, destDir);
+      }
+      return;
+    }
+    if (sourceParent === destDir) {
+      await this.duplicate(destDir, clip.path);
+      return;
+    }
+    await safely(
+      this.events,
+      () => this.fs.copy(rootPath, clip.path, destDir),
+      "paste that item",
+      undefined,
+    );
+    await this.refresh(destDir);
+  }
+
   async duplicate(parentDir: string, path: string): Promise<void> {
     const { rootPath } = this.snapshot;
     if (!rootPath) {
@@ -304,6 +349,11 @@ export class ExplorerService {
   private emitChanged(): void {
     this.events.emit("explorerChanged", undefined);
   }
+}
+
+function parentOf(path: string): string {
+  const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return index > 0 ? path.slice(0, index) : path;
 }
 
 function splitPath(path: string): string[] {

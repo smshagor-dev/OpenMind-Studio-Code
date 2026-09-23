@@ -60,4 +60,43 @@ describe("CommandRegistry", () => {
     expect(registry.has("a")).toBe(false);
     await expect(registry.execute("a")).rejects.toThrow();
   });
+
+  it("reports unregistered commands as disabled", () => {
+    const registry = new CommandRegistry();
+
+    expect(registry.isEnabled("terminal.new")).toBe(false);
+  });
+
+  it("evaluates the enabled predicate, defaulting to enabled", () => {
+    const registry = new CommandRegistry();
+    let ready = false;
+    registry.register("always", vi.fn());
+    registry.register("gated", vi.fn(), { enabled: () => ready });
+
+    expect(registry.isEnabled("always")).toBe(true);
+    expect(registry.isEnabled("gated")).toBe(false);
+    ready = true;
+    expect(registry.isEnabled("gated")).toBe(true);
+  });
+
+  it("reports checked state only for toggle commands", () => {
+    const registry = new CommandRegistry();
+    registry.register("plain", vi.fn());
+    registry.register("toggle", vi.fn(), { checked: () => true });
+
+    expect(registry.isChecked("plain")).toBeUndefined();
+    expect(registry.isChecked("toggle")).toBe(true);
+  });
+
+  it("notifies onDidExecute listeners even when the handler throws", async () => {
+    const registry = new CommandRegistry();
+    const listener = vi.fn();
+    registry.onDidExecute(listener);
+    registry.register("boom", () => {
+      throw new Error("boom");
+    });
+
+    await expect(registry.execute("boom")).rejects.toThrow("boom");
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,0 +1,267 @@
+/* --- Activity bar --- */
+
+.activity-bar {
+  flex: 0 0 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background-color: var(--activitybar-bg);
+}
+
+.activity-bar__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border: none;
+  background: transparent;
+  color: var(--activitybar-inactive-fg);
+  cursor: pointer;
+}
+
+.activity-bar__item:hover,
+.activity-bar__item--active {
+  color: var(--activitybar-fg);
+}
+
+.activity-bar__item--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--activitybar-active-border);
+}
+
+.workbench__body--sidebar-right .activity-bar__item--active::before {
+  left: auto;
+  right: 0;
+}
+
+/* --- Side bar --- */
+
+.sidebar {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+}
+
+.sidebar__title {
+  flex: 0 0 35px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 20px;
+}
+
+.sidebar__title-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: uppercase;
+  color: var(--sidebar-title-fg);
+}
+
+.sidebar__title-action,
+.pane-section__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--icon-fg);
+  cursor: pointer;
+}
+
+.sidebar__title-action:hover,
+.pane-section__action:hover:not(:disabled) {
+  background-color: var(--toolbar-hover-bg);
+}
+
+.pane-section__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sidebar__content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pane-section {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.pane-section + .pane-section {
+  border-top: 1px solid var(--section-header-border);
+}
+
+.pane-section--grow {
+  flex: 1 1 auto;
+}
+
+.pane-section__header {
+  flex: 0 0 22px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 2px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  outline-offset: -1px;
+}
+
+.pane-section__title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-section__actions {
+  display: none;
+  gap: 2px;
+}
+
+.pane-section:hover .pane-section__actions,
+.pane-section:focus-within .pane-section__actions {
+  display: flex;
+}
+
+.pane-section__body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.no-folder {
+  padding: 8px 20px;
+  font-size: 13px;
+}
+
+.no-folder p {
+  margin: 0 0 12px;
+}
+
+/* --- Open editors --- */
+
+.open-editors__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.open-editors__row:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.open-editors__row--active {
+  background-color: var(--list-inactive-selection-bg);
+}
+
+.open-editors__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  visibility: hidden;
+  cursor: pointer;
+}
+
+.open-editors__row:hover .open-editors__close,
+.open-editors__row--active .open-editors__close,
+.open-editors__close--dirty {
+  visibility: visible;
+}
+
+.open-editors__close--dirty .codicon {
+  display: none;
+}
+
+.open-editors__close--dirty::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+.open-editors__row:hover .open-editors__close--dirty .codicon {
+  display: block;
+}
+
+.open-editors__row:hover .open-editors__close--dirty::after {
+  display: none;
+}
+
+.open-editors__name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.open-editors__description {
+  flex: 1 1 auto;
+  padding-left: 4px;
+  font-size: 12px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- Sash --- */
+
+.sash {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  z-index: 10;
+  cursor: ew-resize;
+  transition: background-color 0.1s ease-out 0.3s;
+}
+
+.sash--right {
+  right: -2px;
+}
+
+.sash--left {
+  left: -2px;
+}
+
+.sash:hover,
+.sash--active {
+  background-color: var(--focus-border);
+}

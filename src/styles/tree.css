@@ -1,0 +1,127 @@
+/* --- Explorer file tree (VS Code list/tree look) --- */
+
+.explorer-panel {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 22px;
+  outline: none;
+  font-size: 13px;
+}
+
+.file-tree--drop-target {
+  background-color: var(--list-drop-bg);
+}
+
+.tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 22px;
+  line-height: 22px;
+  padding-right: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tree-row:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.tree-row--selected {
+  background-color: var(--list-inactive-selection-bg);
+}
+
+.file-tree:focus .tree-row--selected {
+  background-color: var(--list-active-selection-bg);
+  color: var(--list-active-selection-fg);
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+.tree-row--drop-target {
+  background-color: var(--list-drop-bg);
+}
+
+/* Indent guides: VS Code's default "onHover" rendering. */
+.tree-row__guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--tree-indent-guide);
+  opacity: 0;
+  transition: opacity 0.1s linear;
+  pointer-events: none;
+}
+
+.file-tree:hover .tree-row__guide,
+.file-tree:focus-within .tree-row__guide {
+  opacity: 0.4;
+}
+
+.tree-row__twistie {
+  flex: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 22px;
+  margin-right: 6px;
+  color: var(--icon-fg);
+}
+
+.file-tree:focus .tree-row--selected .tree-row__twistie {
+  color: inherit;
+}
+
+.file-icon {
+  flex: 0 0 16px;
+  margin-right: 6px;
+}
+
+.tree-row__label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-row__label--symlink {
+  font-style: italic;
+}
+
+.tree-row__dirty {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.8;
+}
+
+.inline-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 3px;
+  font: inherit;
+  font-size: 13px;
+  background-color: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--focus-border);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}

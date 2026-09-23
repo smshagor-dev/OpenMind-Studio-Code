@@ -14,6 +14,8 @@ import * as monaco from "monaco-editor";
 interface MonacoHostProps {
   model: monaco.editor.ITextModel | null;
   theme: string;
+  /** Hands the created editor to the caller (which may return a teardown); keeps this component service-free. */
+  onEditorMounted?: (editor: monaco.editor.IStandaloneCodeEditor) => () => void;
 }
 
 /**
@@ -22,7 +24,7 @@ interface MonacoHostProps {
  * dirty state, or IPC. All of that lives in the services; this just shows
  * whatever model it's handed.
  */
-export function MonacoHost({ model, theme }: MonacoHostProps) {
+export function MonacoHost({ model, theme, onEditorMounted }: MonacoHostProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
@@ -34,13 +36,18 @@ export function MonacoHost({ model, theme }: MonacoHostProps) {
       automaticLayout: true,
       theme,
       minimap: { enabled: true },
+      fontFamily: "Consolas, 'Courier New', monospace",
+      fontSize: 14,
+      model,
     });
     editorRef.current = editor;
+    const teardown = onEditorMounted?.(editor);
     return () => {
+      teardown?.();
       editor.dispose();
       editorRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme changes are applied imperatively below, not by remounting the editor
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- theme/model changes are applied imperatively below, not by remounting the editor
   }, []);
 
   useEffect(() => {

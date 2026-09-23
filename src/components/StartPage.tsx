@@ -1,4 +1,5 @@
 import type { RecentFileInfo, WorkspaceInfo } from "../services/ipc";
+import { NewFileIcon, NewFolderIcon } from "./icons";
 
 interface StartPageProps {
   recentFiles: RecentFileInfo[];
@@ -10,77 +11,93 @@ interface StartPageProps {
   onOpenRecentFolder: (path: string) => void;
 }
 
-/** Shown when no folder is open and no file is open — a VS Code-style welcome/start page. */
-export function StartPage({
-  recentFiles,
-  recentFolders,
-  onNewFile,
-  onOpenFile,
-  onOpenFolder,
-  onOpenRecentFile,
-  onOpenRecentFolder,
-}: StartPageProps) {
+const RECENT_LIMIT = 8;
+
+function parentDir(path: string): string {
+  const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return index > 0 ? path.slice(0, index) : path;
+}
+
+function baseName(path: string): string {
+  const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return index >= 0 ? path.slice(index + 1) : path;
+}
+
+/** Shown when no editor is open — laid out like VS Code's Welcome page (Start + Recent). */
+export function StartPage(props: StartPageProps) {
+  const { recentFiles, recentFolders, onOpenRecentFile, onOpenRecentFolder } = props;
   return (
-    <div className="start-page">
-      <h1 className="start-page__title">OpenMind Studio</h1>
-      <p className="start-page__subtitle">Portable AI-ready development environment</p>
-
-      <div className="start-page__actions">
-        <button type="button" onClick={onOpenFolder}>
-          Open Folder
-        </button>
-        <button type="button" onClick={onOpenFile}>
-          Open File...
-        </button>
-        <button type="button" onClick={onNewFile}>
-          New File
-        </button>
-      </div>
-
-      <div className="start-page__recents">
-        {recentFolders.length > 0 && (
-          <div className="start-page__recent-group">
-            <h2>Recent Folders</h2>
-            <ul>
-              {recentFolders.map((folder) => (
-                <li key={folder.path}>
-                  <button
-                    type="button"
-                    className="start-page__recent-item"
-                    onClick={() => {
-                      onOpenRecentFolder(folder.path);
-                    }}
-                  >
-                    <span className="start-page__recent-name">{folder.name}</span>
-                    <span className="start-page__recent-path">{folder.path}</span>
+    <div className="welcome">
+      <div className="welcome__inner">
+        <header className="welcome__header">
+          <h1 className="welcome__title">OpenMind Studio</h1>
+          <p className="welcome__subtitle">Portable AI-ready development environment</p>
+        </header>
+        <div className="welcome__columns">
+          <div className="welcome__column">
+            <section className="welcome__section">
+              <h2>Start</h2>
+              <ul className="welcome__list">
+                <li>
+                  <button type="button" className="welcome__link" onClick={props.onNewFile}>
+                    <NewFileIcon /> New File...
                   </button>
                 </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {recentFiles.length > 0 && (
-          <div className="start-page__recent-group">
-            <h2>Recent Files</h2>
-            <ul>
-              {recentFiles.map((file) => (
-                <li key={file.path}>
-                  <button
-                    type="button"
-                    className="start-page__recent-item"
-                    onClick={() => {
-                      onOpenRecentFile(file.path);
-                    }}
-                  >
-                    <span className="start-page__recent-path">{file.path}</span>
+                <li>
+                  <button type="button" className="welcome__link" onClick={props.onOpenFile}>
+                    <NewFileIcon /> Open File...
                   </button>
                 </li>
-              ))}
-            </ul>
+                <li>
+                  <button type="button" className="welcome__link" onClick={props.onOpenFolder}>
+                    <NewFolderIcon /> Open Folder...
+                  </button>
+                </li>
+              </ul>
+            </section>
+            {recentFolders.length > 0 || recentFiles.length > 0 ? (
+              <section className="welcome__section">
+                <h2>Recent</h2>
+                <ul className="welcome__list">
+                  {recentFolders.slice(0, RECENT_LIMIT).map((folder) => (
+                    <RecentRow
+                      key={`folder:${folder.path}`}
+                      name={folder.name}
+                      detail={parentDir(folder.path)}
+                      title={folder.path}
+                      onOpen={() => {
+                        onOpenRecentFolder(folder.path);
+                      }}
+                    />
+                  ))}
+                  {recentFiles.slice(0, RECENT_LIMIT).map((file) => (
+                    <RecentRow
+                      key={`file:${file.path}`}
+                      name={baseName(file.path)}
+                      detail={parentDir(file.path)}
+                      title={file.path}
+                      onOpen={() => {
+                        onOpenRecentFile(file.path);
+                      }}
+                    />
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </div>
-        )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function RecentRow(props: { name: string; detail: string; title: string; onOpen: () => void }) {
+  return (
+    <li className="welcome__recent">
+      <button type="button" className="welcome__link" title={props.title} onClick={props.onOpen}>
+        {props.name}
+      </button>
+      <span className="welcome__recent-path">{props.detail}</span>
+    </li>
   );
 }

@@ -22,6 +22,8 @@ export class WorkspaceService {
   private activeId: string | null = null;
   private cachedState: WorkspaceState = EMPTY_STATE;
   private activeWorkspace: WorkspaceInfo | null = null;
+  /** Paths of closed file-backed tabs, most recent last — backs "Reopen Closed Editor". */
+  private readonly closedPaths: string[] = [];
   private readonly unsubscribeDirty: () => void;
 
   constructor(
@@ -94,12 +96,73 @@ export class WorkspaceService {
       return;
     }
     this.order.splice(index, 1);
+    this.rememberClosed(id);
     this.documents.close(id);
     if (this.activeId === id) {
       this.activeId = this.order[index] ?? this.order[index - 1] ?? null;
     }
     this.recompute();
     await this.persistSession();
+  }
+
+  /** Activates the tab `delta` positions away from the active one, wrapping around (Ctrl+PageDown/PageUp). */
+  cycleActive(delta: number): void {
+    if (this.order.length === 0) {
+      return;
+    }
+    const current = this.activeId ? this.order.indexOf(this.activeId) : 0;
+    const next = (((current + delta) % this.order.length) + this.order.length) % this.order.length;
+    const nextId = this.order[next];
+    if (nextId) {
+      this.setActive(nextId);
+    }
+  }
+
+  async closeAll(): Promise<void> {
+    if (this.order.length === 0) {
+      return;
+    }
+    for (const id of this.order) {
+      this.rememberClosed(id);
+      this.documents.close(id);
+    }
+    this.order = [];
+    this.activeId = null;
+    this.recompute();
+    await this.persistSession();
+  }
+
+  /** Reopens the most recently closed file-backed tab, skipping any that no longer open. */
+  async reopenClosed(): Promise<void> {
+    let path = this.closedPaths.pop();
+    while (path !== undefined) {
+      if ((await this.openPath(path)) !== null) {
+        return;
+      }
+      path = this.closedPaths.pop();
+    }
+  }
+
+  canReopenClosed(): boolean {
+    return this.closedPaths.length > 0;
+  }
+
+  /** Saves every dirty tab in tab order (untitled ones go through Save As, like VS Code). */
+  async saveAll(): Promise<void> {
+    for (const id of [...this.order]) {
+      if (this.documents.isDirty(id)) {
+        await this.save(id);
+      }
+    }
+  }
+
+  /** Discards unsaved changes in `id`, restoring its last-saved content. */
+  revert(id: string): void {
+    if (!this.order.includes(id)) {
+      return;
+    }
+    this.documents.revert(id);
+    this.recompute();
   }
 
   async save(id: string): Promise<void> {
@@ -183,6 +246,13 @@ export class WorkspaceService {
       this.events.emit("workspaceFolderChanged", { workspace: info });
     }
     return info;
+  }
+
+  private rememberClosed(id: string): void {
+    const path = this.documents.snapshot(id).path;
+    if (path !== null) {
+      this.closedPaths.push(path);
+    }
   }
 
   private async persistSession(): Promise<void> {

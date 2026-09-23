@@ -1,0 +1,71 @@
+/* --- Menus (menu bar dropdowns, context menus, gear menu) --- */
+
+.menu-popup {
+  position: fixed;
+  z-index: 1000;
+  min-width: 220px;
+  max-width: 480px;
+  padding: 4px 0;
+  background-color: var(--menu-bg);
+  color: var(--menu-fg);
+  border: 1px solid var(--menu-border);
+  border-radius: 5px;
+  box-shadow: 0 2px 8px var(--widget-shadow);
+  outline: none;
+  font-size: 13px;
+}
+
+.menu-popup__item {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  margin: 0 4px;
+  padding: 0 8px 0 0;
+  border-radius: 3px;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.menu-popup__item--focused:not(.menu-popup__item--disabled) {
+  background-color: var(--menu-selection-bg);
+  color: var(--menu-selection-fg);
+}
+
+.menu-popup__item--disabled {
+  opacity: 0.4;
+}
+
+.menu-popup__item--danger.menu-popup__item--focused {
+  background-color: var(--danger-bg);
+}
+
+.menu-popup__check {
+  width: 26px;
+  display: flex;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.menu-popup__label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.menu-popup__shortcut {
+  flex: 0 0 auto;
+  padding-left: 32px;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.menu-popup__submenu-arrow {
+  flex: 0 0 auto;
+  padding-left: 24px;
+}
+
+.menu-popup__separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--menu-separator);
+}

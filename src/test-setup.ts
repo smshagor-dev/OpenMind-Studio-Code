@@ -42,3 +42,9 @@ if (typeof globalThis.ResizeObserver !== "function") {
   }
   globalThis.ResizeObserver = ResizeObserverStub;
 }
+
+// jsdom has no layout engine, so it doesn't implement scrollIntoView (the explorer calls it to keep
+// the selected row visible).
+if (typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = () => {};
+}

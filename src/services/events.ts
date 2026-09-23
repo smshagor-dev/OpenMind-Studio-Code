@@ -17,4 +17,7 @@ export interface AppEvents extends Record<string, unknown> {
   /** A caught, non-fatal error to surface to the user (e.g. a toast) — never thrown, so a failed
    * explorer/document operation never crashes the app or fails silently. */
   appError: { message: string };
+  /** UI-only requests raised by commands (menus/keybindings) that a component must fulfil. */
+  showAbout: undefined;
+  focusExplorer: undefined;
 }

@@ -1,0 +1,50 @@
+/* --- Status bar --- */
+
+.statusbar {
+  flex: 0 0 22px;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 0 5px;
+  background-color: var(--statusbar-bg);
+  color: var(--statusbar-fg);
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.statusbar--no-folder {
+  background-color: var(--statusbar-no-folder-bg);
+}
+
+.statusbar__left,
+.statusbar__right {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.statusbar__item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: default;
+}
+
+button.statusbar__item {
+  cursor: pointer;
+}
+
+button.statusbar__item:hover {
+  background-color: var(--statusbar-hover-bg);
+}
+
+.statusbar__item .codicon {
+  width: 14px;
+  height: 14px;
+}

@@ -1,3 +1,4 @@
+import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
@@ -123,6 +124,14 @@ export interface IpcClient {
   // Generic settings
   settingsGet: (key: string) => Promise<string | null>;
   settingsSet: (key: string, value: string) => Promise<void>;
+
+  // App metadata (Help > About)
+  appInfo: () => Promise<AppInfo>;
+}
+
+export interface AppInfo {
+  version: string;
+  tauriVersion: string;
 }
 
 export const tauriIpcClient: IpcClient = {
@@ -206,4 +215,6 @@ export const tauriIpcClient: IpcClient = {
   settingsGet: (key) => invoke<string | null>("settings_get", { key }),
 
   settingsSet: (key, value) => invoke("settings_set", { key, value }),
+
+  appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };

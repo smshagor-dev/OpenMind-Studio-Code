@@ -124,9 +124,31 @@ internals.
 - `CommandRegistry` (`commandRegistry.ts`) — named, executable commands (`file.new`/`file.open`/
   `file.openFolder`/`file.closeFolder`/`file.save`/`file.saveAs`/`file.closeActiveTab`/
   `view.toggleTheme`/`explorer.newFile`/`explorer.newFolder`/`explorer.refresh`/
-  `explorer.collapseAll`/`explorer.revealActiveFile`), registered once in `container.ts`.
-  Keyboard shortcuts, UI buttons, and context-menu items all call `commands.execute(id)`, never a
-  service method directly — this is the seam a future command palette/menu system hangs off.
+  `explorer.collapseAll`/`explorer.revealActiveFile`), registered once in `container.ts`, plus the
+  workbench commands in `workbenchCommands.ts` (Milestone 3.5 — every Edit/Selection/Go menu entry
+  mapped to its Monaco action via `EDITOR_ACTIONS`, editor view toggles via `EDITOR_TOGGLES`,
+  layout/zoom/full-screen/theme toggles, save-all/revert/reopen-closed/close-all). Commands carry
+  optional `enabled`/`checked` predicates; a command id that was never registered reports disabled.
+  Keyboard shortcuts, UI buttons, menus and context-menu items all go through the registry
+  (`container.run(id)` = execute + surface failures as `appError`), never a service method directly.
+- `KeybindingService` (`keybindings.ts`) — VS Code's Windows default keybindings, each owned by
+  either `app` (dispatched by the window-level listener in `appHooks.ts`) or `editor` (Monaco
+  already binds it natively; listed only so menus show the shortcut — dispatching it too would run
+  it twice). Matches on `event.code`, so layouts/Shift don't change which binding fires.
+- `menus.ts` — the title-bar menu structure as pure data (File/Edit/Selection/View/Go/Run/Terminal/
+  Help, every VS Code section and submenu), plus the gear and explorer "..." menus. Entries for
+  features from later milestones reference their future command ids and render **disabled** (no
+  stub handlers) — they light up automatically when that milestone registers the command.
+- `EditorService` (`editorService.ts`) — bridges commands to whichever Monaco editor is mounted
+  (`MonacoHost` hands its editor to `attach()` via a callback prop, staying service-free), publishes
+  cursor/selection/language status for the status bar, and owns persisted editor view options
+  (word wrap, minimap, sticky scroll, whitespace, column selection, multi-cursor modifier).
+- `LayoutService` (`layoutService.ts`) — side bar visibility/width/side, status bar, breadcrumbs,
+  explorer section state; one JSON value (`workbench.layout`) in `editor_settings`, still honoring
+  Milestone 3's `sidebar.visible` key on first load.
+- `WindowService` (`windowService.ts`) — the custom title bar's minimize/maximize/close, full
+  screen and whole-window zoom (persisted), over an injectable `WindowApi` (Tauri window/webview).
+- `MarkerService` (`markerService.ts`) — error/warning totals from Monaco markers (status bar).
 - `BufferManager` (`bufferManager.ts`) — owns Monaco `ITextModel` lifecycle. Knows nothing about
   files or paths.
 - `DocumentService` (`documentService.ts`) — the "Document Manager": document identity
@@ -148,7 +170,10 @@ internals.
   refresh only the affected directory/directories), and `revealPath` (walks the loaded/loadable
   tree matching path *segments* by name — never reconstructs a path string itself, which would be
   separator-fragile on Windows). Persists expanded/selected state via `explorerStateSave`
-  (debounce-free; each mutation just fires its own save).
+  (debounce-free; each mutation just fires its own save). Also owns the explorer's Copy/Cut
+  clipboard (`setClipboard`/`paste` — cut moves, copy into the same folder duplicates).
+  `explorerTree.ts` holds the pure helpers: `visibleTreeRows` (keyboard-navigation order),
+  `isSameOrDescendant` (no dropping a folder into itself), `pathSegments` (breadcrumbs).
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -164,17 +189,27 @@ internals.
   `src/testUtils/fakeIpcClient.ts` holds the one shared fully-stubbed fake every test file
   overrides from, instead of each redeclaring all ~30 methods.
 
-UI (Milestone 3): `ActivityBar` (Explorer icon, toggles the sidebar — no placeholder icons for
-panels that don't exist yet), `ExplorerPanel` (header/actions + `FileTree`, owns transient
-UI-only interaction state — which context menu or inline rename is open — as plain component
-state, not service state), `FileTree` (recursive row rendering from `ExplorerSnapshot`),
-`ContextMenu`, `ConfirmDialog` (used before every destructive delete), `InlineNameInput`
-(create/rename), `StartPage` (VS Code-style welcome page: Open Folder/Open File/New File, recent
-folders, recent files), `ErrorToast` (renders `appError` events).
+UI (Milestone 3.5 — VS Code workbench layout, Dark+/Light+ colors as CSS tokens in
+`styles/theme.css`, switched by `data-theme` on `<html>`): the window is **undecorated**
+(`decorations: false`); `TitleBar` draws VS Code's Windows title bar (app icon, `MenuBar`, command
+center, side bar toggle, window controls; non-control areas are `data-tauri-drag-region`).
+`MenuPopup` is the one dropdown used everywhere (menu bar, gear menu, explorer context menu),
+with submenus, check marks, shortcut labels and full keyboard navigation; Alt+<letter> opens a menu.
+`ActivityBar` (Explorer + Manage gear — still no placeholder icons for views that don't exist),
+`SideBar` (EXPLORER title, `OpenEditorsSection`, then `ExplorerPanel` or "No Folder Opened", with
+a resizable `Sash`), `FileTree` (flat rows from `visibleTreeRows`, 8px indent + hover indent
+guides, Seti-style `FileTypeIcon`s and no folder icons, VS Code list keyboard model, HTML5
+drag-and-drop move — requires `dragDropEnabled: false` in `tauri.conf.json`, otherwise WebView2's
+native file-drop handling swallows HTML5 drag events), `EditorGroup` (`TabBar`, `Breadcrumbs`,
+Monaco or `StartPage`), `StatusBar` (problems, Ln/Col, indentation, encoding, EOL, language;
+purple with no folder open), `AboutDialog`, `ConfirmDialog` (before delete and drag-and-drop
+move), `ErrorToast`. Transient interaction state (open menu, inline rename, pending confirm) stays
+component state (`useExplorerInteractions`), never service state.
 
 Every service is unit-tested independent of React (`*.test.ts` next to each file); `App.test.tsx`
-is a thin smoke test on top, with `@tauri-apps/api/core` and `@tauri-apps/plugin-dialog` mocked at
-the module level.
+is a thin smoke test on top (with `@tauri-apps/api/core`, `/window`, `/webview` and
+`@tauri-apps/plugin-dialog` mocked at the module level), and `FileTree.test.tsx` covers the tree's
+keyboard model.
 
 ## Persistence
 
@@ -291,7 +326,14 @@ migration file, check for stray running instances first, not just after somethin
   picker; neither was a small enough addition to call "safely achievable" within this milestone,
   so it's left as ready backend for whichever UI approach a future pass picks.
   99 Rust tests + 66 TypeScript tests.
-- [ ] Milestone 4 — Integrated terminal (PTY: cmd/PowerShell/Git Bash/WSL, multiplexed).
+- [x] **Milestone 3.5** — VS Code workbench UI: custom title bar with VS Code's full menu bar
+  (every section/submenu; entries for later milestones disabled until their command registers),
+  command center, window controls; VS Code explorer (Open Editors, 8px-indent tree with indent
+  guides, Seti-style icons, keyboard navigation, copy/cut/paste, drag-and-drop move with confirm —
+  the Milestone 3 "Move has no UI" gap), resizable/movable side bar, VS Code tabs, breadcrumbs,
+  status bar, About dialog, Dark+/Light+ chrome. Edit/Selection/Go menus drive Monaco's own
+  actions. Known limitation: moving/renaming a file that's open in a tab doesn't retarget the tab.
+  132 TypeScript tests.
 - [ ] Milestone 4 — Integrated terminal (PTY: cmd/PowerShell/Git Bash/WSL, multiplexed).
 - [ ] Milestone 5 — Portable Runtime Manager (download/verify/extract/switch for Node/Python/...).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).

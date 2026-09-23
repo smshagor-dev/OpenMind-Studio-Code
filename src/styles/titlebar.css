@@ -1,0 +1,137 @@
+/* --- Custom title bar (VS Code Windows layout) --- */
+
+.titlebar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  background-color: var(--titlebar-bg);
+  color: var(--titlebar-fg);
+  font-size: 13px;
+}
+
+.titlebar__icon {
+  width: 16px;
+  height: 16px;
+  margin: 0 7px 0 10px;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+
+.titlebar__drag {
+  flex: 1 1 0;
+  align-self: stretch;
+  min-width: 8px;
+}
+
+.menubar {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  flex: 0 0 auto;
+}
+
+.menubar__item {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  margin: 4px 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.menubar__item:hover,
+.menubar__item--open {
+  background-color: var(--menubar-hover-bg);
+}
+
+.command-center {
+  flex: 0 1 600px;
+  min-width: 0;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--command-center-border);
+  border-radius: 6px;
+  background-color: var(--command-center-bg);
+  color: var(--titlebar-inactive-fg);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.command-center:hover {
+  background-color: var(--command-center-hover-bg);
+  color: var(--titlebar-fg);
+}
+
+.command-center__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titlebar__layout-controls {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.titlebar__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--titlebar-inactive-fg);
+  cursor: pointer;
+}
+
+.titlebar__action:hover {
+  background-color: var(--menubar-hover-bg);
+}
+
+.titlebar__action--checked {
+  color: var(--titlebar-fg);
+}
+
+.window-controls {
+  display: flex;
+  align-self: stretch;
+}
+
+.window-controls__button {
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--titlebar-fg);
+  cursor: default;
+}
+
+.window-controls__button:hover {
+  background-color: var(--menubar-hover-bg);
+}
+
+.window-controls__button--close:hover {
+  background-color: #e81123;
+  color: #ffffff;
+}
+
+/* Like VS Code, the command center gives way first when the window gets narrow. */
+@media (max-width: 860px) {
+  .command-center {
+    display: none;
+  }
+}

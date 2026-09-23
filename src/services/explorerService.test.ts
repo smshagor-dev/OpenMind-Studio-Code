@@ -211,4 +211,56 @@ describe("ExplorerService", () => {
 
     expect(service.getSnapshot().rootPath).toBeNull();
   });
+
+  describe("clipboard", () => {
+    function setup() {
+      const ipc = createFakeIpc({
+        fsReadDir: vi.fn().mockImplementation((path: string) => {
+          if (path === "C:/proj")
+            return Promise.resolve([
+              entry("C:/proj/src", "src", true),
+              entry("C:/proj/a.ts", "a.ts", false),
+            ]);
+          return Promise.resolve([]);
+        }),
+        fsMove: vi.fn().mockResolvedValue("C:/proj/src/a.ts"),
+        fsCopy: vi.fn().mockResolvedValue("C:/proj/src/a.ts"),
+        fsDuplicate: vi.fn().mockResolvedValue("C:/proj/a copy.ts"),
+      });
+      return { ipc, service: new ExplorerService(new FileSystemService(ipc), ipc, events) };
+    }
+
+    it("paste after cut moves the entry and clears the clipboard", async () => {
+      const { ipc, service } = setup();
+      await service.setRoot("C:/proj", "proj");
+
+      service.setClipboard("C:/proj/a.ts", "cut");
+      await service.paste("C:/proj/src");
+
+      expect(ipc.fsMove).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "C:/proj/src");
+      expect(service.hasClipboard()).toBe(false);
+    });
+
+    it("paste after copy into another folder copies, and keeps the clipboard", async () => {
+      const { ipc, service } = setup();
+      await service.setRoot("C:/proj", "proj");
+
+      service.setClipboard("C:/proj/a.ts", "copy");
+      await service.paste("C:/proj/src");
+
+      expect(ipc.fsCopy).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "C:/proj/src");
+      expect(service.hasClipboard()).toBe(true);
+    });
+
+    it("paste after copy into the same folder duplicates instead of colliding", async () => {
+      const { ipc, service } = setup();
+      await service.setRoot("C:/proj", "proj");
+
+      service.setClipboard("C:/proj/a.ts", "copy");
+      await service.paste("C:/proj");
+
+      expect(ipc.fsCopy).not.toHaveBeenCalled();
+      expect(ipc.fsDuplicate).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "a copy.ts");
+    });
+  });
 });

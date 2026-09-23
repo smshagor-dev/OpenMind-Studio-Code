@@ -1,21 +1,41 @@
+import { useEffect, useRef } from "react";
+
 interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmLabel: string;
+  /** `danger` (default) for destructive actions like delete; `primary` for e.g. a drag-and-drop move. */
+  tone?: "danger" | "primary";
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-/** A blocking confirmation modal — used before any destructive action (delete). */
+/** A blocking VS Code-style confirmation modal — shown before delete and drag-and-drop move. */
 export function ConfirmDialog({
   title,
   message,
   confirmLabel,
+  tone = "danger",
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+  }, []);
+
   return (
-    <div className="modal-overlay" onClick={onCancel}>
+    <div
+      className="modal-overlay"
+      onClick={onCancel}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
       <div
         className="modal"
         role="alertdialog"
@@ -28,15 +48,16 @@ export function ConfirmDialog({
         <h2 id="confirm-dialog-title">{title}</h2>
         <p>{message}</p>
         <div className="modal__actions">
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
           <button
+            ref={confirmRef}
             type="button"
-            className="modal__confirm modal__confirm--danger"
+            className={tone === "danger" ? "modal__confirm--danger" : "modal__confirm--primary"}
             onClick={onConfirm}
           >
             {confirmLabel}
+          </button>
+          <button type="button" onClick={onCancel}>
+            Cancel
           </button>
         </div>
       </div>
