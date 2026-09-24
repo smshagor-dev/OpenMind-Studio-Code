@@ -7,6 +7,7 @@ import {
   useGlobalKeybindings,
   useRecents,
   useRunConfigurationDialog,
+  useLanguageToolsDialog,
   useRuntimeManagerDialog,
   useToasts,
   useWorkbenchState,
@@ -17,6 +18,7 @@ import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
 import { RunConfigurationDialog } from "./components/RunConfigurationDialog";
+import { LanguageToolsDialog } from "./components/LanguageToolsDialog";
 import { RuntimeManagerDialog } from "./components/RuntimeManagerDialog";
 import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
@@ -31,6 +33,7 @@ export function App() {
   const [recents, refreshRecents] = useRecents();
   const [aboutOpen, closeAbout] = useAboutDialog();
   const [runtimesOpen, closeRuntimes] = useRuntimeManagerDialog();
+  const [languageToolsOpen, closeLanguageTools] = useLanguageToolsDialog();
   const [runConfigOpen, closeRunConfig] = useRunConfigurationDialog();
   useGlobalKeybindings();
   useCommandStateRefresh();
@@ -105,6 +108,7 @@ export function App() {
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
       {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}
       {runtimesOpen ? <RuntimeManagerDialog onClose={closeRuntimes} /> : null}
+      {languageToolsOpen ? <LanguageToolsDialog onClose={closeLanguageTools} /> : null}
       {runConfigOpen ? <RunConfigurationDialog onClose={closeRunConfig} /> : null}
     </div>
   );

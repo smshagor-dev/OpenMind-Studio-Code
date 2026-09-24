@@ -3,6 +3,8 @@ export type CommandHandler = (...args: unknown[]) => void | Promise<void>;
 export interface CommandOptions {
   /** Evaluated whenever a menu/button needs to know whether the command can run right now. */
   enabled?: () => boolean;
+  /** Why the command is disabled right now (shown in menus so nothing is disabled without a reason). */
+  disabledReason?: () => string | undefined;
   /** For toggle commands (e.g. "Word Wrap"): whether the toggle is currently on — menus render a check mark. */
   checked?: () => boolean;
 }
@@ -51,6 +53,13 @@ export class CommandRegistry {
       return false;
     }
     return entry.options.enabled?.() ?? true;
+  }
+
+  /** Why a disabled command is disabled, when its owner says. */
+  reasonFor(id: string): string | undefined {
+    const entry = this.commands.get(id);
+    if (!entry || this.isEnabled(id)) return undefined;
+    return entry.options.disabledReason?.();
   }
 
   /** `undefined` for commands that aren't toggles; `true`/`false` for toggles. */

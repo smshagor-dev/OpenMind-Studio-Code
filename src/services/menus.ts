@@ -128,6 +128,9 @@ const EDIT_MENU: TopLevelMenu = {
     cmd("Toggle Line Comment", "edit.toggleLineComment"),
     cmd("Toggle Block Comment", "edit.toggleBlockComment"),
     cmd("Emmet: Expand Abbreviation", "emmet.expandAbbreviation"),
+    SEPARATOR,
+    cmd("Rename Symbol", "edit.renameSymbol"),
+    cmd("Format Document", "edit.formatDocument"),
   ],
 };
 
@@ -326,6 +329,9 @@ const TERMINAL_MENU: TopLevelMenu = {
     cmd("Kill Terminal", "terminal.kill"),
     SEPARATOR,
     cmd("Manage Runtimes...", "runtime.manage"),
+    cmd("Language Tools...", "lsp.manage"),
+    cmd("Restart Language Server", "lsp.restart"),
+    cmd("Show LSP Output", "lsp.openOutput"),
     SEPARATOR,
     cmd("Run Task...", "tasks.run"),
     cmd("Run Build Task...", "tasks.runBuild"),
@@ -381,6 +387,7 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Keyboard Shortcuts", "preferences.openKeybindings"),
   cmd("Snippets", "preferences.configureSnippets"),
   cmd("Runtimes", "runtime.manage"),
+  cmd("Language Tools", "lsp.manage"),
   cmd("Tasks", "tasks.configure"),
   sub("Themes", [cmd("Dark", "theme.setDark"), cmd("Light", "theme.setLight")]),
   SEPARATOR,

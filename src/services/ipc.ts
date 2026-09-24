@@ -42,6 +42,105 @@ export interface FsChangeBatch {
   overflow: boolean;
 }
 
+// --- Language servers (mirrors src-tauri/src/commands/lsp.rs and openmind_lsp) ---
+
+/** LSP positions: 0-based line and UTF-16 column. */
+export interface LspPosition {
+  line: number;
+  character: number;
+}
+
+export interface LspRange {
+  start: LspPosition;
+  end: LspPosition;
+}
+
+/** 1 error, 2 warning, 3 information, 4 hint. */
+export interface LspDiagnostic {
+  range: LspRange;
+  severity?: number;
+  code?: string | number;
+  source?: string;
+  message: string;
+  /** 1 unnecessary, 2 deprecated. */
+  tags?: number[];
+}
+
+export interface LspDiagnosticsEvent {
+  server: string;
+  path: string;
+  version: number | null;
+  diagnostics: LspDiagnostic[];
+}
+
+export interface LspLogEvent {
+  server: string;
+  level: "info" | "warning" | "error";
+  text: string;
+}
+
+/** What the server said it can do (hover, completion, ...). */
+export interface LspCapabilities {
+  hover: boolean;
+  completion: boolean;
+  completionResolve: boolean;
+  completionTriggers: string[];
+  signatureHelp: boolean;
+  signatureTriggers: string[];
+  definition: boolean;
+  declaration: boolean;
+  typeDefinition: boolean;
+  implementation: boolean;
+  references: boolean;
+  rename: boolean;
+  prepareRename: boolean;
+  formatting: boolean;
+  rangeFormatting: boolean;
+  documentSymbol: boolean;
+}
+
+export type LspServerState = "stopped" | "installing" | "starting" | "running" | "error";
+
+export interface LspServerInfo {
+  id: string;
+  name: string;
+  languages: string[];
+  note: string | null;
+  /** What installing downloads ("pyright 1.1.414"). */
+  contents: string;
+  installed: boolean;
+  state: LspServerState;
+  /** The reason, when `state` is "error". */
+  message?: string;
+  workspace: string | null;
+  node: string | null;
+  capabilities: LspCapabilities | null;
+  openDocuments: number;
+  pid: number | null;
+  canInstall: boolean;
+  installBlocked: string | null;
+  logPath: string;
+  logExists: boolean;
+}
+
+export interface LspSnapshot {
+  workspace: string | null;
+  node: string | null;
+  nodeProblem: string | null;
+  verbose: boolean;
+  servers: LspServerInfo[];
+}
+
+/** Why (or that) a file has language features. */
+export type LspSyncOutcome =
+  | { state: "ready"; server: string }
+  | { state: "unsupported" }
+  | { state: "noWorkspace" }
+  | { state: "outsideWorkspace" }
+  | { state: "notInstalled"; server: string }
+  | { state: "nodeMissing" }
+  | { state: "failed"; server: string; message: string };
+
 // Mirrors openmind_workspace::RecentFileInfo (camelCase).
 export interface RecentFileInfo {
   path: string;
@@ -303,6 +402,20 @@ export interface IpcClient {
 
   // Source Control (Git). The repository is always the open workspace's; only repo-relative file names are sent.
   gitSnapshot: () => Promise<GitSnapshot>;
+  // Language servers. The backend picks the server by file type and only serves files inside the open workspace.
+  lspStatus: () => Promise<LspSnapshot>;
+  lspInstall: (server: string) => Promise<void>;
+  lspSyncDocument: (path: string, text: string) => Promise<LspSyncOutcome>;
+  lspSaveDocument: (path: string) => Promise<void>;
+  lspCloseDocument: (path: string) => Promise<void>;
+  lspRequest: (path: string, method: string, params: unknown) => Promise<unknown>;
+  lspStop: (server: string) => Promise<void>;
+  lspStopAll: () => Promise<void>;
+  lspSetVerbose: (verbose: boolean) => Promise<void>;
+  onLspDiagnostics: (handler: (event: LspDiagnosticsEvent) => void) => Promise<() => void>;
+  onLspLog: (handler: (event: LspLogEvent) => void) => Promise<() => void>;
+  onLspChanged: (handler: () => void) => Promise<() => void>;
+
   gitInit: () => Promise<void>;
   gitStage: (paths: string[]) => Promise<void>;
   gitStageAll: () => Promise<void>;
@@ -779,6 +892,27 @@ export const tauriIpcClient: IpcClient = {
   gitSnapshot: () => invoke<GitSnapshot>("git_snapshot"),
   gitInit: () => invoke("git_init"),
   gitStage: (paths) => invoke("git_stage", { paths }),
+  lspStatus: () => invoke<LspSnapshot>("lsp_status"),
+  lspInstall: (server) => invoke("lsp_install", { server }),
+  lspSyncDocument: (path, text) => invoke<LspSyncOutcome>("lsp_sync_document", { path, text }),
+  lspSaveDocument: (path) => invoke("lsp_save_document", { path }),
+  lspCloseDocument: (path) => invoke("lsp_close_document", { path }),
+  lspRequest: (path, method, params) => invoke("lsp_request", { path, method, params }),
+  lspStop: (server) => invoke("lsp_stop", { server }),
+  lspStopAll: () => invoke("lsp_stop_all"),
+  lspSetVerbose: (verbose) => invoke("lsp_set_verbose", { verbose }),
+  onLspDiagnostics: (handler) =>
+    listen<LspDiagnosticsEvent>("lsp:diagnostics", (event) => {
+      handler(event.payload);
+    }),
+  onLspLog: (handler) =>
+    listen<LspLogEvent>("lsp:log", (event) => {
+      handler(event.payload);
+    }),
+  onLspChanged: (handler) =>
+    listen("lsp:changed", () => {
+      handler();
+    }),
   gitStageAll: () => invoke("git_stage_all"),
   gitUnstage: (paths) => invoke("git_unstage", { paths }),
   gitUnstageAll: () => invoke("git_unstage_all"),

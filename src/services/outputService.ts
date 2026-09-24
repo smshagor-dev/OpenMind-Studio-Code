@@ -6,6 +6,7 @@ export const INITIAL_OUTPUT_CHANNELS = [
   "Search",
   "Run Code",
   "Git",
+  "LSP",
 ] as const;
 
 /** A channel keeps this many lines; older ones fall off so a chatty service can't grow memory without bound. */

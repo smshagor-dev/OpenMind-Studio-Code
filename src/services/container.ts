@@ -30,6 +30,11 @@ import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
+import { DiagnosticsService } from "./diagnosticsService";
+import { registerLspCommands } from "./lspCommands";
+import { applyBuiltinFeatures, disableTypeScriptBuiltins } from "./monacoBuiltins";
+import { LspService } from "./lspService";
+import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
 import { FileSyncService } from "./fileSyncService";
 import { GitBlameService } from "./gitBlameService";
@@ -47,6 +52,9 @@ import { registerTerminalCommands } from "./terminalCommands";
 import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
 import { WorkspaceService } from "./workspaceService";
+
+// Monaco's TypeScript service reads its settings once, when the first .ts/.js model appears — so this must come first.
+disableTypeScriptBuiltins();
 
 const events = new EventBus<AppEvents>();
 const buffers = new BufferManager();
@@ -188,6 +196,29 @@ runtime.subscribe(() => {
       .join(","),
   );
 });
+
+const lsp = new LspService(tauriIpcClient, events, documents, {
+  log: log("LSP"),
+  activeDocId: () => {
+    const id = workspace.getState().activeId;
+    return id !== null && documents.has(id) ? id : null;
+  },
+});
+const diagnostics = new DiagnosticsService(events, documents);
+
+/**
+ * Starts language support once the app is up: diagnostics become editor markers,
+ * Monaco's own language features step aside for languages a server handles, and
+ * the providers (hover, completion, definition, ...) ask the language servers.
+ */
+async function startLanguageTools(): Promise<void> {
+  diagnostics.initialize();
+  events.on("lspChanged", () => {
+    applyBuiltinFeatures(new Set(lsp.runningServerIds()));
+  });
+  registerLspProviders({ ipc: tauriIpcClient, documents, workspace, lsp });
+  await lsp.initialize();
+}
 
 // Problems are labelled with the document each marker belongs to; search results reveal in the editor.
 markers.setResourceResolver((uri) => {
@@ -332,6 +363,7 @@ registerEditorCommands({
   markdown,
 });
 registerRuntimeCommands(commands, events);
+registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerPhpCommands(commands, php, tauriIpcClient);
 registerGitCommands(commands, layout, gitClone, gitBlame);
 
@@ -389,6 +421,8 @@ export const container = {
   git: gitService,
   sourceControl,
   fileSync,
+  lsp,
+  startLanguageTools,
   gitClone,
   gitHistory,
   gitStash,

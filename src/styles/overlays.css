@@ -326,3 +326,19 @@
   background-color: rgba(190, 17, 0, 0.15);
   font-size: 12px;
 }
+
+/* --- Language Tools --- */
+
+.lsp-problem {
+  color: #cca700;
+}
+
+.lsp-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}

@@ -1,5 +1,5 @@
 import type { DocumentSnapshot } from "./documentService";
-import type { ThemeKind, WorkspaceInfo } from "./ipc";
+import type { LspDiagnosticsEvent, ThemeKind, WorkspaceInfo } from "./ipc";
 
 /**
  * The single shared event map for the app's `EventBus`. Kept centralized
@@ -10,6 +10,18 @@ import type { ThemeKind, WorkspaceInfo } from "./ipc";
 export interface AppEvents extends Record<string, unknown> {
   documentDirtyChanged: { id: string; dirty: boolean };
   documentSaved: { id: string; path: string };
+  /** A document now exists (its text is loaded and it can be edited). */
+  documentOpened: { id: string };
+  /** A document is about to go away; `path` is where its file was, if it had one. */
+  documentClosed: { id: string; path: string | null };
+  /** A language server published diagnostics for a file. */
+  lspDiagnostics: LspDiagnosticsEvent;
+  /** A language server is no longer running (stopped, crashed or restarted): what it reported is stale. */
+  lspServerStopped: { server: string };
+  /** Language server status changed (started, stopped, installed, ...). */
+  lspChanged: undefined;
+  /** Open the Language Tools dialog. */
+  showLanguageTools: undefined;
   /** An open document's relationship with its file on disk changed (changed / deleted / renamed / back in sync). */
   documentExternalChanged: { id: string };
   /** A short, non-error message for the user (a file was reloaded, a diff was closed, ...). */

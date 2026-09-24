@@ -49,6 +49,7 @@ export function useAppStartup(): boolean {
         container.composer.initialize(),
       ]);
       await container.fileSync.initialize();
+      await container.startLanguageTools();
       await container.git.initialize();
       await container.sourceControl.initialize();
       if (!lifecycle.cancelled) setReady(true);
@@ -153,6 +154,22 @@ export function useRuntimeManagerDialog(): [boolean, () => void] {
   useEffect(
     () =>
       container.events.on("showRuntimeManager", () => {
+        setOpen(true);
+      }),
+    [],
+  );
+  const close = useCallback(() => {
+    setOpen(false);
+  }, []);
+  return [open, close];
+}
+
+/** `true` while the Language Tools dialog should be shown (opened by the `lsp.manage` command). */
+export function useLanguageToolsDialog(): [boolean, () => void] {
+  const [open, setOpen] = useState(false);
+  useEffect(
+    () =>
+      container.events.on("showLanguageTools", () => {
         setOpen(true);
       }),
     [],

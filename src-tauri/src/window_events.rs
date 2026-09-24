@@ -85,6 +85,7 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
                 Duration::from_secs(25),
                 tokio::task::spawn_blocking(move || {
                     crate::commands::watch::stop_on_exit(&app);
+                    crate::commands::lsp::stop_lsp(&app);
                     crate::commands::git::stop_git(&app);
                     crate::commands::database::stop_all_services(&app)
                 }),

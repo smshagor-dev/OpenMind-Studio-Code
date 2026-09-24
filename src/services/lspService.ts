@@ -1,0 +1,407 @@
+import type { DocumentService } from "./documentService";
+import type { EventBus } from "./eventBus";
+import type { AppEvents } from "./events";
+import type { IpcClient, LspLogEvent, LspServerInfo, LspSnapshot, LspSyncOutcome } from "./ipc";
+import {
+  actionAvailability,
+  restartAvailability,
+  type Availability,
+  type FileLspStatus,
+  type LspAction,
+} from "./lspAvailability";
+import { lspLanguageId } from "./lspLanguages";
+
+/** How long after the last keystroke the server is told about the new text. */
+export const SYNC_DELAY_MS = 250;
+
+export interface LspState {
+  /** What the backend reports (null until the first answer). */
+  snapshot: LspSnapshot | null;
+}
+
+export interface LspDeps {
+  /** Writes a line to the "LSP" output channel. */
+  log: (line: string) => void;
+  /** The document whose editor is in front, if any. */
+  activeDocId: () => string | null;
+}
+
+/**
+ * Language servers as the editor sees them. It never talks to a server itself:
+ * the backend starts servers on demand for files inside the open workspace,
+ * and this keeps them told about every open file (open, edits, save, close, a
+ * file deleted or replaced on disk), remembers what each file's last sync
+ * said (why a file has no language features), installs and restarts servers
+ * when the user asks, and answers "can this action run for this file?".
+ */
+export class LspService {
+  private state: LspState = { snapshot: null };
+  private readonly listeners = new Set<() => void>();
+  private readonly outcomes = new Map<string, LspSyncOutcome>();
+  /** Where each document was last told to its server (so a renamed/saved-as file closes its old path). */
+  private readonly sent = new Map<string, string>();
+  private readonly watchers = new Map<string, () => void>();
+  private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly reported = new Set<string>();
+  private previouslyRunning = new Set<string>();
+  private offs: (() => void)[] = [];
+
+  constructor(
+    private readonly ipc: IpcClient,
+    private readonly events: EventBus<AppEvents>,
+    private readonly documents: DocumentService,
+    private readonly deps: LspDeps,
+  ) {}
+
+  getState(): LspState {
+    return this.state;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  async initialize(): Promise<void> {
+    this.dispose();
+    try {
+      this.offs.push(
+        await this.ipc.onLspChanged(() => {
+          void this.refresh();
+        }),
+        await this.ipc.onLspLog((event) => {
+          this.log(event);
+        }),
+        await this.ipc.onLspDiagnostics((event) => {
+          this.events.emit("lspDiagnostics", event);
+        }),
+      );
+    } catch (error) {
+      this.events.emit("appError", { message: `Language servers unavailable: ${String(error)}` });
+    }
+    this.offs.push(
+      this.events.on("documentOpened", ({ id }) => {
+        this.track(id);
+      }),
+      this.events.on("documentClosed", ({ id, path }) => {
+        this.untrack(id, path);
+      }),
+      this.events.on("documentSaved", ({ id, path }) => {
+        this.saved(id, path);
+      }),
+      this.events.on("documentExternalChanged", ({ id }) => {
+        this.externalChanged(id);
+      }),
+      this.events.on("workspaceFolderChanged", () => {
+        void this.workspaceChanged();
+      }),
+    );
+    for (const id of this.documents.fileBackedIds()) this.track(id);
+    await this.refresh();
+  }
+
+  dispose(): void {
+    for (const off of this.offs.splice(0)) off();
+    for (const off of this.watchers.values()) off();
+    this.watchers.clear();
+    for (const timer of this.timers.values()) clearTimeout(timer);
+    this.timers.clear();
+  }
+
+  // --- Status ---
+
+  async refresh(): Promise<void> {
+    try {
+      this.state = { snapshot: await this.ipc.lspStatus() };
+    } catch (error) {
+      this.deps.log(`Couldn't read language server status: ${String(error)}`);
+      return;
+    }
+    const running = new Set(this.runningServerIds());
+    for (const server of this.previouslyRunning) {
+      if (!running.has(server)) this.events.emit("lspServerStopped", { server });
+    }
+    this.previouslyRunning = running;
+    this.events.emit("lspChanged", undefined);
+    this.notify();
+  }
+
+  servers(): readonly LspServerInfo[] {
+    return this.state.snapshot?.servers ?? [];
+  }
+
+  runningServerIds(): string[] {
+    return this.servers()
+      .filter((server) => server.state === "running")
+      .map((server) => server.id);
+  }
+
+  /** The server that handles this file's language, if the backend lists one. */
+  serverForPath(path: string): LspServerInfo | null {
+    const language = lspLanguageId(path);
+    if (language === null) return null;
+    return this.servers().find((server) => server.languages.includes(language)) ?? null;
+  }
+
+  /** What is known about a document's language support. */
+  fileStatus(docId: string | null): FileLspStatus {
+    if (docId === null || !this.documents.has(docId)) {
+      return { path: null, server: null, outcome: null };
+    }
+    const path = this.documents.snapshot(docId).path;
+    return {
+      path,
+      server: path === null ? null : this.serverForPath(path),
+      outcome: this.outcomes.get(docId) ?? null,
+    };
+  }
+
+  activeFileStatus(): FileLspStatus {
+    return this.fileStatus(this.deps.activeDocId());
+  }
+
+  available(action: LspAction, docId: string | null): Availability {
+    return actionAvailability(action, this.fileStatus(docId));
+  }
+
+  activeAvailable(action: LspAction): Availability {
+    return this.available(action, this.deps.activeDocId());
+  }
+
+  activeRestartAvailability(): Availability {
+    return restartAvailability(this.activeFileStatus());
+  }
+
+  // --- Keeping servers told about documents ---
+
+  private isCandidate(id: string): string | null {
+    if (!this.documents.has(id)) return null;
+    const path = this.documents.snapshot(id).path;
+    return path !== null && lspLanguageId(path) !== null ? path : null;
+  }
+
+  private track(id: string): void {
+    if (this.watchers.has(id) || this.isCandidate(id) === null) return;
+    this.watchers.set(
+      id,
+      this.documents.onDidChangeContent(id, () => {
+        this.schedule(id);
+      }),
+    );
+    void this.syncNow(id);
+  }
+
+  private untrack(id: string, path: string | null): void {
+    this.watchers.get(id)?.();
+    this.watchers.delete(id);
+    const timer = this.timers.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    this.timers.delete(id);
+    this.outcomes.delete(id);
+    const sentPath = this.sent.get(id) ?? path;
+    this.sent.delete(id);
+    if (sentPath !== null && lspLanguageId(sentPath) !== null) {
+      void this.ipc.lspCloseDocument(sentPath).catch(() => undefined);
+    }
+    this.notify();
+  }
+
+  /** Sends any edit still waiting for its delay, so a request made right after typing sees the current text. */
+  async flush(id: string): Promise<void> {
+    const timer = this.timers.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.timers.delete(id);
+    await this.syncNow(id);
+  }
+
+  private schedule(id: string): void {
+    const timer = this.timers.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    this.timers.set(
+      id,
+      setTimeout(() => {
+        this.timers.delete(id);
+        void this.syncNow(id);
+      }, SYNC_DELAY_MS),
+    );
+  }
+
+  /** Tells the file's server the editor's current text (opening the file there on first use). */
+  async syncNow(id: string): Promise<LspSyncOutcome | null> {
+    const path = this.isCandidate(id);
+    if (path === null) return null;
+    const previous = this.sent.get(id);
+    if (previous !== undefined && previous !== path) {
+      void this.ipc.lspCloseDocument(previous).catch(() => undefined);
+    }
+    this.sent.set(id, path);
+    let outcome: LspSyncOutcome;
+    try {
+      outcome = await this.ipc.lspSyncDocument(path, this.documents.contentOf(id));
+    } catch (error) {
+      outcome = { state: "failed", server: "", message: String(error) };
+    }
+    if (!this.documents.has(id)) return null;
+    const before = this.outcomes.get(id);
+    this.outcomes.set(id, outcome);
+    if (outcome.state === "failed") this.reportFailure(outcome);
+    if (before?.state !== outcome.state) {
+      if (outcome.state === "ready") await this.refresh();
+      this.notify();
+    }
+    return outcome;
+  }
+
+  private reportFailure(outcome: Extract<LspSyncOutcome, { state: "failed" }>): void {
+    if (this.reported.has(outcome.server)) return;
+    this.reported.add(outcome.server);
+    const name = this.servers().find((server) => server.id === outcome.server)?.name;
+    this.events.emit("appError", {
+      message: `${name ?? "The language server"} couldn't start: ${outcome.message}`,
+    });
+  }
+
+  private saved(id: string, path: string): void {
+    if (!this.watchers.has(id)) {
+      // A new file (Save As on an untitled document), or one whose type now has a server.
+      this.track(id);
+      return;
+    }
+    if (this.sent.get(id) !== path) {
+      void this.syncNow(id);
+      return;
+    }
+    void this.ipc.lspSaveDocument(path).catch(() => undefined);
+  }
+
+  private externalChanged(id: string): void {
+    if (!this.documents.has(id)) return;
+    if (this.documents.externalState(id) === "deleted") {
+      // The file is gone: the server must not keep analysing something that isn't there.
+      const sentPath = this.sent.get(id);
+      this.sent.delete(id);
+      this.outcomes.delete(id);
+      if (sentPath !== undefined) void this.ipc.lspCloseDocument(sentPath).catch(() => undefined);
+      this.notify();
+      return;
+    }
+    if (this.isCandidate(id) !== null) {
+      if (!this.watchers.has(id)) this.track(id);
+      else void this.syncNow(id);
+    }
+  }
+
+  private async workspaceChanged(): Promise<void> {
+    await this.stopAll();
+    this.reported.clear();
+    await this.resyncAll();
+  }
+
+  /** Tells the servers about every open file again (after a restart, an install, a new workspace). */
+  async resyncAll(languages?: readonly string[]): Promise<void> {
+    for (const id of this.documents.fileBackedIds()) {
+      const path = this.isCandidate(id);
+      if (path === null) continue;
+      const language = lspLanguageId(path);
+      if (languages && (language === null || !languages.includes(language))) continue;
+      if (!this.watchers.has(id)) this.track(id);
+      else await this.syncNow(id);
+    }
+  }
+
+  // --- Actions the user takes ---
+
+  async stopAll(): Promise<void> {
+    await this.ipc.lspStopAll().catch(() => undefined);
+    this.sent.clear();
+    this.outcomes.clear();
+    await this.refresh();
+  }
+
+  /** Stops one server (its diagnostics are removed; files reopen it when they are next edited or the server is restarted). */
+  async stop(serverId: string): Promise<void> {
+    await this.ipc.lspStop(serverId).catch((error: unknown) => {
+      this.events.emit("appError", {
+        message: `Couldn't stop the language server: ${String(error)}`,
+      });
+    });
+    this.outcomes.clear();
+    await this.refresh();
+  }
+
+  /** Stops the server and starts it again by telling it about the open files. */
+  async restart(serverId: string): Promise<void> {
+    const server = this.servers().find((entry) => entry.id === serverId);
+    if (!server) return;
+    this.deps.log(`Restarting ${server.name}…`);
+    await this.ipc.lspStop(serverId).catch((error: unknown) => {
+      this.events.emit("appError", { message: `Couldn't stop ${server.name}: ${String(error)}` });
+    });
+    this.reported.delete(serverId);
+    for (const [id, outcome] of [...this.outcomes]) {
+      if (outcome.state === "ready" && this.serverIdOf(id) === serverId) this.outcomes.delete(id);
+    }
+    await this.refresh();
+    await this.resyncAll(server.languages);
+  }
+
+  /** Restarts the server of the file in front. */
+  async restartActive(): Promise<boolean> {
+    const status = this.activeFileStatus();
+    if (status.server === null || !this.activeRestartAvailability().enabled) return false;
+    await this.restart(status.server.id);
+    return true;
+  }
+
+  private serverIdOf(docId: string): string | null {
+    const path = this.documents.has(docId) ? this.documents.snapshot(docId).path : null;
+    return path === null ? null : (this.serverForPath(path)?.id ?? null);
+  }
+
+  /** Downloads and installs a server (only ever on the user's request), then starts telling it about open files. */
+  async install(serverId: string): Promise<boolean> {
+    const server = this.servers().find((entry) => entry.id === serverId);
+    if (!server?.canInstall) return false;
+    try {
+      await this.ipc.lspInstall(serverId);
+    } catch (error) {
+      this.events.emit("appError", {
+        message: `Installing ${server.name} failed: ${String(error)}`,
+      });
+      await this.refresh();
+      return false;
+    }
+    this.events.emit("appNotice", { message: `${server.name} installed.` });
+    this.reported.delete(serverId);
+    await this.refresh();
+    await this.resyncAll(server.languages);
+    return true;
+  }
+
+  async setVerbose(verbose: boolean): Promise<void> {
+    await this.ipc.lspSetVerbose(verbose).catch(() => undefined);
+    await this.refresh();
+  }
+
+  /** Opens the server's log file in the system editor. */
+  async openLog(serverId: string): Promise<boolean> {
+    const server = this.servers().find((entry) => entry.id === serverId);
+    if (!server?.logExists) return false;
+    await this.ipc.panelOpenFile(server.logPath).catch((error: unknown) => {
+      this.events.emit("appError", { message: String(error) });
+    });
+    return true;
+  }
+
+  private log(event: LspLogEvent): void {
+    const tag = event.level === "info" ? "" : `${event.level}: `;
+    this.deps.log(`[${event.server}] ${tag}${event.text}`);
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener();
+  }
+}

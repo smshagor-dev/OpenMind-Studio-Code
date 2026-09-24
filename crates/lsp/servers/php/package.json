@@ -1,0 +1,6 @@
+{
+  "name": "openmind-lsp-php",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {"intelephense": "1.18.5"}
+}

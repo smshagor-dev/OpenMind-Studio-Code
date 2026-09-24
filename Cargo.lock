@@ -2808,6 +2808,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-lsp"
+version = "0.1.0"
+dependencies = [
+ "openmind-process",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-process"
 version = "0.1.0"
 dependencies = [
@@ -2879,6 +2891,7 @@ dependencies = [
  "openmind-file-watch",
  "openmind-fs",
  "openmind-git",
+ "openmind-lsp",
  "openmind-runner",
  "openmind-runtime-manager",
  "openmind-search",
@@ -2886,6 +2899,7 @@ dependencies = [
  "openmind-terminal",
  "openmind-workspace",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

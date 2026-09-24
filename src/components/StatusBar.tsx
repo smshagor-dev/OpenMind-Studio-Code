@@ -5,6 +5,7 @@ import { container } from "../services/container";
 import type { DocumentSnapshot } from "../services/documentService";
 import type { LineEnding, TextEncoding } from "../services/ipc";
 import { GitBranchIndicator } from "./GitBranchIndicator";
+import { LspStatusItem } from "./LspStatusItem";
 import { ErrorIcon, WarningIcon } from "./icons";
 
 const ENCODING_LABELS: Record<TextEncoding, string> = {
@@ -103,6 +104,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
           <span className="statusbar__item" title="End of Line Sequence">
             {EOL_LABELS[activeDocument.lineEnding]}
           </span>
+          <LspStatusItem />
           <span className="statusbar__item" title="Language Mode">
             {languageName(status.languageId)}
           </span>

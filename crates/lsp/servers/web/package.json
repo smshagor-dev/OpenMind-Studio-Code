@@ -1,0 +1,6 @@
+{
+  "name": "openmind-lsp-web",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {"vscode-langservers-extracted": "4.10.0"}
+}

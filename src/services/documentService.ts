@@ -1,3 +1,5 @@
+import type * as monaco from "monaco-editor";
+
 import type { BufferManager } from "./bufferManager";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
@@ -86,6 +88,7 @@ export class DocumentService {
     const loaded = this.documents.get(id);
     if (loaded) loaded.savedContent = model.getValue();
     this.watchDirtyState(id);
+    this.events.emit("documentOpened", { id });
     return id;
   }
 
@@ -276,7 +279,14 @@ export class DocumentService {
     }
   }
 
+  /** Sets the markers `owner` reports for a document (a language server's diagnostics); empty clears them. */
+  setMarkers(id: string, owner: string, markers: monaco.editor.IMarkerData[]): void {
+    this.requireDocument(id);
+    this.buffers.setMarkers(id, owner, markers);
+  }
+
   close(id: string): void {
+    this.events.emit("documentClosed", { id, path: this.documents.get(id)?.path ?? null });
     this.buffers.dispose(id);
     this.documents.delete(id);
   }
@@ -319,15 +329,27 @@ function basename(path: string): string {
 
 const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
   tsx: "typescript",
   js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
   jsx: "javascript",
   json: "json",
+  jsonc: "json",
   md: "markdown",
   rs: "rust",
   py: "python",
+  pyi: "python",
+  pyw: "python",
+  php: "php",
+  phtml: "php",
   css: "css",
+  scss: "scss",
+  less: "less",
   html: "html",
+  htm: "html",
   yaml: "yaml",
   yml: "yaml",
   toml: "ini",

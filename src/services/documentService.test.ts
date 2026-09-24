@@ -119,6 +119,19 @@ describe("DocumentService", () => {
     expect(() => service.snapshot(id)).toThrow(/does not exist/);
   });
 
+  it("files a language server handles get the matching editor language (providers are registered per language)", async () => {
+    const languageOf = async (path: string) => {
+      const ipc = createFakeIpc({
+        documentOpen: vi.fn().mockResolvedValue({ ...OPENED, path, content: "" }),
+      });
+      const service = new DocumentService(ipc, new BufferManager(), events);
+      return service.languageOf(await service.openFromPath(path));
+    };
+    expect(await languageOf("C:/My Site/index.php")).toBe("php");
+    expect(await languageOf("C:/My Site/tool.py")).toBe("python");
+    expect(await languageOf("C:/My Site/notes.txt")).toBe("plaintext");
+  });
+
   describe("line endings and the loaded baseline", () => {
     type Eol = OpenedDocument["lineEnding"];
     const CASES: [string, Eol, string][] = [

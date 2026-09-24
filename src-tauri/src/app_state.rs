@@ -51,6 +51,8 @@ pub struct AppState {
     pub file_watch: std::sync::Mutex<Option<openmind_file_watch::FileWatcher>>,
     /// Running Git commands, stopped on app close.
     pub git: openmind_git::GitRegistry,
+    /// Language servers (started on first use, stopped on app close).
+    pub lsp: openmind_lsp::LspManager,
     /// Geometry of secondary windows (the PHP Server window).
     pub window_states: openmind_settings::WindowStateService,
 }

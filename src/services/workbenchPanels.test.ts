@@ -21,6 +21,7 @@ describe("OutputService", () => {
       "Search",
       "Run Code",
       "Git",
+      "LSP",
     ]);
     expect(output.getState().selected).toBe("OpenMind Studio");
   });

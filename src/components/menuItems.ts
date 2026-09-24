@@ -17,11 +17,15 @@ export function resolveMenuEntries(entries: MenuEntry[]): PopupItem[] {
     }
     const checked = container.commands.isChecked(entry.command);
     const useToggledLabel = entry.toggledLabel !== undefined && checked === true;
+    const enabled = container.commands.isEnabled(entry.command);
+    const reason = enabled ? undefined : container.commands.reasonFor(entry.command);
     return {
       kind: "item",
       label: useToggledLabel ? (entry.toggledLabel ?? entry.label) : entry.label,
       shortcut: container.keybindings.labelFor(entry.command),
-      enabled: container.commands.isEnabled(entry.command),
+      enabled,
+      reason,
+      showReason: reason !== undefined ? true : undefined,
       checked: entry.toggledLabel !== undefined ? undefined : checked,
       onSelect: () => {
         container.run(entry.command, ...(entry.args ?? []));

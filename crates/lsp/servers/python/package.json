@@ -1,0 +1,6 @@
+{
+  "name": "openmind-lsp-python",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {"pyright": "1.1.414"}
+}

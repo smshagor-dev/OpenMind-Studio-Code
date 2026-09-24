@@ -66,6 +66,11 @@ export class BufferManager {
     model.pushEditOperations([], [{ range, text: edit.text }], () => null);
   }
 
+  /** Replaces the markers `owner` set on the buffer (an empty list clears them). */
+  setMarkers(id: string, owner: string, markers: monaco.editor.IMarkerData[]): void {
+    monaco.editor.setModelMarkers(this.requireModel(id), owner, markers);
+  }
+
   onDidChangeContent(id: string, listener: () => void): () => void {
     const disposable = this.requireModel(id).onDidChangeContent(() => {
       listener();

@@ -287,6 +287,24 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   `commands::watch` (`watch_start`/`watch_stop`; `watch_start` accepts only the active workspace folder, so a
   compromised webview can't watch elsewhere) pushes `fs:changed` batches; window close stops it. `document_read`
   (`commands::document`) answers missing/file/unreadable without touching recent files.
+- `openmind-lsp` (Milestone 7) — the Language Server Protocol client, Tauri-agnostic (`LspEvents` sink supplied by the app).
+  `registry` lists the servers as data (TypeScript/JavaScript = typescript-language-server + typescript, Python = Pyright,
+  PHP = Intelephense, JSON/CSS/HTML = vscode-langservers-extracted) with the **pinned `package.json` + `package-lock.json`**
+  embedded from `crates/lsp/servers/<package>/`; `install` runs Node's own `npm ci --ignore-scripts` on that lockfile (every
+  download is checked against a pinned integrity hash; npm cache in `cache/npm`) into `language-servers/<package>/<revision>/`,
+  staged then renamed, only when the user presses Install. `node::resolve_node` = OpenMind portable Node first, a Node on the
+  system PATH only as a labelled fallback ("System Node.js at ..."). `process` spawns `node <entry> --stdio` directly (argument
+  list, no shell, no console window, the Runtime Manager's `path_prepend`/`env` on the *server's* PATH only) inside a Job Object,
+  so the whole tree dies with it (verified: a hard-killed app leaves no server behind). `jsonrpc` (Content-Length framing),
+  `session` (ids, waiting callers, timeouts + `$/cancelRequest`, answers the server's own requests such as
+  `workspace/configuration`, notifications to a listener; tested over in-memory pipes), `protocol` (client capabilities,
+  capability parsing, diagnostics, the fixed list of requests the UI may send — anything else is refused), `docs`
+  (`DocumentSync`: didOpen once, then full-text didChange with rising versions, save, close), `uri`, `language`, and
+  `LspManager` (one server per id, started lazily for a file inside the open workspace, gate per server, crash -> Error state
+  + log, `stop_all` = `shutdown`/`exit` then tree kill). `commands::lsp` (`lsp_status/install/sync_document/save_document/
+  close_document/request/stop/stop_all/set_verbose`) picks the server by extension, refuses files outside the workspace,
+  pushes `lsp:diagnostics`/`lsp:log`/`lsp:changed` and writes `logs/lsp/<server>.log` (rotated at 2 MB). Ignored real-network
+  tests (`crates/lsp/tests/real_server.rs`) install and drive the real TypeScript, Pyright and Intelephense servers.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -306,7 +324,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
-`openmind-lsp` (language server client + auto-download), `openmind-dap` (Debug Adapter Protocol
+`openmind-dap` (Debug Adapter Protocol
 client), `openmind-git` (Git client), `openmind-search`
 (indexed workspace/symbol search), `openmind-extensions` (extension host + sandboxing, backing the
 OpenMind Extensions ecosystem), `openmind-ai` (AI provider plugin architecture, including the
@@ -516,6 +534,25 @@ internals.
   branch / discard / discard all / delete untracked / pull and `GitStashService` after apply/pop (one notice, not one per
   file). `SourceControlService.refreshOpenDiff` closes a working-tree/staged diff that went stale with a notice. `appNotice`
   events render as info toasts (`ErrorToast` kind `info`).
+- **Language servers (Milestone 7).** `LspService` keeps every open file-backed document told to its server (didOpen on open,
+  edits debounced 250 ms and flushed before a request, save, close, a file deleted on disk is closed there and reopened when it
+  is back, Save As/rename re-targets), remembers each file's last sync outcome (why it has no features), installs/restarts/
+  stops servers on request, logs to the **LSP** Output channel and answers `available(action, doc)`; pure `lspAvailability`
+  gives every disabled action its reason ("Language server is not installed yet.", "Node.js runtime is not installed yet.",
+  "This file is outside the open folder.", "<Server> doesn't support Format Document.", ...). `DiagnosticsService` turns
+  `lsp:diagnostics` into Monaco markers (owner `lsp:<server>`; the Problems panel already reads markers, so problems appear,
+  update, clear when a file closes — markers outlive models in Monaco, so they are removed explicitly — or its server stops).
+  `lspProviders.ts` registers hover, completion (+resolve), signature help, definition/declaration/type definition/
+  implementation, references, rename (prepare + edits over open documents; a file that isn't open is opened as a tab and
+  edited unsaved), formatting, range formatting and document symbols for every language a server handles, plus an editor
+  opener so cross-file navigation goes through the tabs; files that aren't open appear in Peek as read-only copies
+  (`PeekModels`, max 40). `lspConvert.ts` holds the pure LSP<->Monaco conversions. `lspCommands.ts` gates `go.toDefinition`,
+  `go.toDeclaration`, `go.toTypeDefinition`, `go.toImplementations`, `go.toReferences`/`lsp.findReferences`, `edit.renameSymbol`
+  (F2), `edit.formatDocument` (Shift+Alt+F) on the server's capabilities (`CommandOptions.disabledReason` shows in menus),
+  plus `lsp.restart`, `lsp.manage` (Language Tools dialog: install/restart/stop/logs/verbose), `lsp.openOutput`; the status
+  bar shows the active file's server or the reason. `monacoBuiltins.ts`: Monaco's own TypeScript/JavaScript service reads its
+  config once at first use, so it is switched off for good at start-up (its worker isn't available here — hovers hung on
+  "Loading…"); JSON/CSS/HTML built-ins are off only while their server runs. `documentOpened`/`documentClosed` events feed it.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -568,6 +605,7 @@ OpenMind Studio/
     runtimes/                 installed portable runtimes (future milestone)
     extensions/               installed extension packages (future milestone)
     themes/                   on-disk theme/icon-theme assets (future milestone)
+    language-servers/         npm-installed language servers, one folder per package revision (Milestone 7)
     settings/                 user-editable JSON config export (future milestone)
 ```
 
@@ -976,7 +1014,26 @@ migration file, check for stray running instances first, not just after somethin
   reloaded the clean tab with an info toast; relaunch restored the tabs clean; no orphan process. Known limitations: the
   model still holds one line ending, so saving an *edited* mixed file unifies its endings; a mixed file is
   not offered a "convert line endings" action yet.
-- [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
+- [x] **Milestone 7** — LSP and Problems panel integration (`feat: add lsp and problems integration`). New `openmind-lsp` crate
+  (52 tests + 3 ignored real-server tests), `commands::lsp`, the frontend services above, Language Tools dialog, status bar
+  item, LSP output channel, Go/Edit/Terminal menu entries, F2/Shift+Alt+F. Also fixed on the way: `documentService` mapped only a
+  handful of extensions to Monaco languages (PHP, SCSS, Less, .mjs ... opened as plain text, so no provider would have run).
+  Verified by hand in the built app (fresh portable copy `E:\omlsp\OpenMind Studio`, workspace `My Site` with a space): the
+  status bar said "Language server is not installed yet." and opened Language Tools; Install (real `npm ci` from the lockfile)
+  for TypeScript, Pyright and Intelephense started each server; TypeScript: hover, completion (`console.lo` -> `log`),
+  inline squiggles + Problems entries for an intentional error (click moved the cursor; fixing it cleared them), Go to
+  Definition (F12), Find References (Shift+F12 peek, 2 results), Rename (F2, both places), Format Document (Shift+Alt+F);
+  Python: hover and an error from Pyright; PHP: an error from Intelephense; Problems grouped per file with Error/Warning/Info/
+  Hint; an external overwrite of a dirty file showed the conflict banner and kept sending the editor's text, Reload from Disk
+  sent the new text and Pyright's problems followed; closing the app left no node/server process (6 before, 0 after), Registry
+  User/Machine PATH identical; relaunch restored the tabs and restarted the servers. Known limitations: servers ran on the
+  labelled *system* Node (portable-first precedence is unit-tested, not exercised by hand); JSON/CSS/HTML servers and PHP hover/
+  completion were not exercised by hand (PHP diagnostics/hover pass the real-server test); Intelephense's free tier lacks rename
+  and some features; sync is full-text (no incremental); only files inside the open folder get a server; diagnostics exist only
+  for open files; rename opens the other files as tabs (edits left unsaved) and refuses file create/rename/delete edits; no
+  code actions, inlay hints, semantic tokens or workspace symbols; Python settings/interpreter selection are not passed to
+  Pyright (it finds Python on the server's PATH, portable first); without a TypeScript server .ts/.js files have no language
+  features at all; the test folders `E:\omlsp` are left on disk.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 10 — Extension system (sandboxed, contributes commands/views/themes/...).
