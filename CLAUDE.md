@@ -38,8 +38,13 @@ no TODO-as-implementation, no mock logic standing in for a real feature.
 **Known issue**: this project's Vite 8 (Rolldown bundler) fails to bundle a web worker that
 imports from a node_modules package (`?worker`/`?url` suffixes and bare `new URL(...)` specifiers
 all fail the same way — confirmed a Rolldown-specific resolver bug, not an app bug). Monaco
-therefore runs without a custom `MonacoEnvironment.getWorker` — a real, Monaco-supported
-main-thread fallback (console warning, no crash), not a mock. Revisit when LSP-adjacent work
+therefore runs without a custom `MonacoEnvironment.getWorker` for the language services — a real,
+Monaco-supported main-thread fallback (console warning, no crash), not a mock. **One exception (Milestone 6)**:
+the diff editor computed no highlights on the fallback, so Monaco's own pre-bundled, self-contained editor
+worker (`node_modules/monaco-editor/min/vs/assets/editor.worker-<hash>.js`) is copied to
+`public/monaco-workers/editor.worker.js` by `scripts/copy-monaco-workers.mjs` (`predev`/`prebuild`; the folder is
+git-ignored) and `src/editor/monacoEnvironment.ts` returns it for the `editorWorkerService` label only —
+every other label returns `undefined`, which keeps Monaco's default for it. Revisit when LSP-adjacent work
 (Milestone 7) needs the language-service workers, or when Rolldown's worker resolution improves.
 
 **Retracted (Milestone 3.5)**: Milestone 3's retrospective reported WebView2 child processes
@@ -206,6 +211,24 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   console's PATH only), Netstat lists listening TCP ports with owning process (`openmind_runner::netstat`
   parses `netstat -ano` + `tasklist`; our own servers are marked). There is no "Services" button: nothing
   here is a Windows service.
+- `openmind-git` (Milestone 6) — the Git client. `exe::resolve` picks the executable: OpenMind's portable Git first
+  (searched in the Runtime Manager's injected `path_prepend` dirs), the system Git **only** when the user allowed it
+  (`editor_settings` `git.allowSystem`, set by the "Use System Git" button) and then labelled "System Git at <path>";
+  otherwise `NotInstalled` ("Git runtime is not installed yet."). `args` builds every command as an argument list
+  (never a shell; paths after `--`, `GIT_LITERAL_PATHSPECS=1`, `GIT_TERMINAL_PROMPT=0`, no editor/pager) and the log
+  label (paths counted, commit message elided). `exec::run` runs it with a time limit inside a Job Object
+  (`openmind-process`), tracked in `GitRegistry` so `stop_all()` kills stragglers on app close. `status` parses
+  `status --porcelain=v2 -z --branch` (modified/added/deleted/renamed/conflicted/untracked, branch, upstream,
+  ahead/behind). `path::repo_relative` refuses empty/absolute/drive/`..`/NUL/`.git` paths and
+  `crosses_symlink` blocks destructive file operations through links. `GitClient` (blocking) offers find_root,
+  init, status, stage/unstage (+ all; before the first commit unstage is `rm --cached`), discard/discard_all/
+  delete_untracked (each refuses unless told `confirmed`; discard only touches tracked working-tree edits, delete
+  only files Git lists as untracked), commit (message required, staged changes required), identity get/set
+  (repo-local config), `diff_sides` (both texts; added/deleted = one side `None`; binary and >2 MB refused),
+  branches list/switch/create/delete (`switch` without force, `branch -d`, names checked with
+  `check-ref-format`), and fetch/pull (`--ff-only`)/push (no credential storage: a remote that wants a password
+  fails with an explicit message). Tests: unit tests plus `tests/real_git.rs` against a real Git in temp folders with
+  spaces (skipped if the machine has no Git).
 - `openmind-process` (Milestone 5.6.2, Windows only) — `ProcessTree`, the Job Object
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
   `openmind-terminal` so the terminal and the runner share one implementation.
@@ -248,7 +271,9 @@ except through well-defined public APIs; no circular crate dependencies (enforce
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
-  `commands::settings::*`, `commands::theme::*`, `commands::terminal::*` — output/exit are pushed
+  `commands::settings::*`, `commands::theme::*`, `commands::git::*` (the repository is always the open workspace's,
+  found server-side; the UI sends only repo-relative names; each Git command is pushed as a `git:log` event),
+  `commands::terminal::*` — output/exit are pushed
   as `terminal:output` (base64 bytes: a chunk can split a UTF-8/escape sequence) and
   `terminal:exit` events), window/event wiring. Frontend-facing IPC surface
   lives here, not in the domain crates. `commands::settings` also holds two thin repository
@@ -442,6 +467,15 @@ internals.
   server section and the PHP card). Python, Node.js and Git are managed only in the Runtime Manager dialog;
   the Extensions side bar view is still the empty state (a Runtime Extensions sidebar was built and then
   removed at the user's request).
+- **Source Control (Milestone 6).** `GitService` (`gitService.ts`) = the IPC facade + the "Git" output channel (label,
+  cwd, output, exit code per command). `SourceControlService` = the view's brain: the backend snapshot (`noWorkspace` /
+  `gitMissing` / `notRepository` / `repository`), Staged / Changes / Untracked groups (a file can be in Staged and
+  Changes), pure `commitAvailability` (message, staged, identity, conflicts — each with its reason), every action
+  wrapped in `act()` (busy, notice, error, then a fresh status and a reloaded-or-closed diff), destructive actions
+  behind `pending` + `confirm()`, refresh on workspace change, document save, window focus and (while Git is missing)
+  runtime changes. `SourceControlView` + `GitFileList` / `GitCommitBox` / `GitBranchIndicator` (also in the status
+  bar: branch, `*` when dirty, `↑↓`) are UI only. The diff (`GitDiffViewer` + `editor/MonacoDiffHost`) is an overlay
+  over the editor area, not a tab. "Install Git Runtime" opens the Runtime Manager.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -835,7 +869,27 @@ migration file, check for stray running instances first, not just after somethin
   than typed into a browser; Copy Password was verified through the UI, its exact value only through its length
   and a successful ping; the test folders `E:\omcp` and `E:\omcp2` couldn't be deleted by the tool (protected
   path) and are left for manual removal. 491 TypeScript tests, 337 Rust tests (+1 ignored).
-- [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
+- [x] **Milestone 6** — Integrated Git client (`feat: add integrated git client`). New `openmind-git` crate (39 tests,
+  13 of them against a real Git), `commands::git`, `SourceControlService`/`GitService` and the Source Control view:
+  detect repository, init, changed/staged/untracked groups, stage/unstage (single and all), discard and delete with
+  confirmation, commit, working-tree and staged diff (Monaco side-by-side; binary/too-large handled), branch
+  list/switch/create/delete, fetch/pull/push, status-bar branch, Git output channel, identity form when Git has
+  none. Verified by hand in the built app (fresh portable copy, workspace `my repo` with a space): with no Git
+  runtime the view said so, offered Install Git Runtime (opened the Runtime Manager, MinGit installed) and offered
+  the machine's Git only as an explicit, path-labelled "Use System Git" (never used silently); non-repo state; Initialize
+  Repository (branch `master` in the view and status bar); an untracked file appeared, was staged, committed
+  (`[master (root-commit) f5d910e]`), edited, shown in the working-tree diff (real red/green highlights), staged,
+  shown in the staged diff, unstaged and discarded after the confirmation dialog (file content restored);
+  a second file with Stage All / Unstage All (disabled ones carry their reason); Git output channel content;
+  branch create/switch/delete (confirmation); relaunch re-detected the repository; closing the app left no Git
+  process; Registry User/Machine PATH identical. Real problems found and fixed on the way: the diff had no
+  highlights without a worker (see the Monaco worker note above), the view didn't notice Git being installed, a
+  stale staged diff stayed open after unstaging, action errors were wiped by the following refresh. Known
+  limitations: no clone, history/log or blame, merge/rebase/stash; untracked files can only be deleted one at a time;
+  the diff is an overlay, not a tab; the commit identity form writes the repository's own config; fetch/pull/push
+  were verified only against a local bare repository (no network remote, no credentials by design); rename
+  detection shows what Git reports and was covered by parser tests, not by hand. The test folder `E:\\omgit` could
+  not be deleted by the tool (protected path). 533+ TypeScript tests, 376 Rust tests (+1 ignored).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.

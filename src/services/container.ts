@@ -31,6 +31,8 @@ import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { ComposerService } from "./composerService";
+import { GitService } from "./gitService";
+import { SourceControlService } from "./sourceControlService";
 import { ControlPanelService } from "./controlPanelService";
 import { MariaDbService } from "./mariaDbService";
 import { PhpMyAdminService } from "./phpMyAdminService";
@@ -106,6 +108,16 @@ const controlPanel = new ControlPanelService(
   mariaDb,
   phpMyAdmin,
   () => windowService.close(),
+);
+const gitService = new GitService(tauriIpcClient, output);
+const sourceControl = new SourceControlService(
+  gitService,
+  events,
+  (path) => workspace.openPath(path),
+  () => {
+    events.emit("showRuntimeManager", undefined);
+  },
+  (listener) => runtime.subscribe(listener),
 );
 const runConfigs = new RunConfigurationService(tauriIpcClient);
 const runCode = new RunCodeService(
@@ -326,6 +338,8 @@ export const container = {
   phpMyAdmin,
   composer,
   controlPanel,
+  git: gitService,
+  sourceControl,
   search,
   editorGroups,
   openEditors,

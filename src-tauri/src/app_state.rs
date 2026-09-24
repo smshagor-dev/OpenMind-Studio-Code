@@ -47,6 +47,8 @@ pub struct AppState {
     pub pma_info: std::sync::Mutex<Option<crate::commands::database::ServiceInfo>>,
     /// The Composer command that is running, if any (one at a time).
     pub composer: RunRegistry,
+    /// Running Git commands, stopped on app close.
+    pub git: openmind_git::GitRegistry,
     /// Geometry of secondary windows (the PHP Server window).
     pub window_states: openmind_settings::WindowStateService,
 }

@@ -12,6 +12,7 @@ import { OpenEditorsSection } from "./OpenEditorsSection";
 import { PaneSection } from "./PaneSection";
 import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
+import { SourceControlView } from "./SourceControlView";
 import { SideViewPlaceholder } from "./SideViewPlaceholder";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 
@@ -94,13 +95,7 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
     case "search":
       return <SearchView />;
     case "scm":
-      return (
-        <SideViewPlaceholder
-          heading="Source Control"
-          message="Git client is not enabled yet."
-          hint="Repositories, commits and branches will appear here once it is."
-        />
-      );
+      return <SourceControlView />;
     case "debug":
       return (
         <SideViewPlaceholder

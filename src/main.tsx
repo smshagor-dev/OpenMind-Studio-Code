@@ -5,7 +5,10 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import { App } from "./App";
 import { PHP_WINDOW_LABEL, PhpServerWindow } from "./PhpServerWindow";
+import { installMonacoEnvironment } from "./editor/monacoEnvironment";
 import "./styles/app.css";
+
+installMonacoEnvironment(self, import.meta.env.BASE_URL);
 
 /** Both windows load this same page; the window's label decides which screen it shows. */
 function isPhpServerWindow(): boolean {

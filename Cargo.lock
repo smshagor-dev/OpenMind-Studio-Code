@@ -2709,6 +2709,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-git"
+version = "0.1.0"
+dependencies = [
+ "openmind-process",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-process"
 version = "0.1.0"
 dependencies = [
@@ -2778,6 +2789,7 @@ dependencies = [
  "openmind-core",
  "openmind-db",
  "openmind-fs",
+ "openmind-git",
  "openmind-runner",
  "openmind-runtime-manager",
  "openmind-search",

@@ -273,6 +273,32 @@ export interface IpcClient {
   onComposerEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
   onComposerChanged: (handler: () => void) => Promise<() => void>;
 
+  // Source Control (Git). The repository is always the open workspace's; only repo-relative file names are sent.
+  gitSnapshot: () => Promise<GitSnapshot>;
+  gitInit: () => Promise<void>;
+  gitStage: (paths: string[]) => Promise<void>;
+  gitStageAll: () => Promise<void>;
+  gitUnstage: (paths: string[]) => Promise<void>;
+  gitUnstageAll: () => Promise<void>;
+  gitDiscard: (paths: string[], confirmed: boolean) => Promise<void>;
+  gitDiscardAll: (confirmed: boolean) => Promise<void>;
+  gitDeleteUntracked: (path: string, confirmed: boolean) => Promise<void>;
+  gitCommit: (message: string) => Promise<string>;
+  gitIdentity: () => Promise<GitIdentity>;
+  gitSetIdentity: (name: string, email: string) => Promise<void>;
+  gitDiff: (path: string, staged: boolean) => Promise<GitDiffSides>;
+  gitBranches: () => Promise<GitBranch[]>;
+  gitSwitchBranch: (name: string) => Promise<void>;
+  gitCreateBranch: (name: string) => Promise<void>;
+  gitDeleteBranch: (name: string, confirmed: boolean) => Promise<void>;
+  gitFetch: () => Promise<string>;
+  gitPull: () => Promise<string>;
+  gitPush: () => Promise<string>;
+  gitAllowSystem: () => Promise<boolean>;
+  gitSetAllowSystem: (allow: boolean) => Promise<void>;
+  /** One Git command finished (label, cwd, exit code, output) — for the Git output channel. */
+  onGitLog: (handler: (entry: GitLogEntry) => void) => Promise<() => void>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
 }
@@ -375,6 +401,71 @@ export interface PhpServerInfo {
 }
 
 /** A service the backend started (MariaDB, phpMyAdmin). */
+export type GitChangeKind =
+  | "unmodified"
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "typeChanged"
+  | "unmerged"
+  | "untracked";
+
+/** Mirrors openmind_git::FileChange. */
+export interface GitFileChange {
+  path: string;
+  origPath: string | null;
+  index: GitChangeKind;
+  worktree: GitChangeKind;
+  conflicted: boolean;
+}
+
+/** Mirrors openmind_git::RepoStatus. */
+export interface GitRepoStatus {
+  branch: string | null;
+  detached: boolean;
+  oid: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  changes: GitFileChange[];
+}
+
+/** What the Source Control view is showing (mirrors commands::git::GitSnapshot). */
+export type GitSnapshot =
+  | { state: "noWorkspace" }
+  | { state: "gitMissing"; reason: string; systemGit: string | null }
+  | { state: "notRepository"; git: string }
+  | { state: "repository"; root: string; name: string; git: string; status: GitRepoStatus };
+
+export interface GitBranch {
+  name: string;
+  current: boolean;
+  upstream: string | null;
+}
+
+export interface GitIdentity {
+  name: string | null;
+  email: string | null;
+}
+
+/** `null` = the file doesn't exist on that side (added / deleted). */
+export interface GitDiffSides {
+  path: string;
+  original: string | null;
+  modified: string | null;
+  binary: boolean;
+}
+
+export interface GitLogEntry {
+  label: string;
+  cwd: string;
+  code: number | null;
+  stdout: string;
+  stderr: string;
+}
+
 export type PanelModule = "php" | "mariadb" | "phpmyadmin";
 
 /** Mirrors openmind_runner::ListeningPort. */
@@ -596,6 +687,32 @@ export const tauriIpcClient: IpcClient = {
   panelOpenFolder: (path) => invoke("panel_open_folder", { path }),
   panelOpenShell: (cwd) => invoke("panel_open_shell", { cwd }),
   panelNetstat: () => invoke<ListeningPort[]>("panel_netstat"),
+  gitSnapshot: () => invoke<GitSnapshot>("git_snapshot"),
+  gitInit: () => invoke("git_init"),
+  gitStage: (paths) => invoke("git_stage", { paths }),
+  gitStageAll: () => invoke("git_stage_all"),
+  gitUnstage: (paths) => invoke("git_unstage", { paths }),
+  gitUnstageAll: () => invoke("git_unstage_all"),
+  gitDiscard: (paths, confirmed) => invoke("git_discard", { paths, confirmed }),
+  gitDiscardAll: (confirmed) => invoke("git_discard_all", { confirmed }),
+  gitDeleteUntracked: (path, confirmed) => invoke("git_delete_untracked", { path, confirmed }),
+  gitCommit: (message) => invoke<string>("git_commit", { message }),
+  gitIdentity: () => invoke<GitIdentity>("git_identity"),
+  gitSetIdentity: (name, email) => invoke("git_set_identity", { name, email }),
+  gitDiff: (path, staged) => invoke<GitDiffSides>("git_diff", { path, staged }),
+  gitBranches: () => invoke<GitBranch[]>("git_branches"),
+  gitSwitchBranch: (name) => invoke("git_switch_branch", { name }),
+  gitCreateBranch: (name) => invoke("git_create_branch", { name }),
+  gitDeleteBranch: (name, confirmed) => invoke("git_delete_branch", { name, confirmed }),
+  gitFetch: () => invoke<string>("git_fetch"),
+  gitPull: () => invoke<string>("git_pull"),
+  gitPush: () => invoke<string>("git_push"),
+  gitAllowSystem: () => invoke<boolean>("git_allow_system"),
+  gitSetAllowSystem: (allow) => invoke("git_set_allow_system", { allow }),
+  onGitLog: (handler) =>
+    listen<GitLogEntry>("git:log", (event) => {
+      handler(event.payload);
+    }),
   onPhpEvent: (handler) =>
     listen<RunEvent>("php:event", (event) => {
       handler(event.payload);

@@ -84,6 +84,7 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             let _ = tokio::time::timeout(
                 Duration::from_secs(25),
                 tokio::task::spawn_blocking(move || {
+                    crate::commands::git::stop_git(&app);
                     crate::commands::database::stop_all_services(&app)
                 }),
             )

@@ -20,6 +20,7 @@ describe("OutputService", () => {
       "Terminal",
       "Search",
       "Run Code",
+      "Git",
     ]);
     expect(output.getState().selected).toBe("OpenMind Studio");
   });

@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { DocumentSnapshot } from "../services/documentService";
 import type { LineEnding, TextEncoding } from "../services/ipc";
+import { GitBranchIndicator } from "./GitBranchIndicator";
 import { ErrorIcon, WarningIcon } from "./icons";
 
 const ENCODING_LABELS: Record<TextEncoding, string> = {
@@ -41,6 +42,10 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
     (listener) => container.editor.subscribe(listener),
     () => container.editor.getStatus(),
   );
+  useSyncExternalStore(
+    (listener) => container.sourceControl.subscribe(listener),
+    () => container.sourceControl.getState(),
+  );
   const problems = useSyncExternalStore(
     (listener) => container.markers.subscribe(listener),
     () => container.markers.getCounts(),
@@ -65,6 +70,12 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
           <WarningIcon />
           <span>{problems.warnings}</span>
         </button>
+        <GitBranchIndicator
+          className="statusbar__item"
+          onClick={() => {
+            container.run("view.showSourceControl");
+          }}
+        />
       </div>
       {status && activeDocument ? (
         <div className="statusbar__right">

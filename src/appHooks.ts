@@ -48,6 +48,8 @@ export function useAppStartup(): boolean {
         container.phpMyAdmin.initialize(),
         container.composer.initialize(),
       ]);
+      await container.git.initialize();
+      await container.sourceControl.initialize();
       if (!lifecycle.cancelled) setReady(true);
     })();
     return () => {
