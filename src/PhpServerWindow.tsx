@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 import { useToasts } from "./appHooks";
 import { ErrorToast } from "./components/ErrorToast";
-import { PhpServerView } from "./components/PhpServerView";
+import { ControlPanel } from "./components/ControlPanel";
 import { container } from "./services/container";
 
 /** The label the backend gives the PHP Server window (`php_window_open`). */
@@ -28,6 +28,7 @@ export function PhpServerWindow() {
     void container.mariaDb.initialize();
     void container.phpMyAdmin.initialize();
     void container.composer.initialize();
+    void container.controlPanel.initialize();
     const refresh = () => {
       void container.runtime.refresh();
       void container.php.syncServer();
@@ -35,6 +36,7 @@ export function PhpServerWindow() {
       void container.mariaDb.refresh();
       void container.phpMyAdmin.refresh();
       void container.composer.refreshProject();
+      void container.controlPanel.refreshConfigPaths();
     };
     window.addEventListener("focus", refresh);
     return () => {
@@ -44,12 +46,13 @@ export function PhpServerWindow() {
       container.mariaDb.dispose();
       container.phpMyAdmin.dispose();
       container.composer.dispose();
+      container.controlPanel.dispose();
     };
   }, []);
 
   return (
     <div className="php-window">
-      <PhpServerView />
+      <ControlPanel />
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
     </div>
   );

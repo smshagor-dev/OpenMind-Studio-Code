@@ -31,6 +31,7 @@ import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { ComposerService } from "./composerService";
+import { ControlPanelService } from "./controlPanelService";
 import { MariaDbService } from "./mariaDbService";
 import { PhpMyAdminService } from "./phpMyAdminService";
 import { PhpRuntimeService } from "./phpRuntimeService";
@@ -97,6 +98,15 @@ const phpMyAdmin = new PhpMyAdminService(
 );
 const composer = new ComposerService(tauriIpcClient, events, output, runtime, panel, php);
 const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
+const controlPanel = new ControlPanelService(
+  tauriIpcClient,
+  events,
+  output,
+  php,
+  mariaDb,
+  phpMyAdmin,
+  () => windowService.close(),
+);
 const runConfigs = new RunConfigurationService(tauriIpcClient);
 const runCode = new RunCodeService(
   tauriIpcClient,
@@ -315,6 +325,7 @@ export const container = {
   mariaDb,
   phpMyAdmin,
   composer,
+  controlPanel,
   search,
   editorGroups,
   openEditors,

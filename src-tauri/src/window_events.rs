@@ -167,7 +167,9 @@ pub fn track_secondary_geometry(window: &WebviewWindow) {
 }
 
 fn current_window_state(window: &WebviewWindow) -> tauri::Result<WindowState> {
-    let size = window.outer_size()?;
+    // Inner size, because `apply_window_state` sets the inner size: saving the outer size made a
+    // decorated window grow by its frame on every reopen.
+    let size = window.inner_size()?;
     let position = window.outer_position()?;
     let maximized = window.is_maximized()?;
 

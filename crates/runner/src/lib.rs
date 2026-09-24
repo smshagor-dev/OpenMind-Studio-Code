@@ -7,6 +7,7 @@
 pub mod display;
 pub mod error;
 pub mod kind;
+pub mod netstat;
 pub mod oneshot;
 pub mod plan;
 pub mod runtime;
@@ -18,6 +19,7 @@ pub mod template;
 pub use display::{command_line, shell_command_line, ShellStyle};
 pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};
+pub use netstat::{name_processes, parse_netstat, parse_tasklist, ListeningPort};
 pub use oneshot::{run_to_completion, Completed};
 pub use plan::{plan, RunPlan, RunRequest};
 pub use runtime::{portable_version, RunEnvironment, RuntimeSource};

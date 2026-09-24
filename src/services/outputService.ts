@@ -26,6 +26,7 @@ export class OutputService {
   private readonly lines = new Map<string, readonly string[]>();
   private state: OutputState;
   private readonly listeners = new Set<() => void>();
+  private readonly appendListeners = new Set<(channel: string, line: string) => void>();
 
   constructor(channels: readonly string[] = INITIAL_OUTPUT_CHANNELS) {
     for (const name of channels) {
@@ -47,6 +48,14 @@ export class OutputService {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  /** Hears every appended line as it arrives (channel, line) — for views that merge channels. */
+  onAppend(listener: (channel: string, line: string) => void): () => void {
+    this.appendListeners.add(listener);
+    return () => {
+      this.appendListeners.delete(listener);
     };
   }
 
@@ -76,6 +85,9 @@ export class OutputService {
       channel,
       merged.length > MAX_OUTPUT_LINES ? merged.slice(-MAX_OUTPUT_LINES) : merged,
     );
+    for (const line of added) {
+      for (const listener of this.appendListeners) listener(channel, line);
+    }
     this.notify();
   }
 

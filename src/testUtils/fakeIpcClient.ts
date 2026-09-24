@@ -95,6 +95,11 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     phpServerStatus: vi.fn().mockResolvedValue(null),
     phpWindowOpen: vi.fn().mockResolvedValue(undefined),
     phpPortFree: vi.fn().mockResolvedValue(true),
+    panelConfigPath: vi.fn().mockResolvedValue(null),
+    panelOpenFile: vi.fn().mockResolvedValue(undefined),
+    panelOpenFolder: vi.fn().mockResolvedValue(undefined),
+    panelOpenShell: vi.fn().mockResolvedValue(undefined),
+    panelNetstat: vi.fn().mockResolvedValue([]),
     onPhpEvent: vi.fn().mockResolvedValue(() => undefined),
     onPhpChanged: vi.fn().mockResolvedValue(() => undefined),
     mariadbStatus: vi.fn().mockResolvedValue({

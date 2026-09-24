@@ -79,7 +79,7 @@ fn plain_path_text(path: &Path) -> Result<String, RunError> {
 /// The `my.ini` OpenMind starts MariaDB with. Paths are quoted (they may
 /// contain spaces) and use forward slashes; server output goes to the console,
 /// which OpenMind captures into `logs/mariadb`. It binds 127.0.0.1 only and
-/// disables the Windows named pipe and shared memory so it can't collide with
+/// disables the Windows named pipe so it can't collide with
 /// (or be reached through) another MySQL on the machine.
 pub fn render_mariadb_config(
     paths: &MariaDbPaths,
@@ -98,7 +98,6 @@ port={port}\r\n\
 bind-address={LOOPBACK}\r\n\
 skip-name-resolve\r\n\
 enable-named-pipe=OFF\r\n\
-shared-memory=OFF\r\n\
 character-set-server=utf8mb4\r\n\
 collation-server=utf8mb4_general_ci\r\n\
 max_connections=50\r\n\

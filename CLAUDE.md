@@ -188,7 +188,20 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   started with when the active PHP changes and show a restart notice. Frontend: `MariaDbService`,
   `PhpMyAdminService`, `ComposerService` (pure availability functions, every disabled button has a reason) and
   `PhpStackSections` (Database/phpMyAdmin/Composer/Logs with ellipsized, copyable paths). The PHP window is
-  single-instance and its geometry is persisted in `window_state` (`WindowStateService::load_or`).
+  single-instance and its geometry is persisted in `window_state` (`WindowStateService::load_or`; the *inner*
+  size is saved, because saving the outer size made a decorated window grow by its frame on every reopen).
+  **Control panel (5.8.1)**: the PHP Server window is an XAMPP-style control panel. `ControlPanelService` +
+  `ControlPanel.tsx`: a table with one row per module (PHP Server / MariaDB / phpMyAdmin) — PID, port, status and
+  Start|Stop, Admin, Config, Logs — side buttons Config, Netstat, Shell, Explorer, Help, Quit, and one merged log
+  (`OutputService.onAppend` hook, panel-clock timestamps, `[Module]` tags, capped at 500 lines; only lines that
+  arrive while the window is open are kept). Installing versions, the project folder, ports, Composer and the
+  MariaDB password are behind the Config *button* (the old `PhpServerView` as a sub page). Row Config opens the
+  module's config file in Notepad (`panel_config_path`/`panel_open_file`, restricted to files inside the app
+  folder), Logs filters the log, Admin opens the browser (MariaDB's Admin is phpMyAdmin), Explorer opens the
+  project folder, Shell opens a console (`panel_open_shell`, cwd = project, portable runtimes first on that
+  console's PATH only), Netstat lists listening TCP ports with owning process (`openmind_runner::netstat`
+  parses `netstat -ano` + `tasklist`; our own servers are marked). There is no "Services" button: nothing
+  here is a Windows service.
 - `openmind-process` (Milestone 5.6.2, Windows only) — `ProcessTree`, the Job Object
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
   `openmind-terminal` so the terminal and the runner share one implementation.
@@ -784,6 +797,20 @@ migration file, check for stray running instances first, not just after somethin
   designing the backend; the full end-to-end pass of the built app through the PHP window UI (fresh portable copy)
   was **not** repeated after the final UI landed — do that before relying on it. Known limitations: Windows x64
   only; the password is stored unencrypted in local SQLite; Apache not built; PHP window not restored on relaunch.
+- [x] **Milestone 5.8.1** — XAMPP-style control panel for the PHP Server window (see "Control panel (5.8.1)"
+  above). Verified in the built app (fresh portable copy, workspace path with spaces): PHP 8.4.26, MariaDB 11.8.9,
+  phpMyAdmin 5.2.3 and Composer installed from Config, database initialized, all three modules started from
+  the table (PIDs/ports shown: PHP 8000, MariaDB 3307, phpMyAdmin 8081), Admin opened the browser, phpMyAdmin
+  logged into MariaDB with the generated password (HTTP login, database list returned), row Config opened
+  php.ini and my.ini in Notepad, Logs filtered, Netstat listed ports with our servers named, Shell opened a
+  console in the project with the portable php first, Explorer opened the project folder, Stop ended each
+  process, Quit closed the window (servers keep running, reopening shows their PIDs and there is still one
+  window), closing the main app killed every server and the PHP window. Real bugs found this way and fixed:
+  MariaDB 11.8 rejected `shared-memory=OFF` in my.ini (aborted at start); the PHP window grew by its frame on
+  every reopen. Known limitations: the log only holds lines from while the window was open (MariaDB's and
+  phpMyAdmin's full logs are in `logs/`); MariaDB's Config is disabled until its first start creates
+  `settings/mariadb/my.ini`; no Windows-service or Apache modules; the test folder `E:\omcp` could not be deleted
+  by the tool (protected path) and was left for manual removal.
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

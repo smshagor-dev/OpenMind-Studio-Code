@@ -1,6 +1,7 @@
 pub mod database;
 pub mod document;
 pub mod filesystem;
+pub mod panel;
 pub mod php;
 pub mod run;
 pub mod runtime;

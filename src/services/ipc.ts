@@ -241,6 +241,14 @@ export interface IpcClient {
   /** Opens the PHP Server window (or brings it to the front). */
   phpWindowOpen: () => Promise<void>;
   phpPortFree: (port: number) => Promise<boolean>;
+  // Control-panel buttons of the PHP Server window
+  /** A module's config file, or `null` while it doesn't exist. */
+  panelConfigPath: (module: PanelModule) => Promise<string | null>;
+  panelOpenFile: (path: string) => Promise<void>;
+  panelOpenFolder: (path: string) => Promise<void>;
+  /** A console whose PATH starts with the active portable runtimes. */
+  panelOpenShell: (cwd: string | null) => Promise<void>;
+  panelNetstat: () => Promise<ListeningPort[]>;
   onPhpEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
   /** The server started or ended (in any window): re-read `phpServerStatus`. */
   onPhpChanged: (handler: () => void) => Promise<() => void>;
@@ -367,6 +375,16 @@ export interface PhpServerInfo {
 }
 
 /** A service the backend started (MariaDB, phpMyAdmin). */
+export type PanelModule = "php" | "mariadb" | "phpmyadmin";
+
+/** Mirrors openmind_runner::ListeningPort. */
+export interface ListeningPort {
+  address: string;
+  port: number;
+  pid: number;
+  process: string | null;
+}
+
 export interface ServiceInfo {
   run: RunInfo;
   port: number;
@@ -573,6 +591,11 @@ export const tauriIpcClient: IpcClient = {
   phpServerStatus: () => invoke<PhpServerInfo | null>("php_server_status"),
   phpWindowOpen: () => invoke("php_window_open"),
   phpPortFree: (port) => invoke<boolean>("php_port_free", { port }),
+  panelConfigPath: (module) => invoke<string | null>("panel_config_path", { kind: module }),
+  panelOpenFile: (path) => invoke("panel_open_file", { path }),
+  panelOpenFolder: (path) => invoke("panel_open_folder", { path }),
+  panelOpenShell: (cwd) => invoke("panel_open_shell", { cwd }),
+  panelNetstat: () => invoke<ListeningPort[]>("panel_netstat"),
   onPhpEvent: (handler) =>
     listen<RunEvent>("php:event", (event) => {
       handler(event.payload);

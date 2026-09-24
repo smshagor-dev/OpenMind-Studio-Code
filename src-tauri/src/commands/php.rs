@@ -119,14 +119,14 @@ pub async fn php_window_open(app: AppHandle) -> Result<(), String> {
     let saved = app
         .state::<AppState>()
         .window_states
-        .load_or(PHP_WINDOW_LABEL, 640.0, 780.0)
+        .load_or(PHP_WINDOW_LABEL, 700.0, 560.0)
         .await
         .map_err(|err| err.to_string())?;
     // Built hidden, sized and placed from the saved geometry, then shown, so it never flashes at the wrong size.
     let window =
         WebviewWindowBuilder::new(&app, PHP_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
             .title("PHP Server — OpenMind Studio")
-            .min_inner_size(320.0, 360.0)
+            .min_inner_size(560.0, 400.0)
             .visible(false)
             .build()
             .map_err(|err| err.to_string())?;

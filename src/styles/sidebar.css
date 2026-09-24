@@ -738,7 +738,7 @@
 
 .php-window {
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .php-window .php-view {
