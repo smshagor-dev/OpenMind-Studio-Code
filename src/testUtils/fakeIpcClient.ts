@@ -84,6 +84,15 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       .fn()
       .mockResolvedValue({ line: "", display: "", runtime: "", resolved: "", language: "" }),
     onRunEvent: vi.fn().mockResolvedValue(() => undefined),
+    phpServerStart: vi.fn().mockResolvedValue({
+      run: { runId: "php-1", file: "", pid: 1 },
+      url: "http://127.0.0.1:8000",
+      port: 8000,
+    }),
+    phpServerStop: vi.fn().mockResolvedValue(true),
+    phpServerActive: vi.fn().mockResolvedValue([]),
+    phpPortFree: vi.fn().mockResolvedValue(true),
+    onPhpEvent: vi.fn().mockResolvedValue(() => undefined),
     clipboardWriteText: vi.fn().mockResolvedValue(undefined),
     clipboardReadText: vi.fn().mockResolvedValue(""),
     appInfo: vi.fn().mockResolvedValue({ version: "0.0.0-test", tauriVersion: "2.0.0" }),

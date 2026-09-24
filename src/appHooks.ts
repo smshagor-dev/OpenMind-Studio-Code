@@ -39,6 +39,7 @@ export function useAppStartup(): boolean {
       await container.workspace.restoreActiveWorkspace();
       await container.workspace.restoreSession();
       await container.runCode.initialize();
+      await container.php.initialize();
       if (!lifecycle.cancelled) setReady(true);
     })();
     return () => {

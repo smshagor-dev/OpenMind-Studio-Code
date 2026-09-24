@@ -25,6 +25,15 @@ pub enum RunError {
     #[error("\"{}\" is not a folder that exists.", .0.display())]
     BadWorkingDirectory(PathBuf),
 
+    #[error("Select a valid project folder first.")]
+    BadServerRoot,
+
+    #[error("Port {0} isn't allowed. Choose a port from 1024 to 65535.")]
+    BadPort(u16),
+
+    #[error("Port {0} is already in use. Choose another port or stop the program using it.")]
+    PortInUse(u16),
+
     #[error("The run command isn't valid: {0}")]
     BadCommand(String),
 

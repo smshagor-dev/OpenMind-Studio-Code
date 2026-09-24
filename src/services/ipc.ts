@@ -231,6 +231,13 @@ export interface IpcClient {
   runTerminalCommand: (request: RunRequestArgs, shell: ShellStyle) => Promise<TerminalCommand>;
   onRunEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
 
+  // PHP built-in server (portable PHP only, bound to 127.0.0.1; events share the run event shape)
+  phpServerStart: (request: PhpServerRequest) => Promise<PhpServerInfo>;
+  phpServerStop: (runId: string) => Promise<boolean>;
+  phpServerActive: () => Promise<RunInfo[]>;
+  phpPortFree: (port: number) => Promise<boolean>;
+  onPhpEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
 }
@@ -318,6 +325,17 @@ export type RunEvent = { runId: string } & (
   | { type: "output"; stream: "stdout" | "stderr"; line: string }
   | { type: "exited"; code: number | null; durationMs: number; stopped: boolean }
 );
+
+export interface PhpServerRequest {
+  root: string;
+  port: number;
+}
+
+export interface PhpServerInfo {
+  run: RunInfo;
+  url: string;
+  port: number;
+}
 
 export type ShellStyle = "powerShell" | "cmd" | "bash";
 
@@ -480,6 +498,15 @@ export const tauriIpcClient: IpcClient = {
 
   onRunEvent: (handler) =>
     listen<RunEvent>("run:event", (event) => {
+      handler(event.payload);
+    }),
+
+  phpServerStart: (request) => invoke<PhpServerInfo>("php_server_start", { request }),
+  phpServerStop: (runId) => invoke<boolean>("php_server_stop", { runId }),
+  phpServerActive: () => invoke<RunInfo[]>("php_server_active"),
+  phpPortFree: (port) => invoke<boolean>("php_port_free", { port }),
+  onPhpEvent: (handler) =>
+    listen<RunEvent>("php:event", (event) => {
       handler(event.payload);
     }),
 

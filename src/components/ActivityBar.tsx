@@ -31,6 +31,7 @@ const VIEW_ITEMS: readonly ViewItem[] = [
   { view: "scm", label: "Source Control", shortcut: "Ctrl+Shift+G", icon: <SourceControlIcon /> },
   { view: "debug", label: "Run and Debug", shortcut: "Ctrl+Shift+D", icon: <DebugIcon /> },
   { view: "extensions", label: "Extensions", shortcut: "Ctrl+Shift+X", icon: <ExtensionsIcon /> },
+  { view: "php", label: "PHP Server", icon: <ServerIcon /> },
 ];
 
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
@@ -104,15 +105,6 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
           }}
         >
           <RuntimeIcon />
-        </button>
-        <button
-          type="button"
-          className="activity-bar__item"
-          title="PHP Server isn't available yet — it arrives with the PHP stack manager."
-          aria-label="PHP Server"
-          disabled
-        >
-          <ServerIcon />
         </button>
       </div>
       <div className="activity-bar__bottom">

@@ -1,0 +1,29 @@
+{
+  "id": "composer",
+  "displayName": "Composer",
+  "description": "PHP dependency manager. Runs on OpenMind's portable PHP, never a global one.",
+  "defaultVersion": "2.10.3",
+  "versionCommand": { "executable": "composer.phar", "args": ["--version"], "outputPrefix": "Composer version " },
+  "binDirs": [],
+  "verifyFiles": ["composer.phar"],
+  "env": {},
+  "shims": [
+    { "name": "composer", "target": "composer.phar", "viaEnv": "OPENMIND_PHP" }
+  ],
+  "notes": "composer.phar from getcomposer.org (SHA256 from its .sha256sum). The `composer` command is a small launcher that runs the phar with the active OpenMind PHP; without one installed it tells you so.",
+  "versions": [
+    {
+      "version": "2.10.3",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://getcomposer.org/download/2.10.3/composer.phar",
+          "sha256": "7a2d379d5b8ffdaa028580ef26494c36d2feef4b178d3dd1473a4dbc5e17c8d6",
+          "sizeBytes": 3642137,
+          "archive": "file",
+          "installAs": "composer.phar"
+        }
+      ]
+    }
+  ]
+}

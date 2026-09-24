@@ -9,6 +9,7 @@ pub mod error;
 pub mod kind;
 pub mod plan;
 pub mod runtime;
+pub mod server;
 pub mod session;
 pub mod template;
 
@@ -17,6 +18,10 @@ pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};
 pub use plan::{plan, RunPlan, RunRequest};
 pub use runtime::{RunEnvironment, RuntimeSource};
+pub use server::{
+    php_server_plan, port_is_free, server_url, validate_port, validate_root, PhpServerRequest,
+    DEFAULT_PORT, LOOPBACK,
+};
 pub use session::{EventSink, RunEvent, RunEventKind, RunInfo, RunRegistry, Stream};
 
 #[cfg(test)]

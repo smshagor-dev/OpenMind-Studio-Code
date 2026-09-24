@@ -10,7 +10,7 @@ use crate::detect::{detect_version, find_on_path};
 use crate::download::{download, verify_sha256, HttpClient};
 use crate::error::RuntimeError;
 use crate::extract::{extract_zip, ExtractSelection};
-use crate::manifest::{RuntimeManifest, RuntimeRegistry};
+use crate::manifest::{ArchiveKind, RuntimeManifest, RuntimeRegistry};
 use crate::paths::RuntimePaths;
 use crate::postinstall;
 use crate::shims::{shims_present, write_shims};
@@ -546,9 +546,13 @@ fn install_files(
         strip_components: artifact.strip_components,
         only_under: artifact.extract_root.as_deref(),
     };
-    extract_zip(archive, staging, selection, &mut |c, t| {
-        report(Extract, c, t);
-    })?;
+    match artifact.archive {
+        ArchiveKind::Zip => extract_zip(archive, staging, selection, &mut |c, t| {
+            report(Extract, c, t);
+        })?,
+        ArchiveKind::File => place_file(archive, staging, artifact.install_as.as_deref())?,
+    }
+    write_seed_files(manifest, staging)?;
     // Files a setup step is going to create can't be checked yet; those installs
     // are checked after the steps ran, below.
     if manifest.post_install.is_empty() {
@@ -569,6 +573,30 @@ fn install_files(
         }
     }
     report(Done, 1, Some(1));
+    Ok(())
+}
+
+/// A single downloaded file (already checksum-verified) becomes the whole
+/// install: copied into the staging folder under the manifest's fixed name.
+fn place_file(archive: &Path, staging: &Path, name: Option<&str>) -> Result<(), RuntimeError> {
+    let name = name.ok_or_else(|| {
+        RuntimeError::InvalidManifest("a file artifact has no installAs name".into())
+    })?;
+    fs::create_dir_all(staging).map_err(|err| RuntimeError::io(staging, err))?;
+    let target = staging.join(name);
+    fs::copy(archive, &target).map_err(|err| RuntimeError::io(&target, err))?;
+    Ok(())
+}
+
+/// Writes the manifest's `seedFiles` (a `php.ini`, say) into a fresh install.
+fn write_seed_files(manifest: &RuntimeManifest, dir: &Path) -> Result<(), RuntimeError> {
+    for seed in &manifest.seed_files {
+        let target = dir.join(&seed.path);
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|err| RuntimeError::io(parent, err))?;
+        }
+        fs::write(&target, &seed.content).map_err(|err| RuntimeError::io(&target, err))?;
+    }
     Ok(())
 }
 

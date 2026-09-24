@@ -606,6 +606,52 @@ async fn environment_includes_manifest_variables_with_the_install_dir_substitute
 }
 
 #[tokio::test]
+async fn a_single_file_artifact_installs_with_its_seed_file_and_a_via_env_shim() {
+    let phar = b"<?php echo 1;".to_vec();
+    let hash = sha(&phar);
+    let manifest = format!(
+        r#"{{
+        "id": "demo", "displayName": "Demo", "description": "d", "defaultVersion": "1.0.0",
+        "versionCommand": {{ "executable": "demo.phar", "args": ["--version"] }},
+        "binDirs": [], "verifyFiles": ["demo.phar", "demo.ini"], "env": {{}},
+        "seedFiles": [{{ "path": "demo.ini", "content": "extension_dir = \"ext\"\n" }}],
+        "shims": [{{ "name": "demo", "target": "demo.phar", "viaEnv": "DEMO_INTERPRETER" }}],
+        "versions": [
+          {{ "version": "1.0.0", "artifacts": [ {{ "platform": "windows-x64", "url": "{URL_1}", "sha256": "{hash}", "archive": "file", "installAs": "demo.phar" }} ] }}
+        ]
+    }}"#
+    );
+    let fx = fixture_with(vec![(URL_1, phar.clone())], manifest, "windows-x64").await;
+
+    fx.manager
+        .install("demo", None, no_progress())
+        .await
+        .expect("install");
+
+    let dir = versions_dir(&fx).join("1.0.0");
+    assert_eq!(std::fs::read(dir.join("demo.phar")).expect("phar"), phar);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("demo.ini")).expect("ini"),
+        "extension_dir = \"ext\"\n"
+    );
+    let shim_dir = fx
+        .root
+        .join("runtimes")
+        .join("demo")
+        .join("shims")
+        .join("1.0.0");
+    let shim_file = std::fs::read_dir(&shim_dir)
+        .expect("shim dir")
+        .filter_map(Result::ok)
+        .next()
+        .expect("a shim");
+    let text = std::fs::read_to_string(shim_file.path()).expect("shim text");
+    assert!(text.contains("DEMO_INTERPRETER"), "{text}");
+    let env = fx.manager.environment().await.expect("env");
+    assert_eq!(env.path_prepend, vec![shim_dir]);
+}
+
+#[tokio::test]
 async fn nothing_installed_means_an_empty_environment() {
     let fx = fixture().await;
 

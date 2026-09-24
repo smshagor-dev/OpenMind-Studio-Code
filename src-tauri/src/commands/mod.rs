@@ -1,5 +1,6 @@
 pub mod document;
 pub mod filesystem;
+pub mod php;
 pub mod run;
 pub mod runtime;
 pub mod search;

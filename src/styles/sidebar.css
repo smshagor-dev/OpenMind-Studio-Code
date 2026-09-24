@@ -433,3 +433,138 @@
   background-color: rgba(234, 92, 0, 0.33);
   color: inherit;
 }
+
+.php-view {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 12px 12px;
+  min-height: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.php-view__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.php-view__section h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.php-view__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.php-view__label,
+.php-view__hint {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.php-view__value {
+  overflow-wrap: anywhere;
+}
+
+.php-view__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.php-view__button {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 2px;
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-fg, var(--fg));
+  cursor: pointer;
+}
+
+.php-view__button:hover:not(:disabled) {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.php-view__button--primary {
+  background-color: var(--button-bg);
+  color: var(--button-fg, #fff);
+}
+
+.php-view__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.php-view__input {
+  width: 80px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  background-color: var(--input-bg, transparent);
+  color: var(--fg);
+}
+
+.php-view__component {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.php-view__component--planned {
+  opacity: 0.7;
+}
+
+.php-view__component-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.php-view__status {
+  color: var(--fg-muted);
+}
+
+.php-view__status--installed {
+  color: var(--success-fg, #89d185);
+}
+
+.php-view__status--needsRepair,
+.php-view__status--bad {
+  color: var(--warning-fg, #cca700);
+}
+
+.php-view__progress {
+  color: var(--accent-fg, #3794ff);
+}
+
+.php-view__error {
+  color: var(--danger-fg, #f48771);
+  overflow-wrap: anywhere;
+}
+
+.php-view__reason {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.php-view__log {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 4px 6px;
+  background-color: var(--input-bg, rgba(0, 0, 0, 0.2));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}

@@ -111,16 +111,14 @@ describe("ActivityBar", () => {
       "Source Control",
       "Run and Debug",
       "Extensions",
+      "PHP Server",
       "Runtime Manager",
     ]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();
     }
     const remote = screen.getByRole("button", { name: "Remote Explorer" });
-    const php = screen.getByRole("button", { name: "PHP Server" });
     expect(remote).toBeDisabled();
     expect(remote).toHaveAttribute("title", expect.stringContaining("isn't available"));
-    expect(php).toBeDisabled();
-    expect(php).toHaveAttribute("title", expect.stringContaining("isn't available"));
   });
 
   it("switches the side bar view, and clicking the active view's icon hides the side bar", async () => {
@@ -145,6 +143,17 @@ describe("ActivityBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     await waitFor(() => {
       expect(layout.getState().sidebarVisible).toBe(false);
+    });
+  });
+
+  it("PHP Server is a real view: its icon switches the side bar to it", async () => {
+    const { layout } = setup();
+    render(<ActivityBar sidebarVisible />);
+
+    fireEvent.click(screen.getByRole("button", { name: "PHP Server" }));
+
+    await waitFor(() => {
+      expect(layout.getState().activeView).toBe("php");
     });
   });
 

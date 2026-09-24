@@ -17,6 +17,8 @@ import { MarkerService } from "./markerService";
 import { OpenEditorsService } from "./openEditorsService";
 import { OutputService, stamped } from "./outputService";
 import { PanelService } from "./panelService";
+import { PhpServerService } from "./phpServerService";
+import { registerPhpCommands } from "./phpCommands";
 import { PortsService } from "./portsService";
 import { PreviewEditorService } from "./previewEditorService";
 import { RunConfigurationService } from "./runConfigurationService";
@@ -77,6 +79,15 @@ const search = new SearchService(
   workspace,
 );
 
+const php = new PhpServerService(
+  tauriIpcClient,
+  events,
+  output,
+  runtime,
+  ports,
+  panel,
+  () => workspace.getActiveWorkspace()?.path ?? null,
+);
 const runConfigs = new RunConfigurationService(tauriIpcClient);
 const runCode = new RunCodeService(
   tauriIpcClient,
@@ -243,6 +254,7 @@ registerEditorCommands({
   markdown,
 });
 registerRuntimeCommands(commands, events);
+registerPhpCommands(commands, php);
 
 registerWorkbenchCommands({
   commands,
@@ -289,6 +301,7 @@ export const container = {
   runCode,
   runConfigs,
   ports,
+  php,
   search,
   editorGroups,
   openEditors,

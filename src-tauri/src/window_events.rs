@@ -71,6 +71,7 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             state.search.cancel_all();
             // Nothing a run started may outlive the window.
             state.runner.stop_all();
+            state.php_server.stop_all();
 
             // `.destroy()`, not `.close()`: `.close()` re-emits
             // `CloseRequested` (documented behavior — "like a

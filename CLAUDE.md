@@ -164,6 +164,16 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   PATH. Known limitation: launchers that *other tools* generate later (e.g. `pip install black`
   creates `Scripts/black.exe`) still bake in absolute paths and break after a move — run them as
   `python -m black`; venvs created in a project are likewise not relocatable (Python's own design).
+  **PHP stack (Milestone 5.7)**: `php` (official windows.php.net NTS x64 zip from downloads.php.net,
+  SHA256 from its `releases.json`) and `composer` (`composer.phar` from getcomposer.org, SHA256 from
+  its `.sha256sum`) are ordinary manifests, using three general manifest features added for them:
+  artifact `archive: "file"` + `installAs` (a single downloaded file is the install), `seedFiles`
+  (static text written into a fresh install — PHP's `php.ini`, which enables curl/fileinfo/mbstring/
+  mysqli/openssl/pdo_mysql/zip and uses only the relative `extension_dir = "ext"`, so the folder stays
+  movable), and shim `viaEnv` (the `composer.cmd` launcher runs `%OPENMIND_PHP% <phar>`; PHP's manifest
+  env sets `OPENMIND_PHP={dir}\php.exe` per launch from the *active* install, so Composer never reaches
+  for a global PHP — with none active it says so and exits 1). Apache, MariaDB and phpMyAdmin are **not
+  implemented** (no manifests, listed in the PHP Server view as "Not available yet" with a reason).
 - `openmind-process` (Milestone 5.6.2, Windows only) — `ProcessTree`, the Job Object
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
   `openmind-terminal` so the terminal and the runner share one implementation.
@@ -184,7 +194,12 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   that is the PHP Stack Manager's job). Python/Node/TypeScript tools may fall back to the system PATH,
   labelled "System Python" etc. `RunPlan.display` is the friendly command (`python hello.py`: plain
   program name, paths inside the cwd made relative); `RunPlan.resolved` is the absolute interpreter,
-  reported separately (`resolved:` line in Output).
+  reported separately (`resolved:` line in Output). `server.rs` (5.7) plans the PHP built-in server:
+  `php -S 127.0.0.1:<port> -t <root>` by the *portable* PHP only (never a system one), root must be an
+  existing absolute folder ("Select a valid project folder first."), ports 1024-65535, `port_is_free`
+  binds 127.0.0.1 to check. It produces an ordinary `RunPlan`, so a second `RunRegistry`
+  (`AppState.php_server`, events on `php:event`, one server at a time) starts/streams/kills it exactly
+  like Run Code; `window_events.rs` calls `php_server.stop_all()` on close.
 - `openmind-search` (Milestone 5.6.1) — workspace text search, on disk with no index. `search(query,
   cancel)` walks the root iteratively (sorted, so results are stable), never follows symlinks,
   always skips `node_modules`/`.git`/`target`/`dist`/`build`/`vendor`, skips binary files (shares
@@ -367,6 +382,15 @@ internals.
   `[Run Code] <friendly command>`, `cwd:`, `runtime:`, `resolved:`. The dropdown's "Run Code" row prints
   the disabled reason as visible text (`showReason`), not just a tooltip.
   `RunCodeControls` (button/dropdown/status) and `RunConfigurationDialog` are UI-only.
+- `PhpServerService` (`phpServerService.ts`, Milestone 5.7) + `PhpServerView` (the PHP Server activity
+  bar view, `SideView` `php`) — document root and port (persisted as `php.server` in `editor_settings`),
+  the built-in server's lifecycle (`start`/`stop`/`restart`/`openBrowser`/`openLogs`), and PHP/Composer
+  rows read from `RuntimeService` (install/repair/delete go through it; Composer install is refused until
+  PHP is installed; PHP delete is refused while serving). Every button's enabled state and reason comes
+  from `startState()`/`stopState()`/... (pure `startAvailability`), and `php.*` commands use the same
+  predicates. Output goes to the "PHP Server" channel; a running server registers 127.0.0.1:<port> in
+  `PortsService` (source `php-server`) and unregisters on exit. Nothing starts on launch or on opening a
+  project. `PhpServerView` calls `runtime.initialize()/refresh()` on mount.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -678,6 +702,22 @@ migration file, check for stray running instances first, not just after somethin
   the terminal target types the absolute interpreter path, so it doesn't depend on the terminal's PATH,
   but a terminal opened before the runtime install won't have `PYTHONNOUSERSITE=1` in its environment.
   400 TypeScript tests, 282 Rust tests (+1 ignored).
+- [x] **Milestone 5.7** — Portable PHP stack manager (PHP + Composer + built-in server; Apache/MariaDB/
+  phpMyAdmin deliberately not built). New PHP/Composer manifests and the runtime-manager features above,
+  `openmind_runner::server` + `php_server_*` commands, PHP Server view, Ports/Output integration. Verified
+  in the built app (fresh copy, workspace path with spaces): PHP 8.4.26 and Composer 2.10.3 installed from
+  the panel with real downloads; a new terminal resolved `php`/`composer` to the portable copies first
+  (`where.exe`), `php --version` and `composer --version` worked (Composer ran on the portable PHP, XAMPP's
+  php was second in `where.exe`); the Play button became enabled for `index.php` and ran it as "OpenMind
+  portable PHP 8.4.26" with the portable `resolved:` path; Start Server served the folder (`curl` got
+  "Hello from PHP 8.4.26 via cli-server", listening on 127.0.0.1 only), the request log and port 8000
+  appeared in Output/Ports, Open Browser opened it; Stop left no php process and freed the port; closing the
+  app with the server running left no php/conhost; relaunch kept PHP/Composer, folder and port and did not
+  auto-start; Delete removed both installs; Registry User/Machine PATH unchanged. Known limitations: only
+  NTS x64 Windows builds; PHP versions 8.4.26/8.3.35 only; the log excerpt in the panel shows the last 8
+  lines (Open Logs shows all); no `composer install` button; no per-project PHP version; the panel doesn't
+  detect that the server was started by something else on the same port until it re-checks.
+  433 TypeScript tests, 298 Rust tests (+1 ignored).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

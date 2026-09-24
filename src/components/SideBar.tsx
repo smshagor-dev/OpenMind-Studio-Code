@@ -8,6 +8,7 @@ import { ExplorerPanel } from "./ExplorerPanel";
 import { EllipsisIcon } from "./icons";
 import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
+import { PhpServerView } from "./PhpServerView";
 import { OpenEditorsSection } from "./OpenEditorsSection";
 import { PaneSection } from "./PaneSection";
 import { Sash } from "./Sash";
@@ -31,6 +32,7 @@ const VIEW_TITLES: Record<SideView, string> = {
   scm: "Source Control",
   debug: "Run and Debug",
   extensions: "Extensions",
+  php: "PHP Server",
 };
 
 /**
@@ -109,6 +111,8 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
           hint="There is no debugger in this version, so there is nothing to start or configure."
         />
       );
+    case "php":
+      return <PhpServerView />;
     case "extensions":
       return (
         <SideViewPlaceholder

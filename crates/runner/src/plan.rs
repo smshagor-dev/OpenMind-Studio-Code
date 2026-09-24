@@ -224,7 +224,7 @@ fn default_program(kind: RunnableKind) -> &'static str {
 
 /// Portable runtime folders, then (for a project-local tool) the project's
 /// `.bin`, then the existing PATH. Built for this child only.
-fn child_path(
+pub(crate) fn child_path(
     environment: &RunEnvironment,
     project_dirs: &[PathBuf],
     resolved: &ResolvedExecutable,

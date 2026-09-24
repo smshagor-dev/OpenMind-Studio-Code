@@ -5,10 +5,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 3] = [
+const BUILTIN: [&str; 5] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
+    include_str!("../manifests/php.json"),
+    include_str!("../manifests/composer.json"),
 ];
 
 /// The platform id used in manifests for the machine this build runs on.
@@ -30,6 +32,9 @@ pub fn current_platform() -> &'static str {
 #[serde(rename_all = "lowercase")]
 pub enum ArchiveKind {
     Zip,
+    /// The download is the one file to install (Composer's `composer.phar`),
+    /// stored under the artifact's `installAs` name.
+    File,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +54,20 @@ pub struct Artifact {
     /// `tools/`, say) and everything beside it is ignored.
     #[serde(default)]
     pub extract_root: Option<String>,
+    /// For `archive: "file"`: the file name it is installed as.
+    #[serde(default)]
+    pub install_as: Option<String>,
+}
+
+/// A small config file written into a fresh install (PHP's `php.ini`). Content
+/// is static text from the manifest and may only use paths relative to the
+/// install, so an install stays valid when the app folder moves.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeedFile {
+    /// Path relative to the install dir.
+    pub path: String,
+    pub content: String,
 }
 
 /// A command run once, from the freshly installed and checksum-verified
@@ -76,6 +95,11 @@ pub struct Shim {
     /// Fixed arguments placed before the caller's own (`-m pip`).
     #[serde(default)]
     pub args: Vec<String>,
+    /// Run the target through the interpreter named by this environment
+    /// variable (`OPENMIND_PHP` for Composer's phar). The variable is set
+    /// per launch from the *active* install, so nothing absolute is written.
+    #[serde(default)]
+    pub via_env: Option<String>,
 }
 
 /// A capability of a runtime that an install may or may not have (pip for
@@ -139,6 +163,9 @@ pub struct RuntimeManifest {
     /// goes first on the injected PATH.
     #[serde(default)]
     pub shims: Vec<Shim>,
+    /// Files written into every fresh install before it is checked.
+    #[serde(default)]
+    pub seed_files: Vec<SeedFile>,
     pub versions: Vec<RuntimeVersion>,
 }
 
@@ -201,6 +228,7 @@ impl RuntimeManifest {
             .chain(self.post_install.iter().map(|step| &step.executable))
             .chain(self.features.iter().map(|feature| &feature.verify_file))
             .chain(self.shims.iter().map(|shim| &shim.target))
+            .chain(self.seed_files.iter().map(|file| &file.path))
             .chain(std::iter::once(&self.version_command.executable))
         {
             if !is_safe_relative(path) {
@@ -216,6 +244,18 @@ impl RuntimeManifest {
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '='))
             };
+            let via_ok = shim.via_env.as_deref().is_none_or(|name| {
+                !name.is_empty()
+                    && name
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+            });
+            if !via_ok {
+                return bad(format!(
+                    "shim \"{}\": viaEnv must be an upper-case variable name",
+                    shim.name
+                ));
+            }
             if !is_safe_component(&shim.name) || !shim.args.iter().all(|arg| plain(arg)) {
                 return bad(format!(
                     "shim \"{}\": names and arguments may only use letters, digits and - _ . =",
@@ -234,6 +274,16 @@ impl RuntimeManifest {
                 if let Some(root) = &artifact.extract_root {
                     if !is_safe_relative(root) || root == "." {
                         return bad(format!("extractRoot \"{root}\" must be a folder name"));
+                    }
+                }
+                match (artifact.archive, artifact.install_as.as_deref()) {
+                    (ArchiveKind::File, Some(name)) if is_safe_component(name) => {}
+                    (ArchiveKind::File, _) => {
+                        return bad("a \"file\" artifact needs a plain installAs file name".into());
+                    }
+                    (ArchiveKind::Zip, None) => {}
+                    (ArchiveKind::Zip, Some(_)) => {
+                        return bad("installAs only applies to \"file\" artifacts".into());
                     }
                 }
                 if !artifact.url.to_ascii_lowercase().starts_with("https://") {
@@ -356,10 +406,10 @@ mod tests {
     }
 
     #[test]
-    fn builtin_registry_has_node_python_and_git_with_usable_windows_artifacts() {
+    fn builtin_registry_has_the_shipped_runtimes_with_usable_windows_artifacts() {
         let registry = RuntimeRegistry::builtin();
 
-        for id in ["node", "python", "git"] {
+        for id in ["node", "python", "git", "php", "composer"] {
             let manifest = registry.get(id).expect(id);
             assert!(
                 manifest
@@ -368,7 +418,85 @@ mod tests {
                 "{id}"
             );
         }
-        assert_eq!(registry.all().count(), 3);
+        assert_eq!(registry.all().count(), 5);
+    }
+
+    #[test]
+    fn the_php_manifest_is_portable_https_only_and_uses_a_relative_php_ini() {
+        let registry = RuntimeRegistry::builtin();
+        let php = registry.get("php").expect("php");
+
+        assert_eq!(
+            php.env.get("OPENMIND_PHP").map(String::as_str),
+            Some("{dir}\\php.exe")
+        );
+        assert!(php.verify_files.iter().any(|file| file == "php.ini"));
+        let ini = php
+            .seed_files
+            .iter()
+            .find(|f| f.path == "php.ini")
+            .expect("php.ini");
+        assert!(
+            ini.content.contains("extension_dir = \"ext\""),
+            "relative extension dir"
+        );
+        assert!(
+            !ini.content.contains(":\\"),
+            "no absolute path may be baked in"
+        );
+        for version in &php.versions {
+            for artifact in &version.artifacts {
+                assert!(artifact.url.starts_with("https://downloads.php.net/"));
+                assert_eq!(artifact.sha256.len(), 64);
+            }
+        }
+    }
+
+    #[test]
+    fn the_composer_manifest_installs_one_phar_and_runs_it_through_the_active_php() {
+        let registry = RuntimeRegistry::builtin();
+        let composer = registry.get("composer").expect("composer");
+        let artifact = composer
+            .artifact(&composer.default_version, "windows-x64")
+            .expect("artifact");
+
+        assert_eq!(artifact.archive, ArchiveKind::File);
+        assert_eq!(artifact.install_as.as_deref(), Some("composer.phar"));
+        assert_eq!(composer.shims[0].name, "composer");
+        assert_eq!(composer.shims[0].via_env.as_deref(), Some("OPENMIND_PHP"));
+    }
+
+    #[test]
+    fn a_file_artifact_needs_a_plain_install_name_and_a_zip_may_not_have_one() {
+        let file = valid_json().replace("\"archive\": \"zip\"", "\"archive\": \"file\"");
+        assert!(
+            RuntimeManifest::parse(&file).is_err(),
+            "file without installAs"
+        );
+        let traversal = valid_json().replace(
+            "\"archive\": \"zip\"",
+            "\"archive\": \"file\", \"installAs\": \"../x\"",
+        );
+        assert!(RuntimeManifest::parse(&traversal).is_err());
+        let stray = valid_json().replace(
+            "\"archive\": \"zip\"",
+            "\"archive\": \"zip\", \"installAs\": \"x.phar\"",
+        );
+        assert!(RuntimeManifest::parse(&stray).is_err());
+    }
+
+    #[test]
+    fn a_seed_file_path_and_a_shim_variable_are_validated() {
+        let escaping = valid_json().replace(
+            "\"versions\"",
+            "\"seedFiles\": [{ \"path\": \"../php.ini\", \"content\": \"x\" }], \"versions\"",
+        );
+        assert!(RuntimeManifest::parse(&escaping).is_err());
+        let bad_var = valid_json().replace(
+            "\"versions\"",
+            "\"shims\": [{ \"name\": \"t\", \"target\": \"t.exe\", \"viaEnv\": \"php; calc\" }], \"versions\"",
+        );
+        assert!(RuntimeManifest::parse(&bad_var).is_err());
     }
 
     #[test]
@@ -527,7 +655,7 @@ mod tests {
         let (registry, warnings) =
             RuntimeRegistry::builtin().with_overrides(Path::new("Z:/does/not/exist"));
 
-        assert_eq!(registry.all().count(), 3);
+        assert_eq!(registry.all().count(), 5);
         assert!(warnings.is_empty());
     }
 

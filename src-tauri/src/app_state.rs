@@ -35,4 +35,6 @@ pub struct AppState {
     pub runtime: RuntimeManager,
     pub search: SearchRegistry,
     pub runner: RunRegistry,
+    /// The PHP built-in server (at most one), its own registry so its events never look like a Run Code run.
+    pub php_server: RunRegistry,
 }

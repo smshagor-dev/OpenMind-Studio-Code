@@ -57,7 +57,7 @@ pub struct TerminalCommand {
     pub language: String,
 }
 
-async fn environment(state: &AppState) -> RunEnvironment {
+pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
     match state.runtime.environment().await {
         Ok(environment) => RunEnvironment {
             path_prepend: environment.path_prepend,

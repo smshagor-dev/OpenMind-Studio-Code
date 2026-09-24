@@ -23,12 +23,32 @@ pub fn shim_file_name(shim: &Shim) -> String {
 /// `%`, `&`, ...), so they can be written into a script as they are.
 pub fn render(shim: &Shim, version: &str) -> String {
     let args: String = shim.args.iter().map(|arg| format!(" {arg}")).collect();
+    if let Some(var) = &shim.via_env {
+        return render_via(shim, version, var, &args);
+    }
     if cfg!(windows) {
         let target = shim.target.replace('/', "\\");
         format!("@echo off\r\n\"%~dp0..\\..\\versions\\{version}\\{target}\"{args} %*\r\n")
     } else {
         format!(
             "#!/bin/sh\nexec \"$(dirname \"$0\")/../../versions/{version}/{}\"{args} \"$@\"\n",
+            shim.target
+        )
+    }
+}
+
+/// A shim whose target is a script run by the interpreter in `var` (set at
+/// launch from the active install). With the variable unset it says so
+/// instead of falling back to whatever `php` happens to be on the machine.
+fn render_via(shim: &Shim, version: &str, var: &str, args: &str) -> String {
+    if cfg!(windows) {
+        let target = shim.target.replace('/', "\\");
+        format!(
+            "@echo off\r\nif not defined {var} (\r\n  echo OpenMind Studio: the runtime this command needs is not installed or not active. Install it from its Runtime Manager view.>&2\r\n  exit /b 1\r\n)\r\n\"%{var}%\" \"%~dp0..\\..\\versions\\{version}\\{target}\"{args} %*\r\n"
+        )
+    } else {
+        format!(
+            "#!/bin/sh\n[ -n \"${var}\" ] || {{ echo \"OpenMind Studio: the runtime this command needs is not installed or not active.\" >&2; exit 1; }}\nexec \"${var}\" \"$(dirname \"$0\")/../../versions/{version}/{}\"{args} \"$@\"\n",
             shim.target
         )
     }
@@ -83,6 +103,7 @@ mod tests {
             name: "pip".into(),
             target: "python.exe".into(),
             args: vec!["-m".into(), "pip".into()],
+            via_env: None,
         }
     }
 
@@ -97,11 +118,33 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn a_via_env_shim_runs_its_target_with_the_named_interpreter_and_never_a_global_one() {
+        let shim = Shim {
+            name: "composer".into(),
+            target: "composer.phar".into(),
+            args: vec![],
+            via_env: Some("OPENMIND_PHP".into()),
+        };
+
+        let text = render(&shim, "2.10.3");
+
+        assert!(text.contains("if not defined OPENMIND_PHP"), "{text}");
+        assert!(
+            text.contains("\"%OPENMIND_PHP%\" \"%~dp0..\\..\\versions\\2.10.3\\composer.phar\" %*"),
+            "{text}"
+        );
+        assert!(!text.contains(":\\"), "{text}");
+        assert!(!text.contains("php.exe"), "{text}");
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn nested_targets_use_backslashes_and_never_an_absolute_path() {
         let shim = Shim {
             name: "git".into(),
             target: "cmd/git.exe".into(),
             args: vec![],
+            via_env: None,
         };
 
         let text = render(&shim, "2.55.0.5");
