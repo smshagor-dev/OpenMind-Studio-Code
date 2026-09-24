@@ -2,6 +2,7 @@
 
 mod app_state;
 mod commands;
+mod secret;
 mod window_events;
 
 use openmind_core::AppPaths;

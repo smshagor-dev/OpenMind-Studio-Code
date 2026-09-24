@@ -209,7 +209,7 @@ export class MariaDbService {
 
   passwordStatusLabel(): string {
     return this.state.hasPassword
-      ? "Generated when the database was initialized (kept in OpenMind's local settings)"
+      ? "Generated when the database was initialized (stored encrypted for your Windows account)"
       : "Not set — initialize the database first";
   }
 
@@ -335,23 +335,31 @@ export class MariaDbService {
       this.update({ passwordVisible: false });
       return;
     }
-    const password = await this.loadPassword();
+    const { password } = await this.loadPassword();
     if (password !== null) this.update({ passwordVisible: true });
   }
 
   async copyPassword(): Promise<boolean> {
-    const password = await this.loadPassword();
-    if (password === null) return this.fail("There is no password to copy yet.");
+    const { password, failed } = await this.loadPassword();
+    if (password === null) {
+      return failed ? false : this.fail("There is no password to copy yet.");
+    }
     await this.ipc.clipboardWriteText(password);
     return true;
   }
 
-  private async loadPassword(): Promise<string | null> {
-    if (this.state.password !== null) return this.state.password;
-    const credentials = await this.ipc.mariadbCredentials().catch(() => null);
-    const password = credentials?.password ?? null;
-    if (password !== null) this.update({ password });
-    return password;
+  private async loadPassword(): Promise<{ password: string | null; failed: boolean }> {
+    if (this.state.password !== null) return { password: this.state.password, failed: false };
+    try {
+      const credentials = await this.ipc.mariadbCredentials();
+      const password = credentials.password;
+      if (password !== null) this.update({ password });
+      return { password, failed: false };
+    } catch (error) {
+      // e.g. the stored password was encrypted by another Windows user: say so instead of "no password".
+      this.fail(String(error));
+      return { password: null, failed: true };
+    }
   }
 
   // --- Internals ---

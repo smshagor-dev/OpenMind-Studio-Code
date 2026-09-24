@@ -166,3 +166,11 @@
   color: var(--success-fg, #89d185);
   font-weight: 600;
 }
+
+.cp__actions {
+  flex-wrap: wrap;
+}
+
+.cp__table:not(.cp__table--net) td:last-child {
+  white-space: normal;
+}

@@ -22,6 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::app_state::AppState;
 use crate::commands::run::environment;
+use crate::secret;
 
 const PASSWORD_KEY: &str = "mariadb.rootPassword";
 const SECRET_KEY: &str = "phpmyadmin.secret";
@@ -80,6 +81,28 @@ async fn save_setting(state: &AppState, key: &str, value: &str) -> Result<(), St
         .set(key, value)
         .await
         .map_err(|err| err.to_string())
+}
+
+/// A stored secret, decrypted. An older plain-text value is re-saved encrypted the first time it is read.
+async fn secret_setting(state: &AppState, key: &str) -> Result<Option<String>, String> {
+    let Some(stored) = setting(state, key).await else {
+        return Ok(None);
+    };
+    let plain = secret::unprotect(&stored).map_err(|err| err.to_string())?;
+    if !secret::is_protected(&stored) {
+        if let Ok(protected) = secret::protect(&plain) {
+            if secret::is_protected(&protected) {
+                save_setting(state, key, &protected).await?;
+            }
+        }
+    }
+    Ok(Some(plain))
+}
+
+/// Stores `plain` encrypted (Windows DPAPI, current user).
+async fn save_secret(state: &AppState, key: &str, plain: &str) -> Result<(), String> {
+    let stored = secret::protect(plain).map_err(|err| err.to_string())?;
+    save_setting(state, key, &stored).await
 }
 
 /// `len` random letters and digits from the operating system's generator.
@@ -202,7 +225,7 @@ pub async fn mariadb_status(state: State<'_, AppState>) -> Result<MariaDbStatus,
 pub async fn mariadb_credentials(state: State<'_, AppState>) -> Result<Credentials, String> {
     Ok(Credentials {
         username: MARIADB_USER.to_string(),
-        password: setting(&state, PASSWORD_KEY).await,
+        password: secret_setting(&state, PASSWORD_KEY).await?,
     })
 }
 
@@ -241,7 +264,7 @@ pub async fn mariadb_initialize(app: AppHandle, state: State<'_, AppState>) -> R
             tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
         ));
     }
-    save_setting(&state, PASSWORD_KEY, &password).await?;
+    save_secret(&state, PASSWORD_KEY, &password).await?;
     let _ = app.emit("mariadb:changed", ());
     Ok(())
 }
@@ -279,8 +302,8 @@ pub async fn mariadb_start(
     if !port_is_free(port) {
         return Err(RunError::PortInUse(port).to_string());
     }
-    let password = setting(&state, PASSWORD_KEY)
-        .await
+    let password = secret_setting(&state, PASSWORD_KEY)
+        .await?
         .ok_or("The database has no saved password — initialize it first.")?;
     write_mariadb_config(&state, &paths, port).await?;
     let sink = service_sink(
@@ -357,7 +380,9 @@ pub fn stop_mariadb_blocking(app: &AppHandle) {
         .lock()
         .ok()
         .and_then(|slot| slot.as_ref().map(|i| i.port));
-    let password = tauri::async_runtime::block_on(setting(&state, PASSWORD_KEY));
+    let password = tauri::async_runtime::block_on(secret_setting(&state, PASSWORD_KEY))
+        .ok()
+        .flatten();
     let environment = tauri::async_runtime::block_on(environment(&state));
     if let (Some(port), Some(password)) = (port, password) {
         if let Ok(plan) = mariadb_admin_plan(
@@ -394,11 +419,11 @@ fn temp_dir(state: &AppState) -> PathBuf {
 
 /// Writes phpMyAdmin's `config.inc.php` (regenerated on every start).
 async fn write_pma_config(state: &AppState, dir: &Path, mariadb_port: u16) -> Result<(), String> {
-    let secret = match setting(state, SECRET_KEY).await {
+    let secret = match secret_setting(state, SECRET_KEY).await? {
         Some(secret) => secret,
         None => {
             let secret = random_alphanumeric(40)?;
-            save_setting(state, SECRET_KEY, &secret).await?;
+            save_secret(state, SECRET_KEY, &secret).await?;
             secret
         }
     };

@@ -180,8 +180,12 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   Windows service), admin (`mariadb-admin ping/shutdown`, password via `MYSQL_PWD` env) and Composer
   (`install`/`update`/`dump-autoload`, only with a `composer.json`, on portable Composer + active portable PHP).
   `oneshot::run_to_completion` runs short helper commands. Everything resolves portable-only. The generated root
-  password (alphanumeric, `getrandom`) lives in `editor_settings` as plain local SQLite — a local-machine
-  convenience, not a secret store; the UI shows/copies it only on request. phpMyAdmin is served by the active
+  password (alphanumeric, `getrandom`) and phpMyAdmin's cookie secret live in `editor_settings` **encrypted with
+  Windows DPAPI** (`src-tauri/src/secret.rs`: current-user scope, fixed entropy, stored as `dpapi1:<base64>`; no
+  admin, no Registry, no cloud). An older plain-text value is still readable and is re-saved encrypted the first
+  time it is read (verified on a real pre-existing install). A value encrypted by another Windows user/machine
+  can't be opened: the UI reports the Windows error instead of claiming there is no password. Non-Windows stores
+  values as they are (nothing else is wired up). The UI shows/copies the password only on request. phpMyAdmin is served by the active
   portable PHP's built-in server (default port 8081) with a generated config using cookie login (the password is
   typed, never written to a file). `commands::database` exposes `mariadb_*`/`pma_*`/`composer_*` with
   `*:changed` and `*:event` broadcasts; window close stops all services. Services keep the PHP/DB version they
@@ -811,6 +815,26 @@ migration file, check for stray running instances first, not just after somethin
   phpMyAdmin's full logs are in `logs/`); MariaDB's Config is disabled until its first start creates
   `settings/mariadb/my.ini`; no Windows-service or Apache modules; the test folder `E:\omcp` could not be deleted
   by the tool (protected path) and was left for manual removal.
+- [x] **Milestone 5.8.2** — PHP stack verification and credential hardening (`fix: verify and harden php
+  database stack`). Root password and phpMyAdmin secret now DPAPI-encrypted (above); a decrypt failure is
+  surfaced. Control-panel table wraps its buttons instead of scrolling sideways at the 560x400 minimum size.
+  Verified by hand in the built app from a fresh portable copy (`E:\omcp2`, workspace `My Site` with a space,
+  Composer project requiring psr/log): launch; PHP icon clicked three times gives one window; window at 560x400
+  and 1300x900 without overflow; PHP 8.4.26, Composer 2.10.3, MariaDB 11.8.9 and phpMyAdmin 5.2.3 installed from
+  Config; project folder chosen through the native dialog; PHP server served index.php (curl) and showed in the
+  main window's Ports panel, Stop freed 8000 and removed it; MariaDB initialized, started on 127.0.0.1:3307
+  (`Get-NetTCPConnection`), showed in Ports; Show/Copy Password (24 chars) — `mariadb-admin ping` succeeded
+  with it, a wrong or empty password was refused ("Access denied ... using password: NO"); Restart changed the
+  PID, Stop left no mysqld; phpMyAdmin logged into MariaDB over HTTP and listed the databases; Composer
+  install/update/dump-autoload each ran (vendor + lock created) and their output appeared in the Composer log
+  tab and the merged log; closing the main app with PHP, MariaDB and phpMyAdmin running left no php/mysqld/
+  conhost descendant, no listening port and closed the PHP window; relaunch did not auto-start anything and
+  kept window size/position, project folder and PHP; Registry User and Machine PATH identical before/after.
+  On a pre-existing (plain-text) install the first MariaDB start migrated the password to `dpapi1:` in SQLite and
+  the copied password still had the same length. Not done here: phpMyAdmin's own HTTP login was scripted rather
+  than typed into a browser; Copy Password was verified through the UI, its exact value only through its length
+  and a successful ping; the test folders `E:\omcp` and `E:\omcp2` couldn't be deleted by the tool (protected
+  path) and are left for manual removal. 491 TypeScript tests, 337 Rust tests (+1 ignored).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
