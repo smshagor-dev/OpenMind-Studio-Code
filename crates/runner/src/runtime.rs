@@ -87,8 +87,8 @@ fn find_in(dir: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
-/// "OpenMind portable Python 3.14.7", "system Python (C:\...)" — what the
-/// Output panel shows as the runtime a run used.
+/// "OpenMind portable Python 3.14.7", "System Python" — what the Output panel
+/// shows as the runtime a run used (the resolved path is shown separately).
 pub fn runtime_label(kind: RunnableKind, resolved: &ResolvedExecutable) -> String {
     match resolved.source {
         RuntimeSource::Portable => {
@@ -99,11 +99,7 @@ pub fn runtime_label(kind: RunnableKind, resolved: &ResolvedExecutable) -> Strin
             }
         }
         RuntimeSource::Project => format!("project-local {}", file_stem(&resolved.path)),
-        RuntimeSource::System => format!(
-            "system {} ({})",
-            kind.display_name(),
-            resolved.path.display()
-        ),
+        RuntimeSource::System => format!("System {}", kind.display_name()),
     }
 }
 
@@ -251,7 +247,7 @@ mod tests {
         );
         assert_eq!(
             runtime_label(RunnableKind::Python, &system),
-            "system Python (C:/Python314/python.exe)"
+            "System Python"
         );
         assert_eq!(
             runtime_label(RunnableKind::TypeScript, &project),

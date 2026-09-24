@@ -178,7 +178,13 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   `RunRegistry` streams stdout/stderr lines as `RunEvent`s (`started`/`output`/`exited`), allows one
   run per file, stops by killing the Job Object, and `stop_all()` runs on window close.
   `shell_command_line` quotes an argv for PowerShell/cmd/bash for the "Run Code in Terminal" target and
-  refuses line breaks. Missing runtimes read "<Runtime> runtime is not installed yet."
+  refuses line breaks. Missing runtimes read "<Runtime> runtime is not installed yet." **PHP is
+  portable-only** (5.6.3): a machine's XAMPP/system PHP is never used or presented as the runtime, so
+  PHP Run Code stays disabled until an OpenMind portable PHP is installed (no PHP manifest exists yet —
+  that is the PHP Stack Manager's job). Python/Node/TypeScript tools may fall back to the system PATH,
+  labelled "System Python" etc. `RunPlan.display` is the friendly command (`python hello.py`: plain
+  program name, paths inside the cwd made relative); `RunPlan.resolved` is the absolute interpreter,
+  reported separately (`resolved:` line in Output).
 - `openmind-search` (Milestone 5.6.1) — workspace text search, on disk with no index. `search(query,
   cancel)` walks the root iteratively (sorted, so results are stable), never follows symlinks,
   always skips `node_modules`/`.git`/`target`/`dist`/`build`/`vendor`, skips binary files (shares
@@ -357,7 +363,9 @@ internals.
   extension command templates, validated) persist as one JSON value `run.configurations` in
   `editor_settings`. Commands: `run.code` (Ctrl+F5, alias `debug.runWithoutDebugging`),
   `run.codeInTerminal`, `run.codeShowOutput`, `run.stop` (Ctrl+Shift+F5, enabled only while running),
-  `run.configure`, `run.selectRuntime`; plain F5 stays unbound for the future debugger.
+  `run.configure`, `run.selectRuntime`; plain F5 stays unbound for the future debugger. Output header:
+  `[Run Code] <friendly command>`, `cwd:`, `runtime:`, `resolved:`. The dropdown's "Run Code" row prints
+  the disabled reason as visible text (`showReason`), not just a tooltip.
   `RunCodeControls` (button/dropdown/status) and `RunConfigurationDialog` are UI-only.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
@@ -657,6 +665,19 @@ migration file, check for stray running instances first, not just after somethin
   `cd`); WSL shells are unsupported for it; stdout and stderr are read on separate threads so their
   interleaving isn't exact; Play tooltips show the resolved executable path; a file with mixed line
   endings shows modified on open (pre-existing). 397 TypeScript tests, 280 Rust tests (+1 ignored).
+- [x] **Milestone 5.6.3** — Run Code polish and PHP runtime guard. PHP no longer runs through a
+  machine's XAMPP (portable-only; reason "PHP runtime is not installed yet."); Output shows the friendly
+  command with `runtime:` and `resolved:` on separate lines ("System Python" is labelled as such);
+  disabled reasons are visible in the Run dropdown. Verified in the built app (fresh copy, workspace
+  path with spaces): README.md/package.json/index.php disabled with visible reasons even with XAMPP on
+  PATH; hello.py/hello.js ran with portable Python/Node via Output and via Run Code in Terminal (the
+  typed `& '<portable python>' '<file>'` line is visible and quotes the space); Configure Run Command
+  rejected `C:\evil.exe x`, saved `node --no-warnings ${file}` (ran as such), persisted, and reset;
+  long-running Python and Node scripts were stopped from the dropdown with no process left; closing the
+  app mid-run left no python/node/conhost; registry User/Machine PATH byte-identical. Known limitation:
+  the terminal target types the absolute interpreter path, so it doesn't depend on the terminal's PATH,
+  but a terminal opened before the runtime install won't have `PYTHONNOUSERSITE=1` in its environment.
+  400 TypeScript tests, 282 Rust tests (+1 ignored).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

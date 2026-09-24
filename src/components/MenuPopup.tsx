@@ -13,6 +13,8 @@ export type PopupItem =
       danger?: boolean;
       /** Why the row is disabled — shown as its tooltip, so nothing is disabled without a reason. */
       reason?: string;
+      /** Also print the reason under the label (tooltips are unreliable, and screen readers skip them). */
+      showReason?: boolean;
       onSelect: () => void;
     }
   | { kind: "submenu"; label: string; items: PopupItem[] }
@@ -218,6 +220,7 @@ function MenuRow({ item, index, focused, onHover, onActivate }: MenuRowProps) {
     "menu-popup__item",
     focused ? "menu-popup__item--focused" : "",
     disabled ? "menu-popup__item--disabled" : "",
+    disabled && item.showReason === true && item.reason ? "menu-popup__item--reasoned" : "",
     isItem && item.danger ? "menu-popup__item--danger" : "",
   ]
     .filter(Boolean)
@@ -235,7 +238,12 @@ function MenuRow({ item, index, focused, onHover, onActivate }: MenuRowProps) {
       onClick={onActivate}
     >
       <span className="menu-popup__check">{isItem && item.checked ? <CheckIcon /> : null}</span>
-      <span className="menu-popup__label">{item.label}</span>
+      <span className="menu-popup__label">
+        {item.label}
+        {isItem && disabled && item.showReason === true && item.reason ? (
+          <span className="menu-popup__reason">{item.reason}</span>
+        ) : null}
+      </span>
       {isItem && item.shortcut ? (
         <span className="menu-popup__shortcut">{item.shortcut}</span>
       ) : null}

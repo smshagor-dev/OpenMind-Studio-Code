@@ -24,18 +24,19 @@ export function buildRunMenu(ctx: RunMenuContext): HeaderMenuRow[] {
   const canStart = view.enabled && !view.canStop;
   const running = view.canStop;
 
-  const start = (label: string, command: string): HeaderMenuRow => ({
+  const start = (label: string, command: string, showReason = false): HeaderMenuRow => ({
     kind: "item",
     label,
     enabled: canStart,
     reason: canStart ? undefined : running ? "Already running — stop it first." : view.tooltip,
+    showReason: !running && showReason,
     onSelect: () => {
       ctx.run(command);
     },
   });
 
   const rows: HeaderMenuRow[] = [
-    start("Run Code", "run.code"),
+    start("Run Code", "run.code", true),
     start("Run Code in Terminal", "run.codeInTerminal"),
     start("Run Code and Show Output", "run.codeShowOutput"),
   ];

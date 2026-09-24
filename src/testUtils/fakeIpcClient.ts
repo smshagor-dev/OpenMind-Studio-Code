@@ -75,13 +75,14 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       runtimeMissing: false,
       runtime: null,
       command: null,
+      resolved: null,
     }),
     runStart: vi.fn().mockResolvedValue({ runId: "run-1", file: "", pid: 1 }),
     runStop: vi.fn().mockResolvedValue(true),
     runActive: vi.fn().mockResolvedValue([]),
     runTerminalCommand: vi
       .fn()
-      .mockResolvedValue({ line: "", display: "", runtime: "", language: "" }),
+      .mockResolvedValue({ line: "", display: "", runtime: "", resolved: "", language: "" }),
     onRunEvent: vi.fn().mockResolvedValue(() => undefined),
     clipboardWriteText: vi.fn().mockResolvedValue(undefined),
     clipboardReadText: vi.fn().mockResolvedValue(""),

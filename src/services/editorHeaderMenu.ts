@@ -17,6 +17,8 @@ export type HeaderMenuRow =
       checked?: boolean;
       /** Why it's disabled. Every disabled row has one. */
       reason?: string;
+      /** Print the reason under the label as well as in the tooltip. */
+      showReason?: boolean;
       onSelect: () => void;
     }
   | { kind: "submenu"; label: string; items: HeaderMenuRow[] }

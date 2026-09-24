@@ -26,6 +26,8 @@ pub struct RunAvailability {
     pub runtime_missing: bool,
     pub runtime: Option<String>,
     pub command: Option<String>,
+    /// Absolute path of the interpreter a run would start.
+    pub resolved: Option<String>,
 }
 
 impl RunAvailability {
@@ -39,6 +41,7 @@ impl RunAvailability {
             runtime_missing,
             runtime: None,
             command: None,
+            resolved: None,
         }
     }
 }
@@ -50,6 +53,7 @@ pub struct TerminalCommand {
     pub line: String,
     pub display: String,
     pub runtime: String,
+    pub resolved: String,
     pub language: String,
 }
 
@@ -101,6 +105,7 @@ pub async fn run_resolve(
             runtime_missing: false,
             runtime: Some(plan.runtime_label),
             command: Some(plan.display),
+            resolved: Some(plan.resolved.to_string_lossy().into_owned()),
         },
         Err(err) => {
             let missing = matches!(
@@ -159,6 +164,7 @@ pub async fn run_terminal_command(
         line,
         display: plan.display,
         runtime: plan.runtime_label,
+        resolved: plan.resolved.to_string_lossy().into_owned(),
         language: plan.kind.display_name().to_string(),
     })
 }

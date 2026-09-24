@@ -49,6 +49,7 @@ function setup(options: Setup) {
       runtimeMissing: false,
       runtime: null,
       command: null,
+      resolved: null,
     },
   };
   harness.current = {

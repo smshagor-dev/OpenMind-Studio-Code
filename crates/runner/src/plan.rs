@@ -42,8 +42,11 @@ pub struct RunPlan {
     pub path_var: OsString,
     pub runtime_label: String,
     pub source: RuntimeSource,
-    /// `argv` as text, for display.
+    /// The command as the user would type it (`python hello.py`): the program's
+    /// plain name and paths inside the working folder made relative. Display only.
     pub display: String,
+    /// The absolute path of the interpreter that will actually run.
+    pub resolved: PathBuf,
 }
 
 const BINARY_SNIFF_BYTES: usize = 8000;
@@ -92,6 +95,7 @@ pub fn plan(
         system_path.as_deref(),
     )?;
 
+    let display = friendly_command(&tokens, &cwd);
     let mut argv = tokens;
     argv[0] = resolved.path.to_string_lossy().into_owned();
 
@@ -105,7 +109,8 @@ pub fn plan(
 
     Ok(RunPlan {
         kind,
-        display: command_line(&argv),
+        display,
+        resolved: resolved.path.clone(),
         runtime_label: runtime_label(kind, &resolved),
         source: resolved.source,
         file,
@@ -114,6 +119,26 @@ pub fn plan(
         env,
         path_var,
     })
+}
+
+/// `python "C:\ws\hello.py"` in `C:\ws` -> `python hello.py`.
+fn friendly_command(tokens: &[String], cwd: &Path) -> String {
+    let shown: Vec<String> = tokens
+        .iter()
+        .enumerate()
+        .map(|(index, token)| {
+            if index == 0 {
+                return token.clone();
+            }
+            match Path::new(token).strip_prefix(cwd) {
+                Ok(relative) if !relative.as_os_str().is_empty() => {
+                    relative.to_string_lossy().into_owned()
+                }
+                _ => token.clone(),
+            }
+        })
+        .collect();
+    command_line(&shown)
 }
 
 fn validate_file(file: &Path) -> Result<PathBuf, RunError> {
@@ -164,6 +189,13 @@ fn resolve_program(
     }
     let lookup = |name: &str| resolve_executable(name, environment, project_dirs, system_path);
     if let Some(found) = lookup(program) {
+        // PHP is only run from an OpenMind portable runtime: a machine's XAMPP/WAMP
+        // PHP is never presented as the runtime, and nothing here installs one yet.
+        if kind == RunnableKind::Php && found.source != RuntimeSource::Portable {
+            return Err(RunError::RuntimeMissing {
+                runtime: kind.display_name().to_string(),
+            });
+        }
         return Ok(found);
     }
     // TypeScript has no built-in interpreter: try the other well-known runner.
@@ -309,11 +341,60 @@ mod tests {
         let plan = make(&fx, &request(file, None)).expect("plan");
 
         assert_eq!(plan.source, RuntimeSource::System);
-        assert!(
-            plan.runtime_label.starts_with("system Node.js"),
-            "{}",
-            plan.runtime_label
+        assert_eq!(plan.runtime_label, "System Node.js");
+        assert_eq!(plan.resolved, fx.dir.path().join("system").join(node_exe()));
+    }
+
+    fn node_exe() -> &'static str {
+        if cfg!(windows) {
+            "node.exe"
+        } else {
+            "node"
+        }
+    }
+
+    #[test]
+    fn the_display_command_is_friendly_and_the_resolved_interpreter_is_separate() {
+        let fx = fixture();
+        let workspace = fx.dir.path().join("My Projects");
+        let file = script(&workspace.join("sub"), "hello.py", "1");
+
+        let plan = make(&fx, &request(file.clone(), Some(workspace))).expect("plan");
+
+        assert_eq!(
+            plan.display,
+            format!("python sub{}hello.py", std::path::MAIN_SEPARATOR)
         );
+        assert!(plan.resolved.is_absolute());
+        assert!(plan.resolved.to_string_lossy().contains("versions"));
+        assert_eq!(plan.argv[0], plan.resolved.to_string_lossy());
+        // What actually runs still gets the absolute file path.
+        assert_eq!(plan.argv[1], file.to_string_lossy());
+    }
+
+    #[test]
+    fn a_machine_php_is_never_used_only_a_portable_one() {
+        let mut fx = fixture();
+        // A XAMPP-style PHP on the system PATH.
+        exe(&fx.dir.path().join("system"), "php");
+        let file = script(fx.dir.path(), "index.php", "<?php");
+
+        let error = make(&fx, &request(file.clone(), None)).expect_err("system php refused");
+        assert_eq!(error.to_string(), "PHP runtime is not installed yet.");
+
+        // A portable PHP is used, and labelled as portable.
+        let portable = fx
+            .dir
+            .path()
+            .join("runtimes")
+            .join("php")
+            .join("versions")
+            .join("8.4.1");
+        exe(&portable, "php");
+        fx.env.path_prepend.push(portable);
+        let plan = make(&fx, &request(file, None)).expect("portable php");
+        assert_eq!(plan.source, RuntimeSource::Portable);
+        assert_eq!(plan.runtime_label, "OpenMind portable PHP 8.4.1");
     }
 
     #[test]
@@ -410,11 +491,7 @@ mod tests {
 
         assert_eq!(plan.argv.len(), 2);
         assert_eq!(plan.argv[1], file.to_string_lossy());
-        assert!(
-            plan.display.contains(&format!("\"{}\"", file.display())),
-            "{}",
-            plan.display
-        );
+        assert_eq!(plan.display, "python \"hello world.py\"");
     }
 
     #[test]

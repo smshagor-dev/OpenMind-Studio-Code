@@ -30,6 +30,8 @@ pub enum RunEventKind {
     Started {
         file: String,
         command_line: String,
+        /// The absolute path of the interpreter that was started.
+        resolved: String,
         cwd: String,
         runtime: String,
         language: String,
@@ -160,6 +162,7 @@ impl RunRegistry {
             event: RunEventKind::Started {
                 file: info.file.clone(),
                 command_line: plan.display.clone(),
+                resolved: plan.resolved.to_string_lossy().into_owned(),
                 cwd: plan.cwd.to_string_lossy().into_owned(),
                 runtime: plan.runtime_label.clone(),
                 language: plan.kind.display_name().to_string(),

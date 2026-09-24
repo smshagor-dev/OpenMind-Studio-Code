@@ -21,6 +21,7 @@ fn plan_for(file: &str, argv: &[&str]) -> RunPlan {
         runtime_label: "test runtime".into(),
         source: RuntimeSource::Portable,
         display: argv.join(" "),
+        resolved: PathBuf::from(argv[0]),
     }
 }
 
@@ -117,6 +118,7 @@ fn the_started_event_carries_the_command_cwd_and_runtime() {
 
     let RunEventKind::Started {
         command_line,
+        resolved,
         runtime,
         language,
         cwd,
@@ -126,6 +128,7 @@ fn the_started_event_carries_the_command_cwd_and_runtime() {
         panic!("first event must be Started");
     };
     assert!(command_line.contains("echo hi"));
+    assert_eq!(resolved, CMD);
     assert_eq!(
         (runtime.as_str(), language.as_str()),
         ("test runtime", "Python")

@@ -24,7 +24,8 @@ const RUNNABLE: RunAvailability = {
   previewable: false,
   runtimeMissing: false,
   runtime: "OpenMind portable Python 3.14.7",
-  command: 'python "C:/p/hello.py"',
+  command: "python hello.py",
+  resolved: "C:/app/runtimes/python/versions/3.14.7/python.exe",
 };
 
 function refused(reason: string, extra: Partial<RunAvailability> = {}): RunAvailability {
@@ -36,6 +37,7 @@ function refused(reason: string, extra: Partial<RunAvailability> = {}): RunAvail
     reason,
     runtime: null,
     command: null,
+    resolved: null,
     ...extra,
   };
 }
@@ -86,8 +88,9 @@ async function rig(overrides: Partial<IpcClient> = {}): Promise<Rig> {
       .mockResolvedValue({ id: "t1", shell: "powerShell", cwd: "C:/p", pid: 1 }),
     runTerminalCommand: vi.fn().mockResolvedValue({
       line: "& 'C:/py/python.exe' 'C:/p/hello.py'",
-      display: 'python "C:/p/hello.py"',
+      display: "python hello.py",
       runtime: "OpenMind portable Python 3.14.7",
+      resolved: "C:/py/python.exe",
       language: "Python",
     }),
     ...overrides,
@@ -157,7 +160,7 @@ describe("describeRunButton", () => {
 
     expect(view).toMatchObject({ state: "ready", enabled: true, canStop: false });
     expect(view.tooltip).toContain("Ctrl+F5");
-    expect(view.tooltip).toContain('python "C:/p/hello.py"');
+    expect(view.tooltip).toContain("python hello.py");
   });
 
   it("with no editor or an unsaved file it is disabled with the reason", () => {
@@ -376,7 +379,8 @@ describe("RunCodeService", () => {
       runId: "run-1",
       type: "started",
       file: "C:/p/hello.py",
-      commandLine: 'python "C:/p/hello.py"',
+      commandLine: "python hello.py",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "OpenMind portable Python 3.14.7",
       language: "Python",
@@ -388,9 +392,10 @@ describe("RunCodeService", () => {
     r.emit({ runId: "run-1", type: "exited", code: 0, durationMs: 120, stopped: false });
 
     expect(r.output.getLines("Python")).toEqual([
-      '[Run Code] python "C:/p/hello.py"',
+      "[Run Code] python hello.py",
       "cwd: C:/p",
       "runtime: OpenMind portable Python 3.14.7",
+      "resolved: C:/rt/python.exe",
       "",
       "Hello world",
       "warning: x",
@@ -398,7 +403,7 @@ describe("RunCodeService", () => {
       "Process exited with code 0. (0.12s)",
     ]);
     const log = r.output.getLines("Run Code").join("\n");
-    expect(log).toContain('[Run Code] python "C:/p/hello.py"');
+    expect(log).toContain("[Run Code] python hello.py");
     expect(log).toContain("Process exited with code 0.");
     expect(r.output.getState().selected).toBe("Python");
     expect(r.panel.getState()).toMatchObject({ visible: true, activeTab: "output" });
@@ -423,6 +428,7 @@ describe("RunCodeService", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "python x",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "Python",
@@ -444,6 +450,7 @@ describe("RunCodeService", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "tsx a.ts",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "TypeScript",
@@ -477,6 +484,7 @@ describe("RunCodeService", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "x",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "Python",
@@ -495,6 +503,7 @@ describe("RunCodeService", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "x",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "Python",
@@ -555,7 +564,7 @@ describe("RunCodeService", () => {
       );
       expect(r.panel.getState()).toMatchObject({ visible: true, activeTab: "terminal" });
       expect(r.output.getLines("Run Code").join("\n")).toContain(
-        'Sent to the terminal: python "C:/p/hello.py"',
+        "Sent to the terminal: python hello.py",
       );
       expect(r.ipc.runStart).not.toHaveBeenCalled();
     });
@@ -638,6 +647,7 @@ describe("Run menu", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "x",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "Python",
@@ -673,6 +683,67 @@ describe("Run menu", () => {
     expect(
       rows.find((row) => row.kind === "item" && row.label === "Select Runtime…"),
     ).toMatchObject({ enabled: true });
+  });
+
+  it("shows the disabled reason as text in the dropdown (once, on Run Code), not only as a tooltip", async () => {
+    const r = await rig({
+      runResolve: vi
+        .fn()
+        .mockResolvedValue(refused("PHP runtime is not installed yet.", { runtimeMissing: true })),
+    });
+    r.open(tab("C:/p/index.php"));
+    await flush(r);
+    const rows = buildRunMenu({ runCode: r.service, configs: r.configs, run: vi.fn() });
+    const shown = rows.filter((row) => row.kind === "item" && row.showReason === true);
+
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatchObject({
+      label: "Run Code",
+      reason: "PHP runtime is not installed yet.",
+    });
+    expect(r.service.buttonView()).toMatchObject({
+      state: "runtimeMissing",
+      enabled: false,
+      tooltip: "PHP runtime is not installed yet.",
+    });
+  });
+
+  it("an unsaved file says to save it, in the button and in the dropdown", async () => {
+    const r = await rig();
+    r.open(tab(null));
+    await flush(r);
+    const rows = buildRunMenu({ runCode: r.service, configs: r.configs, run: vi.fn() });
+
+    expect(r.service.buttonView().tooltip).toBe("Save the file before running.");
+    expect(rows.find((row) => row.kind === "item" && row.label === "Run Code")).toMatchObject({
+      enabled: false,
+      reason: "Save the file before running.",
+      showReason: true,
+    });
+  });
+
+  it("a system interpreter is labelled as such in the Output, with the resolved path on its own line", async () => {
+    const r = await rig();
+    await flush(r);
+    await r.service.run();
+    r.emit({
+      runId: "run-1",
+      type: "started",
+      file: "C:/p/hello.py",
+      commandLine: "python hello.py",
+      resolved: "C:/Python314/python.exe",
+      cwd: "C:/p",
+      runtime: "System Python",
+      language: "Python",
+      pid: 1,
+    });
+
+    expect(r.output.getLines("Python").slice(0, 4)).toEqual([
+      "[Run Code] python hello.py",
+      "cwd: C:/p",
+      "runtime: System Python",
+      "resolved: C:/Python314/python.exe",
+    ]);
   });
 
   it("a Markdown file offers previews instead, and Configure is disabled with a reason", async () => {
@@ -740,6 +811,7 @@ describe("Run commands and shortcuts", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "x",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "Python",
@@ -789,6 +861,7 @@ describe("Run commands and shortcuts", () => {
       type: "started",
       file: "C:/p/hello.py",
       commandLine: "x",
+      resolved: "C:/rt/python.exe",
       cwd: "C:/p",
       runtime: "rt",
       language: "Python",

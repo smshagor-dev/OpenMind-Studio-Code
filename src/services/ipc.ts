@@ -294,6 +294,8 @@ export interface RunAvailability {
   runtimeMissing: boolean;
   runtime: string | null;
   command: string | null;
+  /** Absolute path of the interpreter a run would start. */
+  resolved: string | null;
 }
 
 export interface RunInfo {
@@ -307,6 +309,7 @@ export type RunEvent = { runId: string } & (
       type: "started";
       file: string;
       commandLine: string;
+      resolved: string;
       cwd: string;
       runtime: string;
       language: string;
@@ -322,6 +325,7 @@ export interface TerminalCommand {
   line: string;
   display: string;
   runtime: string;
+  resolved: string;
   language: string;
 }
 

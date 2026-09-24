@@ -270,6 +270,7 @@ export class RunCodeService {
         runtimeMissing: false,
         runtime: null,
         command: null,
+        resolved: null,
       };
     }
     if (token !== this.token) return;
@@ -365,6 +366,7 @@ export class RunCodeService {
         stamped(`[Run Code] Sent to the terminal: ${command.display}`),
       );
       this.output.append(RUN_CHANNEL, `runtime: ${command.runtime}`);
+      this.output.append(RUN_CHANNEL, `resolved: ${command.resolved}`);
       return true;
     } catch (error) {
       return this.fail(String(error));
@@ -382,6 +384,7 @@ export class RunCodeService {
       this.output.append(channel, header);
       this.output.append(channel, `cwd: ${event.cwd}`);
       this.output.append(channel, `runtime: ${event.runtime}`);
+      this.output.append(channel, `resolved: ${event.resolved}`);
       this.output.append(channel, "");
       this.update({ running: { ...this.state.running, [event.file]: event.runId } });
       if (this.wantOutput.delete(event.file)) {
