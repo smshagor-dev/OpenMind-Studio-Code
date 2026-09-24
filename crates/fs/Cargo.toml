@@ -11,7 +11,7 @@ dunce = "1.0.5"
 encoding_rs = "0.8.35"
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
-tokio = { version = "1.53.1", features = ["fs", "io-util"] }
+tokio = { version = "1.53.1", features = ["fs", "io-util", "rt"] }
 trash = "5.2.9"
 
 [dev-dependencies]

@@ -1,12 +1,14 @@
 import { container } from "../services/container";
-import type { DocumentSnapshot } from "../services/documentService";
+import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseAllIcon, CloseIcon, NewFileIcon, SaveAllIcon } from "./icons";
 import { PaneSection } from "./PaneSection";
 
 interface OpenEditorsSectionProps {
-  tabs: DocumentSnapshot[];
+  /** Every open tab, across all editor groups. */
+  tabs: EditorTabView[];
   activeId: string | null;
+  activeGroupId: string;
   rootPath: string | null;
   expanded: boolean;
   onToggle: () => void;
@@ -27,6 +29,7 @@ function describeLocation(path: string | null, rootPath: string | null): string 
 export function OpenEditorsSection({
   tabs,
   activeId,
+  activeGroupId,
   rootPath,
   expanded,
   onToggle,
@@ -66,9 +69,9 @@ export function OpenEditorsSection({
       <div className="open-editors" role="listbox" aria-label="Open Editors">
         {tabs.map((tab) => (
           <OpenEditorRow
-            key={tab.id}
+            key={`${tab.groupId}:${tab.id}`}
             tab={tab}
-            active={tab.id === activeId}
+            active={tab.id === activeId && tab.groupId === activeGroupId}
             location={describeLocation(tab.path, rootPath)}
           />
         ))}
@@ -82,7 +85,7 @@ function OpenEditorRow({
   active,
   location,
 }: {
-  tab: DocumentSnapshot;
+  tab: EditorTabView;
   active: boolean;
   location: string;
 }) {
@@ -93,10 +96,10 @@ function OpenEditorRow({
       className={active ? "open-editors__row open-editors__row--active" : "open-editors__row"}
       title={tab.path ?? tab.title}
       onClick={() => {
-        container.workspace.setActive(tab.id);
+        container.workspace.activateTab(tab.groupId, tab.id);
       }}
       onAuxClick={(event) => {
-        if (event.button === 1) void container.workspace.close(tab.id);
+        if (event.button === 1) void container.workspace.closeTab(tab.groupId, tab.id);
       }}
     >
       <button
@@ -107,7 +110,7 @@ function OpenEditorRow({
         aria-label={`Close ${tab.title}`}
         onClick={(event) => {
           event.stopPropagation();
-          void container.workspace.close(tab.id);
+          void container.workspace.closeTab(tab.groupId, tab.id);
         }}
       >
         <CloseIcon />

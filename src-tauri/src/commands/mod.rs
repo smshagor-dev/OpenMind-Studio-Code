@@ -1,7 +1,9 @@
 pub mod document;
 pub mod filesystem;
 pub mod runtime;
+pub mod search;
 pub mod settings;
+pub mod system;
 pub mod terminal;
 pub mod theme;
 pub mod workspace;

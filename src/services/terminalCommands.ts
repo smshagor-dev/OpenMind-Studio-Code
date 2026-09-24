@@ -17,7 +17,7 @@ export function registerTerminalCommands(commands: CommandRegistry, terminal: Te
   const hasActive = () => terminal.getState().activeId !== null;
 
   commands.register("terminal.toggle", () => terminal.togglePanel(), {
-    checked: () => terminal.getState().panelVisible,
+    checked: () => terminal.isShowing(),
   });
   // The optional argument is the shell picked in the panel's shell selector.
   commands.register("terminal.new", async (shell) => {

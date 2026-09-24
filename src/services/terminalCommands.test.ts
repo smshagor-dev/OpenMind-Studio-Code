@@ -6,6 +6,7 @@ import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import { KeybindingService } from "./keybindings";
 import { buildMenuBar } from "./menus";
+import { PanelService } from "./panelService";
 import { registerTerminalCommands } from "./terminalCommands";
 import { TerminalService } from "./terminalService";
 
@@ -22,7 +23,12 @@ describe("terminal commands", () => {
       ]),
       terminalCreate: vi.fn().mockResolvedValue({ id: "t1", shell: "cmd", cwd: "C:/proj", pid: 1 }),
     });
-    terminal = new TerminalService(ipc, new EventBus<AppEvents>(), () => "C:/proj");
+    terminal = new TerminalService(
+      ipc,
+      new EventBus<AppEvents>(),
+      () => "C:/proj",
+      new PanelService(ipc),
+    );
     await terminal.initialize();
     commands = new CommandRegistry();
     registerTerminalCommands(commands, terminal);

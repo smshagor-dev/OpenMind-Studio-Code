@@ -22,5 +22,7 @@ export interface AppEvents extends Record<string, unknown> {
   /** UI-only requests raised by commands (menus/keybindings) that a component must fulfil. */
   showAbout: undefined;
   focusExplorer: undefined;
+  /** Focus the Search view's input (Find in Files). */
+  focusSearch: undefined;
   showRuntimeManager: undefined;
 }

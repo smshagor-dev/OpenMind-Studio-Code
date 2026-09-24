@@ -66,7 +66,9 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
 
             // Kill every terminal's whole process tree first so no shell (or
             // anything it spawned) can outlive the window.
-            window.app_handle().state::<AppState>().terminal.kill_all();
+            let state = window.app_handle().state::<AppState>();
+            state.terminal.kill_all();
+            state.search.cancel_all();
 
             // `.destroy()`, not `.close()`: `.close()` re-emits
             // `CloseRequested` (documented behavior — "like a

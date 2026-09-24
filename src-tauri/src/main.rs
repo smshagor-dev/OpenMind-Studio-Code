@@ -7,6 +7,7 @@ mod window_events;
 use openmind_core::AppPaths;
 use openmind_db::Db;
 use openmind_runtime_manager::{RuntimeManager, RuntimePaths, RuntimeRegistry, UreqClient};
+use openmind_search::SearchRegistry;
 use openmind_settings::{ThemeSettingService, WindowStateService, MAIN_WINDOW_LABEL};
 use openmind_terminal::TerminalRegistry;
 use openmind_workspace::{
@@ -69,6 +70,9 @@ fn main() {
             commands::runtime::runtime_repair,
             commands::runtime::runtime_set_active,
             commands::runtime::runtime_delete,
+            commands::search::search_run,
+            commands::search::search_cancel,
+            commands::system::open_external_url,
         ])
         .setup(move |app| {
             let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))
@@ -102,6 +106,7 @@ fn main() {
 
             app.manage(AppState {
                 runtime,
+                search: SearchRegistry::new(),
                 app_root: app_paths.root_dir.clone(),
                 terminal: TerminalRegistry::new(),
                 recent_files: RecentFilesService::new(db.clone()),

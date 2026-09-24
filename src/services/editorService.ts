@@ -7,6 +7,9 @@ export type CodeEditorLike = Pick<
   monaco.editor.IStandaloneCodeEditor,
   | "focus"
   | "trigger"
+  | "setSelection"
+  | "revealRangeInCenter"
+  | "onDidFocusEditorWidget"
   | "updateOptions"
   | "getSelections"
   | "getModel"
@@ -52,14 +55,29 @@ export interface EditorStatus {
 
 const SETTINGS_KEY = "editor.viewOptions";
 
+/** A reveal request older than this is dropped: the file it was for never showed up. */
+const REVEAL_TTL_MS = 5000;
+
+export interface RevealRequest {
+  /** URI of the Monaco model to reveal in. */
+  uri: string;
+  line: number;
+  column: number;
+  length: number;
+}
+
 /**
- * Bridges app-level commands (menus, keybindings) to whichever Monaco editor
- * instance is currently mounted, and publishes cursor/language status for the
- * status bar. `MonacoHost` stays UI-only: `App` hands the editor it creates to
- * `attach()`; this service never creates or owns an editor itself.
+ * Bridges app-level commands (menus, keybindings) to the Monaco editors that
+ * are mounted — one per editor group — and publishes cursor/language status
+ * for the status bar. The *current* editor is the one that last had focus (or
+ * the last one mounted), and is what commands act on. `MonacoHost` stays
+ * UI-only: each group hands its editor to `attach()`; this service never
+ * creates or owns an editor itself.
  */
 export class EditorService {
   private editor: CodeEditorLike | null = null;
+  private readonly editors = new Set<CodeEditorLike>();
+  private pendingReveal: (RevealRequest & { at: number }) | null = null;
   private status: EditorStatus | null = null;
   private options: EditorViewOptions = DEFAULT_VIEW_OPTIONS;
   private readonly listeners = new Set<() => void>();
@@ -81,30 +99,73 @@ export class EditorService {
     }
   }
 
-  /** Registers `editor` as the active editor; returns the matching detach function. */
+  /** Registers `editor` (and makes it current); returns the matching detach function. */
   attach(editor: CodeEditorLike): () => void {
+    this.editors.add(editor);
     this.editor = editor;
     this.applyOptions();
     const refresh = () => {
-      this.refreshStatus();
+      if (this.editor === editor) this.refreshStatus();
     };
     const disposables = [
       editor.onDidChangeCursorSelection(refresh),
-      editor.onDidChangeModel(refresh),
+      editor.onDidChangeModel(() => {
+        refresh();
+        this.applyPendingReveal();
+      }),
       editor.onDidChangeModelLanguage(refresh),
       editor.onDidChangeModelOptions(refresh),
+      editor.onDidFocusEditorWidget(() => {
+        this.editor = editor;
+        this.refreshStatus();
+      }),
     ];
     this.refreshStatus();
+    this.applyPendingReveal();
     return () => {
       for (const disposable of disposables) {
         disposable.dispose();
       }
+      this.editors.delete(editor);
       if (this.editor === editor) {
-        this.editor = null;
-        this.status = null;
-        this.notify();
+        this.editor = [...this.editors].pop() ?? null;
+        this.refreshStatus();
       }
     };
+  }
+
+  /**
+   * Selects and centers a range in whichever editor shows the model `uri` —
+   * now if one already does, otherwise as soon as one is given that model
+   * (the file was only just opened). A request nobody satisfies expires.
+   */
+  reveal(request: RevealRequest): void {
+    this.pendingReveal = { ...request, at: Date.now() };
+    this.applyPendingReveal();
+  }
+
+  private applyPendingReveal(): void {
+    const pending = this.pendingReveal;
+    if (!pending) return;
+    if (Date.now() - pending.at > REVEAL_TTL_MS) {
+      this.pendingReveal = null;
+      return;
+    }
+    const candidates = this.editor ? [this.editor, ...this.editors] : [...this.editors];
+    const target = candidates.find((editor) => editor.getModel()?.uri.toString() === pending.uri);
+    if (!target) return;
+    const range = {
+      startLineNumber: pending.line,
+      startColumn: pending.column,
+      endLineNumber: pending.line,
+      endColumn: pending.column + Math.max(0, pending.length),
+    };
+    this.pendingReveal = null;
+    this.editor = target;
+    target.setSelection(range);
+    target.revealRangeInCenter(range);
+    target.focus();
+    this.refreshStatus();
   }
 
   hasEditor(): boolean {

@@ -37,6 +37,7 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "Ctrl+F", command: "edit.find", owner: "editor" },
   { key: "Ctrl+H", command: "edit.replace", owner: "editor" },
   { key: "Ctrl+Shift+F", command: "search.findInFiles", owner: "app" },
+  { key: "Ctrl+\\", command: "editorLayout.splitRight", owner: "app" },
   { key: "Ctrl+Shift+H", command: "search.replaceInFiles", owner: "app" },
   { key: "Ctrl+/", command: "edit.toggleLineComment", owner: "editor" },
   { key: "Shift+Alt+A", command: "edit.toggleBlockComment", owner: "editor" },

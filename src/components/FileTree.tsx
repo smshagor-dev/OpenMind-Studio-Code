@@ -21,7 +21,10 @@ export interface FileTreeProps {
   focusToken: number;
   onToggleExpand: (path: string) => void;
   onSelect: (path: string) => void;
+  /** Single click: opens the file (as a provisional preview tab when previews are enabled). */
   onOpenFile: (path: string) => void;
+  /** Double-click / Enter: opens the file and keeps its tab. Falls back to `onOpenFile`. */
+  onKeepFileOpen?: (path: string) => void;
   /** `node` is null for a right-click on empty space below the rows. */
   onContextMenu: (event: React.MouseEvent, node: ExplorerNode | null) => void;
   onCommitEdit: (node: ExplorerNode, newName: string) => void;
@@ -142,7 +145,7 @@ function handleTreeKey(event: React.KeyboardEvent, props: FileTreeProps): void {
     case "Enter":
     case " ":
       if (node?.isDir) props.onToggleExpand(node.path);
-      else if (node) props.onOpenFile(node.path);
+      else if (node) (props.onKeepFileOpen ?? props.onOpenFile)(node.path);
       break;
     case "F2":
       if (node) props.onRename(node);
@@ -201,6 +204,9 @@ function TreeRow(props: TreeRowProps) {
       onClick={() => {
         if (node.isDir) props.onToggleExpand(path);
         else props.onOpenFile(path);
+      }}
+      onDoubleClick={() => {
+        if (!node.isDir) (props.onKeepFileOpen ?? props.onOpenFile)(path);
       }}
       onContextMenu={(event) => {
         event.preventDefault();

@@ -11,6 +11,8 @@ export type PopupItem =
       enabled: boolean;
       checked?: boolean;
       danger?: boolean;
+      /** Why the row is disabled — shown as its tooltip, so nothing is disabled without a reason. */
+      reason?: string;
       onSelect: () => void;
     }
   | { kind: "submenu"; label: string; items: PopupItem[] }
@@ -59,7 +61,7 @@ function useMenuNavigation(props: MenuPopupProps) {
   const [openSub, setOpenSub] = useState<OpenSubmenu | null>(null);
 
   function openSubmenu(index: number, keyboard: boolean) {
-    const row = rootRef.current?.querySelectorAll<HTMLElement>("[data-menu-index]")[index];
+    const row = rootRef.current?.querySelector<HTMLElement>(`[data-menu-index="${String(index)}"]`);
     if (!row) return;
     const rect = row.getBoundingClientRect();
     setOpenSub({ index, x: rect.right - 2, y: rect.top - 5, keyboard });
@@ -207,7 +209,7 @@ interface MenuRowProps {
 
 function MenuRow({ item, index, focused, onHover, onActivate }: MenuRowProps) {
   if (item.kind === "separator") {
-    return <div className="menu-popup__separator" role="separator" />;
+    return <div className="menu-popup__separator" role="separator" data-menu-index={index} />;
   }
   const isItem = item.kind === "item";
   const disabled = isItem && !item.enabled;
@@ -227,6 +229,7 @@ function MenuRow({ item, index, focused, onHover, onActivate }: MenuRowProps) {
       role={checkable ? "menuitemcheckbox" : "menuitem"}
       aria-checked={checkable ? item.checked : undefined}
       aria-disabled={disabled || undefined}
+      title={isItem && disabled ? item.reason : undefined}
       aria-haspopup={isItem ? undefined : true}
       onMouseEnter={onHover}
       onClick={onActivate}

@@ -220,6 +220,7 @@ const VIEW_MENU: TopLevelMenu = {
     cmd("Problems", "view.showProblems"),
     cmd("Output", "view.showOutput"),
     cmd("Debug Console", "view.showDebugConsole"),
+    cmd("Ports", "view.showPorts"),
     cmd("Terminal", "terminal.toggle"),
     SEPARATOR,
     cmd("Word Wrap", "view.toggleWordWrap"),

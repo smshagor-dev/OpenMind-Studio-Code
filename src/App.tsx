@@ -12,12 +12,12 @@ import {
 } from "./appHooks";
 import { AboutDialog } from "./components/AboutDialog";
 import { ActivityBar } from "./components/ActivityBar";
-import { EditorGroup } from "./components/EditorGroup";
+import { BottomPanel } from "./components/BottomPanel";
+import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
 import { RuntimeManagerDialog } from "./components/RuntimeManagerDialog";
 import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
-import { TerminalPanel } from "./components/TerminalPanel";
 import { TitleBar } from "./components/TitleBar";
 import { buildMenuBar } from "./services/menus";
 
@@ -32,7 +32,8 @@ export function App() {
   useGlobalKeybindings();
   useCommandStateRefresh();
 
-  const noTabs = workspaceState.tabs.length === 0;
+  const allTabs = workspaceState.groups.flatMap((group) => group.tabs);
+  const noTabs = allTabs.length === 0;
   useEffect(() => {
     if (ready && noTabs) refreshRecents();
   }, [ready, noTabs, refreshRecents]);
@@ -52,7 +53,7 @@ export function App() {
     [recents],
   );
   const dirtyPaths = new Set(
-    workspaceState.tabs.flatMap((tab) => (tab.dirty && tab.path !== null ? [tab.path] : [])),
+    allTabs.flatMap((tab) => (tab.dirty && tab.path !== null ? [tab.path] : [])),
   );
 
   return (
@@ -75,24 +76,24 @@ export function App() {
         {layout.sidebarVisible ? (
           <SideBar
             layout={layout}
-            tabs={workspaceState.tabs}
+            tabs={allTabs}
             activeId={workspaceState.activeId}
+            activeGroupId={workspaceState.activeGroupId}
             activeDocPath={activeTab?.path ?? null}
             dirtyPaths={dirtyPaths}
             workspace={activeWorkspace}
           />
         ) : null}
         <div className="workbench__main">
-          <EditorGroup
+          <EditorArea
+            state={workspaceState}
             ready={ready}
-            tabs={workspaceState.tabs}
-            activeTab={activeTab}
             rootPath={activeWorkspace?.path ?? null}
             breadcrumbsVisible={layout.breadcrumbsVisible}
             themeKind={themeKind}
             recents={recents}
           />
-          <TerminalPanel themeKind={themeKind} />
+          <BottomPanel themeKind={themeKind} />
         </div>
       </div>
       {layout.statusBarVisible ? (

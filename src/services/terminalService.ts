@@ -1,6 +1,7 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, ShellInfo, ShellKind } from "./ipc";
+import type { PanelService } from "./panelService";
 import { safely } from "./safely";
 
 export interface TerminalSession {
@@ -14,8 +15,6 @@ export interface TerminalSession {
 }
 
 export interface TerminalState {
-  panelVisible: boolean;
-  panelHeight: number;
   sessions: TerminalSession[];
   activeId: string | null;
   /** Every shell this machine actually has — unavailable ones are never listed. */
@@ -29,23 +28,15 @@ export interface TerminalSink {
   clear: () => void;
 }
 
-export const DEFAULT_PANEL_HEIGHT = 260;
-export const PANEL_MIN_HEIGHT = 120;
-export const PANEL_MAX_HEIGHT = 900;
-
 const STATE_KEY = "terminal.state";
 const INITIAL_COLS = 80;
 const INITIAL_ROWS = 24;
 
 interface PersistedState {
-  panelVisible: boolean;
-  panelHeight: number;
   lastShell: ShellKind | null;
 }
 
 const EMPTY_STATE: TerminalState = {
-  panelVisible: false,
-  panelHeight: DEFAULT_PANEL_HEIGHT,
   sessions: [],
   activeId: null,
   shells: [],
@@ -53,8 +44,8 @@ const EMPTY_STATE: TerminalState = {
 };
 
 /**
- * Owns the integrated terminal's UI-facing state — panel visibility/height, the
- * session list, the active session — and drives the Rust PTY backend over IPC.
+ * Owns the integrated terminal's UI-facing state — the session list and the
+ * active session — and drives the Rust PTY backend over IPC.
  * The shells themselves (processes, output, process-tree cleanup) live in
  * `openmind-terminal`; this class only mirrors them. Raw output is never stored
  * or persisted: it's handed to whichever `TerminalSink` is attached, buffered
@@ -76,6 +67,10 @@ export class TerminalService {
     private readonly events: EventBus<AppEvents>,
     /** The workspace folder new terminals should start in, if one is open. */
     private readonly getCwd: () => string | null,
+    /** The bottom panel these terminals live in (shown on create, hidden when the last one closes). */
+    private readonly panel: PanelService,
+    /** Where terminal lifecycle events are logged (the Output panel's "Terminal" channel). */
+    private readonly log: (line: string) => void = () => undefined,
   ) {}
 
   getState(): TerminalState {
@@ -102,12 +97,7 @@ export class TerminalService {
     const lastShell = availableShells.some((shell) => shell.kind === persisted?.lastShell)
       ? (persisted?.lastShell ?? null)
       : null;
-    this.update({
-      shells: availableShells,
-      lastShell,
-      panelVisible: persisted?.panelVisible ?? false,
-      panelHeight: persisted?.panelHeight ?? DEFAULT_PANEL_HEIGHT,
-    });
+    this.update({ shells: availableShells, lastShell });
 
     const offs = await Promise.all([
       this.ipc.onTerminalOutput((id, data) => {
@@ -157,9 +147,10 @@ export class TerminalService {
     this.update({
       sessions: [...this.state.sessions, session],
       activeId: session.id,
-      panelVisible: true,
       lastShell: info.shell,
     });
+    this.log(`Started ${session.title} in ${session.cwd}`);
+    await this.panel.show("terminal");
     await this.persist();
     return session.id;
   }
@@ -175,15 +166,16 @@ export class TerminalService {
       this.state.activeId === id
         ? (sessions[index]?.id ?? sessions[index - 1]?.id ?? null)
         : this.state.activeId;
+    this.log(`Closed ${this.state.sessions[index]?.title ?? "terminal"}`);
     this.sinks.delete(id);
     this.pending.delete(id);
     this.closedIds.add(id);
-    this.update({
-      sessions,
-      activeId,
-      panelVisible: sessions.length > 0 && this.state.panelVisible,
-    });
+    this.update({ sessions, activeId });
     await safely(this.events, () => this.ipc.terminalClose(id), "close the terminal", undefined);
+    if (sessions.length === 0 && this.panel.getState().activeTab === "terminal") {
+      // Closing the last terminal closes the panel, like VS Code.
+      await this.panel.hide();
+    }
     await this.persist();
   }
 
@@ -199,34 +191,24 @@ export class TerminalService {
     }
   }
 
-  /** Ctrl+`: hide the panel if shown; otherwise show it, starting a terminal only if there is none. */
+  /** Ctrl+`: hide the panel if the terminal is showing; otherwise show the terminal, starting one only if there is none. */
   async togglePanel(): Promise<void> {
-    if (this.state.panelVisible) {
-      this.update({ panelVisible: false });
-      await this.persist();
+    const panel = this.panel.getState();
+    if (panel.visible && panel.activeTab === "terminal") {
+      await this.panel.hide();
       return;
     }
     if (this.state.sessions.length === 0) {
       await this.createTerminal();
       return;
     }
-    this.update({ panelVisible: true });
-    await this.persist();
+    await this.panel.show("terminal");
   }
 
-  async hidePanel(): Promise<void> {
-    if (this.state.panelVisible) {
-      this.update({ panelVisible: false });
-      await this.persist();
-    }
-  }
-
-  previewPanelHeight(height: number): void {
-    this.update({ panelHeight: clampHeight(height) });
-  }
-
-  async commitPanelHeight(): Promise<void> {
-    await this.persist();
+  /** Whether the terminal tab is what the bottom panel is showing right now. */
+  isShowing(): boolean {
+    const panel = this.panel.getState();
+    return panel.visible && panel.activeTab === "terminal";
   }
 
   write(id: string, data: string): void {
@@ -305,6 +287,10 @@ export class TerminalService {
     if (!this.state.sessions.some((session) => session.id === id)) {
       return;
     }
+    const exited = this.state.sessions.find((session) => session.id === id);
+    this.log(
+      `${exited?.title ?? "Terminal"} exited${code === null ? "" : ` with code ${String(code)}`}`,
+    );
     this.update({
       sessions: this.state.sessions.map((session) =>
         session.id === id ? { ...session, exited: true, exitCode: code } : session,
@@ -320,28 +306,15 @@ export class TerminalService {
   }
 
   private async persist(): Promise<void> {
-    const persisted: PersistedState = {
-      panelVisible: this.state.panelVisible,
-      panelHeight: this.state.panelHeight,
-      lastShell: this.state.lastShell,
-    };
+    const persisted: PersistedState = { lastShell: this.state.lastShell };
     await this.ipc.settingsSet(STATE_KEY, JSON.stringify(persisted)).catch(() => undefined);
   }
-}
-
-function clampHeight(height: number): number {
-  return Math.min(PANEL_MAX_HEIGHT, Math.max(PANEL_MIN_HEIGHT, Math.round(height)));
 }
 
 function parsePersisted(raw: string): PersistedState | null {
   try {
     const value = JSON.parse(raw) as Partial<PersistedState>;
     return {
-      panelVisible: value.panelVisible === true,
-      panelHeight:
-        typeof value.panelHeight === "number"
-          ? clampHeight(value.panelHeight)
-          : DEFAULT_PANEL_HEIGHT,
       lastShell: typeof value.lastShell === "string" ? value.lastShell : null,
     };
   } catch {

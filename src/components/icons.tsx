@@ -233,3 +233,105 @@ export function ChromeCloseIcon() {
     </svg>
   );
 }
+
+export function SourceControlIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="4.5" cy="3.5" r="1.6" />
+      <circle cx="4.5" cy="12.5" r="1.6" />
+      <circle cx="11.5" cy="6.5" r="1.6" />
+      <path d="M4.5 5.1v5.8M11.5 8.1c0 2-2.5 2.2-6 3" />
+    </Svg>
+  );
+}
+
+export function DebugIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 2.5v11l8-5.5z" />
+      <path d="M2 12.5l1.5-1.5M2 4.5l1.5 1.5" />
+    </Svg>
+  );
+}
+
+export function RemoteIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="1.5" y="3" width="13" height="8" rx="0.8" />
+      <path d="M5.5 14h5M8 11v3" />
+    </Svg>
+  );
+}
+
+export function ExtensionsIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2" y="6" width="4.5" height="4.5" />
+      <rect x="6.5" y="6" width="4.5" height="4.5" />
+      <rect x="2" y="10.5" width="4.5" height="4.5" />
+      <rect x="9" y="1.5" width="4.5" height="4.5" transform="rotate(20 11.2 3.7)" />
+    </Svg>
+  );
+}
+
+export function RuntimeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="3.5" width="9" height="9" rx="1" />
+      <path d="M6 1.5v2M10 1.5v2M6 12.5v2M10 12.5v2M1.5 6h2M1.5 10h2M12.5 6h2M12.5 10h2" />
+      <path d="M6.5 6.5h3v3h-3z" />
+    </Svg>
+  );
+}
+
+export function ServerIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2" y="2.5" width="12" height="4.5" rx="0.8" />
+      <rect x="2" y="9" width="12" height="4.5" rx="0.8" />
+      <path d="M4.5 4.75h.01M4.5 11.25h.01" strokeWidth="1.6" />
+    </Svg>
+  );
+}
+
+export function SplitEditorIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="2" y="2.5" width="12" height="11" rx="0.5" />
+      <path d="M8 2.5v11" />
+    </Svg>
+  );
+}
+
+export function LockIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="7" width="9" height="6.5" rx="0.8" />
+      <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+    </Svg>
+  );
+}
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 2.8v10.4L13 8z" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="3.5" y="3.5" width="9" height="9" fill="currentColor" />
+    </Svg>
+  );
+}
+
+export function ChevronDownSmallIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 6l4 4 4-4" strokeWidth="1.2" />
+    </Svg>
+  );
+}

@@ -8,7 +8,7 @@ pub mod metadata;
 pub mod ops;
 pub mod path_safety;
 
-pub use binary::is_binary;
+pub use binary::{is_binary, looks_binary};
 pub use dir_entry::{read_dir, DirEntryInfo};
 pub use document_io::{read_text_file, write_text_file, ReadTextFileResult};
 pub use encoding::TextEncoding;

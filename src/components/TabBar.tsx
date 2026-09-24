@@ -1,22 +1,25 @@
-import type { DocumentSnapshot } from "../services/documentService";
+import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseIcon } from "./icons";
 
 interface TabBarProps {
-  tabs: DocumentSnapshot[];
+  tabs: EditorTabView[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
+  /** Double-click: keep a provisional tab open. */
+  onKeepOpen: (id: string) => void;
 }
 
 /**
  * VS Code editor tabs: file-type icon, name, and a close button that shows
  * on the active/hovered tab — or a dot while the file is dirty, turning back
- * into × on hover. Middle-click closes; the wheel scrolls horizontally.
+ * into × on hover. A provisional ("preview") tab is italic until it is edited
+ * or double-clicked. Middle-click closes; the wheel scrolls horizontally.
  */
-export function TabBar({ tabs, activeId, onSelect, onClose }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen }: TabBarProps) {
   if (tabs.length === 0) {
-    return null;
+    return <div className="tab-bar" />;
   }
 
   return (
@@ -29,7 +32,12 @@ export function TabBar({ tabs, activeId, onSelect, onClose }: TabBarProps) {
     >
       {tabs.map((tab) => {
         const active = tab.id === activeId;
-        const className = ["tab", active ? "tab--active" : "", tab.dirty ? "tab--dirty" : ""]
+        const className = [
+          "tab",
+          active ? "tab--active" : "",
+          tab.dirty ? "tab--dirty" : "",
+          tab.preview ? "tab--preview" : "",
+        ]
           .filter(Boolean)
           .join(" ");
         return (
@@ -38,9 +46,16 @@ export function TabBar({ tabs, activeId, onSelect, onClose }: TabBarProps) {
             role="tab"
             aria-selected={active}
             className={className}
-            title={tab.path ?? tab.title}
+            title={
+              tab.preview
+                ? `${tab.path ?? tab.title} (preview — double-click to keep open)`
+                : (tab.path ?? tab.title)
+            }
             onMouseDown={(event) => {
               if (event.button === 0) onSelect(tab.id);
+            }}
+            onDoubleClick={() => {
+              if (tab.preview) onKeepOpen(tab.id);
             }}
             onAuxClick={(event) => {
               if (event.button === 1) {
@@ -49,7 +64,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose }: TabBarProps) {
               }
             }}
           >
-            <FileTypeIcon name={tab.title} />
+            <FileTypeIcon name={tab.kind === "markdownPreview" ? "preview.md" : tab.title} />
             <span className="tab__label">{tab.title}</span>
             <button
               type="button"

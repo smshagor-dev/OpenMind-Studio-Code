@@ -1,7 +1,14 @@
 import type { IpcClient } from "./ipc";
 
+/** The views the primary side bar can show, one per activity-bar icon. */
+export type SideView = "explorer" | "search" | "scm" | "debug" | "extensions";
+
+export const SIDE_VIEWS: readonly SideView[] = ["explorer", "search", "scm", "debug", "extensions"];
+
 export interface LayoutState {
   sidebarVisible: boolean;
+  /** Which view the side bar shows. */
+  activeView: SideView;
   sidebarWidth: number;
   sidebarPosition: "left" | "right";
   statusBarVisible: boolean;
@@ -15,6 +22,7 @@ export interface LayoutState {
 
 export const DEFAULT_LAYOUT: LayoutState = {
   sidebarVisible: true,
+  activeView: "explorer",
   sidebarWidth: 260,
   sidebarPosition: "left",
   statusBarVisible: true,
@@ -78,6 +86,20 @@ export class LayoutService {
     await this.update({ sidebarVisible: visible });
   }
 
+  /** Shows the side bar on `view`. */
+  async showView(view: SideView): Promise<void> {
+    await this.update({ sidebarVisible: true, activeView: view });
+  }
+
+  /** Activity-bar click: the active view's icon hides the side bar (VS Code); any other icon switches to that view. */
+  async toggleView(view: SideView): Promise<void> {
+    if (this.state.sidebarVisible && this.state.activeView === view) {
+      await this.update({ sidebarVisible: false });
+    } else {
+      await this.showView(view);
+    }
+  }
+
   async toggleSidebarPosition(): Promise<void> {
     await this.update({
       sidebarPosition: this.state.sidebarPosition === "left" ? "right" : "left",
@@ -136,6 +158,9 @@ function parseLayout(raw: string): LayoutState {
   }
   if (record.sidebarPosition !== "left" && record.sidebarPosition !== "right") {
     state.sidebarPosition = "left";
+  }
+  if (!SIDE_VIEWS.includes(record.activeView as SideView)) {
+    state.activeView = "explorer";
   }
   state.sidebarWidth = clampWidth(state.sidebarWidth);
   return state;

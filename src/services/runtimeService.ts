@@ -92,6 +92,8 @@ export class RuntimeService {
   constructor(
     private readonly ipc: IpcClient,
     private readonly events: EventBus<AppEvents>,
+    /** Where install/repair/delete activity is logged (the Output panel's "Runtime Manager" channel). */
+    private readonly log: (line: string) => void = () => undefined,
   ) {}
 
   getState(): RuntimeState {
@@ -112,6 +114,10 @@ export class RuntimeService {
     }
     try {
       this.unsubscribe = await this.ipc.onRuntimeProgress((progress) => {
+        const previous = this.state.progress[progress.kind];
+        if (previous?.phase !== progress.phase) {
+          this.log(`${progress.kind} ${progress.version}: ${describeProgress(progress).label}`);
+        }
         this.update({ progress: { ...this.state.progress, [progress.kind]: progress } });
       });
     } catch (error) {
@@ -227,10 +233,13 @@ export class RuntimeService {
       errors: omit(this.state.errors, kind),
     });
     let ok = true;
+    this.log(`${operation} ${kind}…`);
     try {
       await task();
+      this.log(`${operation} ${kind}: done.`);
     } catch (error) {
       ok = false;
+      this.log(`${operation} ${kind} failed: ${String(error)}`);
       this.update({ errors: { ...this.state.errors, [kind]: String(error) } });
     }
     this.update({

@@ -1,6 +1,9 @@
 import { BufferManager } from "./bufferManager";
 import { CommandRegistry } from "./commandRegistry";
 import { DocumentService } from "./documentService";
+import { EditorAssociationService } from "./editorAssociationService";
+import { registerEditorCommands } from "./editorCommands";
+import { EditorGroupService } from "./editorGroupService";
 import { EditorService } from "./editorService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
@@ -9,20 +12,43 @@ import { FileSystemService } from "./fileSystemService";
 import { tauriIpcClient } from "./ipc";
 import { KeybindingService } from "./keybindings";
 import { LayoutService } from "./layoutService";
+import { MarkdownPreviewService } from "./markdownPreviewService";
 import { MarkerService } from "./markerService";
+import { OpenEditorsService } from "./openEditorsService";
+import { OutputService, stamped } from "./outputService";
+import { PanelService } from "./panelService";
+import { PortsService } from "./portsService";
+import { PreviewEditorService } from "./previewEditorService";
 import { RuntimeService } from "./runtimeService";
+import { SearchService } from "./searchService";
 import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { registerTerminalCommands } from "./terminalCommands";
+import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
 import { WorkspaceService } from "./workspaceService";
 
 const events = new EventBus<AppEvents>();
 const buffers = new BufferManager();
 const documents = new DocumentService(tauriIpcClient, buffers, events);
-const workspace = new WorkspaceService(documents, tauriIpcClient, events);
+const output = new OutputService();
+const log = (channel: string) => (line: string) => {
+  output.append(channel, stamped(line));
+};
+const panel = new PanelService(tauriIpcClient);
+const editorGroups = new EditorGroupService();
+const associations = new EditorAssociationService(tauriIpcClient);
+const previews = new PreviewEditorService(tauriIpcClient);
+const workspace = new WorkspaceService(documents, tauriIpcClient, events, {
+  groups: editorGroups,
+  associations,
+  previews,
+});
+const openEditors = new OpenEditorsService(workspace);
+const markdown = new MarkdownPreviewService(workspace, editorGroups, tauriIpcClient, events);
+const ports = new PortsService(tauriIpcClient, events);
 const fileSystem = new FileSystemService(tauriIpcClient);
 const explorer = new ExplorerService(fileSystem, tauriIpcClient, events);
 const theme = new ThemeService(tauriIpcClient, events);
@@ -32,12 +58,42 @@ const layout = new LayoutService(tauriIpcClient);
 const windowService = new WindowService(tauriWindowApi, tauriIpcClient);
 const keybindings = new KeybindingService(commands);
 const markers = new MarkerService();
-const runtime = new RuntimeService(tauriIpcClient, events);
+const runtime = new RuntimeService(tauriIpcClient, events, log("Runtime Manager"));
 const terminal = new TerminalService(
   tauriIpcClient,
   events,
   () => workspace.getActiveWorkspace()?.path ?? null,
+  panel,
+  log("Terminal"),
 );
+const search = new SearchService(
+  tauriIpcClient,
+  events,
+  output,
+  () => workspace.getActiveWorkspace()?.path ?? null,
+  workspace,
+);
+
+// Problems are labelled with the document each marker belongs to; search results reveal in the editor.
+markers.setResourceResolver((uri) => {
+  const id = documents.idForModelUri(uri);
+  if (id === undefined) return null;
+  const snapshot = documents.snapshot(id);
+  return { title: snapshot.title, path: snapshot.path };
+});
+workspace.setRevealer((uri, target) => {
+  editor.reveal({ uri, ...target });
+});
+
+// The app's own log: caught errors and workspace changes.
+const appLog = log("OpenMind Studio");
+appLog("OpenMind Studio started.");
+events.on("appError", ({ message }) => {
+  appLog(`Error: ${message}`);
+});
+events.on("workspaceFolderChanged", ({ workspace: opened }) => {
+  appLog(opened ? `Opened folder ${opened.path}` : "Closed the folder.");
+});
 
 // Keep the explorer tree in sync with whichever folder is currently open.
 workspace.subscribeWorkspace(() => {
@@ -149,6 +205,16 @@ commands.register("explorer.revealActiveFile", async () => {
 });
 
 registerTerminalCommands(commands, terminal);
+registerViewCommands({ commands, events, layout, panel, output, search });
+registerEditorCommands({
+  commands,
+  workspace,
+  groups: editorGroups,
+  openEditors,
+  previews,
+  associations,
+  markdown,
+});
 registerRuntimeCommands(commands, events);
 
 registerWorkbenchCommands({
@@ -191,5 +257,14 @@ export const container = {
   window: windowService,
   terminal,
   runtime,
+  panel,
+  output,
+  ports,
+  search,
+  editorGroups,
+  openEditors,
+  previews,
+  associations,
+  markdown,
   ipc: tauriIpcClient,
 };

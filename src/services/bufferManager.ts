@@ -23,6 +23,22 @@ export class BufferManager {
     return this.models.get(id);
   }
 
+  /** The buffer whose Monaco model has this URI (how markers and editors refer to a document). */
+  idForUri(uri: string): string | undefined {
+    for (const [id, model] of this.models) {
+      if (model.uri.toString() === uri) return id;
+    }
+    return undefined;
+  }
+
+  setLanguage(id: string, languageId: string): void {
+    monaco.editor.setModelLanguage(this.requireModel(id), languageId);
+  }
+
+  getLanguage(id: string): string {
+    return this.requireModel(id).getLanguageId();
+  }
+
   getValue(id: string): string {
     return this.requireModel(id).getValue();
   }

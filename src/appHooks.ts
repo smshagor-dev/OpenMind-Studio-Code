@@ -20,6 +20,9 @@ export function useAppStartup(): boolean {
         container.layout.initialize(),
         container.editor.initialize(),
         container.terminal.initialize(),
+        container.panel.initialize(),
+        container.associations.initialize(),
+        container.previews.initialize(),
       ]);
       container.window.initialize().then(
         (stop) => {

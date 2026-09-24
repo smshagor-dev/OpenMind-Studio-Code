@@ -89,6 +89,41 @@ export class DocumentService {
     await this.writeAndMarkClean(id, doc, chosenPath);
   }
 
+  has(id: string): boolean {
+    return this.documents.has(id);
+  }
+
+  /** The URI of the document's Monaco model, or `null` if it isn't open. */
+  modelUri(id: string): string | null {
+    return this.buffers.get(id)?.uri.toString() ?? null;
+  }
+
+  /** The open document whose model has this URI (used to label editor markers). */
+  idForModelUri(uri: string): string | undefined {
+    return this.buffers.idForUri(uri);
+  }
+
+  languageOf(id: string): string {
+    return this.buffers.getLanguage(id);
+  }
+
+  /** Switches the syntax mode of an open document (e.g. Markdown Editor vs Text Editor). */
+  setLanguage(id: string, languageId: string): void {
+    this.requireDocument(id);
+    this.buffers.setLanguage(id, languageId);
+  }
+
+  /** The current text of an open document (the Markdown preview renders this live). */
+  contentOf(id: string): string {
+    return this.buffers.getValue(id);
+  }
+
+  /** Calls `listener` whenever the document's text changes; returns the unsubscribe function. */
+  onDidChangeContent(id: string, listener: () => void): () => void {
+    this.requireDocument(id);
+    return this.buffers.onDidChangeContent(id, listener);
+  }
+
   isDirty(id: string): boolean {
     const doc = this.requireDocument(id);
     return this.buffers.getValue(id) !== doc.savedContent;

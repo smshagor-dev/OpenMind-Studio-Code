@@ -42,4 +42,38 @@ describe("MarkerService", () => {
     monaco.editor.setModelMarkers(model, "test", []);
     unsubscribe();
   });
+
+  it("lists problems grouped by document, errors first, labelled by the resolver", async () => {
+    const service = new MarkerService();
+    const first = monaco.editor.createModel("a", "markdown");
+    const second = monaco.editor.createModel("b", "markdown");
+    models.push(first, second);
+    service.setResourceResolver((uri) =>
+      uri === first.uri.toString() ? { title: "first.md", path: "C:/p/first.md" } : null,
+    );
+    const unsubscribe = service.subscribe(() => undefined);
+
+    monaco.editor.setModelMarkers(second, "t", [marker(monaco.MarkerSeverity.Warning)]);
+    monaco.editor.setModelMarkers(first, "t", [
+      { ...marker(monaco.MarkerSeverity.Warning), startLineNumber: 3 },
+      { ...marker(monaco.MarkerSeverity.Error), message: "bad", startLineNumber: 9 },
+    ]);
+
+    await vi.waitFor(() => {
+      expect(service.getProblemFiles()).toHaveLength(2);
+    });
+    const [top, other] = service.getProblemFiles();
+    expect(top).toMatchObject({ title: "first.md", path: "C:/p/first.md" });
+    expect(top?.problems.map((p) => [p.severity, p.line])).toEqual([
+      ["error", 9],
+      ["warning", 3],
+    ]);
+    expect(other?.path).toBeNull();
+    monaco.editor.setModelMarkers(first, "t", []);
+    monaco.editor.setModelMarkers(second, "t", []);
+    await vi.waitFor(() => {
+      expect(service.getProblemFiles()).toEqual([]);
+    });
+    unsubscribe();
+  });
 });

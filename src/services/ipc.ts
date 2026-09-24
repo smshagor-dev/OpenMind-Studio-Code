@@ -216,8 +216,53 @@ export interface IpcClient {
   clipboardWriteText: (text: string) => Promise<void>;
   clipboardReadText: () => Promise<string>;
 
+  // Workspace search (Rust walks the disk on a worker thread; the UI never waits on it)
+  searchRun: (searchId: string, query: SearchQueryRequest) => Promise<SearchOutcome>;
+  searchCancel: (searchId: string) => Promise<boolean>;
+
+  // Opens an http(s) address in the user's default browser (Rust validates it).
+  openExternalUrl: (url: string) => Promise<void>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
+}
+
+export interface SearchQueryRequest {
+  root: string;
+  text: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  useRegex: boolean;
+  include: string[];
+  exclude: string[];
+  maxResults: number;
+}
+
+export interface SearchLineMatch {
+  line: number;
+  column: number;
+  /** Length of the match in UTF-16 units (Monaco's unit). */
+  length: number;
+  preview: string;
+  previewStart: number;
+  previewEnd: number;
+}
+
+export interface SearchFileMatches {
+  path: string;
+  relativePath: string;
+  matches: SearchLineMatch[];
+}
+
+export interface SearchOutcome {
+  files: SearchFileMatches[];
+  totalMatches: number;
+  filesSearched: number;
+  skippedBinary: number;
+  skippedLarge: number;
+  truncated: boolean;
+  cancelled: boolean;
+  durationMs: number;
 }
 
 export interface AppInfo {
@@ -351,6 +396,12 @@ export const tauriIpcClient: IpcClient = {
     listen<InstallProgress>("runtime:progress", (event) => {
       handler(event.payload);
     }),
+
+  searchRun: (searchId, query) => invoke<SearchOutcome>("search_run", { searchId, query }),
+
+  searchCancel: (searchId) => invoke<boolean>("search_cancel", { searchId }),
+
+  openExternalUrl: (url) => invoke("open_external_url", { url }),
 
   clipboardWriteText: (text) => writeText(text),
 

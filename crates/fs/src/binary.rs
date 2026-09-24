@@ -7,6 +7,13 @@ use crate::error::FsError;
 /// How many leading bytes to sniff for the binary-detection heuristic.
 const SNIFF_LEN: usize = 8000;
 
+/// The same heuristic on bytes already in memory (the first few KB are
+/// enough): a NUL byte means binary. Shared with workspace search so both
+/// agree on what "binary" is.
+pub fn looks_binary(head: &[u8]) -> bool {
+    head[..head.len().min(SNIFF_LEN)].contains(&0)
+}
+
 /// Heuristic binary-file detection: a NUL byte in the first few KB is the
 /// conventional signal editors (and git) use — text files essentially never
 /// contain one. Used before opening a file in the text editor, so a click
@@ -39,7 +46,7 @@ pub async fn is_binary(path: &Path) -> Result<bool, FsError> {
         }
     }
 
-    Ok(buf[..read].contains(&0))
+    Ok(looks_binary(&buf[..read]))
 }
 
 #[cfg(test)]

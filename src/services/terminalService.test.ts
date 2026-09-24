@@ -4,7 +4,8 @@ import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, ShellInfo, TerminalSessionInfo } from "./ipc";
-import { PANEL_MAX_HEIGHT, PANEL_MIN_HEIGHT, TerminalService } from "./terminalService";
+import { PanelService } from "./panelService";
+import { TerminalService } from "./terminalService";
 
 const SHELLS: ShellInfo[] = [
   { kind: "powerShell", label: "PowerShell", available: true },
@@ -23,6 +24,7 @@ describe("TerminalService", () => {
   let outputHandler: (id: string, data: Uint8Array) => void;
   let exitHandler: (id: string, code: number | null) => void;
   let ipc: IpcClient;
+  let panel: PanelService;
   let counter: number;
 
   function makeService(overrides: Partial<IpcClient> = {}) {
@@ -41,7 +43,8 @@ describe("TerminalService", () => {
       }),
       ...overrides,
     });
-    return new TerminalService(ipc, events, () => cwd);
+    panel = new PanelService(ipc);
+    return new TerminalService(ipc, events, () => cwd, panel);
   }
 
   beforeEach(() => {
@@ -59,18 +62,20 @@ describe("TerminalService", () => {
 
   it("does not start any terminal on launch, even if the panel was left open", async () => {
     const service = makeService({
-      settingsGet: vi
-        .fn()
-        .mockResolvedValue('{"panelVisible":true,"panelHeight":300,"lastShell":"cmd"}'),
+      // Only the old key exists: the panel migrates its visibility/height from it.
+      settingsGet: vi.fn((key: string) =>
+        Promise.resolve(
+          key === "terminal.state"
+            ? '{"panelVisible":true,"panelHeight":300,"lastShell":"cmd"}'
+            : null,
+        ),
+      ),
     });
     await service.initialize();
+    await panel.initialize();
 
-    expect(service.getState()).toMatchObject({
-      panelVisible: true,
-      panelHeight: 300,
-      lastShell: "cmd",
-      sessions: [],
-    });
+    expect(service.getState()).toMatchObject({ lastShell: "cmd", sessions: [] });
+    expect(panel.getState()).toMatchObject({ visible: true, height: 300 });
     expect(ipc.terminalCreate).not.toHaveBeenCalled();
   });
 
@@ -90,7 +95,8 @@ describe("TerminalService", () => {
     const id = await service.createTerminal();
 
     expect(ipc.terminalCreate).toHaveBeenCalledWith(null, "C:/proj", 80, 24);
-    expect(service.getState()).toMatchObject({ panelVisible: true, activeId: id });
+    expect(service.getState()).toMatchObject({ activeId: id });
+    expect(panel.getState()).toMatchObject({ visible: true, activeTab: "terminal" });
     expect(service.getState().sessions).toHaveLength(1);
   });
 
@@ -165,10 +171,12 @@ describe("TerminalService", () => {
 
     await service.closeTerminal(second);
     expect(ipc.terminalClose).toHaveBeenCalledWith(second);
-    expect(service.getState()).toMatchObject({ activeId: first, panelVisible: true });
+    expect(service.getState()).toMatchObject({ activeId: first });
+    expect(panel.getState().visible).toBe(true);
 
     await service.closeTerminal(first);
-    expect(service.getState()).toMatchObject({ activeId: null, panelVisible: false, sessions: [] });
+    expect(service.getState()).toMatchObject({ activeId: null, sessions: [] });
+    expect(panel.getState().visible).toBe(false);
   });
 
   it("a shell exit marks the session exited but keeps its tab", async () => {
@@ -305,32 +313,58 @@ describe("TerminalService", () => {
     await service.initialize();
 
     await service.togglePanel();
-    expect(service.getState()).toMatchObject({ panelVisible: true });
+    expect(panel.getState().visible).toBe(true);
     expect(ipc.terminalCreate).toHaveBeenCalledTimes(1);
 
     await service.togglePanel();
-    expect(service.getState().panelVisible).toBe(false);
+    expect(panel.getState().visible).toBe(false);
     expect(service.getState().sessions).toHaveLength(1);
 
     await service.togglePanel();
-    expect(service.getState().panelVisible).toBe(true);
+    expect(panel.getState().visible).toBe(true);
     expect(ipc.terminalCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("clamps and persists the panel height", async () => {
+  it("togglePanel while another panel tab is showing switches to the terminal instead of hiding", async () => {
     const service = makeService();
     await service.initialize();
+    await service.createTerminal();
+    await panel.show("output");
 
-    service.previewPanelHeight(5);
-    expect(service.getState().panelHeight).toBe(PANEL_MIN_HEIGHT);
-    service.previewPanelHeight(99999);
-    expect(service.getState().panelHeight).toBe(PANEL_MAX_HEIGHT);
+    await service.togglePanel();
 
-    await service.commitPanelHeight();
-    expect(ipc.settingsSet).toHaveBeenLastCalledWith(
-      "terminal.state",
-      expect.stringContaining(`"panelHeight":${String(PANEL_MAX_HEIGHT)}`),
+    expect(panel.getState()).toMatchObject({ visible: true, activeTab: "terminal" });
+    expect(service.isShowing()).toBe(true);
+  });
+
+  it("logs its lifecycle to the output channel it was given", async () => {
+    const lines: string[] = [];
+    ipc = createFakeIpc({
+      terminalListShells: vi.fn().mockResolvedValue(SHELLS),
+      terminalCreate: vi.fn().mockResolvedValue(sessionInfo("t1")),
+      onTerminalExit: vi.fn((handler: typeof exitHandler) => {
+        exitHandler = handler;
+        return Promise.resolve(() => undefined);
+      }),
+    });
+    const service = new TerminalService(
+      ipc,
+      events,
+      () => cwd,
+      new PanelService(ipc),
+      (line) => lines.push(line),
     );
+    await service.initialize();
+
+    await service.createTerminal();
+    exitHandler("t1", 2);
+    await service.closeTerminal("t1");
+
+    expect(lines).toEqual([
+      "Started PowerShell in C:/proj",
+      "PowerShell exited with code 2",
+      "Closed PowerShell",
+    ]);
   });
 
   it("notifies subscribers when state changes", async () => {

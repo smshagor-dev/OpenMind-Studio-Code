@@ -164,6 +164,19 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   PATH. Known limitation: launchers that *other tools* generate later (e.g. `pip install black`
   creates `Scripts/black.exe`) still bake in absolute paths and break after a move — run them as
   `python -m black`; venvs created in a project are likewise not relocatable (Python's own design).
+- `openmind-search` (Milestone 5.6.1) — workspace text search, on disk with no index. `search(query,
+  cancel)` walks the root iteratively (sorted, so results are stable), never follows symlinks,
+  always skips `node_modules`/`.git`/`target`/`dist`/`build`/`vendor`, skips binary files (shares
+  `openmind_fs::looks_binary` with the explorer's binary check; UTF-16 files with a BOM are text)
+  and files over 2 MB (both counted in the outcome), decodes with `openmind_fs::encoding::decode`,
+  and reports matches Monaco-style (1-based line, UTF-16 columns) with a highlighted preview. Query:
+  literal (escaped) or regex (`regex` crate, size-limited, no backtracking blow-ups), case/whole-word
+  options, VS Code-style include/exclude globs matched against *root-relative* forward-slash paths
+  (so a pattern can't address anything outside the root). `SearchRegistry` gives each run a cancel
+  flag; a newer run with the same id cancels the older. `commands::search::search_run` refuses any root
+  outside the open workspace and runs on `spawn_blocking`; window close cancels all searches.
+  `commands::system::open_external_url` opens only `http(s)` URLs, passed to `rundll32
+  url.dll,FileProtocolHandler` as data (no shell). No indexing, symbols or replace yet (Milestone 9).
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -280,6 +293,46 @@ internals.
   terminals' PATH). Each installed version lists its features (pip/venv: available, or not
   available with the reason).
   `runtime.manage` (`runtimeCommands.ts`) opens the dialog from the Terminal/Manage menus.
+- **Workbench shell (Milestone 5.6.1).** `LayoutService.activeView` picks the side bar view
+  (`explorer`/`search`/`scm`/`debug`/`extensions`); Source Control, Run and Debug and Extensions are
+  honest empty states ("Git client is not enabled yet", ...), Remote Explorer and PHP Server are
+  disabled activity-bar items with a tooltip reason, Runtime Manager opens its dialog. `PanelService`
+  owns the bottom panel frame (visible/height/active tab, `panel.state`, migrating the old
+  `terminal.state` visibility/height once); `TerminalService` now only owns sessions and shows/hides
+  the panel through it. `OutputService` = named in-memory channels (OpenMind Studio / Runtime Manager /
+  Terminal / Search, capped at 5000 lines; services take an optional `log` callback, wired in
+  `container.ts`, so they never import the output service). `PortsService` = a *registry* services
+  register into (no OS port scanning — that would be guessing); "open in browser" only for entries
+  with a URL. `MarkerService` also lists Monaco markers per open document (the Problems tab), so with
+  no language service it honestly says "No problems".
+- **Editor groups.** `EditorGroupService` is the pure model: an ordered row of groups, each with tabs
+  (`{id, docId, kind: text|markdownPreview, preview}`), an active tab and a locked flag; a text tab's
+  id is its document id, a preview tab's is `<docId>#preview`. Provisional ("preview") tabs are
+  replaced by the next provisional open in the same group and kept once edited/double-clicked; a locked
+  group is skipped when a file opens (another group, or a new one, gets it); closing a group's last tab
+  removes the group. `WorkspaceService` keeps its API (`getState().tabs/activeId` = the *active
+  group's*; `.groups` has everything) and owns document lifecycle: a document is released only when
+  no tab in any group shows it (`tracking()`). `EditorAssociationService` (default editor per
+  extension, `editor.associations`; only Markdown can default to the preview),
+  `PreviewEditorService` (Enable Preview Editors, default on; Explorer single-click opens a
+  provisional tab, double-click keeps it), `OpenEditorsService` (list, Close All, Close Saved — "saved"
+  = not dirty), `EditorLayoutService` (saves groups/tabs/active/locked/widths to `editor.layout`,
+  coalesced, only file-backed tabs; restore falls back to the old flat session and skips files that
+  can't be reopened), `MarkdownPreviewService` (open preview / to the side without stealing focus,
+  follow links: http(s) -> browser, relative -> open file, everything else refused). The ⋯ menu of each
+  group is built by `editorHeaderMenu.ts` (pure, tested); every row works or is disabled with a
+  `reason` tooltip. `EditorService` handles one Monaco editor *per group* (commands act on the
+  last-focused one) and `reveal()` selects a range in whichever editor shows a model URI, waiting up to
+  5 s for the file to be shown.
+- **Markdown preview** (`markdown.ts` + `MarkdownPreview.tsx`): a hand-written parser producing a data
+  tree that React renders as elements — no HTML string, no `dangerouslySetInnerHTML`; raw HTML in the
+  source is shown as text, images as alt text (nothing is loaded), and `safeHref` allows only
+  `http(s)`, `#anchors` and relative paths (`javascript:`, `data:`, `file:`, `//host` become plain
+  text). Link clicks are intercepted so the webview never navigates.
+- `SearchService` (`searchService.ts`) — debounced search-as-you-type + Enter, keeps only the newest
+  answer (a stale one is dropped, the in-flight one cancelled over IPC), logs a summary to the Search
+  output channel; `SearchView` groups results by file with highlighted previews, click opens the
+  file at the match via `WorkspaceService.openPathAt`.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -544,6 +597,27 @@ migration file, check for stray running instances first, not just after somethin
   shim. UI: the pip feature now reads "pip (relocatable launcher): available". 209 TypeScript tests,
   206 Rust tests (+1 ignored network test). Testing note: the UI-driving script picked the wrong
   window once when another window took focus — check the foreground window before scripted clicks.
+- [x] **Milestone 5.6.1** — Workbench shell, panels and editor actions (the "5.6" workbench spec;
+  relocation had already taken the name 5.6). New `openmind-search` crate (31 tests) + `search_run`/
+  `search_cancel`/`open_external_url` commands; activity bar with Explorer/Search/Source Control/Run
+  and Debug/Extensions/Runtime Manager (Remote Explorer and PHP Server disabled with reasons); bottom
+  panel with Problems/Output/Debug Console/Terminal/Ports; multiple editor groups (Split Editor Right,
+  resizable, per-group ⋯ menu: Show Open Editors, Close All, Close Saved, Split, Open Preview to the
+  Side, Open as Preview, Enable Preview Editors, Lock Group, Configure Editor, Reopen Editor With,
+  Set Default for ".md"); safe Markdown preview; persisted layout. Verified in the built app (fresh
+  portable copy + a test workspace): Explorer, real search (node_modules and a binary file excluded,
+  click opens the file with the match selected), Output channels (incl. the Search summary), Problems /
+  Ports empty states, terminal still works inside the Terminal tab, split + live Markdown preview to
+  the side, Reopen With Text Editor (status bar goes to "Plain Text"), Close All, relaunch restored
+  both groups, the panel and its tab without auto-starting a terminal, clean exit with no orphan
+  shells. Found and fixed a pre-existing `MenuPopup` bug on the way: submenu rows were located by
+  position among rows, ignoring separators, so a submenu after a separator opened the wrong items or
+  none. Known limitations: Debug Console, Source Control, Run and Debug and Extensions are empty
+  states by design; groups are side by side only (no vertical splits, no drag-and-drop of tabs);
+  "Close All" doesn't prompt about unsaved changes (pre-existing behavior of closing tabs); a file
+  with mixed line endings shows as modified as soon as it opens (Monaco normalizes the line endings
+  — pre-existing, and it also keeps "Close Saved" from closing that file). 343 TypeScript tests, 239
+  Rust tests (+1 ignored network test).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

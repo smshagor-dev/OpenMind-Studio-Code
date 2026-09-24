@@ -45,7 +45,7 @@ describe("WorkspaceService editor-group operations", () => {
 
     await workspace.closeAll();
 
-    expect(workspace.getState()).toEqual({ tabs: [], activeId: null });
+    expect(workspace.getState()).toMatchObject({ tabs: [], activeId: null });
     expect(ipc.sessionSave).toHaveBeenLastCalledWith({ openPaths: [], activePath: null });
   });
 

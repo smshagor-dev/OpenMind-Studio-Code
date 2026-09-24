@@ -74,7 +74,8 @@ export function ExplorerPanel({
           focusToken={focusToken}
           onToggleExpand={(path) => void container.explorer.toggleExpand(path)}
           onSelect={(path) => void container.explorer.select(path)}
-          onOpenFile={(path) => void container.workspace.openPath(path)}
+          onOpenFile={(path) => void container.workspace.openPath(path, { preview: true })}
+          onKeepFileOpen={(path) => void container.workspace.openPath(path)}
           onContextMenu={(event, node) => {
             ui.setMenu({ x: event.clientX, y: event.clientY, node });
           }}

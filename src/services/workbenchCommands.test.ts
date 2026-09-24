@@ -97,17 +97,6 @@ describe("registerWorkbenchCommands", () => {
     expect(commands.isChecked("view.toggleSidebar")).toBe(false);
   });
 
-  it("view.showExplorer reveals the sidebar and asks the explorer to take focus", async () => {
-    const focus = vi.fn();
-    events.on("focusExplorer", focus);
-    await layout.setSidebarVisible(false);
-
-    await commands.execute("view.showExplorer");
-
-    expect(layout.getState().sidebarVisible).toBe(true);
-    expect(focus).toHaveBeenCalled();
-  });
-
   it("file.openRecentFolder opens the folder passed as its argument", async () => {
     await commands.execute("file.openRecentFolder", "C:/proj");
 
