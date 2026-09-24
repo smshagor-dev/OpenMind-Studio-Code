@@ -1,0 +1,29 @@
+{
+  "id": "js-debug",
+  "displayName": "Node.js debugger (js-debug)",
+  "description": "The Debug Adapter Protocol server OpenMind Studio uses to debug Node.js. Runs on your Node.js, portable first.",
+  "defaultVersion": "1.140.0",
+  "versionCommand": { "executable": "src/dapDebugServer.js", "args": [], "outputPrefix": "" },
+  "binDirs": [],
+  "verifyFiles": ["src/dapDebugServer.js"],
+  "env": {},
+  "features": [
+    { "id": "adapter", "label": "Debug adapter", "verifyFile": "src/dapDebugServer.js", "missingNote": "The adapter is not in this install. Use Repair to reinstall it." }
+  ],
+  "notes": "Microsoft's vscode-js-debug DAP server (the js-debug-dap release on GitHub; SHA256 from the release's asset digest). Nothing is added to PATH: the adapter is started only for a debug session, listening on 127.0.0.1.",
+  "versions": [
+    {
+      "version": "1.140.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.140.0/js-debug-dap-v1.140.0.tar.gz",
+          "sha256": "27dab92937ec1ab35821ae955aac867544fe06a1b6307229049f2d789af10968",
+          "sizeBytes": 1249709,
+          "archive": "tar.gz",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

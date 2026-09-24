@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { DocumentSnapshot } from "../services/documentService";
 import type { LineEnding, TextEncoding } from "../services/ipc";
+import { DebugStatusItem } from "./DebugStatusItem";
 import { GitBranchIndicator } from "./GitBranchIndicator";
 import { LspStatusItem } from "./LspStatusItem";
 import { ErrorIcon, WarningIcon } from "./icons";
@@ -71,6 +72,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
           <WarningIcon />
           <span>{problems.warnings}</span>
         </button>
+        <DebugStatusItem />
         <GitBranchIndicator
           className="statusbar__item"
           onClick={() => {

@@ -52,6 +52,7 @@ export function useAppStartup(): boolean {
       ]);
       await container.fileSync.initialize();
       await container.startLanguageTools();
+      await container.startDebugTools();
       await container.git.initialize();
       await container.sourceControl.initialize();
       if (!lifecycle.cancelled) setReady(true);

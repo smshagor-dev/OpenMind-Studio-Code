@@ -10,6 +10,7 @@ import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
 import { OpenEditorsSection } from "./OpenEditorsSection";
 import { PaneSection } from "./PaneSection";
+import { RunDebugView } from "./RunDebugView";
 import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
 import { SourceControlView } from "./SourceControlView";
@@ -97,13 +98,7 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
     case "scm":
       return <SourceControlView />;
     case "debug":
-      return (
-        <SideViewPlaceholder
-          heading="Run and Debug"
-          message="Debugging is not available yet."
-          hint="There is no debugger in this version, so there is nothing to start or configure."
-        />
-      );
+      return <RunDebugView />;
     case "extensions":
       return (
         <SideViewPlaceholder

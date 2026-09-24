@@ -1,5 +1,6 @@
+import type { DebugFrame } from "./debugModel";
 import type { DocumentSnapshot } from "./documentService";
-import type { LspDiagnosticsEvent, ThemeKind, WorkspaceInfo } from "./ipc";
+import type { DebugRun, LspDiagnosticsEvent, ThemeKind, WorkspaceInfo } from "./ipc";
 
 /**
  * The single shared event map for the app's `EventBus`. Kept centralized
@@ -20,6 +21,14 @@ export interface AppEvents extends Record<string, unknown> {
   lspServerStopped: { server: string };
   /** Language server status changed (started, stopped, installed, ...). */
   lspChanged: undefined;
+  /** The debug run changed (started, paused, resumed, ended); null once there is none. */
+  debugRunChanged: DebugRun | null;
+  /** The program is paused: the stack, variables and watches should be read. */
+  debugPaused: { threadId: number };
+  /** A stack frame was chosen (or `null`: nothing is selected any more). */
+  debugFrameSelected: DebugFrame | null;
+  /** The program runs again or the run ended: what was read while paused is stale. */
+  debugResumed: undefined;
   /** Open the Language Tools dialog. */
   showLanguageTools: undefined;
   /** An open document's relationship with its file on disk changed (changed / deleted / renamed / back in sync). */

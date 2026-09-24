@@ -32,6 +32,16 @@ import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { DiagnosticsService } from "./diagnosticsService";
 import { registerLspCommands } from "./lspCommands";
+import { BreakpointService } from "./breakpointService";
+import { CallStackService } from "./callStackService";
+import { DebugConfigurationService } from "./debugConfigurationService";
+import { DebugConsoleService } from "./debugConsoleService";
+import { registerDebugCommands } from "./debugCommands";
+import { registerDebugEditorBinding } from "./debugEditorBinding";
+import { parseEvaluate } from "./debugModel";
+import { DebugService } from "./debugService";
+import { VariablesService } from "./variablesService";
+import { WatchService } from "./watchService";
 import { disableBuiltinLanguageServices } from "./monacoBuiltins";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
@@ -211,6 +221,59 @@ const lsp = new LspService(tauriIpcClient, events, documents, {
 const diagnostics = new DiagnosticsService(events, documents);
 const welcome = new WelcomeService(tauriIpcClient);
 
+// Debugging: breakpoints, the paused program's stack/variables/watches, the console and the session.
+const activeFile = (): { path: string; docId: string } | null => {
+  const id = workspace.getState().activeId;
+  if (id === null || !documents.has(id)) return null;
+  const path = documents.snapshot(id).path;
+  return path === null ? null : { path, docId: id };
+};
+const breakpoints = new BreakpointService(tauriIpcClient, (): boolean => debug.isDebugging());
+const debugConfigs = new DebugConfigurationService();
+const callStack = new CallStackService(tauriIpcClient, events, (path, line, column) => {
+  void workspace.openPathAt(path, { line, column, length: 0 });
+});
+const variables = new VariablesService(tauriIpcClient, events);
+const watches = new WatchService(tauriIpcClient, events);
+const debugConsole: DebugConsoleService = new DebugConsoleService(
+  async (expression) =>
+    parseEvaluate(await debug.evaluate(expression, callStack.selected()?.id ?? null)),
+  (): string | null => debug.evaluateUnavailable(),
+);
+const debug: DebugService = new DebugService(
+  tauriIpcClient,
+  events,
+  breakpoints,
+  debugConfigs,
+  debugConsole,
+  {
+    activeFile,
+    saveIfDirty: async (id) => {
+      if (!documents.isDirty(id)) return true;
+      try {
+        await documents.save(id);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
+    showConsole: () => {
+      void layout.showView("debug");
+      void panel.show("debugConsole");
+    },
+    log: log("Debug"),
+  },
+);
+
+/** Starts debugging support once the app is up: saved breakpoints, editor gutter, live state. Nothing runs by itself. */
+async function startDebugTools(): Promise<void> {
+  callStack.initialize();
+  variables.initialize();
+  registerDebugEditorBinding({ documents, breakpoints, callStack });
+  await Promise.all([breakpoints.initialize(), watches.initialize(), debug.initialize()]);
+}
+
 /**
  * Starts language support once the app is up: diagnostics become editor markers and
  * the providers (hover, completion, definition, ...) ask the language servers.
@@ -365,6 +428,7 @@ registerEditorCommands({
 });
 registerRuntimeCommands(commands, events);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
+registerDebugCommands({ commands, debug, breakpoints, editor, events, activeFile });
 registerPhpCommands(commands, php, tauriIpcClient);
 registerGitCommands(commands, layout, gitClone, gitBlame);
 commands.register("help.welcome", () => {
@@ -435,6 +499,14 @@ export const container = {
   welcome,
   secondarySideBar,
   startLanguageTools,
+  breakpoints,
+  debug,
+  debugConfigs,
+  debugConsole,
+  callStack,
+  variables,
+  watches,
+  startDebugTools,
   gitClone,
   gitHistory,
   gitStash,

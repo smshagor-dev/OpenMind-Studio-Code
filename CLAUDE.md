@@ -335,6 +335,23 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   Not per window yet: Run Code / Output channels (`run:event`, `git:log` still reach every window), LSP
   (`commands/lsp.rs` still asks `active_workspace()`, i.e. the main window's folder), and extra windows are not
   restored on relaunch.
+- `openmind-dap` (Milestone 8) — the Debug Adapter Protocol client, Tauri-agnostic (`DapEvents` sink supplied by the app).
+  `wire` (Content-Length framing), `protocol`/`session` (seq/request_seq, waiting callers with timeouts, events, answers the
+  adapter's reverse requests — `startDebugging` opens js-debug's child session, `runInTerminal` is refused), `target`
+  (`LaunchConfig`, `default_configs`, `readiness`: the exact user messages — runtime missing / debugger not installed /
+  PHP "requires Xdebug and is not available yet." — and `resolve_interpreter`: OpenMind portable runtime first, system
+  Python/Node only as a labelled fallback), `adapter` (spawn plans), `manager` (`DapManager`: one session at a time,
+  start/control/request/set_breakpoints/stop/snapshot, `RunState` Starting/Running/Stopped/Terminated). **Adapters are
+  Runtime Manager manifests** (`debugpy`: the PyPI wheel, a zip; `js-debug`: the GitHub release tar.gz — new
+  `ArchiveKind::TarGz`, every entry validated, links refused), pinned with SHA256, installed only when the user presses
+  Install Debugger; `RuntimeManager::installed_dir(kind)` locates them. debugpy runs over stdio
+  (`python -m debugpy.adapter`, `console: internalConsole`); js-debug is `node dapDebugServer.js 0 127.0.0.1` over TCP
+  (127.0.0.1 only; the port is read from its first line), a launcher session plus a child session per debuggee. Adapter and
+  debuggee live in a Job Object (`openmind_lsp::process::spawn`), so stop / app close leave no python/node/conhost. Nothing
+  starts unless the user starts debugging. Breakpoints persist in the existing `breakpoints` table
+  (`openmind_db::BreakpointsRepository::{list, replace_all}`). Ignored real-adapter tests: `crates/dap/tests/real_debug.rs`
+  (`OPENMIND_DEBUGPY_DIR` / `OPENMIND_JSDEBUG_DIR`). `commands::debug` (`debug_status/start/control/request/
+  set_breakpoints/stop`, `breakpoints_load/save`) pushes `debug:event`/`debug:state`/`debug:log`; `window_events` stops it on close.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -354,8 +371,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
-`openmind-dap` (Debug Adapter Protocol
-client), `openmind-git` (Git client), `openmind-search`
+`openmind-git` (Git client), `openmind-search`
 (indexed workspace/symbol search), `openmind-extensions` (extension host + sandboxing, backing the
 OpenMind Extensions ecosystem), `openmind-ai` (AI provider plugin architecture, including the
 future OpenMind AI provider), `openmind-plugin-host`.
@@ -586,6 +602,18 @@ internals.
   start-up, before any model exists (their worker isn't available here — hovers hung on "Loading…"; switching them off
   only while a server runs was tried and did not work: TypeScript reads its settings once, CSS kept a stuck hover).
   `documentOpened`/`documentClosed` events feed the sync.
+- **Debugger (Milestone 8).** `BreakpointService` (per-file breakpoints matched across slash/drive-letter styles, saved
+  debounced to SQLite, stale ones — file gone — kept, marked and never sent to the adapter, changes reach a running session
+  per file), `DebugService` (status snapshot, pure `startAvailability`/`controlAvailability` so every disabled control has its
+  reason, start/continue/pause/step/restart/stop, "Debug" output channel), `CallStackService`, `VariablesService` (lazy
+  scopes/children), `WatchService`, `DebugConsoleService` (adapter + program output, evaluate only while paused, clear),
+  `DebugConfigurationService` (`defaultConfigs`; no launch.json yet), `debugCommands.ts` (F5 Start/Continue, Shift+F5, F9,
+  F10/F11/Shift+F11, Ctrl+Shift+F5 restart; **Ctrl+F5 stays Run Code**), `debugEditorBinding.ts` (glyph-margin toggling,
+  breakpoint/paused-line decorations, breakpoints follow their line). UI: `RunDebugView` (start controls with the exact
+  reason messages and Install Debugger, Variables/Watch/Call Stack/Breakpoints via `DebugPanes`), `DebugToolbar`,
+  `DebugConsoleView` (Debug Console tab), `DebugStatusItem`. Testing note: a synthesised F10 (`keybd_event`) during a manual
+  run highlighted the File menu and the session had ended in the resulting screenshot; Step Over was verified with its toolbar
+  button instead, and F10 itself was not confirmed by hand.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -1107,7 +1135,23 @@ migration file, check for stray running instances first, not just after somethin
   `monacoBuiltins.ts`). Not verified by hand: that a file outside the open folder starts no server (covered by the
   `outsideWorkspace` backend check and unit tests); JSON/CSS/HTML rename/format. The test folders `E:\omlsp` and `E:\omlsp2`
   (and the build cache `E:\wt7-target`) are left on disk for manual deletion; the temporary worktree `E:\wt7` was removed.
-- [ ] Milestone 8 — Debug Adapter Protocol integration.
+- [x] **Milestone 8** — Debugger and DAP integration (`feat: add debugger and dap integration`). New `openmind-dap` crate
+  (unit tests + 3 ignored real-adapter tests that pass), tar.gz support and debugpy/js-debug manifests in the Runtime
+  Manager, `breakpoints` repository, `commands::debug`, the debug frontend above. Validated: fmt, clippy `-D warnings`,
+  `cargo test --workspace`, `pnpm lint`, `pnpm test` x3 (749), `pnpm build`. Verified by hand in the built app (fresh
+  portable copy `E:\omdbg8\OpenMind Debug`, workspace `My Debug Site` with spaces): the view said "Python debugger is not
+  installed yet." with Install Debugger; the install (real download, checksum-verified) enabled Start Debugging; a gutter/F9
+  breakpoint on line 3 stopped there (F5) with Locals `msg`/`name`, the call stack `greet`/`<module>`, the yellow paused line
+  and toolbar; Step Over moved to line 4 and printed "Hello world" in the Debug Console; a bad expression showed debugpy's real
+  error; Continue ended with "The program exited with code 0. / The debug session ended." and no python left. Node: "Node.js
+  debugger is not installed yet." + Install (js-debug 1.140.0), breakpoint, paused with locals/`this`/Global and a call stack
+  with runtime frames dimmed; Stop left no node process; closing the app during a session left none (2 before, 0 after);
+  relaunch restored the breakpoints and started nothing. Interpreters were the system Python/Node (labelled fallback; no
+  portable ones installed in that copy). Known limitations: PHP/Xdebug not implemented (message only); no launch.json,
+  conditional/log breakpoints, hover evaluate, watch drag/edit, restart-with-changes, multi-session, attach, or TypeScript
+  debugging; Ctrl+F5 stays Run Code; portable-interpreter precedence for debugging is unit-tested, not re-run by hand here;
+  Step Into/Out, Pause, Restart and Watch were covered by tests and real-adapter backend runs but not clicked by hand; the
+  test folders `E:\omdbg8` (and `E:\omdbg` from an earlier attempt), `E:\wt7-target`, `E:\wt8` are left for manual deletion.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 10 — Extension system (sandboxed, contributes commands/views/themes/...).
 - [ ] Milestone 11 — AI provider plugin architecture (local + hosted providers, chat, embeddings,

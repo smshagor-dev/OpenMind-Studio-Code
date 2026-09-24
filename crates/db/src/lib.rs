@@ -1,3 +1,4 @@
+pub mod breakpoints;
 pub mod editor_settings;
 pub mod error;
 pub mod explorer_state;
@@ -14,6 +15,7 @@ use std::path::Path;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::SqlitePool;
 
+pub use breakpoints::{BreakpointRow, BreakpointsRepository};
 pub use editor_settings::EditorSettingsRepository;
 pub use error::DbError;
 pub use explorer_state::{ExplorerStateRepository, ExplorerStateRow};

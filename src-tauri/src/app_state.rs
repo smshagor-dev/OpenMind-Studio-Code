@@ -54,6 +54,8 @@ pub struct AppState {
     pub editor_windows: crate::windows::EditorWindows,
     /// Running Git commands, stopped on app close.
     pub git: openmind_git::GitRegistry,
+    /// The debug run (one at a time), stopped on app close.
+    pub dap: openmind_dap::DapManager,
     /// Language servers (started on first use, stopped on app close).
     pub lsp: openmind_lsp::LspManager,
     /// Geometry of secondary windows (the PHP Server window).

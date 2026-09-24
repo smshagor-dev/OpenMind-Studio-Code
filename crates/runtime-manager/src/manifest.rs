@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 7] = [
+const BUILTIN: [&str; 9] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
@@ -13,6 +13,8 @@ const BUILTIN: [&str; 7] = [
     include_str!("../manifests/composer.json"),
     include_str!("../manifests/mariadb.json"),
     include_str!("../manifests/phpmyadmin.json"),
+    include_str!("../manifests/debugpy.json"),
+    include_str!("../manifests/js-debug.json"),
 ];
 
 /// The platform id used in manifests for the machine this build runs on.
@@ -34,6 +36,10 @@ pub fn current_platform() -> &'static str {
 #[serde(rename_all = "lowercase")]
 pub enum ArchiveKind {
     Zip,
+    /// A gzip-compressed tar (`js-debug`'s release). Same safety rules as a zip: every entry is
+    /// validated, links are refused.
+    #[serde(rename = "tar.gz")]
+    TarGz,
     /// The download is the one file to install (Composer's `composer.phar`),
     /// stored under the artifact's `installAs` name.
     File,
@@ -297,8 +303,8 @@ impl RuntimeManifest {
                     (ArchiveKind::File, _) => {
                         return bad("a \"file\" artifact needs a plain installAs file name".into());
                     }
-                    (ArchiveKind::Zip, None) => {}
-                    (ArchiveKind::Zip, Some(_)) => {
+                    (ArchiveKind::Zip | ArchiveKind::TarGz, None) => {}
+                    (ArchiveKind::Zip | ArchiveKind::TarGz, Some(_)) => {
                         return bad("installAs only applies to \"file\" artifacts".into());
                     }
                 }
@@ -442,7 +448,7 @@ mod tests {
                 "{id}"
             );
         }
-        assert_eq!(registry.all().count(), 7);
+        assert_eq!(registry.all().count(), 9);
     }
 
     #[test]
@@ -679,7 +685,7 @@ mod tests {
         let (registry, warnings) =
             RuntimeRegistry::builtin().with_overrides(Path::new("Z:/does/not/exist"));
 
-        assert_eq!(registry.all().count(), 7);
+        assert_eq!(registry.all().count(), 9);
         assert!(warnings.is_empty());
     }
 

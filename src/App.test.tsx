@@ -12,6 +12,7 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "workspace_list_pinned_folders") return Promise.resolve([]);
     if (command === "terminal_list_shells") return Promise.resolve([]);
     if (command === "settings_get") return Promise.resolve(null);
+    if (command === "breakpoints_load") return Promise.resolve([]);
     return Promise.resolve(undefined);
   }),
 }));

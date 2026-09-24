@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::detect::{detect_version, find_on_path};
 use crate::download::{download, verify_sha256, HttpClient};
 use crate::error::RuntimeError;
-use crate::extract::{extract_zip, ExtractSelection};
+use crate::extract::{extract_tar_gz, extract_zip, ExtractSelection};
 use crate::manifest::{ArchiveKind, RuntimeManifest, RuntimeRegistry};
 use crate::paths::RuntimePaths;
 use crate::postinstall;
@@ -293,6 +293,22 @@ impl RuntimeManager {
         Ok(())
     }
 
+    /// The folder of the active, healthy install of `kind`, if there is one (for tools that are not
+    /// commands on a PATH: a debug adapter's files).
+    pub async fn installed_dir(&self, kind: &str) -> Option<PathBuf> {
+        let entries = InstalledRuntimesRepository::new(self.db.pool())
+            .list()
+            .await
+            .ok()?;
+        let entry = entries
+            .iter()
+            .find(|entry| entry.kind == kind && entry.is_active)?;
+        let manifest = self.registry.get(kind).ok()?;
+        let dir = self.paths.version_dir(kind, &entry.version).ok()?;
+        self.ensure_shims(manifest, kind, &entry.version)
+            .then_some(dir)
+    }
+
     /// The environment for a process launched by OpenMind Studio: the active
     /// version of each installed, healthy runtime.
     pub async fn environment(&self) -> Result<RuntimeEnvironment, RuntimeError> {
@@ -558,6 +574,9 @@ fn install_files(
     };
     match artifact.archive {
         ArchiveKind::Zip => extract_zip(archive, staging, selection, &mut |c, t| {
+            report(Extract, c, t);
+        })?,
+        ArchiveKind::TarGz => extract_tar_gz(archive, staging, selection, &mut |c, t| {
             report(Extract, c, t);
         })?,
         ArchiveKind::File => place_file(archive, staging, artifact.install_as.as_deref())?,

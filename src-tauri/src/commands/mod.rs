@@ -1,4 +1,5 @@
 pub mod database;
+pub mod debug;
 pub mod document;
 pub mod filesystem;
 pub mod git;

@@ -1,0 +1,26 @@
+import { useSyncExternalStore } from "react";
+
+import { container } from "../services/container";
+import { runSummary } from "../services/debugModel";
+
+/** The status bar's debug indicator: only while a session exists. */
+export function DebugStatusItem() {
+  useSyncExternalStore(
+    (listener) => container.debug.subscribe(listener),
+    () => container.debug.getState(),
+  );
+  const run = container.debug.getState().run;
+  if (run === null || run.state === "terminated") return null;
+  return (
+    <button
+      type="button"
+      className="statusbar__item statusbar__item--debug"
+      title={`${run.configName} — ${runSummary(run)}`}
+      onClick={() => {
+        container.run("view.showRun");
+      }}
+    >
+      🐞 {run.state === "stopped" ? "Paused" : run.state === "starting" ? "Starting" : "Debugging"}
+    </button>
+  );
+}

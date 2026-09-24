@@ -113,6 +113,7 @@ pub async fn shutdown(app: AppHandle) {
         Duration::from_secs(25),
         tokio::task::spawn_blocking(move || {
             crate::commands::watch::stop_on_exit(&stopper);
+            crate::commands::debug::stop_debug(&stopper);
             crate::commands::lsp::stop_lsp(&stopper);
             crate::commands::git::stop_git(&stopper);
             crate::commands::database::stop_all_services(&stopper)

@@ -2,6 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { ProblemSeverity } from "../services/markerService";
+import { DebugConsoleView } from "./DebugConsoleView";
 import { ErrorIcon, WarningIcon } from "./icons";
 
 /** Output tab: the selected channel's lines, newest at the bottom, following the tail. */
@@ -139,15 +140,9 @@ export function ProblemsPanel() {
   );
 }
 
-/** Debug Console tab: there is no debugger yet, and the panel says so instead of pretending. */
+/** Debug Console tab: the debug session's console (see `DebugConsoleView`). */
 export function DebugConsolePanel() {
-  return (
-    <div className="panel-view" role="tabpanel" aria-label="Debug Console">
-      <p className="panel-view__empty">
-        The Debug Console isn&apos;t available yet — debugging is not supported in this version.
-      </p>
-    </div>
-  );
+  return <DebugConsoleView />;
 }
 
 /** Ports tab: the ports OpenMind Studio's own services have registered. */

@@ -141,6 +141,77 @@ export type LspSyncOutcome =
   | { state: "nodeMissing" }
   | { state: "failed"; server: string; message: string };
 
+// --- Debugging (mirrors src-tauri/src/commands/debug.rs and openmind_dap) ---
+
+export type DebugTarget = "python" | "node" | "php";
+
+export interface DebugReadiness {
+  target: DebugTarget;
+  ready: boolean;
+  /** Why not, when not ready ("Python debugger is not installed yet."). */
+  problem: string | null;
+  /** Which interpreter would run the program ("OpenMind portable Python"). */
+  interpreter: string | null;
+  /** The Runtime Manager kind whose install provides the missing debugger. */
+  installKind: string | null;
+}
+
+export interface LaunchConfig {
+  name: string;
+  target: DebugTarget;
+  program: string;
+  cwd?: string | null;
+  args: string[];
+  stopOnEntry: boolean;
+}
+
+export interface DebugStopped {
+  reason: string;
+  threadId: number | null;
+  description: string | null;
+  text: string | null;
+  allThreadsStopped: boolean;
+}
+
+export type DebugRunState = "starting" | "running" | "stopped" | "terminated";
+
+export interface DebugRun {
+  runId: number;
+  configName: string;
+  target: DebugTarget;
+  state: DebugRunState;
+  /** Present while `state` is "stopped". */
+  stopped?: DebugStopped;
+  /** Present when the run ended because of a problem. */
+  error?: string | null;
+  program: string;
+  pid: number | null;
+}
+
+export interface DebugStatus {
+  workspace: string | null;
+  run: DebugRun | null;
+  python: DebugReadiness;
+  node: DebugReadiness;
+  php: DebugReadiness;
+}
+
+export interface DebugEventPayload {
+  name: string;
+  body: Record<string, unknown>;
+}
+
+export interface DebugLogEvent {
+  level: "info" | "warning" | "error";
+  text: string;
+}
+
+export interface BreakpointRow {
+  filePath: string;
+  line: number;
+  enabled: boolean;
+}
+
 // Mirrors openmind_workspace::RecentFileInfo (camelCase).
 export interface RecentFileInfo {
   path: string;
@@ -403,6 +474,19 @@ export interface IpcClient {
   fileWatchStart: (root: string) => Promise<void>;
   fileWatchStop: () => Promise<void>;
   onFsChanged: (handler: (batch: FsChangeBatch) => void) => Promise<() => void>;
+
+  // Debugging. Only an explicit debugStart ever starts anything; the backend checks the program, finds the interpreter and adapter.
+  debugStatus: () => Promise<DebugStatus>;
+  debugStart: (config: LaunchConfig, breakpoints: BreakpointRow[]) => Promise<DebugRun>;
+  debugStop: () => Promise<void>;
+  debugControl: (action: string) => Promise<void>;
+  debugRequest: (command: string, args: unknown) => Promise<unknown>;
+  debugSetBreakpoints: (path: string, lines: number[]) => Promise<void>;
+  breakpointsLoad: () => Promise<BreakpointRow[]>;
+  breakpointsSave: (rows: BreakpointRow[]) => Promise<void>;
+  onDebugEvent: (handler: (event: DebugEventPayload) => void) => Promise<() => void>;
+  onDebugState: (handler: (run: DebugRun) => void) => Promise<() => void>;
+  onDebugLog: (handler: (event: DebugLogEvent) => void) => Promise<() => void>;
 
   // Language servers. The backend picks the server by file type and only serves files inside the open workspace.
   lspStatus: () => Promise<LspSnapshot>;
@@ -893,6 +977,26 @@ export const tauriIpcClient: IpcClient = {
   fileWatchStop: () => invoke("watch_stop"),
   onFsChanged: (handler) =>
     listen<FsChangeBatch>("fs:changed", (event) => {
+      handler(event.payload);
+    }),
+  debugStatus: () => invoke<DebugStatus>("debug_status"),
+  debugStart: (config, breakpoints) => invoke<DebugRun>("debug_start", { config, breakpoints }),
+  debugStop: () => invoke("debug_stop"),
+  debugControl: (action) => invoke("debug_control", { action }),
+  debugRequest: (command, args) => invoke("debug_request", { command, arguments: args }),
+  debugSetBreakpoints: (path, lines) => invoke("debug_set_breakpoints", { path, lines }),
+  breakpointsLoad: () => invoke<BreakpointRow[]>("breakpoints_load"),
+  breakpointsSave: (rows) => invoke("breakpoints_save", { rows }),
+  onDebugEvent: (handler) =>
+    listen<DebugEventPayload>("debug:event", (event) => {
+      handler(event.payload);
+    }),
+  onDebugState: (handler) =>
+    listen<DebugRun>("debug:state", (event) => {
+      handler(event.payload);
+    }),
+  onDebugLog: (handler) =>
+    listen<DebugLogEvent>("debug:log", (event) => {
       handler(event.payload);
     }),
   lspStatus: () => invoke<LspSnapshot>("lsp_status"),

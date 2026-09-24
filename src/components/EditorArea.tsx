@@ -3,6 +3,7 @@ import { Fragment, useRef } from "react";
 import type { Recents } from "../appHooks";
 import { container } from "../services/container";
 import type { WorkspaceState } from "../services/workspaceService";
+import { DebugToolbar } from "./DebugToolbar";
 import { EditorGroupView } from "./EditorGroupView";
 import { ExternalCompareViewer } from "./ExternalCompareViewer";
 import { GitBlameViewer } from "./GitBlameViewer";
@@ -27,6 +28,7 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
       <GitDiffViewer themeKind={rest.themeKind} />
       <GitBlameViewer />
       <ExternalCompareViewer themeKind={rest.themeKind} />
+      <DebugToolbar />
       {state.groups.map((group, index) => (
         <Fragment key={group.id}>
           {index > 0 ? (

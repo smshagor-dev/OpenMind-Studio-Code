@@ -1,0 +1,71 @@
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+
+import { container } from "../services/container";
+import "../styles/debug.css";
+
+/** The Debug Console tab: the program's output, adapter messages, and an evaluate prompt. */
+export function DebugConsoleView() {
+  const state = useSyncExternalStore(
+    (listener) => container.debugConsole.subscribe(listener),
+    () => container.debugConsole.getState(),
+  );
+  useSyncExternalStore(
+    (listener) => container.debug.subscribe(listener),
+    () => container.debug.getState(),
+  );
+  const [draft, setDraft] = useState("");
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (body) body.scrollTop = body.scrollHeight;
+  }, [state.lines]);
+  const reason = container.debug.evaluateUnavailable();
+
+  return (
+    <div className="panel-view debug-console" role="tabpanel" aria-label="Debug Console">
+      <div className="debug-console__bar">
+        <button
+          type="button"
+          disabled={state.lines.length === 0}
+          onClick={() => {
+            container.debugConsole.clear();
+          }}
+        >
+          Clear Console
+        </button>
+      </div>
+      <div className="debug-console__lines" ref={bodyRef} aria-label="Debug Console output">
+        {state.lines.length === 0 ? (
+          <p className="panel-view__empty">
+            The program&apos;s output and debugger messages appear here. Start debugging with F5.
+          </p>
+        ) : (
+          state.lines.map((line) => (
+            <div key={line.id} className={`debug-console__line debug-console__line--${line.kind}`}>
+              {line.text}
+            </div>
+          ))
+        )}
+      </div>
+      <form
+        className="debug-console__input"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const text = draft;
+          setDraft("");
+          void container.debugConsole.evaluate(text);
+        }}
+      >
+        <input
+          aria-label="Evaluate expression"
+          placeholder={reason ?? "Evaluate an expression"}
+          title={reason ?? undefined}
+          value={draft}
+          onChange={(event) => {
+            setDraft(event.target.value);
+          }}
+        />
+      </form>
+    </div>
+  );
+}

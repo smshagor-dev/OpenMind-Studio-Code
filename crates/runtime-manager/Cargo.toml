@@ -10,7 +10,9 @@ authors.workspace = true
 openmind-db = { version = "0.1.0", path = "../db" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+flate2 = "1"
 sha2 = "0.11.0"
+tar = { version = "0.4", default-features = false }
 thiserror.workspace = true
 tokio = { version = "1.53.1", features = ["rt", "macros", "rt-multi-thread"] }
 tracing.workspace = true

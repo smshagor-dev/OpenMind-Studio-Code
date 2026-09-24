@@ -138,6 +138,65 @@ pub fn extract_zip(
     Ok(())
 }
 
+/// Extracts a gzip-compressed tar into `dest`, under the same rules as [`extract_zip`]: every entry is
+/// validated, only files and folders are written, links (symbolic or hard) are refused. The
+/// total is unknown up front, so progress reports the entries done.
+pub fn extract_tar_gz(
+    archive_path: &Path,
+    dest: &Path,
+    selection: ExtractSelection<'_>,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<(), RuntimeError> {
+    let file = File::open(archive_path).map_err(|err| RuntimeError::io(archive_path, err))?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    fs::create_dir_all(dest).map_err(|err| RuntimeError::io(dest, err))?;
+    let entries = archive
+        .entries()
+        .map_err(|err| RuntimeError::InvalidArchive(err.to_string()))?;
+    let mut written = 0u64;
+    let mut done = 0u64;
+    for entry in entries {
+        let mut entry = entry.map_err(|err| RuntimeError::InvalidArchive(err.to_string()))?;
+        let kind = entry.header().entry_type();
+        let name = entry
+            .path()
+            .map_err(|err| RuntimeError::InvalidArchive(err.to_string()))?
+            .to_string_lossy()
+            .into_owned();
+        if kind.is_symlink() || kind.is_hard_link() {
+            return Err(RuntimeError::UnsafeArchive(format!(
+                "entry \"{name}\" is a link"
+            )));
+        }
+        if let Some(relative) = select_entry(&name, selection)? {
+            let target = dest.join(&relative);
+            if kind.is_dir() {
+                fs::create_dir_all(&target).map_err(|err| RuntimeError::io(&target, err))?;
+            } else if kind.is_file() {
+                if let Some(parent) = target.parent() {
+                    fs::create_dir_all(parent).map_err(|err| RuntimeError::io(parent, err))?;
+                }
+                let mut out =
+                    File::create(&target).map_err(|err| RuntimeError::io(&target, err))?;
+                let copied = io::copy(
+                    &mut (&mut entry).take(MAX_EXTRACTED_BYTES - written),
+                    &mut out,
+                )
+                .map_err(|err| RuntimeError::io(&target, err))?;
+                written += copied;
+                if written >= MAX_EXTRACTED_BYTES {
+                    return Err(RuntimeError::UnsafeArchive(
+                        "the archive expands to more data than a runtime should".into(),
+                    ));
+                }
+            }
+        }
+        done += 1;
+        progress(done, None);
+    }
+    Ok(())
+}
+
 use std::io::Read;
 
 #[cfg(test)]
@@ -168,6 +227,81 @@ pub(crate) mod tests {
             writer.finish().expect("finish");
         }
         buffer.into_inner()
+    }
+
+    fn build_tar_gz(entries: &[(&str, &[u8], tar::EntryType)]) -> Vec<u8> {
+        let mut raw = Vec::new();
+        {
+            let mut builder = tar::Builder::new(&mut raw);
+            for (name, data, kind) in entries {
+                let mut header = tar::Header::new_gnu();
+                header.set_entry_type(*kind);
+                header.set_size(data.len() as u64);
+                header.set_mode(0o644);
+                if kind.is_symlink() {
+                    header.set_link_name("elsewhere").expect("link");
+                }
+                header.set_cksum();
+                builder
+                    .append_data(&mut header, name, &data[..])
+                    .expect("append");
+            }
+            builder.finish().expect("finish");
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        gz.write_all(&raw).expect("gz");
+        gz.finish().expect("gz finish")
+    }
+
+    #[test]
+    fn a_tar_gz_is_extracted_with_the_wrapper_folder_stripped() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("a.tar.gz");
+        fs::write(
+            &path,
+            build_tar_gz(&[
+                ("js-debug/src/dap.js", b"x", tar::EntryType::Regular),
+                ("js-debug/README.md", b"y", tar::EntryType::Regular),
+            ]),
+        )
+        .expect("write");
+        let dest = dir.path().join("My Out");
+        let mut steps = 0;
+        extract_tar_gz(&path, &dest, sel(1), &mut |done, total| {
+            steps = done;
+            assert!(total.is_none());
+        })
+        .expect("extract");
+        assert_eq!(
+            fs::read(dest.join("src").join("dap.js")).expect("dap"),
+            b"x"
+        );
+        assert!(dest.join("README.md").is_file());
+        assert_eq!(steps, 2);
+    }
+
+    #[test]
+    fn a_tar_gz_with_a_link_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("a.tar.gz");
+        fs::write(
+            &path,
+            build_tar_gz(&[("top/link", b"", tar::EntryType::Symlink)]),
+        )
+        .expect("write");
+        let err = extract_tar_gz(&path, &dir.path().join("out"), sel(1), &mut |_, _| {})
+            .expect_err("link");
+        assert!(matches!(err, RuntimeError::UnsafeArchive(_)));
+    }
+
+    #[test]
+    fn a_file_that_is_not_a_tar_gz_is_an_invalid_archive() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("a.tar.gz");
+        fs::write(&path, b"not an archive").expect("write");
+        let err = extract_tar_gz(&path, &dir.path().join("out"), sel(0), &mut |_, _| {})
+            .expect_err("invalid");
+        assert!(matches!(err, RuntimeError::InvalidArchive(_)));
     }
 
     fn write_zip(dir: &Path, entries: &[(&str, &[u8])]) -> PathBuf {

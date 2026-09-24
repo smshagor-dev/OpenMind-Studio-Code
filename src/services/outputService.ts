@@ -7,6 +7,7 @@ export const INITIAL_OUTPUT_CHANNELS = [
   "Run Code",
   "Git",
   "LSP",
+  "Debug",
 ] as const;
 
 /** What a channel that doesn't exist (yet) returns — always the same array, so `useSyncExternalStore` stays stable. */

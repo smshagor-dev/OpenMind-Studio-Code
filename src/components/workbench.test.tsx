@@ -205,14 +205,6 @@ describe("BottomPanel", () => {
     ).toBeInTheDocument();
   });
 
-  it("Debug Console says debugging isn't available", async () => {
-    const { panel } = setup();
-    await panel.show("debugConsole");
-    render(<BottomPanel themeKind="dark" />);
-
-    expect(screen.getByText(/isn.t available yet/)).toBeInTheDocument();
-  });
-
   it("Output shows the selected channel's lines, switches channel, and clears", async () => {
     const { panel, output } = setup();
     output.append("Terminal", "Started PowerShell");

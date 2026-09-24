@@ -18,6 +18,7 @@ base64 = "0.23.1"
 openmind-core = { version = "0.1.0", path = "../crates/core" }
 openmind-db = { version = "0.1.0", path = "../crates/db" }
 openmind-file-watch = { version = "0.1.0", path = "../crates/file-watch" }
+openmind-dap = { version = "0.1.0", path = "../crates/dap" }
 openmind-lsp = { version = "0.1.0", path = "../crates/lsp" }
 openmind-git = { version = "0.1.0", path = "../crates/git" }
 openmind-fs = { version = "0.1.0", path = "../crates/fs" }
