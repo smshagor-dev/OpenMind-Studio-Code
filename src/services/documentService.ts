@@ -79,7 +79,12 @@ export class DocumentService {
       external: "none",
       diskContent: null,
     });
-    this.buffers.create(id, opened.content, languageIdForPath(opened.path));
+    const model = this.buffers.create(id, opened.content, languageIdForPath(opened.path));
+    // Monaco holds one line ending per model, so a mixed (or lone-CR) file reads back
+    // slightly different from the file. The baseline is what the model holds right
+    // after loading; otherwise such a file would look edited the moment it opens.
+    const loaded = this.documents.get(id);
+    if (loaded) loaded.savedContent = model.getValue();
     this.watchDirtyState(id);
     return id;
   }
@@ -278,7 +283,10 @@ export class DocumentService {
 
   private async writeAndMarkClean(id: string, doc: DocumentRecord, path: string): Promise<void> {
     const content = this.buffers.getValue(id);
-    await this.ipc.documentSave(path, content, doc.encoding);
+    // Nothing was edited and the file is where it was: leave the bytes on disk alone
+    // (a mixed-line-ending file must not be rewritten just because Save was pressed).
+    const untouched = content === doc.savedContent && doc.external === "none" && doc.path === path;
+    if (!untouched) await this.ipc.documentSave(path, content, doc.encoding);
     doc.path = path;
     doc.savedContent = content;
     doc.external = "none";

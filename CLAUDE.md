@@ -945,8 +945,8 @@ migration file, check for stray running instances first, not just after somethin
   found by tests/by hand and fixed: `GIT_LITERAL_PATHSPECS` broke `stash --include-untracked` (now a per-command
   flag), the view didn't notice Git becoming available while no folder was open, a staged-but-uncommitted file
   blames as "Not Committed Yet" (not an error). Known limitations: no merge/rebase, no graph, no stash diff/show, no
-  "clone with submodules"/branch options; clone output is written when the clone ends (not streamed); an editor tab
-  doesn't reload a file changed on disk by a stash/apply; an unstaged rename appears as Deleted + Untracked (that is
+  "clone with submodules"/branch options; clone output is written when the clone ends (not streamed); (an editor
+  tab not reloading a file changed on disk by a stash apply/pop was fixed in Milestone 6.2); an unstaged rename appears as Deleted + Untracked (that is
   what Git reports until both are staged); the authentication message was verified by unit tests, not against a
   real password-protected remote; `E:\\omgit` and `E:\\omgit2` are left on disk (protected path).
 - [x] **Milestone 6.2** — External file change sync and Git refresh (`fix: sync editor with external file changes`).
@@ -954,14 +954,28 @@ migration file, check for stray running instances first, not just after somethin
   external-state model and conflict UI (see above), Git-operation refresh of buffers/Explorer/Source Control, stale diff
   handling, info toasts. Verified by hand in the built app (fresh portable copy, workspace path with spaces): clean files
   reload on external edits, dirty files show the banner and are never overwritten (Compare, Reload from Disk after
-  confirm, Keep My Changes, Save As), deleted files keep their text, renames retarget the tab, stash apply/pop, branch
+  confirm, Keep My Changes, Save As), deleted files keep their text, renames retarget the tab, stash apply/pop (open tabs now refresh — the gap Milestone 6.1 listed), branch
   switch, discard and a terminal-created file refreshed editors, Explorer and Source Control; relaunch restored the
   session; closing left no orphan process; Registry PATH unchanged. 608 TypeScript tests, Rust workspace green.
   Known limitations: only the open workspace is watched (files outside it are caught on window focus/Git operations);
   `.git` is not watched, so a Git command run in a terminal refreshes Source Control from the resulting file events or
-  on focus; a file with mixed line endings already shows as modified on open (pre-existing), so it takes the conflict
-  path instead of auto-reloading; notices reuse the toast component in an info style; `E:\omsync` test folders are
+  on focus; (the mixed-line-ending false-dirty problem seen here was fixed in Milestone 6.3); notices reuse the toast component in an info style; `E:\omsync` test folders are
   left on disk.
+- [x] **Milestone 6.3** — Editor line ending stability and documentation cleanup (`fix: stabilize line endings and update milestone docs`).
+  Cause of the mixed-line-ending false dirty: Monaco keeps one line ending per model, so `model.getValue()` of a file
+  with mixed (or lone-CR) endings differs from the text read from disk, and dirty state compared the two. `DocumentService`
+  now takes the baseline (`savedContent`) from the model right after loading it; `lineEnding` is still the backend's honest
+  `lf|crlf|cr|mixed` (status bar shows Mixed), nothing is normalized on disk at open, and Save on an unedited, in-place
+  document does not write the file at all. Saving after an edit writes the model's text (one line ending per model — a
+  mixed file gets its lines unified then, as before). Tests: Rust round-trip of a mixed file's bytes (44 `openmind-fs`
+  tests), TypeScript cases for LF/CRLF/mixed open-clean, edit/undo, save, and external reload/conflict (616 tests).
+  Verified by hand in the built app (workspace `my repo` with a space, `E:omsync`): LF, CRLF and mixed files opened
+  clean (status bar LF/CRLF/Mixed); typing in the mixed file showed the dirty dot and backspacing back to the original
+  cleared it; Ctrl+S on the unedited file left its SHA256 unchanged; `git status` (with `core.autocrlf=false`; this
+  machine's global `autocrlf=true` otherwise muddies line-ending tests) showed no false modification; an external append
+  reloaded the clean tab with an info toast; relaunch restored the tabs clean; no orphan process. Known limitations: the
+  model still holds one line ending, so saving an *edited* mixed file unifies its endings; a mixed file is
+  not offered a "convert line endings" action yet.
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.

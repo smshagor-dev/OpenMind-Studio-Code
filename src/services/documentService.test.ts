@@ -118,4 +118,75 @@ describe("DocumentService", () => {
     expect(buffers.get(id)).toBeUndefined();
     expect(() => service.snapshot(id)).toThrow(/does not exist/);
   });
+
+  describe("line endings and the loaded baseline", () => {
+    type Eol = OpenedDocument["lineEnding"];
+    const CASES: [string, Eol, string][] = [
+      ["LF", "lf", "a\nb\nc\n"],
+      ["CRLF", "crlf", "a\r\nb\r\nc\r\n"],
+      ["mixed", "mixed", "a\r\nb\nc\r\nd\n"],
+    ];
+
+    async function open(content: string, lineEnding: Eol) {
+      const ipc = createFakeIpc({
+        documentOpen: vi.fn().mockResolvedValue({ ...OPENED, content, lineEnding }),
+      });
+      const service = new DocumentService(ipc, buffers, events);
+      const id = await service.openFromPath(OPENED.path);
+      return { ipc, service, id };
+    }
+
+    it.each(CASES)(
+      "%s file opens clean and keeps its reported line ending",
+      async (_n, eol, text) => {
+        const { service, id } = await open(text, eol);
+        expect(service.snapshot(id).dirty).toBe(false);
+        expect(service.snapshot(id).lineEnding).toBe(eol);
+      },
+    );
+
+    it.each(CASES)(
+      "%s file: an edit is dirty, undoing it is clean again",
+      async (_n, eol, text) => {
+        const { service, id } = await open(text, eol);
+        const model = buffers.get(id);
+        if (!model) throw new Error("no model");
+        model.pushEditOperations([], [{ range: model.getFullModelRange(), text: "x" }], () => null);
+        expect(service.isDirty(id)).toBe(true);
+        void model.undo();
+        expect(service.isDirty(id)).toBe(false);
+      },
+    );
+
+    it("saving a mixed file without edits does not write it; after an edit it does and clears dirty", async () => {
+      const { ipc, service, id } = await open("a\r\nb\nc\r\nd\n", "mixed");
+      await service.save(id);
+      expect(ipc.documentSave).not.toHaveBeenCalled();
+
+      buffers.setValue(id, "edited");
+      expect(service.isDirty(id)).toBe(true);
+      await service.save(id);
+      expect(ipc.documentSave).toHaveBeenCalledTimes(1);
+      expect(service.isDirty(id)).toBe(false);
+    });
+
+    it("an external change to a clean mixed file reloads; with edits it is a conflict", async () => {
+      const { ipc, service, id } = await open("a\r\nb\nc\r\nd\n", "mixed");
+      const disk = {
+        state: "file" as const,
+        content: "new\nlines\n",
+        encoding: "utf8" as const,
+        lineEnding: "lf" as const,
+      };
+      vi.mocked(ipc.documentRead).mockResolvedValue(disk);
+      expect(await service.checkDisk(id)).toBe("reloaded");
+      expect(service.isDirty(id)).toBe(false);
+
+      buffers.setValue(id, "my edit\n");
+      vi.mocked(ipc.documentRead).mockResolvedValue({ ...disk, content: "other\n" });
+      expect(await service.checkDisk(id)).toBe("conflict");
+      expect(service.externalState(id)).toBe("changed");
+      expect(service.contentOf(id)).toBe("my edit\n");
+    });
+  });
 });

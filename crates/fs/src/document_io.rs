@@ -86,6 +86,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mixed_line_endings_are_reported_and_the_text_is_not_normalized() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("mixed.txt");
+        let original = b"one\r\ntwo\nthree\r\nfour\n";
+        std::fs::write(&path, original).expect("seed");
+
+        let result = read_text_file(&path).await.expect("read");
+
+        assert_eq!(result.line_ending, LineEnding::Mixed);
+        assert_eq!(result.content, "one\r\ntwo\nthree\r\nfour\n");
+        // Reading never touches the file.
+        assert_eq!(std::fs::read(&path).expect("bytes"), original);
+        // Writing the same text back reproduces the original bytes exactly.
+        write_text_file(&path, &result.content, result.encoding)
+            .await
+            .expect("write");
+        assert_eq!(std::fs::read(&path).expect("bytes"), original);
+    }
+
+    #[tokio::test]
     async fn creates_parent_directories_on_write() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("nested").join("deep").join("note.txt");
