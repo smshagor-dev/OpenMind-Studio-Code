@@ -19,6 +19,7 @@ describe("OutputService", () => {
       "Runtime Manager",
       "Terminal",
       "Search",
+      "Run Code",
     ]);
     expect(output.getState().selected).toBe("OpenMind Studio");
   });

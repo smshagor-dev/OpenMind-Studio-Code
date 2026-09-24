@@ -223,6 +223,14 @@ export interface IpcClient {
   // Opens an http(s) address in the user's default browser (Rust validates it).
   openExternalUrl: (url: string) => Promise<void>;
 
+  // Run Code (Rust resolves the interpreter, spawns the process and streams its output)
+  runResolve: (request: RunRequestArgs) => Promise<RunAvailability>;
+  runStart: (request: RunRequestArgs) => Promise<RunInfo>;
+  runStop: (runId: string) => Promise<boolean>;
+  runActive: () => Promise<RunInfo[]>;
+  runTerminalCommand: (request: RunRequestArgs, shell: ShellStyle) => Promise<TerminalCommand>;
+  onRunEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
 }
@@ -263,6 +271,58 @@ export interface SearchOutcome {
   truncated: boolean;
   cancelled: boolean;
   durationMs: number;
+}
+
+export interface RunRequestArgs {
+  file: string;
+  workspace: string | null;
+  /** A user-chosen command template, or `null` for the file type's default. */
+  template: string | null;
+}
+
+export type RunnableKind = "python" | "node" | "php" | "typeScript";
+
+/** Whether a file can be run right now, and exactly why not when it can't. */
+export interface RunAvailability {
+  runnable: boolean;
+  kind: RunnableKind | null;
+  language: string | null;
+  reason: string | null;
+  /** A preview exists instead (Markdown). */
+  previewable: boolean;
+  /** The reason is a missing interpreter — the Runtime Manager can fix it. */
+  runtimeMissing: boolean;
+  runtime: string | null;
+  command: string | null;
+}
+
+export interface RunInfo {
+  runId: string;
+  file: string;
+  pid: number;
+}
+
+export type RunEvent = { runId: string } & (
+  | {
+      type: "started";
+      file: string;
+      commandLine: string;
+      cwd: string;
+      runtime: string;
+      language: string;
+      pid: number;
+    }
+  | { type: "output"; stream: "stdout" | "stderr"; line: string }
+  | { type: "exited"; code: number | null; durationMs: number; stopped: boolean }
+);
+
+export type ShellStyle = "powerShell" | "cmd" | "bash";
+
+export interface TerminalCommand {
+  line: string;
+  display: string;
+  runtime: string;
+  language: string;
 }
 
 export interface AppInfo {
@@ -402,6 +462,22 @@ export const tauriIpcClient: IpcClient = {
   searchCancel: (searchId) => invoke<boolean>("search_cancel", { searchId }),
 
   openExternalUrl: (url) => invoke("open_external_url", { url }),
+
+  runResolve: (request) => invoke<RunAvailability>("run_resolve", { request }),
+
+  runStart: (request) => invoke<RunInfo>("run_start", { request }),
+
+  runStop: (runId) => invoke<boolean>("run_stop", { runId }),
+
+  runActive: () => invoke<RunInfo[]>("run_active"),
+
+  runTerminalCommand: (request, shell) =>
+    invoke<TerminalCommand>("run_terminal_command", { request, shell }),
+
+  onRunEvent: (handler) =>
+    listen<RunEvent>("run:event", (event) => {
+      handler(event.payload);
+    }),
 
   clipboardWriteText: (text) => writeText(text),
 

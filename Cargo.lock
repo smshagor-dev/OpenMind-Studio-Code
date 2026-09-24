@@ -2709,6 +2709,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-process"
+version = "0.1.0"
+dependencies = [
+ "filedescriptor",
+ "winapi",
+]
+
+[[package]]
+name = "openmind-runner"
+version = "0.1.0"
+dependencies = [
+ "openmind-fs",
+ "openmind-process",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-runtime-manager"
 version = "0.1.0"
 dependencies = [
@@ -2756,6 +2777,7 @@ dependencies = [
  "openmind-core",
  "openmind-db",
  "openmind-fs",
+ "openmind-runner",
  "openmind-runtime-manager",
  "openmind-search",
  "openmind-settings",
@@ -2775,14 +2797,13 @@ name = "openmind-terminal"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "filedescriptor",
+ "openmind-process",
  "portable-pty",
  "serde",
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
  "uuid",
- "winapi",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ use crate::error::TerminalError;
 use crate::shell::{default_shell, resolve_executable, ShellKind};
 
 #[cfg(windows)]
-use crate::job::ProcessTree;
+use openmind_process::ProcessTree;
 
 const READ_BUFFER_SIZE: usize = 8192;
 const EXIT_OUTPUT_DRAIN: std::time::Duration = std::time::Duration::from_millis(150);

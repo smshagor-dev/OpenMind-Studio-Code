@@ -86,9 +86,9 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "Shift+F8", command: "go.previousProblem", owner: "editor" },
   // Run
   { key: "F5", command: "debug.start", owner: "app" },
-  { key: "Ctrl+F5", command: "debug.runWithoutDebugging", owner: "app" },
+  { key: "Ctrl+F5", command: "run.code", owner: "app" },
   { key: "Shift+F5", command: "debug.stop", owner: "app" },
-  { key: "Ctrl+Shift+F5", command: "debug.restart", owner: "app" },
+  { key: "Ctrl+Shift+F5", command: "run.stop", owner: "app" },
   { key: "F10", command: "debug.stepOver", owner: "app" },
   { key: "F11", command: "debug.stepInto", owner: "app" },
   { key: "Shift+F11", command: "debug.stepOut", owner: "app" },

@@ -59,6 +59,7 @@ export function EditorGroupView(props: EditorGroupViewProps) {
           groupId={group.id}
           locked={group.locked}
           hasTabs={group.tabs.length > 0}
+          active={active}
         />
       </div>
       {activeTab && props.breadcrumbsVisible ? (

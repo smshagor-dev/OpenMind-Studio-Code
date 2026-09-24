@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use openmind_db::Db;
+use openmind_runner::RunRegistry;
 use openmind_runtime_manager::RuntimeManager;
 use openmind_search::SearchRegistry;
 use openmind_settings::ThemeSettingService;
@@ -33,4 +34,5 @@ pub struct AppState {
     pub terminal: TerminalRegistry,
     pub runtime: RuntimeManager,
     pub search: SearchRegistry,
+    pub runner: RunRegistry,
 }

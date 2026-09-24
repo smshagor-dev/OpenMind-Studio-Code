@@ -1,5 +1,8 @@
-//! Windows-only: ensures closing a terminal kills its whole process tree
-//! (the shell plus everything it spawned), not just the shell itself.
+#![cfg(windows)]
+
+//! Windows-only: ensures killing a process kills its whole process tree
+//! (the process plus everything it spawned), not just the process itself. Used
+//! by terminals (the shell) and by Run Code (the interpreter).
 //!
 //! `portable-pty`'s own `Child::kill()` only calls `TerminateProcess` on the
 //! direct child process (see its `win/mod.rs`) — it has no idea about

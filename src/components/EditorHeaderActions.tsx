@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { container } from "../services/container";
 import { buildEditorActionsMenu } from "../services/editorHeaderMenu";
 import { EllipsisIcon, LockIcon, SplitEditorIcon } from "./icons";
+import { RunCodeButton, RunCodeDropdown, RunStatusIndicator } from "./RunCodeControls";
 import { MenuPopup } from "./MenuPopup";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 
@@ -10,6 +11,8 @@ interface EditorHeaderActionsProps {
   groupId: string;
   locked: boolean;
   hasTabs: boolean;
+  /** Run Code acts on the active group's editor, so only that group shows its controls. */
+  active: boolean;
 }
 
 /**
@@ -17,7 +20,12 @@ interface EditorHeaderActionsProps {
  * that can't work for this group's editor is disabled with its reason in the
  * ⋯ menu; the buttons themselves only appear once the group has an editor.
  */
-export function EditorHeaderActions({ groupId, locked, hasTabs }: EditorHeaderActionsProps) {
+export function EditorHeaderActions({
+  groupId,
+  locked,
+  hasTabs,
+  active,
+}: EditorHeaderActionsProps) {
   const [moreAnchor, setMoreAnchor] = useState<DOMRect | null>(null);
   const closeMore = useCallback(() => {
     setMoreAnchor(null);
@@ -30,6 +38,14 @@ export function EditorHeaderActions({ groupId, locked, hasTabs }: EditorHeaderAc
 
   return (
     <div className="editor-header-actions" role="toolbar" aria-label="Editor actions">
+      {active && hasTabs ? (
+        <>
+          <RunStatusIndicator />
+          <RunCodeButton />
+          <RunCodeDropdown />
+          <span className="editor-header-actions__divider" aria-hidden="true" />
+        </>
+      ) : null}
       {locked ? (
         <span className="editor-header-actions__lock" title="This group is locked">
           <LockIcon />

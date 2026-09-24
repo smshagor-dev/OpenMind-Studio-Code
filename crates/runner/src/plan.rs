@@ -1,0 +1,465 @@
+use std::ffi::OsString;
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
+
+use crate::display::command_line;
+use crate::error::RunError;
+use crate::kind::{detect, Detection, RunnableKind};
+use crate::runtime::{
+    is_bare_name, resolve_executable, runtime_label, ResolvedExecutable, RunEnvironment,
+    RuntimeSource,
+};
+use crate::template::{expand, tokenize, Variables};
+
+/// What the UI asks to run.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunRequest {
+    pub file: PathBuf,
+    /// The open workspace folder, if any.
+    #[serde(default)]
+    pub workspace: Option<PathBuf>,
+    /// A user-chosen command template; `None` means the file type's default.
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+/// Everything needed to start a process, fully resolved and validated — and
+/// nothing has been executed to get here.
+#[derive(Debug, Clone)]
+pub struct RunPlan {
+    pub kind: RunnableKind,
+    pub file: PathBuf,
+    /// `argv[0]` is the absolute path of the resolved program.
+    pub argv: Vec<String>,
+    pub cwd: PathBuf,
+    /// Extra variables for the child (runtime variables such as `PYTHONNOUSERSITE`).
+    pub env: Vec<(String, String)>,
+    /// The child's whole PATH: portable runtime folders first.
+    pub path_var: OsString,
+    pub runtime_label: String,
+    pub source: RuntimeSource,
+    /// `argv` as text, for display.
+    pub display: String,
+}
+
+const BINARY_SNIFF_BYTES: usize = 8000;
+
+/// Validates `request` and resolves how to run it, without starting anything.
+/// Order of priority for the interpreter: portable runtime, project-local
+/// tool, system PATH. Fails with a plain-language reason the UI can show.
+pub fn plan(
+    request: &RunRequest,
+    environment: &RunEnvironment,
+    app_root: &Path,
+    system_path: Option<OsString>,
+) -> Result<RunPlan, RunError> {
+    let file = validate_file(&request.file)?;
+    let kind = match detect(&file) {
+        Detection::Runnable(kind) => kind,
+        Detection::NotRunnable { reason, .. } => return Err(RunError::NotRunnable(reason)),
+    };
+    let cwd = working_directory(request.workspace.as_deref(), &file, app_root)?;
+
+    let custom = request.template.is_some();
+    let template = request
+        .template
+        .clone()
+        .unwrap_or_else(|| kind.default_template().to_string());
+    let variables = Variables {
+        file: &file,
+        workspace: request.workspace.as_deref().filter(|w| w.is_dir()),
+    };
+    let mut tokens = Vec::new();
+    for token in tokenize(&template)? {
+        tokens.push(expand(&token, &variables)?);
+    }
+
+    let project_dirs: Vec<PathBuf> = request
+        .workspace
+        .iter()
+        .map(|workspace| workspace.join("node_modules").join(".bin"))
+        .collect();
+    let resolved = resolve_program(
+        kind,
+        custom,
+        &tokens,
+        environment,
+        &project_dirs,
+        system_path.as_deref(),
+    )?;
+
+    let mut argv = tokens;
+    argv[0] = resolved.path.to_string_lossy().into_owned();
+
+    let mut env = environment.vars.clone();
+    env.extend(
+        kind.extra_env()
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), (*value).to_string())),
+    );
+    let path_var = child_path(environment, &project_dirs, &resolved, system_path)?;
+
+    Ok(RunPlan {
+        kind,
+        display: command_line(&argv),
+        runtime_label: runtime_label(kind, &resolved),
+        source: resolved.source,
+        file,
+        argv,
+        cwd,
+        env,
+        path_var,
+    })
+}
+
+fn validate_file(file: &Path) -> Result<PathBuf, RunError> {
+    if file.as_os_str().is_empty() || file.to_string_lossy().contains('\0') || !file.is_absolute() {
+        return Err(RunError::FileMissing(file.to_path_buf()));
+    }
+    if !file.is_file() {
+        return Err(RunError::FileMissing(file.to_path_buf()));
+    }
+    let mut head = vec![0u8; BINARY_SNIFF_BYTES];
+    let read = fs::File::open(file)
+        .and_then(|mut handle| handle.read(&mut head))
+        .map_err(|_| RunError::FileMissing(file.to_path_buf()))?;
+    if openmind_fs::looks_binary(&head[..read]) {
+        return Err(RunError::BinaryFile(file.to_path_buf()));
+    }
+    Ok(file.to_path_buf())
+}
+
+/// The open workspace folder, else the file's own folder, else the app's.
+fn working_directory(
+    workspace: Option<&Path>,
+    file: &Path,
+    app_root: &Path,
+) -> Result<PathBuf, RunError> {
+    let candidates = [workspace, file.parent(), Some(app_root)];
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.is_dir() {
+            return Ok(candidate.to_path_buf());
+        }
+    }
+    Err(RunError::BadWorkingDirectory(app_root.to_path_buf()))
+}
+
+fn resolve_program(
+    kind: RunnableKind,
+    custom: bool,
+    tokens: &[String],
+    environment: &RunEnvironment,
+    project_dirs: &[PathBuf],
+    system_path: Option<&std::ffi::OsStr>,
+) -> Result<ResolvedExecutable, RunError> {
+    let program = tokens.first().map(String::as_str).unwrap_or_default();
+    if !is_bare_name(program) {
+        return Err(RunError::BadCommand(format!(
+            "the program \"{program}\" must be a plain command name (python, node, ...), not a path"
+        )));
+    }
+    let lookup = |name: &str| resolve_executable(name, environment, project_dirs, system_path);
+    if let Some(found) = lookup(program) {
+        return Ok(found);
+    }
+    // TypeScript has no built-in interpreter: try the other well-known runner.
+    if kind == RunnableKind::TypeScript && !custom {
+        if let Some(found) = lookup("ts-node") {
+            return Ok(found);
+        }
+        return Err(RunError::NoTypeScriptRunner);
+    }
+    let runtime = if program.eq_ignore_ascii_case(default_program(kind)) {
+        kind.display_name().to_string()
+    } else {
+        program.to_string()
+    };
+    Err(RunError::RuntimeMissing { runtime })
+}
+
+fn default_program(kind: RunnableKind) -> &'static str {
+    match kind {
+        RunnableKind::Python => "python",
+        RunnableKind::Node => "node",
+        RunnableKind::Php => "php",
+        RunnableKind::TypeScript => "tsx",
+    }
+}
+
+/// Portable runtime folders, then (for a project-local tool) the project's
+/// `.bin`, then the existing PATH. Built for this child only.
+fn child_path(
+    environment: &RunEnvironment,
+    project_dirs: &[PathBuf],
+    resolved: &ResolvedExecutable,
+    system_path: Option<OsString>,
+) -> Result<OsString, RunError> {
+    let mut dirs: Vec<PathBuf> = environment.path_prepend.clone();
+    if resolved.source == RuntimeSource::Project {
+        dirs.extend(project_dirs.iter().cloned());
+    }
+    if let Some(existing) = system_path {
+        dirs.extend(std::env::split_paths(&existing));
+    }
+    std::env::join_paths(dirs).map_err(|_| {
+        RunError::BadCommand("a PATH folder contains a ';' or other invalid character".into())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Fixture {
+        dir: tempfile::TempDir,
+        env: RunEnvironment,
+        system: OsString,
+    }
+
+    fn exe(dir: &Path, name: &str) -> PathBuf {
+        fs::create_dir_all(dir).expect("dir");
+        let path = dir.join(if cfg!(windows) {
+            format!("{name}.exe")
+        } else {
+            name.into()
+        });
+        fs::write(&path, b"x").expect("exe");
+        path
+    }
+
+    fn fixture() -> Fixture {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let portable = dir
+            .path()
+            .join("runtimes")
+            .join("python")
+            .join("versions")
+            .join("3.14.7");
+        exe(&portable, "python");
+        exe(&dir.path().join("system"), "python");
+        exe(&dir.path().join("system"), "node");
+        let env = RunEnvironment {
+            path_prepend: vec![portable],
+            vars: vec![("PYTHONNOUSERSITE".into(), "1".into())],
+        };
+        let system = std::env::join_paths([dir.path().join("system")]).expect("join");
+        Fixture { dir, env, system }
+    }
+
+    fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
+        fs::create_dir_all(dir).expect("dir");
+        let path = dir.join(name);
+        fs::write(&path, body).expect("script");
+        path
+    }
+
+    fn request(file: PathBuf, workspace: Option<PathBuf>) -> RunRequest {
+        RunRequest {
+            file,
+            workspace,
+            template: None,
+        }
+    }
+
+    fn make(fx: &Fixture, req: &RunRequest) -> Result<RunPlan, RunError> {
+        plan(req, &fx.env, fx.dir.path(), Some(fx.system.clone()))
+    }
+
+    #[test]
+    fn python_runs_with_the_portable_interpreter_and_its_environment() {
+        let fx = fixture();
+        let file = script(&fx.dir.path().join("proj"), "hello.py", "print(1)");
+
+        let plan = make(
+            &fx,
+            &request(file.clone(), Some(fx.dir.path().join("proj"))),
+        )
+        .expect("plan");
+
+        assert_eq!(plan.kind, RunnableKind::Python);
+        assert_eq!(plan.source, RuntimeSource::Portable);
+        assert!(plan.argv[0].contains("versions"), "{:?}", plan.argv);
+        assert_eq!(plan.argv[1], file.to_string_lossy());
+        assert_eq!(plan.runtime_label, "OpenMind portable Python 3.14.7");
+        assert!(plan.env.contains(&("PYTHONNOUSERSITE".into(), "1".into())));
+        assert!(plan.env.contains(&("PYTHONUNBUFFERED".into(), "1".into())));
+    }
+
+    #[test]
+    fn the_child_path_starts_with_the_portable_folders_then_the_system_path() {
+        let fx = fixture();
+        let file = script(fx.dir.path(), "a.py", "1");
+
+        let plan = make(&fx, &request(file, None)).expect("plan");
+
+        let dirs: Vec<PathBuf> = std::env::split_paths(&plan.path_var).collect();
+        assert_eq!(dirs[0], fx.env.path_prepend[0]);
+        assert_eq!(dirs[1], fx.dir.path().join("system"));
+    }
+
+    #[test]
+    fn without_a_portable_runtime_the_system_one_is_used_and_labelled_so() {
+        let fx = fixture();
+        let file = script(fx.dir.path(), "a.js", "1");
+
+        let plan = make(&fx, &request(file, None)).expect("plan");
+
+        assert_eq!(plan.source, RuntimeSource::System);
+        assert!(
+            plan.runtime_label.starts_with("system Node.js"),
+            "{}",
+            plan.runtime_label
+        );
+    }
+
+    #[test]
+    fn a_missing_runtime_is_a_clear_error_naming_it() {
+        let fx = fixture();
+        let file = script(fx.dir.path(), "index.php", "<?php");
+
+        let error = make(&fx, &request(file, None)).expect_err("must fail");
+
+        assert!(matches!(&error, RunError::RuntimeMissing { runtime } if runtime == "PHP"));
+        assert_eq!(error.to_string(), "PHP runtime is not installed yet.");
+    }
+
+    #[test]
+    fn typescript_needs_a_runner_and_says_so_otherwise() {
+        let fx = fixture();
+        let file = script(fx.dir.path(), "a.ts", "1");
+
+        let error = make(&fx, &request(file.clone(), None)).expect_err("must fail");
+        assert!(matches!(error, RunError::NoTypeScriptRunner));
+
+        // A project-local tsx makes it runnable.
+        let workspace = fx.dir.path().join("proj");
+        exe(&workspace.join("node_modules").join(".bin"), "tsx");
+        exe(&fx.dir.path().join("system"), "tsx");
+        let plan = make(&fx, &request(file, Some(workspace.clone()))).expect("plan");
+        assert_eq!(plan.source, RuntimeSource::Project);
+        let dirs: Vec<PathBuf> = std::env::split_paths(&plan.path_var).collect();
+        assert!(dirs.contains(&workspace.join("node_modules").join(".bin")));
+    }
+
+    #[test]
+    fn unsupported_files_and_missing_files_are_refused_with_reasons() {
+        let fx = fixture();
+        let md = script(fx.dir.path(), "README.md", "# hi");
+        let json = script(fx.dir.path(), "package.json", "{}");
+
+        assert!(
+            matches!(make(&fx, &request(md, None)), Err(RunError::NotRunnable(r)) if r.contains("preview"))
+        );
+        assert!(matches!(
+            make(&fx, &request(json, None)),
+            Err(RunError::NotRunnable(_))
+        ));
+        assert!(matches!(
+            make(&fx, &request(fx.dir.path().join("gone.py"), None)),
+            Err(RunError::FileMissing(_))
+        ));
+        assert!(matches!(
+            make(&fx, &request(PathBuf::from("relative.py"), None)),
+            Err(RunError::FileMissing(_))
+        ));
+    }
+
+    #[test]
+    fn a_binary_file_with_a_script_extension_is_never_run() {
+        let fx = fixture();
+        let file = fx.dir.path().join("fake.py");
+        fs::write(&file, b"MZ\0\0\x90\0").expect("write");
+
+        assert!(matches!(
+            make(&fx, &request(file, None)),
+            Err(RunError::BinaryFile(_))
+        ));
+    }
+
+    #[test]
+    fn the_working_directory_is_the_workspace_then_the_files_folder_then_the_app() {
+        let fx = fixture();
+        let workspace = fx.dir.path().join("ws");
+        fs::create_dir_all(&workspace).expect("ws");
+        let file = script(&fx.dir.path().join("elsewhere"), "a.py", "1");
+
+        let with_workspace =
+            make(&fx, &request(file.clone(), Some(workspace.clone()))).expect("plan");
+        let without = make(&fx, &request(file.clone(), None)).expect("plan");
+        let stale = make(&fx, &request(file, Some(fx.dir.path().join("deleted")))).expect("plan");
+
+        assert_eq!(with_workspace.cwd, workspace);
+        assert_eq!(without.cwd, fx.dir.path().join("elsewhere"));
+        assert_eq!(stale.cwd, fx.dir.path().join("elsewhere"));
+    }
+
+    #[test]
+    fn a_path_with_spaces_is_one_argument_and_the_command_line_shows_it_quoted() {
+        let fx = fixture();
+        let file = script(
+            &fx.dir.path().join("My Projects").join("demo app"),
+            "hello world.py",
+            "1",
+        );
+
+        let plan = make(&fx, &request(file.clone(), None)).expect("plan");
+
+        assert_eq!(plan.argv.len(), 2);
+        assert_eq!(plan.argv[1], file.to_string_lossy());
+        assert!(
+            plan.display.contains(&format!("\"{}\"", file.display())),
+            "{}",
+            plan.display
+        );
+    }
+
+    #[test]
+    fn a_custom_template_can_add_arguments_but_not_point_at_a_path_or_use_shell_syntax() {
+        let fx = fixture();
+        let file = script(fx.dir.path(), "a.py", "1");
+        let with = |template: &str| RunRequest {
+            file: file.clone(),
+            workspace: None,
+            template: Some(template.into()),
+        };
+
+        let ok = make(&fx, &with("python -u \"${file}\" --flag")).expect("plan");
+        assert_eq!(&ok.argv[1..], ["-u", &file.to_string_lossy(), "--flag"]);
+
+        let absolute = fx.env.path_prepend[0].join("python.exe");
+        assert!(matches!(
+            make(
+                &fx,
+                &with(&format!("\"{}\" \"${{file}}\"", absolute.display()))
+            ),
+            Err(RunError::BadCommand(_))
+        ));
+        assert!(matches!(make(&fx, &with("")), Err(RunError::BadCommand(_))));
+        assert!(matches!(
+            make(&fx, &with("python \"${nope}\"")),
+            Err(RunError::BadCommand(_))
+        ));
+        // `&&` is just an argument to python, never a second command.
+        let chained = make(&fx, &with("python \"${file}\" && calc")).expect("plan");
+        assert_eq!(&chained.argv[2..], ["&&", "calc"]);
+    }
+
+    #[test]
+    fn a_custom_program_that_does_not_exist_is_reported_by_name() {
+        let fx = fixture();
+        let file = script(fx.dir.path(), "a.py", "1");
+        let req = RunRequest {
+            file,
+            workspace: None,
+            template: Some("pypy \"${file}\"".into()),
+        };
+
+        let error = make(&fx, &req).expect_err("must fail");
+
+        assert_eq!(error.to_string(), "pypy runtime is not installed yet.");
+    }
+}

@@ -4,6 +4,7 @@ export const INITIAL_OUTPUT_CHANNELS = [
   "Runtime Manager",
   "Terminal",
   "Search",
+  "Run Code",
 ] as const;
 
 /** A channel keeps this many lines; older ones fall off so a chatty service can't grow memory without bound. */

@@ -66,6 +66,23 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     }),
     searchCancel: vi.fn().mockResolvedValue(true),
     openExternalUrl: vi.fn().mockResolvedValue(undefined),
+    runResolve: vi.fn().mockResolvedValue({
+      runnable: false,
+      kind: null,
+      language: null,
+      reason: "not resolved in this test",
+      previewable: false,
+      runtimeMissing: false,
+      runtime: null,
+      command: null,
+    }),
+    runStart: vi.fn().mockResolvedValue({ runId: "run-1", file: "", pid: 1 }),
+    runStop: vi.fn().mockResolvedValue(true),
+    runActive: vi.fn().mockResolvedValue([]),
+    runTerminalCommand: vi
+      .fn()
+      .mockResolvedValue({ line: "", display: "", runtime: "", language: "" }),
+    onRunEvent: vi.fn().mockResolvedValue(() => undefined),
     clipboardWriteText: vi.fn().mockResolvedValue(undefined),
     clipboardReadText: vi.fn().mockResolvedValue(""),
     appInfo: vi.fn().mockResolvedValue({ version: "0.0.0-test", tauriVersion: "2.0.0" }),

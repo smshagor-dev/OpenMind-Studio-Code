@@ -23,6 +23,7 @@ export function useAppStartup(): boolean {
         container.panel.initialize(),
         container.associations.initialize(),
         container.previews.initialize(),
+        container.runConfigs.initialize(),
       ]);
       container.window.initialize().then(
         (stop) => {
@@ -37,6 +38,7 @@ export function useAppStartup(): boolean {
       );
       await container.workspace.restoreActiveWorkspace();
       await container.workspace.restoreSession();
+      await container.runCode.initialize();
       if (!lifecycle.cancelled) setReady(true);
     })();
     return () => {
@@ -131,6 +133,22 @@ export function useRuntimeManagerDialog(): [boolean, () => void] {
   useEffect(
     () =>
       container.events.on("showRuntimeManager", () => {
+        setOpen(true);
+      }),
+    [],
+  );
+  const close = useCallback(() => {
+    setOpen(false);
+  }, []);
+  return [open, close];
+}
+
+/** `true` while the Configure Run Command dialog should be shown (opened by `run.configure`). */
+export function useRunConfigurationDialog(): [boolean, () => void] {
+  const [open, setOpen] = useState(false);
+  useEffect(
+    () =>
+      container.events.on("showRunConfiguration", () => {
         setOpen(true);
       }),
     [],

@@ -25,4 +25,6 @@ export interface AppEvents extends Record<string, unknown> {
   /** Focus the Search view's input (Find in Files). */
   focusSearch: undefined;
   showRuntimeManager: undefined;
+  /** Open the "Configure Run Command" dialog for the active file type. */
+  showRunConfiguration: undefined;
 }

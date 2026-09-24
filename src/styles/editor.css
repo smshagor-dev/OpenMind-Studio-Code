@@ -738,3 +738,112 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* --- Run Code header controls --- */
+
+.editor-header-actions__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background-color: var(--border);
+}
+
+.run-button,
+.run-dropdown {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--icon-fg);
+  cursor: pointer;
+}
+
+.run-button {
+  width: 26px;
+}
+
+.run-dropdown {
+  width: 16px;
+  margin-left: -2px;
+}
+
+.run-button--ready {
+  color: #3fb950;
+}
+
+.run-button--running {
+  color: #f14c4c;
+}
+
+.run-button--error {
+  color: #f14c4c;
+  outline: 1px solid #f14c4c;
+}
+
+.run-button--runtimeMissing {
+  color: #cca700;
+}
+
+.run-button:hover:not(:disabled),
+.run-dropdown:hover {
+  background-color: var(--toolbar-hover-bg);
+}
+
+.run-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.run-status {
+  margin-right: 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.run-status--running {
+  color: #3794ff;
+}
+
+.run-status--ok {
+  color: #3fb950;
+}
+
+.run-status--failed {
+  color: #f14c4c;
+}
+
+.modal--run-config {
+  width: 520px;
+  max-width: 92vw;
+}
+
+.run-config__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+
+.run-config__field input,
+.run-config__field select {
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  background-color: var(--input-bg, transparent);
+  color: var(--fg);
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.run-config__hint {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.run-config__error {
+  color: #f14c4c;
+  font-size: 12px;
+}

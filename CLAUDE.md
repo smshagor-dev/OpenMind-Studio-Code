@@ -164,6 +164,21 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   PATH. Known limitation: launchers that *other tools* generate later (e.g. `pip install black`
   creates `Scripts/black.exe`) still bake in absolute paths and break after a move — run them as
   `python -m black`; venvs created in a project are likewise not relocatable (Python's own design).
+- `openmind-process` (Milestone 5.6.2, Windows only) — `ProcessTree`, the Job Object
+  (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
+  `openmind-terminal` so the terminal and the runner share one implementation.
+- `openmind-runner` (Milestone 5.6.2) — runs the active file. `kind::detect` maps an extension to
+  Python/Node/PHP/TypeScript or a "not runnable" reason (Markdown is flagged previewable). `plan`
+  validates the file (absolute, exists, not binary), picks the cwd (workspace → file's folder → app
+  root), tokenizes the command template (quotes only — no shell syntax) and expands `${file}`/
+  `${fileDir}`/`${fileBasename}`/`${workspaceFolder}` *per token*, then resolves the program, which
+  must be a bare name or an absolute path, in order: OpenMind portable runtime (`path_prepend` from the
+  Runtime Manager) → project `node_modules/.bin` → system PATH. Processes are spawned as an argument
+  list, never through a shell. Python gets `PYTHONUNBUFFERED=1` and the runtime's `PYTHONNOUSERSITE=1`.
+  `RunRegistry` streams stdout/stderr lines as `RunEvent`s (`started`/`output`/`exited`), allows one
+  run per file, stops by killing the Job Object, and `stop_all()` runs on window close.
+  `shell_command_line` quotes an argv for PowerShell/cmd/bash for the "Run Code in Terminal" target and
+  refuses line breaks. Missing runtimes read "<Runtime> runtime is not installed yet."
 - `openmind-search` (Milestone 5.6.1) — workspace text search, on disk with no index. `search(query,
   cancel)` walks the root iteratively (sorted, so results are stable), never follows symlinks,
   always skips `node_modules`/`.git`/`target`/`dist`/`build`/`vendor`, skips binary files (shares
@@ -333,6 +348,17 @@ internals.
   answer (a stale one is dropped, the in-flight one cancelled over IPC), logs a summary to the Search
   output channel; `SearchView` groups results by file with highlighted previews, click opens the
   file at the match via `WorkspaceService.openPathAt`.
+- `RunCodeService` (`runCodeService.ts`, Milestone 5.6.2) + `RunConfigurationService`
+  (`runConfigurationService.ts`) — the editor header's Run Code. `describeRunButton` turns the active
+  file + backend `runResolve` answer into a button state and tooltip (a disabled button always carries
+  its reason: unsaved, not runnable, runtime missing, already running); a dirty file is saved first.
+  Output goes to the language's Output channel (Python/Node.js/PHP) and the "Run Code" channel; the
+  terminal target writes the quoted command into the active terminal. Run configurations (per
+  extension command templates, validated) persist as one JSON value `run.configurations` in
+  `editor_settings`. Commands: `run.code` (Ctrl+F5, alias `debug.runWithoutDebugging`),
+  `run.codeInTerminal`, `run.codeShowOutput`, `run.stop` (Ctrl+Shift+F5, enabled only while running),
+  `run.configure`, `run.selectRuntime`; plain F5 stays unbound for the future debugger.
+  `RunCodeControls` (button/dropdown/status) and `RunConfigurationDialog` are UI-only.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -618,6 +644,19 @@ migration file, check for stray running instances first, not just after somethin
   with mixed line endings shows as modified as soon as it opens (Monaco normalizes the line endings
   — pre-existing, and it also keeps "Close Saved" from closing that file). 343 TypeScript tests, 239
   Rust tests (+1 ignored network test).
+- [x] **Milestone 5.6.2** — Run Code header action. New `openmind-process` and `openmind-runner`
+  crates (41 runner tests, several against a real `cmd.exe`/`ping` tree), `run_*` commands and the
+  `run:event` push event, header ▶ with dropdown (Run Code, in Terminal, and Show Output, Configure Run
+  Command, Select Runtime, Stop), Run menu entries and shortcuts. Verified in the built app (fresh
+  portable copy, workspace path containing spaces): system Python fallback is labelled as such; after
+  installing portable Python/Node from Select Runtime, hello.py/hello.js run with the portable
+  interpreters first; PHP falls back to the machine's XAMPP PHP; README.md and package.json leave Play
+  disabled; a dirty file is saved before running; a 10-minute loop shows "Running…", Stop ends it with
+  "Process stopped"; closing the app during a run left no python/conhost orphan; relaunch clean.
+  Known limitations: the terminal target types into the terminal's current directory (it doesn't
+  `cd`); WSL shells are unsupported for it; stdout and stderr are read on separate threads so their
+  interleaving isn't exact; Play tooltips show the resolved executable path; a file with mixed line
+  endings shows modified on open (pre-existing). 397 TypeScript tests, 280 Rust tests (+1 ignored).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

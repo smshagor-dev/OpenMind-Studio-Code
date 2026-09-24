@@ -277,6 +277,13 @@ const RUN_MENU: TopLevelMenu = {
   label: "Run",
   mnemonic: "R",
   items: [
+    cmd("Run Code", "run.code"),
+    cmd("Run Code in Terminal", "run.codeInTerminal"),
+    cmd("Run Code and Show Output", "run.codeShowOutput"),
+    cmd("Stop Running Code", "run.stop"),
+    cmd("Configure Run Command...", "run.configure"),
+    cmd("Select Runtime...", "run.selectRuntime"),
+    SEPARATOR,
     cmd("Start Debugging", "debug.start"),
     cmd("Run Without Debugging", "debug.runWithoutDebugging"),
     cmd("Stop Debugging", "debug.stop"),

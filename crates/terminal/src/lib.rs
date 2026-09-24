@@ -1,6 +1,4 @@
 pub mod error;
-#[cfg(windows)]
-mod job;
 pub mod registry;
 pub mod shell;
 

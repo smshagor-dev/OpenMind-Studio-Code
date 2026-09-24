@@ -69,6 +69,8 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             let state = window.app_handle().state::<AppState>();
             state.terminal.kill_all();
             state.search.cancel_all();
+            // Nothing a run started may outlive the window.
+            state.runner.stop_all();
 
             // `.destroy()`, not `.close()`: `.close()` re-emits
             // `CloseRequested` (documented behavior — "like a

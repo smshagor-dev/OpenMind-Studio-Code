@@ -19,6 +19,9 @@ import { OutputService, stamped } from "./outputService";
 import { PanelService } from "./panelService";
 import { PortsService } from "./portsService";
 import { PreviewEditorService } from "./previewEditorService";
+import { RunConfigurationService } from "./runConfigurationService";
+import { RunCodeService } from "./runCodeService";
+import { registerRunCommands } from "./runCommands";
 import { RuntimeService } from "./runtimeService";
 import { SearchService } from "./searchService";
 import { TerminalService } from "./terminalService";
@@ -73,6 +76,29 @@ const search = new SearchService(
   () => workspace.getActiveWorkspace()?.path ?? null,
   workspace,
 );
+
+const runConfigs = new RunConfigurationService(tauriIpcClient);
+const runCode = new RunCodeService(
+  tauriIpcClient,
+  events,
+  output,
+  workspace,
+  runConfigs,
+  terminal,
+  panel,
+);
+// An interpreter appearing or going (install / delete / switch) changes what can run.
+runtime.subscribe(() => {
+  runCode.noteRuntimesChanged(
+    runtime
+      .getState()
+      .runtimes.map(
+        (r) =>
+          `${r.id}:${r.activeVersion ?? "-"}:${String(r.installed.filter((v) => v.healthy).length)}`,
+      )
+      .join(","),
+  );
+});
 
 // Problems are labelled with the document each marker belongs to; search results reveal in the editor.
 markers.setResourceResolver((uri) => {
@@ -206,6 +232,7 @@ commands.register("explorer.revealActiveFile", async () => {
 
 registerTerminalCommands(commands, terminal);
 registerViewCommands({ commands, events, layout, panel, output, search });
+registerRunCommands({ commands, events, runCode, configs: runConfigs });
 registerEditorCommands({
   commands,
   workspace,
@@ -259,6 +286,8 @@ export const container = {
   runtime,
   panel,
   output,
+  runCode,
+  runConfigs,
   ports,
   search,
   editorGroups,
