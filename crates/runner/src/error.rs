@@ -28,6 +28,12 @@ pub enum RunError {
     #[error("Select a valid project folder first.")]
     BadServerRoot,
 
+    #[error("Initialize the database first.")]
+    MariaDbNotInitialized,
+
+    #[error("This folder has no composer.json.")]
+    NoComposerJson,
+
     #[error("Port {0} isn't allowed. Choose a port from 1024 to 65535.")]
     BadPort(u16),
 

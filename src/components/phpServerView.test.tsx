@@ -5,9 +5,12 @@ import { CommandRegistry } from "../services/commandRegistry";
 import { EventBus } from "../services/eventBus";
 import type { AppEvents } from "../services/events";
 import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
+import { ComposerService } from "../services/composerService";
+import { MariaDbService } from "../services/mariaDbService";
 import { OutputService } from "../services/outputService";
 import { PanelService } from "../services/panelService";
 import { registerPhpCommands } from "../services/phpCommands";
+import { PhpMyAdminService } from "../services/phpMyAdminService";
 import { PhpRuntimeService } from "../services/phpRuntimeService";
 import { PHP_CHANNEL, PhpServerService } from "../services/phpServerService";
 import { PortsService } from "../services/portsService";
@@ -64,9 +67,26 @@ async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
   const run = vi.fn((id: string) => {
     void commands.execute(id);
   });
+  const panel = new PanelService(ipc);
+  const mariaDb = new MariaDbService(ipc, events, output, runtime, ports, panel);
+  const phpMyAdmin = new PhpMyAdminService(
+    ipc,
+    events,
+    output,
+    runtime,
+    ports,
+    panel,
+    php,
+    mariaDb,
+  );
+  const composer = new ComposerService(ipc, events, output, runtime, panel, php);
   harness.current = {
     php,
-    phpRuntime: new PhpRuntimeService(runtime, php),
+    mariaDb,
+    phpMyAdmin,
+    composer,
+    ipc,
+    phpRuntime: new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin }),
     runtime,
     output,
     run,
@@ -87,7 +107,9 @@ describe("PhpServerView", () => {
     const start = screen.getByRole("button", { name: "Start Server" });
     expect(start).toBeDisabled();
     expect(start).toHaveAttribute("title", "PHP runtime is not installed yet.");
-    expect(screen.getByRole("note")).toHaveTextContent("PHP runtime is not installed yet.");
+    expect(
+      within(screen.getByRole("region", { name: "Server" })).getByRole("note"),
+    ).toHaveTextContent("PHP runtime is not installed yet.");
     expect(screen.getByRole("button", { name: "Install PHP 8.4.26" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Install PHP 8.0.30" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Stop Server" })).toBeDisabled();
@@ -118,7 +140,9 @@ describe("PhpServerView", () => {
     render(<PhpServerView />);
 
     expect(screen.getByRole("button", { name: "Start Server" })).toBeDisabled();
-    expect(screen.getByRole("note")).toHaveTextContent("Select a valid project folder first.");
+    expect(
+      within(screen.getByRole("region", { name: "Server" })).getByRole("note"),
+    ).toHaveTextContent("Select a valid project folder first.");
     expect(screen.getByText("No folder selected")).toBeInTheDocument();
   });
 
@@ -131,7 +155,7 @@ describe("PhpServerView", () => {
     expect(await screen.findByText(/No folder is open in the main window/)).toBeInTheDocument();
   });
 
-  it("shows the PHP and Composer versions, and lists Apache, MariaDB and phpMyAdmin as not available", async () => {
+  it("shows the PHP and Composer versions, and lists only Apache as not available", async () => {
     await setup([status("php", [installed("8.4.26")]), status("composer", [installed("2.10.3")])]);
     render(<PhpServerView />);
 
@@ -139,11 +163,12 @@ describe("PhpServerView", () => {
     expect(php.getByText("Installed — active 8.4.26")).toBeInTheDocument();
     const composer = within(screen.getByRole("article", { name: "Composer" }));
     expect(composer.getByText("Installed — active 2.10.3")).toBeInTheDocument();
-    for (const name of ["Apache", "MariaDB", "phpMyAdmin"]) {
-      expect(screen.getByText(name)).toBeInTheDocument();
-    }
-    expect(screen.getAllByText("Not available yet")).toHaveLength(3);
-    expect(screen.queryByRole("button", { name: /Apache|MariaDB|phpMyAdmin/ })).toBeNull();
+    expect(screen.getByText("Apache")).toBeInTheDocument();
+    expect(screen.getAllByText("Not available yet")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /Apache/ })).toBeNull();
+    expect(screen.getByRole("region", { name: "Database" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "phpMyAdmin" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Composer" })).toBeInTheDocument();
   });
 
   it("Use Open Folder then Start Server starts it and the running state shows the URL", async () => {
@@ -180,7 +205,7 @@ describe("PhpServerView", () => {
     fireEvent.change(port, { target: { value: "22" } });
     fireEvent.blur(port);
     expect(await screen.findByText(/Choose a port from 1024 to 65535/)).toBeInTheDocument();
-    expect(screen.getByText(/127\.0\.0\.1 only/)).toBeInTheDocument();
+    expect(screen.getByText(/Bound to 127\.0\.0\.1 only/)).toBeInTheDocument();
   });
 
   it("a busy port is shown as busy and blocks Start with the port in the reason", async () => {
@@ -191,13 +216,15 @@ describe("PhpServerView", () => {
     render(<PhpServerView />);
 
     expect(screen.getByText(/Busy — another program/)).toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent("Port 8000 is already in use");
+    expect(
+      within(screen.getByRole("region", { name: "Server" })).getByRole("note"),
+    ).toHaveTextContent("Port 8000 is already in use");
   });
 
   it("renders the recent server log, or an empty hint", async () => {
     const { output } = await setup([status("php", [installed("8.4.26")])]);
     const { rerender } = render(<PhpServerView />);
-    expect(screen.getByText(/No server output yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No PHP Server output yet/)).toBeInTheDocument();
 
     output.append(PHP_CHANNEL, "[PHP Server] php -S 127.0.0.1:8000");
     output.append(PHP_CHANNEL, "GET / [200]");
@@ -213,7 +240,9 @@ describe("PhpServerView", () => {
 
     expect(screen.getByText("needs repair")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Repair PHP 8.4.26" })).toBeEnabled();
-    expect(screen.getByRole("note")).toHaveTextContent("repair it");
+    expect(
+      within(screen.getByRole("region", { name: "Server" })).getByRole("note"),
+    ).toHaveTextContent("repair it");
   });
 
   it("after switching PHP under a running server a restart notice appears and the running PHP is protected", async () => {

@@ -116,11 +116,22 @@ pub async fn php_window_open(app: AppHandle) -> Result<(), String> {
         window.set_focus().map_err(|err| err.to_string())?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, PHP_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
-        .title("PHP Server — OpenMind Studio")
-        .inner_size(640.0, 780.0)
-        .min_inner_size(440.0, 480.0)
-        .build()
+    let saved = app
+        .state::<AppState>()
+        .window_states
+        .load_or(PHP_WINDOW_LABEL, 640.0, 780.0)
+        .await
         .map_err(|err| err.to_string())?;
+    // Built hidden, sized and placed from the saved geometry, then shown, so it never flashes at the wrong size.
+    let window =
+        WebviewWindowBuilder::new(&app, PHP_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
+            .title("PHP Server — OpenMind Studio")
+            .min_inner_size(320.0, 360.0)
+            .visible(false)
+            .build()
+            .map_err(|err| err.to_string())?;
+    crate::window_events::apply_window_state(&window, &saved).map_err(|err| err.to_string())?;
+    window.show().map_err(|err| err.to_string())?;
+    crate::window_events::track_secondary_geometry(&window);
     Ok(())
 }

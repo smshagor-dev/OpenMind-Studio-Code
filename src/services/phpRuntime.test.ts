@@ -109,7 +109,12 @@ describe("PhpRuntimeService cards", () => {
   it("has a PHP and a Composer card, even before anything is loaded", async () => {
     const r = await rig([]);
 
-    expect(r.cards.cards().map((card) => card.name)).toEqual(["PHP", "Composer"]);
+    expect(r.cards.cards().map((card) => card.name)).toEqual([
+      "PHP",
+      "Composer",
+      "MariaDB",
+      "phpMyAdmin",
+    ]);
     for (const card of r.cards.cards()) {
       expect(card).toMatchObject({
         installed: false,

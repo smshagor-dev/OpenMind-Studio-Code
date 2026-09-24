@@ -5,12 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 5] = [
+const BUILTIN: [&str; 7] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
     include_str!("../manifests/php.json"),
     include_str!("../manifests/composer.json"),
+    include_str!("../manifests/mariadb.json"),
+    include_str!("../manifests/phpmyadmin.json"),
 ];
 
 /// The platform id used in manifests for the machine this build runs on.
@@ -423,7 +425,15 @@ mod tests {
     fn builtin_registry_has_the_shipped_runtimes_with_usable_windows_artifacts() {
         let registry = RuntimeRegistry::builtin();
 
-        for id in ["node", "python", "git", "php", "composer"] {
+        for id in [
+            "node",
+            "python",
+            "git",
+            "php",
+            "composer",
+            "mariadb",
+            "phpmyadmin",
+        ] {
             let manifest = registry.get(id).expect(id);
             assert!(
                 manifest
@@ -432,7 +442,7 @@ mod tests {
                 "{id}"
             );
         }
-        assert_eq!(registry.all().count(), 5);
+        assert_eq!(registry.all().count(), 7);
     }
 
     #[test]
@@ -669,7 +679,7 @@ mod tests {
         let (registry, warnings) =
             RuntimeRegistry::builtin().with_overrides(Path::new("Z:/does/not/exist"));
 
-        assert_eq!(registry.all().count(), 5);
+        assert_eq!(registry.all().count(), 7);
         assert!(warnings.is_empty());
     }
 

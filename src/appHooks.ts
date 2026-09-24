@@ -42,6 +42,12 @@ export function useAppStartup(): boolean {
       await container.workspace.restoreSession();
       await container.runCode.initialize();
       await container.php.initialize();
+      // The main window mirrors the database services' output and ports too.
+      await Promise.all([
+        container.mariaDb.initialize(),
+        container.phpMyAdmin.initialize(),
+        container.composer.initialize(),
+      ]);
       if (!lifecycle.cancelled) setReady(true);
     })();
     return () => {

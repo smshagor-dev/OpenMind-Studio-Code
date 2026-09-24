@@ -10,6 +10,8 @@ pub enum RunnableKind {
     Node,
     Php,
     TypeScript,
+    /// Not a file Run Code can run: the database server's own processes.
+    MariaDb,
 }
 
 impl RunnableKind {
@@ -20,6 +22,7 @@ impl RunnableKind {
             Self::Node => "Node.js",
             Self::Php => "PHP",
             Self::TypeScript => "TypeScript",
+            Self::MariaDb => "MariaDB",
         }
     }
 
@@ -29,6 +32,7 @@ impl RunnableKind {
             Self::Python => "python",
             Self::Node | Self::TypeScript => "node",
             Self::Php => "php",
+            Self::MariaDb => "mariadb",
         }
     }
 
@@ -40,6 +44,8 @@ impl RunnableKind {
             Self::Node => "node \"${file}\"",
             Self::Php => "php \"${file}\"",
             Self::TypeScript => "tsx \"${file}\"",
+            // Never used: MariaDB's commands are built by `stack.rs`, not from a template.
+            Self::MariaDb => "mysqld",
         }
     }
 

@@ -116,6 +116,51 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
 }
 
 #[test]
+fn mariadb_and_phpmyadmin_are_official_https_downloads_that_need_no_service_or_admin_rights() {
+    let registry = RuntimeRegistry::builtin();
+
+    let mariadb = registry.get("mariadb").expect("mariadb");
+    let artifact = mariadb
+        .artifact(&mariadb.default_version, "windows-x64")
+        .expect("windows artifact");
+    assert!(
+        artifact.url.starts_with("https://archive.mariadb.org/"),
+        "{}",
+        artifact.url
+    );
+    assert!(artifact.url.ends_with("-winx64.zip"), "{}", artifact.url);
+    assert_eq!(artifact.sha256.len(), 64);
+    // The server, the initializer and the admin tool are all verified files.
+    for file in [
+        "bin/mysqld.exe",
+        "bin/mariadb-install-db.exe",
+        "bin/mariadb-admin.exe",
+    ] {
+        assert!(mariadb.verify_files.iter().any(|f| f == file), "{file}");
+    }
+    assert_eq!(mariadb.bin_dirs, ["bin"]);
+    assert!(mariadb.env.is_empty(), "no environment is injected");
+
+    let pma = registry.get("phpmyadmin").expect("phpmyadmin");
+    let artifact = pma
+        .artifact(&pma.default_version, "windows-x64")
+        .expect("windows artifact");
+    assert!(
+        artifact
+            .url
+            .starts_with("https://files.phpmyadmin.net/phpMyAdmin/"),
+        "{}",
+        artifact.url
+    );
+    assert_eq!(artifact.strip_components, 1);
+    assert!(pma.bin_dirs.is_empty(), "phpMyAdmin puts nothing on PATH");
+    assert!(
+        pma.seed_files.is_empty(),
+        "its config is written at start, not baked in"
+    );
+}
+
+#[test]
 fn python_is_the_nuget_distribution_with_relocatable_pip_and_venv() {
     let registry = RuntimeRegistry::builtin();
     let python = registry.get("python").expect("python");

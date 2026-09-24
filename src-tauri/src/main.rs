@@ -75,6 +75,18 @@ fn main() {
             commands::php::php_server_stop,
             commands::php::php_server_status,
             commands::php::php_window_open,
+            commands::database::mariadb_status,
+            commands::database::mariadb_credentials,
+            commands::database::mariadb_initialize,
+            commands::database::mariadb_start,
+            commands::database::mariadb_stop,
+            commands::database::pma_start,
+            commands::database::pma_stop,
+            commands::database::pma_status,
+            commands::database::php_project_info,
+            commands::database::composer_run,
+            commands::database::composer_stop,
+            commands::database::composer_status,
             commands::php::php_port_free,
             commands::run::run_resolve,
             commands::run::run_start,
@@ -100,7 +112,7 @@ fn main() {
 
             window_events::apply_window_state(&window, &saved_state)?;
             window.show()?;
-            window_events::register_close_handler(&window, window_state_service);
+            window_events::register_close_handler(&window, window_state_service.clone());
 
             let (registry, manifest_warnings) = RuntimeRegistry::builtin()
                 .with_overrides(&app_paths.settings_dir.join("runtime-manifests"));
@@ -121,6 +133,12 @@ fn main() {
                 runner: RunRegistry::new(),
                 php_server: RunRegistry::new(),
                 php_server_info: std::sync::Mutex::new(None),
+                db_server: RunRegistry::new(),
+                db_info: std::sync::Mutex::new(None),
+                pma: RunRegistry::new(),
+                pma_info: std::sync::Mutex::new(None),
+                composer: RunRegistry::new(),
+                window_states: window_state_service.clone(),
                 app_root: app_paths.root_dir.clone(),
                 terminal: TerminalRegistry::new(),
                 recent_files: RecentFilesService::new(db.clone()),

@@ -172,8 +172,23 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   mysqli/openssl/pdo_mysql/zip and uses only the relative `extension_dir = "ext"`, so the folder stays
   movable), and shim `viaEnv` (the `composer.cmd` launcher runs `%OPENMIND_PHP% <phar>`; PHP's manifest
   env sets `OPENMIND_PHP={dir}\php.exe` per launch from the *active* install, so Composer never reaches
-  for a global PHP — with none active it says so and exits 1). Apache, MariaDB and phpMyAdmin are **not
-  implemented** (no manifests, listed in the PHP Server view as "Not available yet" with a reason).
+  for a global PHP — with none active it says so and exits 1). Apache is **not implemented** (listed in the
+  PHP Server view as "Not available yet" with a reason).
+  **Database stack (Milestone 5.8)**: `mariadb` and `phpmyadmin` are ordinary manifests. `openmind_runner::stack`
+  plans (no I/O): the MariaDB config (`settings/mariadb/my.ini`, bind 127.0.0.1, default port 3307, data in
+  `data/mariadb/`, logs in `logs/mariadb/`), `mysql_install_db`-style init, start (`mysqld`, normal child, never a
+  Windows service), admin (`mariadb-admin ping/shutdown`, password via `MYSQL_PWD` env) and Composer
+  (`install`/`update`/`dump-autoload`, only with a `composer.json`, on portable Composer + active portable PHP).
+  `oneshot::run_to_completion` runs short helper commands. Everything resolves portable-only. The generated root
+  password (alphanumeric, `getrandom`) lives in `editor_settings` as plain local SQLite — a local-machine
+  convenience, not a secret store; the UI shows/copies it only on request. phpMyAdmin is served by the active
+  portable PHP's built-in server (default port 8081) with a generated config using cookie login (the password is
+  typed, never written to a file). `commands::database` exposes `mariadb_*`/`pma_*`/`composer_*` with
+  `*:changed` and `*:event` broadcasts; window close stops all services. Services keep the PHP/DB version they
+  started with when the active PHP changes and show a restart notice. Frontend: `MariaDbService`,
+  `PhpMyAdminService`, `ComposerService` (pure availability functions, every disabled button has a reason) and
+  `PhpStackSections` (Database/phpMyAdmin/Composer/Logs with ellipsized, copyable paths). The PHP window is
+  single-instance and its geometry is persisted in `window_state` (`WindowStateService::load_or`).
 - `openmind-process` (Milestone 5.6.2, Windows only) — `ProcessTree`, the Job Object
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
   `openmind-terminal` so the terminal and the runner share one implementation.
@@ -760,6 +775,15 @@ migration file, check for stray running instances first, not just after somethin
   end-to-end after the move into the window (8.3 through the sidebar version); the PHP window isn't
   restored on relaunch (open it again from the activity bar); Python/Node/Git are not in the PHP window.
   462 TypeScript tests, 308 Rust tests (+1 ignored).
+- [x] **Milestone 5.8** — PHP Server window polish and portable database stack (`feat: add php server window
+  polish and database stack`). Single-instance PHP window with persisted size/position/maximized, responsive
+  layout, MariaDB (init/start/stop/restart, port 3307, generated root password, logs), phpMyAdmin, Composer
+  install/update/dump-autoload, per-service logs and Ports registration, cross-window sync via backend status +
+  change events, services stopped on app close. Validated: fmt, clippy -D warnings, cargo test --workspace,
+  pnpm lint, pnpm test x3 (466), pnpm build. Real MariaDB init/start/ping/shutdown was exercised by hand while
+  designing the backend; the full end-to-end pass of the built app through the PHP window UI (fresh portable copy)
+  was **not** repeated after the final UI landed — do that before relying on it. Known limitations: Windows x64
+  only; the password is stored unencrypted in local SQLite; Apache not built; PHP window not restored on relaunch.
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

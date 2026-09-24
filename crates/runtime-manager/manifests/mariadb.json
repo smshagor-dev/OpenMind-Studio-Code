@@ -1,0 +1,36 @@
+{
+  "id": "mariadb",
+  "displayName": "MariaDB",
+  "description": "MariaDB database server (official archive.mariadb.org Windows ZIP), run as a normal process — no Windows service.",
+  "defaultVersion": "11.8.9",
+  "versionCommand": { "executable": "bin/mariadb-admin.exe", "args": ["--version"], "outputPrefix": "" },
+  "binDirs": ["bin"],
+  "verifyFiles": [
+    "bin/mysqld.exe",
+    "bin/mariadb-install-db.exe",
+    "bin/mariadb-admin.exe",
+    "share/english/errmsg.sys"
+  ],
+  "env": {},
+  "features": [
+    { "id": "server", "label": "Server (mysqld)", "verifyFile": "bin/mysqld.exe", "missingNote": "mysqld.exe isn't in this install. Use Repair to reinstall it." },
+    { "id": "init", "label": "Database initializer", "verifyFile": "bin/mariadb-install-db.exe", "missingNote": "The initializer is missing. Use Repair to reinstall it." },
+    { "id": "admin", "label": "Admin tool (ping/shutdown)", "verifyFile": "bin/mariadb-admin.exe", "missingNote": "mariadb-admin.exe is missing. Use Repair to reinstall it." }
+  ],
+  "notes": "MariaDB 11.8 LTS Windows x64 ZIP from archive.mariadb.org; SHA256 from downloads.mariadb.org's release data. About 300 MB installed. OpenMind Studio starts it as a normal child process bound to 127.0.0.1 with its data in data/mariadb, logs in logs/mariadb and config in settings/mariadb — nothing is installed as a service and no machine MySQL/MariaDB is used.",
+  "versions": [
+    {
+      "version": "11.8.9",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://archive.mariadb.org/mariadb-11.8.9/winx64-packages/mariadb-11.8.9-winx64.zip",
+          "sha256": "830c46727d9278eae212ae3eca44eeb9e71b2a68704e95f344a64fba7b1963f5",
+          "sizeBytes": 97016251,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

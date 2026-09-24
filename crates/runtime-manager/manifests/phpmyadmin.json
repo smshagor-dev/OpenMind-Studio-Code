@@ -1,0 +1,29 @@
+{
+  "id": "phpmyadmin",
+  "displayName": "phpMyAdmin",
+  "description": "Web interface for MariaDB, served locally by OpenMind's portable PHP.",
+  "defaultVersion": "5.2.3",
+  "versionCommand": { "executable": "index.php", "args": [], "outputPrefix": "" },
+  "binDirs": [],
+  "verifyFiles": ["index.php", "libraries/vendor_config.php"],
+  "env": {},
+  "features": [
+    { "id": "web", "label": "Web interface", "verifyFile": "index.php", "missingNote": "index.php isn't in this install. Use Repair to reinstall it." }
+  ],
+  "notes": "Official phpMyAdmin all-languages ZIP from files.phpmyadmin.net (SHA256 from its .sha256 file). OpenMind Studio writes its config.inc.php when you start it (host 127.0.0.1, your MariaDB port, cookie login) and serves it with `php -S` on 127.0.0.1 only.",
+  "versions": [
+    {
+      "version": "5.2.3",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-all-languages.zip",
+          "sha256": "2d2e13c735366d318425c78e4ee2cc8fc648d77faba3ddea2cd516e43885733f",
+          "sizeBytes": 16431330,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

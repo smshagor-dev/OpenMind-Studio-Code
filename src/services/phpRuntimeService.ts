@@ -1,22 +1,31 @@
 import type { FeatureStatus, InstalledVersion, RuntimeStatus } from "./ipc";
+import type { MariaDbService } from "./mariaDbService";
+import type { PhpMyAdminService } from "./phpMyAdminService";
 import type { PhpServerService } from "./phpServerService";
 import type { Availability, InjectionView, RuntimeService } from "./runtimeService";
 import { describeProgress, injectionStatus } from "./runtimeService";
 
 /** The runtimes the PHP Server window manages, in the order they are shown. */
-export const PHP_RUNTIME_IDS = ["php", "composer"] as const;
+export const PHP_RUNTIME_IDS = ["php", "composer", "mariadb", "phpmyadmin"] as const;
 export type PhpRuntimeId = (typeof PHP_RUNTIME_IDS)[number];
 
-const NAMES: Record<PhpRuntimeId, string> = { php: "PHP", composer: "Composer" };
+const NAMES: Record<PhpRuntimeId, string> = {
+  php: "PHP",
+  composer: "Composer",
+  mariadb: "MariaDB",
+  phpmyadmin: "phpMyAdmin",
+};
 
 /** What each provides, shown (as "not installed") before any version exists to check. */
 const FEATURE_LABELS: Record<PhpRuntimeId, readonly string[]> = {
   php: ["PHP CLI", "Built-in server (php -S)", "php.ini (OpenMind)"],
   composer: ["Composer PHAR"],
+  mariadb: ["Server (mysqld)", "Database initializer", "Admin tool (ping/shutdown)"],
+  phpmyadmin: ["Web interface"],
 };
 
 /** How many leading version components make a "line" (PHP 8.3, Composer 2): an update stays in its line. */
-const LINE_DEPTH: Record<PhpRuntimeId, number> = { php: 2, composer: 1 };
+const LINE_DEPTH: Record<PhpRuntimeId, number> = { php: 2, composer: 1, mariadb: 2, phpmyadmin: 1 };
 
 /** PHP 8.4 is the one recommended to install. */
 const RECOMMENDED_PHP_LINE = "8.4.";
@@ -103,6 +112,8 @@ export class PhpRuntimeService {
   constructor(
     private readonly runtime: RuntimeService,
     private readonly php: PhpServerService,
+    /** The running database services pin their runtime, like the PHP server pins its PHP. */
+    private readonly stack: { mariadb: MariaDbService; pma: PhpMyAdminService } | null = null,
   ) {}
 
   cards(): CardView[] {
@@ -203,7 +214,7 @@ export class PhpRuntimeService {
         terminal: null,
       };
     }
-    const inUse = this.php.versionInUse(id, version);
+    const inUse = this.inUse(id, version);
     return {
       version,
       installed: entry !== undefined,
@@ -222,6 +233,9 @@ export class PhpRuntimeService {
   private installFor(id: PhpRuntimeId, status: RuntimeStatus, version: string): Availability {
     if (id === "composer" && this.card("php").installedVersions.length === 0) {
       return { enabled: false, reason: "Install PHP first — Composer runs on it." };
+    }
+    if (id === "phpmyadmin" && this.card("php").installedVersions.length === 0) {
+      return { enabled: false, reason: "Install PHP first — phpMyAdmin runs on it." };
     }
     return this.runtime.installAvailability(status, version);
   }
@@ -243,8 +257,21 @@ export class PhpRuntimeService {
       : { version: best, availability: this.installFor(id, status, best) };
   }
 
+  /** Why this version can't be deleted or repaired right now, if a running service uses it. */
+  private inUse(id: PhpRuntimeId, version: string): Availability | null {
+    if (id === "mariadb" && this.stack?.mariadb.isRunning() === true) {
+      return { enabled: false, reason: "MariaDB is running. Stop it first." };
+    }
+    if (id === "phpmyadmin" && this.stack?.pma.isRunning() === true) {
+      return { enabled: false, reason: "phpMyAdmin is running. Stop it first." };
+    }
+    return id === "php" || id === "composer" ? this.php.versionInUse(id, version) : null;
+  }
+
   private noticeFor(id: PhpRuntimeId): string | null {
     if (id === "php") return this.php.restartNotice();
+    if (id === "mariadb") return null;
+    if (id === "phpmyadmin") return this.stack?.pma.restartNotice() ?? null;
     const dependency = this.composerDependency();
     const composer = this.runtime.getState().runtimes.find((entry) => entry.id === "composer");
     return dependency.ok || (composer?.installed.length ?? 0) === 0 ? null : dependency.label;

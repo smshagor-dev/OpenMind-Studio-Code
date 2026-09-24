@@ -25,16 +25,25 @@ export function PhpServerWindow() {
     });
     void container.runtime.initialize().then(() => container.runtime.refresh());
     void container.php.initialize();
+    void container.mariaDb.initialize();
+    void container.phpMyAdmin.initialize();
+    void container.composer.initialize();
     const refresh = () => {
       void container.runtime.refresh();
       void container.php.syncServer();
       void container.php.refreshPort();
+      void container.mariaDb.refresh();
+      void container.phpMyAdmin.refresh();
+      void container.composer.refreshProject();
     };
     window.addEventListener("focus", refresh);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", refresh);
       container.php.dispose();
+      container.mariaDb.dispose();
+      container.phpMyAdmin.dispose();
+      container.composer.dispose();
     };
   }, []);
 

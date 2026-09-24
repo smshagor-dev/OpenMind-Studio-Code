@@ -7,15 +7,18 @@
 pub mod display;
 pub mod error;
 pub mod kind;
+pub mod oneshot;
 pub mod plan;
 pub mod runtime;
 pub mod server;
 pub mod session;
+pub mod stack;
 pub mod template;
 
 pub use display::{command_line, shell_command_line, ShellStyle};
 pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};
+pub use oneshot::{run_to_completion, Completed};
 pub use plan::{plan, RunPlan, RunRequest};
 pub use runtime::{portable_version, RunEnvironment, RuntimeSource};
 pub use server::{
@@ -23,6 +26,12 @@ pub use server::{
     DEFAULT_PORT, LOOPBACK,
 };
 pub use session::{EventSink, RunEvent, RunEventKind, RunInfo, RunRegistry, Stream};
+pub use stack::{
+    composer_plan, mariadb_admin_plan, mariadb_init_plan, mariadb_start_plan,
+    render_mariadb_config, render_phpmyadmin_config, resolve_portable, validate_service_port,
+    AdminAction, ComposerAction, MariaDbPaths, MARIADB_DEFAULT_PORT, MARIADB_USER,
+    PHPMYADMIN_DEFAULT_PORT,
+};
 
 #[cfg(test)]
 mod tests;

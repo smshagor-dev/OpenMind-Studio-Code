@@ -39,4 +39,14 @@ pub struct AppState {
     pub php_server: RunRegistry,
     /// The running built-in server (URL, port, PHP version) — the one truth both windows read.
     pub php_server_info: std::sync::Mutex<Option<crate::commands::php::PhpServerInfo>>,
+    /// MariaDB (a normal child process, never a Windows service).
+    pub db_server: RunRegistry,
+    pub db_info: std::sync::Mutex<Option<crate::commands::database::ServiceInfo>>,
+    /// phpMyAdmin, served by the portable PHP's built-in server.
+    pub pma: RunRegistry,
+    pub pma_info: std::sync::Mutex<Option<crate::commands::database::ServiceInfo>>,
+    /// The Composer command that is running, if any (one at a time).
+    pub composer: RunRegistry,
+    /// Geometry of secondary windows (the PHP Server window).
+    pub window_states: openmind_settings::WindowStateService,
 }

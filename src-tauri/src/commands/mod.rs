@@ -1,3 +1,4 @@
+pub mod database;
 pub mod document;
 pub mod filesystem;
 pub mod php;

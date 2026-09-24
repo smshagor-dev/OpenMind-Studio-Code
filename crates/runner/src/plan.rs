@@ -219,6 +219,7 @@ fn default_program(kind: RunnableKind) -> &'static str {
         RunnableKind::Node => "node",
         RunnableKind::Php => "php",
         RunnableKind::TypeScript => "tsx",
+        RunnableKind::MariaDb => "mysqld",
     }
 }
 

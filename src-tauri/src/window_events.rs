@@ -72,6 +72,22 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             // Nothing a run started may outlive the window.
             state.runner.stop_all();
             state.php_server.stop_all();
+            // MariaDB gets a clean shutdown (it flushes its files), then phpMyAdmin
+            // and Composer go; the PHP window's geometry is remembered first.
+            if let Some(php_window) = window
+                .app_handle()
+                .get_webview_window(crate::commands::php::PHP_WINDOW_LABEL)
+            {
+                save_secondary_geometry(&php_window).await;
+            }
+            let app = window.app_handle().clone();
+            let _ = tokio::time::timeout(
+                Duration::from_secs(25),
+                tokio::task::spawn_blocking(move || {
+                    crate::commands::database::stop_all_services(&app)
+                }),
+            )
+            .await;
 
             // `.destroy()`, not `.close()`: `.close()` re-emits
             // `CloseRequested` (documented behavior — "like a
@@ -100,6 +116,52 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             // (which includes `cleanup_before_exit`) rather than calling
             // `std::process::exit` directly.
             window.app_handle().exit(0);
+        });
+    });
+}
+
+/// Saves a secondary window's geometry (best effort, bounded).
+pub async fn save_secondary_geometry(window: &WebviewWindow) {
+    // A minimized window reports a far off-screen position; never save that.
+    if window.is_minimized().unwrap_or(false) {
+        return;
+    }
+    let Ok(state) = current_window_state(window) else {
+        return;
+    };
+    let service = window
+        .app_handle()
+        .state::<AppState>()
+        .window_states
+        .clone();
+    let _ = tokio::time::timeout(SAVE_TIMEOUT, service.save(&state)).await;
+}
+
+/// Remembers the window's size, position and maximized state as it changes
+/// (throttled) and when it closes.
+pub fn track_secondary_geometry(window: &WebviewWindow) {
+    let tracked = window.clone();
+    let last_save = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    window.on_window_event(move |event| {
+        let always = matches!(
+            event,
+            WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
+        );
+        if !always && !matches!(event, WindowEvent::Resized(_) | WindowEvent::Moved(_)) {
+            return;
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let previous = last_save.load(std::sync::atomic::Ordering::Relaxed);
+        if !always && now.saturating_sub(previous) < 400 {
+            return;
+        }
+        last_save.store(now, std::sync::atomic::Ordering::Relaxed);
+        let window = tracked.clone();
+        tauri::async_runtime::spawn(async move {
+            save_secondary_geometry(&window).await;
         });
     });
 }

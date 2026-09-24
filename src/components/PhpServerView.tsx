@@ -2,22 +2,19 @@ import { useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { Availability } from "../services/runtimeService";
-import { PHP_CHANNEL } from "../services/phpServerService";
 import { PhpRuntimeCards } from "./PhpRuntimeCards";
+import {
+  ComposerSection,
+  DatabaseSection,
+  LogsSection,
+  PhpMyAdminSection,
+} from "./PhpStackSections";
 
 /** Components that are part of the plan but not built — listed honestly, with the reason. */
 const PLANNED = [
   {
     label: "Apache",
     reason: "Apache isn't available yet — planned after the PHP built-in server.",
-  },
-  {
-    label: "MariaDB",
-    reason: "MariaDB isn't available yet — planned after the PHP built-in server.",
-  },
-  {
-    label: "phpMyAdmin",
-    reason: "phpMyAdmin isn't available yet — it needs Apache or PHP plus MariaDB.",
   },
 ] as const;
 
@@ -241,23 +238,6 @@ function ServerSection() {
   );
 }
 
-function LogsSection() {
-  usePhp();
-  const lines = container.output.getLines(PHP_CHANNEL).slice(-8);
-  return (
-    <section className="php-view__section" aria-label="Logs">
-      <h3>Logs</h3>
-      {lines.length === 0 ? (
-        <div className="php-view__hint">
-          No server output yet. Start the server to see requests here.
-        </div>
-      ) : (
-        <pre className="php-view__log">{lines.join("\n")}</pre>
-      )}
-    </section>
-  );
-}
-
 /**
  * The PHP Server screen (shown in its own window): document root, PHP and
  * Composer versions (installed through the Runtime Manager), the built-in
@@ -288,6 +268,9 @@ export function PhpServerView() {
       </section>
       <ServerSection />
       <PortSection />
+      <DatabaseSection />
+      <PhpMyAdminSection />
+      <ComposerSection />
       <LogsSection />
     </div>
   );

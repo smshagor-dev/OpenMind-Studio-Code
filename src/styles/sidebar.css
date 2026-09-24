@@ -752,3 +752,56 @@
 .php-window .ext-view--embedded {
   padding: 0;
 }
+
+.php-view__facts {
+  display: grid;
+  grid-template-columns: minmax(70px, max-content) minmax(0, 1fr);
+  gap: 2px 12px;
+  margin: 0;
+}
+
+.php-view__facts dt {
+  color: var(--fg-muted);
+}
+
+.php-view__facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.php-view__db-status--running {
+  color: var(--success-fg, #89d185);
+}
+
+.php-view__db-status--error {
+  color: var(--danger-fg, #f48771);
+}
+
+.php-view__secret {
+  user-select: all;
+}
+
+.php-view__path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.php-view__path {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.php-view__button--small {
+  padding: 1px 6px;
+  flex: 0 0 auto;
+}
+
+.php-view__log {
+  min-height: 60px;
+}

@@ -245,6 +245,26 @@ export interface IpcClient {
   /** The server started or ended (in any window): re-read `phpServerStatus`. */
   onPhpChanged: (handler: () => void) => Promise<() => void>;
 
+  // MariaDB (a normal child process on 127.0.0.1), phpMyAdmin and Composer project commands
+  mariadbStatus: () => Promise<MariaDbStatus>;
+  mariadbCredentials: () => Promise<DbCredentials>;
+  mariadbInitialize: () => Promise<void>;
+  mariadbStart: (port: number) => Promise<ServiceInfo>;
+  mariadbStop: () => Promise<void>;
+  onMariadbEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+  onMariadbChanged: (handler: () => void) => Promise<() => void>;
+  pmaStart: (port: number, mariadbPort: number) => Promise<ServiceInfo>;
+  pmaStop: () => Promise<void>;
+  pmaStatus: () => Promise<ServiceInfo | null>;
+  onPmaEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+  onPmaChanged: (handler: () => void) => Promise<() => void>;
+  phpProjectInfo: (root: string) => Promise<ProjectInfo>;
+  composerRun: (action: ComposerAction, root: string) => Promise<RunInfo>;
+  composerStop: () => Promise<void>;
+  composerStatus: () => Promise<RunInfo[]>;
+  onComposerEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+  onComposerChanged: (handler: () => void) => Promise<() => void>;
+
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
 }
@@ -345,6 +365,39 @@ export interface PhpServerInfo {
   /** The PHP version the process was started with (it keeps it after a switch). */
   phpVersion: string | null;
 }
+
+/** A service the backend started (MariaDB, phpMyAdmin). */
+export interface ServiceInfo {
+  run: RunInfo;
+  port: number;
+  url: string | null;
+  /** MariaDB: it answered a ping. */
+  ready: boolean;
+  version: string | null;
+  /** phpMyAdmin: the PHP it was started with. */
+  phpVersion: string | null;
+}
+
+export interface MariaDbStatus {
+  initialized: boolean;
+  running: ServiceInfo | null;
+  dataDir: string;
+  logDir: string;
+  configFile: string;
+  hasPassword: boolean;
+}
+
+export interface DbCredentials {
+  username: string;
+  password: string | null;
+}
+
+export interface ProjectInfo {
+  isDir: boolean;
+  hasComposerJson: boolean;
+}
+
+export type ComposerAction = "install" | "update" | "dump-autoload";
 
 export type ShellStyle = "powerShell" | "cmd" | "bash";
 
@@ -526,6 +579,43 @@ export const tauriIpcClient: IpcClient = {
     }),
   onPhpChanged: (handler) =>
     listen("php:changed", () => {
+      handler();
+    }),
+
+  mariadbStatus: () => invoke<MariaDbStatus>("mariadb_status"),
+  mariadbCredentials: () => invoke<DbCredentials>("mariadb_credentials"),
+  mariadbInitialize: () => invoke("mariadb_initialize"),
+  mariadbStart: (port) => invoke<ServiceInfo>("mariadb_start", { port }),
+  mariadbStop: () => invoke("mariadb_stop"),
+  onMariadbEvent: (handler) =>
+    listen<RunEvent>("mariadb:event", (event) => {
+      handler(event.payload);
+    }),
+  onMariadbChanged: (handler) =>
+    listen("mariadb:changed", () => {
+      handler();
+    }),
+  pmaStart: (port, mariadbPort) => invoke<ServiceInfo>("pma_start", { port, mariadbPort }),
+  pmaStop: () => invoke("pma_stop"),
+  pmaStatus: () => invoke<ServiceInfo | null>("pma_status"),
+  onPmaEvent: (handler) =>
+    listen<RunEvent>("pma:event", (event) => {
+      handler(event.payload);
+    }),
+  onPmaChanged: (handler) =>
+    listen("pma:changed", () => {
+      handler();
+    }),
+  phpProjectInfo: (root) => invoke<ProjectInfo>("php_project_info", { root }),
+  composerRun: (action, root) => invoke<RunInfo>("composer_run", { action, root }),
+  composerStop: () => invoke("composer_stop"),
+  composerStatus: () => invoke<RunInfo[]>("composer_status"),
+  onComposerEvent: (handler) =>
+    listen<RunEvent>("composer:event", (event) => {
+      handler(event.payload);
+    }),
+  onComposerChanged: (handler) =>
+    listen("composer:changed", () => {
       handler();
     }),
 
