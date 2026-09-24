@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "../services/eventBus";
 import type { AppEvents } from "../services/events";
+import { GitBlameService } from "../services/gitBlameService";
+import { GitCloneService } from "../services/gitCloneService";
+import { GitHistoryService } from "../services/gitHistoryService";
 import { GitService } from "../services/gitService";
+import { GitStashService } from "../services/gitStashService";
 import type { GitFileChange, GitSnapshot } from "../services/ipc";
 import { OutputService } from "../services/outputService";
 import { SourceControlService } from "../services/sourceControlService";
@@ -25,6 +29,8 @@ vi.mock("../editor/MonacoDiffHost", () => ({
 
 import { GitDiffViewer } from "./GitDiffViewer";
 import { SourceControlView } from "./SourceControlView";
+
+const READY = { ready: true, label: "OpenMind portable Git", reason: null, systemGit: null };
 
 function change(path: string, patch: Partial<GitFileChange> = {}): GitFileChange {
   return {
@@ -61,7 +67,10 @@ const CHANGES = [
   change("new file.txt", { worktree: "untracked" }),
 ];
 
+let activePath: string | null = null;
+
 async function setup(snapshot: GitSnapshot, overrides: Parameters<typeof createFakeIpc>[0] = {}) {
+  activePath = null;
   const ipc = createFakeIpc({ gitSnapshot: vi.fn().mockResolvedValue(snapshot), ...overrides });
   const output = new OutputService();
   const git = new GitService(ipc, output);
@@ -69,14 +78,37 @@ async function setup(snapshot: GitSnapshot, overrides: Parameters<typeof createF
   const sourceControl = new SourceControlService(git, events, vi.fn(), vi.fn());
   await sourceControl.initialize();
   const run = vi.fn();
+  const gitClone = new GitCloneService(git, events, vi.fn(), () => sourceControl.runtime());
+  const gitHistory = new GitHistoryService(git, events, (hash, file) =>
+    sourceControl.openCommitDiff(hash, file),
+  );
+  const gitStash = new GitStashService(
+    git,
+    events,
+    () => sourceControl.refresh(),
+    () => {
+      const changes = sourceControl.status()?.changes ?? [];
+      const untracked = changes.filter((change) => change.worktree === "untracked").length;
+      return { tracked: changes.length - untracked, untracked };
+    },
+  );
+  const gitBlame = new GitBlameService(
+    git,
+    () => activePath,
+    () => sourceControl.repository(),
+  );
   harness.current = {
     sourceControl,
+    gitClone,
+    gitHistory,
+    gitStash,
+    gitBlame,
     output,
     panel: { show: vi.fn() },
     run,
     themeKind: "dark",
   };
-  return { ipc, sourceControl, run };
+  return { ipc, sourceControl, run, gitClone, gitHistory, gitStash, gitBlame, events };
 }
 
 describe("SourceControlView", () => {
@@ -85,7 +117,7 @@ describe("SourceControlView", () => {
   });
 
   it("no folder: says so and offers Open Folder", async () => {
-    const { run } = await setup({ state: "noWorkspace" });
+    const { run } = await setup({ state: "noWorkspace", runtime: READY });
     render(<SourceControlView />);
     expect(screen.getByText("Open a folder to use Source Control.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open Folder" }));
@@ -100,7 +132,7 @@ describe("SourceControlView", () => {
     });
     const installed = vi.spyOn(sourceControl, "installGitRuntime");
     render(<SourceControlView />);
-    expect(screen.getByText("Git runtime is not installed yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("Git runtime is not installed yet.").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Install Git Runtime" }));
     expect(installed).toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Use System Git" })).toHaveAttribute(

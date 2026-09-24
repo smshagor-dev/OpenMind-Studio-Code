@@ -408,3 +408,353 @@ fn every_command_is_logged_without_the_commit_message() {
     assert!(commit.cwd.contains("my project"));
     assert!(log.iter().all(|entry| !entry.label.contains("secret")));
 }
+
+fn raw(h: &Harness, cwd: &Path, args: &[&str]) {
+    let status = std::process::Command::new(&h.client.executable().path)
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .unwrap();
+    assert!(status.success(), "{args:?}");
+}
+
+#[test]
+fn clone_from_a_local_bare_repository_into_a_folder_with_spaces() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    commit_file(&h, "a.txt", "a\n");
+    let bare = h._temp.path().join("bare repo.git");
+    raw(
+        &h,
+        h._temp.path(),
+        &[
+            "clone",
+            "--bare",
+            "-q",
+            h.root.to_str().unwrap(),
+            bare.to_str().unwrap(),
+        ],
+    );
+
+    let parent = h._temp.path().join("clones here");
+    std::fs::create_dir_all(&parent).unwrap();
+    let cloned = h
+        .client
+        .clone_repository(bare.to_str().unwrap(), &parent, "my clone")
+        .unwrap();
+    assert_eq!(cloned, parent.join("my clone"));
+    assert_eq!(read(&cloned, "a.txt"), "a\n");
+    assert!(h.client.find_root(&cloned).is_ok());
+
+    // Not overwritten, and nothing was run for bad input.
+    let before = h.log.lock().unwrap().len();
+    let again = h
+        .client
+        .clone_repository(bare.to_str().unwrap(), &parent, "my clone")
+        .unwrap_err();
+    assert!(again.to_string().contains("not empty"), "{again}");
+    assert!(h.client.clone_repository("", &parent, "x").is_err());
+    assert!(h
+        .client
+        .clone_repository("--upload-pack=calc", &parent, "x")
+        .is_err());
+    assert!(h
+        .client
+        .clone_repository(bare.to_str().unwrap(), &parent.join("missing"), "x")
+        .is_err());
+    assert_eq!(h.log.lock().unwrap().len(), before);
+    assert_eq!(read(&cloned, "a.txt"), "a\n");
+
+    let logged = h.log.lock().unwrap();
+    assert!(logged
+        .iter()
+        .any(|entry| entry.label.starts_with("git clone --progress --")));
+}
+
+#[test]
+fn cloning_something_that_is_not_a_repository_reports_gits_error() {
+    let Some(h) = harness() else { return };
+    let parent = h._temp.path().join("p");
+    std::fs::create_dir_all(&parent).unwrap();
+    let missing = h._temp.path().join("nothing here");
+    let error = h
+        .client
+        .clone_repository(missing.to_str().unwrap(), &parent, "c")
+        .unwrap_err();
+    assert!(matches!(error, GitError::Failed(_)), "{error}");
+    assert!(!parent.join("c").join(".git").exists());
+}
+
+#[test]
+fn history_lists_commits_newest_first_with_their_files_and_diffs() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    assert!(h.client.history(&h.root, 50).unwrap().is_empty());
+    commit_file(&h, "first file.txt", "one\n");
+    write(&h.root, "first file.txt", "one\ntwo\n");
+    write(&h.root, "second.txt", "s\n");
+    h.client.stage_all(&h.root).unwrap();
+    h.client.commit(&h.root, "second: change and add").unwrap();
+
+    let commits = h.client.history(&h.root, 50).unwrap();
+    assert_eq!(commits.len(), 2);
+    assert_eq!(commits[0].subject, "second: change and add");
+    assert_eq!(commits[0].author, "Test User");
+    assert!(commits[0].hash.starts_with(&commits[0].short_hash));
+    assert_eq!(h.client.history(&h.root, 1).unwrap().len(), 1);
+
+    let files = h.client.commit_files(&h.root, &commits[0].hash).unwrap();
+    let statuses: Vec<(&str, &str)> = files
+        .iter()
+        .map(|f| (f.path.as_str(), f.status.as_str()))
+        .collect();
+    assert!(statuses.contains(&("first file.txt", "M")), "{statuses:?}");
+    assert!(statuses.contains(&("second.txt", "A")), "{statuses:?}");
+
+    let modified = files.iter().find(|f| f.path == "first file.txt").unwrap();
+    let sides = h
+        .client
+        .commit_diff_sides(&h.root, &commits[0].hash, modified)
+        .unwrap();
+    assert_eq!(sides.original.unwrap().replace("\r\n", "\n"), "one\n");
+    assert_eq!(sides.modified.unwrap().replace("\r\n", "\n"), "one\ntwo\n");
+    let added = files.iter().find(|f| f.path == "second.txt").unwrap();
+    assert_eq!(
+        h.client
+            .commit_diff_sides(&h.root, &commits[0].hash, added)
+            .unwrap()
+            .original,
+        None
+    );
+
+    // The root commit lists its file as added.
+    let root_files = h.client.commit_files(&h.root, &commits[1].hash).unwrap();
+    assert_eq!(root_files.len(), 1);
+    assert_eq!(root_files[0].status, "A");
+
+    assert!(matches!(
+        h.client.commit_files(&h.root, "--output=x"),
+        Err(GitError::InvalidCommit(_))
+    ));
+}
+
+#[test]
+fn blame_attributes_lines_and_explains_what_can_not_be_blamed() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    commit_file(&h, "f g.txt", "one\ntwo\n");
+    write(&h.root, "f g.txt", "one\ntwo\nthree\n");
+    h.client.stage_all(&h.root).unwrap();
+    h.client.commit(&h.root, "add three").unwrap();
+    write(&h.root, "f g.txt", "one\ntwo\nthree\nuncommitted\n");
+
+    let lines = h.client.blame(&h.root, "f g.txt").unwrap();
+    assert_eq!(lines.len(), 4);
+    assert_eq!(lines[0].summary, "add file");
+    assert_eq!(lines[2].summary, "add three");
+    assert_eq!(lines[0].author, "Test User");
+    assert!(!lines[3].committed);
+    assert_eq!(lines[3].content, "uncommitted");
+
+    // An absolute path inside the repository works too; outside does not.
+    let absolute = h.root.join("f g.txt");
+    assert_eq!(
+        h.client
+            .blame(&h.root, absolute.to_str().unwrap())
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(h.client.blame(&h.root, "C:/somewhere/else.txt").is_err());
+
+    write(&h.root, "new.txt", "x\n");
+    let untracked = h.client.blame(&h.root, "new.txt").unwrap_err();
+    assert!(untracked.to_string().contains("untracked"), "{untracked}");
+
+    std::fs::write(h.root.join("blob.bin"), [0u8, 1, 2, 0]).unwrap();
+    h.client.stage(&h.root, &["blob.bin".into()]).unwrap();
+    h.client.commit(&h.root, "binary").unwrap();
+    let binary = h.client.blame(&h.root, "blob.bin").unwrap_err();
+    assert!(binary.to_string().contains("Binary"), "{binary}");
+
+    // Staged but not committed: every line is "not committed yet".
+    h.client.stage(&h.root, &["new.txt".into()]).unwrap();
+    let staged = h.client.blame(&h.root, "new.txt").unwrap();
+    assert!(staged.iter().all(|line| !line.committed));
+}
+
+#[test]
+fn blame_in_a_repository_without_commits_says_to_commit_first() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    write(
+        &h.root, "n.txt", "x
+",
+    );
+    h.client.stage(&h.root, &["n.txt".into()]).unwrap();
+    let error = h.client.blame(&h.root, "n.txt").unwrap_err();
+    assert!(error.to_string().contains("no commits yet"), "{error}");
+}
+
+#[test]
+fn stash_push_list_apply_pop_and_drop() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    commit_file(&h, "a.txt", "base\n");
+
+    // Nothing to stash.
+    assert!(h.client.stash_push(&h.root, "x", false).is_err());
+    assert!(h.client.stash_list(&h.root).unwrap().is_empty());
+
+    write(&h.root, "a.txt", "edited\n");
+    h.client.stash_push(&h.root, "my work", false).unwrap();
+    assert!(h.client.status(&h.root).unwrap().changes.is_empty());
+    assert_eq!(read(&h.root, "a.txt"), "base\n");
+    let stashes = h.client.stash_list(&h.root).unwrap();
+    assert_eq!(stashes.len(), 1);
+    assert_eq!(stashes[0].message.as_deref(), Some("my work"));
+
+    // Apply keeps the stash.
+    h.client.stash_apply(&h.root, 0).unwrap();
+    assert_eq!(read(&h.root, "a.txt"), "edited\n");
+    assert_eq!(h.client.stash_list(&h.root).unwrap().len(), 1);
+    h.client.discard(&h.root, &["a.txt".into()], true).unwrap();
+
+    // Pop removes it.
+    h.client.stash_pop(&h.root, 0).unwrap();
+    assert_eq!(read(&h.root, "a.txt"), "edited\n");
+    assert!(h.client.stash_list(&h.root).unwrap().is_empty());
+
+    // Drop needs confirmation.
+    h.client.stash_push(&h.root, "", false).unwrap();
+    assert_eq!(
+        h.client.stash_drop(&h.root, 0, false),
+        Err(GitError::NotConfirmed("Dropping a stash"))
+    );
+    assert_eq!(h.client.stash_list(&h.root).unwrap().len(), 1);
+    h.client.stash_drop(&h.root, 0, true).unwrap();
+    assert!(h.client.stash_list(&h.root).unwrap().is_empty());
+    assert!(h.client.stash_drop(&h.root, 5, true).is_err());
+}
+
+#[test]
+fn stash_of_untracked_files_needs_the_option_and_bad_messages_are_refused() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    commit_file(&h, "a.txt", "base\n");
+    write(&h.root, "only new.txt", "n\n");
+    let hint = h.client.stash_push(&h.root, "", false).unwrap_err();
+    assert!(hint.to_string().contains("Include untracked"), "{hint}");
+    h.client
+        .stash_push(&h.root, "with untracked", true)
+        .unwrap();
+    assert!(!h.root.join("only new.txt").exists());
+    h.client.stash_pop(&h.root, 0).unwrap();
+    assert!(h.root.join("only new.txt").exists());
+    write(&h.root, "a.txt", "e\n");
+    assert!(h.client.stash_push(&h.root, "two\nlines", false).is_err());
+}
+
+#[test]
+fn a_conflicting_stash_pop_is_reported_and_the_stash_is_kept() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    commit_file(&h, "a.txt", "base\n");
+    write(&h.root, "a.txt", "stashed change\n");
+    h.client.stash_push(&h.root, "conflict me", false).unwrap();
+    write(&h.root, "a.txt", "different change\n");
+    h.client.stage_all(&h.root).unwrap();
+    h.client.commit(&h.root, "diverge").unwrap();
+
+    let error = h.client.stash_pop(&h.root, 0).unwrap_err().to_string();
+    assert!(error.to_lowercase().contains("conflict"), "{error}");
+    assert_eq!(
+        h.client.stash_list(&h.root).unwrap().len(),
+        1,
+        "the stash must survive a conflict"
+    );
+    let status = h.client.status(&h.root).unwrap();
+    assert!(status.changes.iter().any(|change| change.conflicted));
+}
+
+#[test]
+fn a_renamed_file_is_reported_as_a_rename_with_its_old_name_and_a_safe_diff() {
+    let Some(h) = harness() else { return };
+    ready(&h);
+    commit_file(
+        &h,
+        "old name.txt",
+        "some content that is long enough to be recognised as the same file\n",
+    );
+    raw(&h, &h.root, &["mv", "old name.txt", "new name.txt"]);
+
+    let status = h.client.status(&h.root).unwrap();
+    let renamed = status
+        .changes
+        .iter()
+        .find(|change| change.path == "new name.txt")
+        .expect("rename in status");
+    assert_eq!(renamed.index, ChangeKind::Renamed);
+    assert_eq!(renamed.orig_path.as_deref(), Some("old name.txt"));
+    assert_eq!(status.changes.len(), 1, "{:?}", status.changes);
+
+    let sides = h.client.diff_sides(&h.root, "new name.txt", true).unwrap();
+    assert!(sides.original.unwrap().contains("some content"));
+    assert!(sides.modified.unwrap().contains("some content"));
+
+    // Unstaging the rename puts both halves back as separate changes.
+    h.client
+        .unstage(&h.root, &["new name.txt".into(), "old name.txt".into()])
+        .unwrap();
+    let after = h.client.status(&h.root).unwrap();
+    assert!(after
+        .changes
+        .iter()
+        .any(|c| c.path == "old name.txt" && c.worktree == ChangeKind::Deleted));
+    assert!(after
+        .changes
+        .iter()
+        .any(|c| c.path == "new name.txt" && c.is_untracked()));
+}
+
+#[cfg(windows)]
+#[test]
+fn stopping_all_kills_a_running_git_command_and_what_it_started() {
+    let Some(h) = harness() else { return };
+    let registry = GitRegistry::default();
+    let exe = h.client.executable().path.clone();
+    let cwd = h.root.clone();
+    let runner_registry = registry.clone();
+    // An alias that runs a long `ping` through Git's shell: git.exe plus a grandchild.
+    let worker = std::thread::spawn(move || {
+        openmind_git::exec::run(
+            &exe,
+            &cwd,
+            &[
+                "-c".to_string(),
+                "alias.slow=!ping -n 40 127.0.0.1".to_string(),
+                "slow".to_string(),
+            ],
+            std::time::Duration::from_secs(60),
+            &runner_registry,
+        )
+    });
+    let started = std::time::Instant::now();
+    while registry.active() == 0 && started.elapsed() < std::time::Duration::from_secs(10) {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(
+        registry.active(),
+        1,
+        "the command should be registered while it runs"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(800));
+    registry.stop_all();
+    let result = worker.join().unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "stop_all must end it quickly"
+    );
+    assert!(result.map(|output| !output.success()).unwrap_or(true));
+    assert_eq!(registry.active(), 0);
+}

@@ -27,10 +27,17 @@ pub enum GitError {
     StartFailed(String),
     #[error("Git took too long and was stopped.")]
     Timeout,
-    #[error(
-        "Git needs credentials for this remote. OpenMind doesn't store credentials yet, so use a remote that needs none or run the command in the terminal."
-    )]
+    #[error("Authentication is required. Credential storage is not implemented yet.")]
     NeedsCredentials,
+    #[error("{0}")]
+    InvalidCloneUrl(String),
+    #[error("{0}")]
+    InvalidCloneDestination(String),
+    /// Why a file can't be blamed (untracked, binary, too large, outside the repository).
+    #[error("{0}")]
+    NotBlamable(String),
+    #[error("Not a valid commit id: {0}")]
+    InvalidCommit(String),
     #[error("{0}")]
     Failed(String),
 }

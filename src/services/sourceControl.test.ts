@@ -14,6 +14,8 @@ import {
 } from "./sourceControlService";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
+const READY = { ready: true, label: "OpenMind portable Git", reason: null, systemGit: null };
+
 function change(path: string, patch: Partial<GitFileChange> = {}): GitFileChange {
   return {
     path,
@@ -126,7 +128,7 @@ describe("pure helpers", () => {
 
 describe("view states", () => {
   it("no folder open", async () => {
-    const { sc } = await setup({ state: "noWorkspace" });
+    const { sc } = await setup({ state: "noWorkspace", runtime: READY });
     expect(sc.viewKind()).toBe("noFolder");
     expect(sc.branchLabel()).toBeNull();
   });
@@ -159,7 +161,10 @@ describe("view states", () => {
       .fn()
       .mockResolvedValueOnce({ state: "notRepository", git: "OpenMind portable Git" })
       .mockResolvedValue(repo([]));
-    const { sc, ipc } = await setup({ state: "noWorkspace" }, { gitSnapshot: snapshot });
+    const { sc, ipc } = await setup(
+      { state: "noWorkspace", runtime: READY },
+      { gitSnapshot: snapshot },
+    );
     expect(sc.viewKind()).toBe("notRepository");
     expect(await sc.initRepository()).toBe(true);
     expect(ipc.gitInit).toHaveBeenCalled();

@@ -1,16 +1,22 @@
 //! Builds the argument lists for every Git command the client runs. Nothing
 //! here touches a shell: each command is a `Vec<String>` handed to the process
 //! API, so a file name or message can never become part of a command line.
-//! Paths always come after `--` (and the runner sets `GIT_LITERAL_PATHSPECS`),
+//! Paths always come after `--` (with `--literal-pathspecs` in front),
 //! so a name like `*.txt` or `-rf` is a file, not a pattern or an option.
 
 use crate::error::GitError;
+
+const LITERAL: &str = "--literal-pathspecs";
 
 fn strings(items: &[&str]) -> Vec<String> {
     items.iter().map(|item| (*item).to_string()).collect()
 }
 
+/// Paths are literal file names, never patterns (`*.txt`, `:(top)`): the global
+/// flag goes first, the paths after `--`. (Not an environment variable: that
+/// would also break `git stash --include-untracked`, which builds its own pathspecs.)
 fn with_paths(mut args: Vec<String>, paths: &[String]) -> Vec<String> {
+    args.insert(0, LITERAL.to_string());
     args.push("--".to_string());
     args.extend(paths.iter().cloned());
     args
@@ -121,6 +127,101 @@ pub fn config_set(key: &str, value: &str) -> Vec<String> {
     vec!["config".to_string(), key.to_string(), value.to_string()]
 }
 
+/// Clones `url` into `dest` (both already validated). `--` keeps a URL from being read as an option.
+pub fn clone(url: &str, dest: &str) -> Vec<String> {
+    vec![
+        "clone".to_string(),
+        "--progress".to_string(),
+        "--".to_string(),
+        url.to_string(),
+        dest.to_string(),
+    ]
+}
+
+/// Up to `limit` commits of the current branch, newest first, NUL-separated records.
+pub fn log(limit: u32) -> Vec<String> {
+    vec![
+        "log".to_string(),
+        format!("--max-count={limit}"),
+        "-z".to_string(),
+        "--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s".to_string(),
+    ]
+}
+
+/// The files one commit changed (first parent for merges; renames detected).
+pub fn show_files(hash: &str) -> Vec<String> {
+    vec![
+        "show".to_string(),
+        "--name-status".to_string(),
+        "-z".to_string(),
+        "-M".to_string(),
+        "--diff-merges=first-parent".to_string(),
+        "--format=".to_string(),
+        hash.to_string(),
+    ]
+}
+
+pub fn blame(path: &str) -> Vec<String> {
+    vec![
+        LITERAL.to_string(),
+        "blame".to_string(),
+        "--porcelain".to_string(),
+        "--".to_string(),
+        path.to_string(),
+    ]
+}
+
+pub fn ls_files(path: &str) -> Vec<String> {
+    vec![
+        LITERAL.to_string(),
+        "ls-files".to_string(),
+        "--error-unmatch".to_string(),
+        "--".to_string(),
+        path.to_string(),
+    ]
+}
+
+pub fn stash_list() -> Vec<String> {
+    strings(&["stash", "list", "-z", "--format=%gd%x1f%gs%x1f%aI"])
+}
+
+/// `git stash push`, optionally with a message and untracked files.
+pub fn stash_push(message: &str, include_untracked: bool) -> Vec<String> {
+    let mut args = strings(&["stash", "push"]);
+    if include_untracked {
+        args.push("--include-untracked".to_string());
+    }
+    if !message.is_empty() {
+        args.push("-m".to_string());
+        args.push(message.to_string());
+    }
+    args
+}
+
+pub fn stash_apply(reference: &str) -> Vec<String> {
+    vec![
+        "stash".to_string(),
+        "apply".to_string(),
+        reference.to_string(),
+    ]
+}
+
+pub fn stash_pop(reference: &str) -> Vec<String> {
+    vec![
+        "stash".to_string(),
+        "pop".to_string(),
+        reference.to_string(),
+    ]
+}
+
+pub fn stash_drop(reference: &str) -> Vec<String> {
+    vec![
+        "stash".to_string(),
+        "drop".to_string(),
+        reference.to_string(),
+    ]
+}
+
 pub fn fetch() -> Vec<String> {
     strings(&["fetch"])
 }
@@ -157,6 +258,9 @@ pub fn label(args: &[String]) -> String {
             iter.next();
             continue;
         }
+        if arg == LITERAL {
+            continue;
+        }
         if arg == "--" {
             let count = iter.count();
             shown.push("--");
@@ -190,11 +294,19 @@ mod tests {
         let files = paths(&["my folder/a b.txt", "-rf", "*.txt"]);
         assert_eq!(
             stage(&files),
-            ["add", "--", "my folder/a b.txt", "-rf", "*.txt"]
+            [
+                "--literal-pathspecs",
+                "add",
+                "--",
+                "my folder/a b.txt",
+                "-rf",
+                "*.txt"
+            ]
         );
         assert_eq!(
             discard(&files),
             [
+                "--literal-pathspecs",
                 "restore",
                 "--worktree",
                 "--",
@@ -210,11 +322,25 @@ mod tests {
         let files = paths(&["a b.txt"]);
         assert_eq!(
             unstage(&files, true),
-            ["restore", "--staged", "--", "a b.txt"]
+            [
+                "--literal-pathspecs",
+                "restore",
+                "--staged",
+                "--",
+                "a b.txt"
+            ]
         );
         assert_eq!(
             unstage(&files, false),
-            ["rm", "--cached", "-r", "-q", "--", "a b.txt"]
+            [
+                "--literal-pathspecs",
+                "rm",
+                "--cached",
+                "-r",
+                "-q",
+                "--",
+                "a b.txt"
+            ]
         );
         assert_eq!(unstage_all(true), ["reset", "-q"]);
         assert_eq!(
@@ -263,6 +389,58 @@ mod tests {
             validate_branch_syntax("feature/x-1").unwrap(),
             "feature/x-1"
         );
+    }
+
+    #[test]
+    fn clone_puts_the_address_after_the_separator() {
+        assert_eq!(
+            clone("https://x/y.git", "C:/my dir/y"),
+            [
+                "clone",
+                "--progress",
+                "--",
+                "https://x/y.git",
+                "C:/my dir/y"
+            ]
+        );
+    }
+
+    #[test]
+    fn history_commands_are_bounded_and_machine_readable() {
+        let log = log(50);
+        assert!(log.contains(&"--max-count=50".to_string()) && log.contains(&"-z".to_string()));
+        let show = show_files("abc1234");
+        assert_eq!(show.last().map(String::as_str), Some("abc1234"));
+        assert!(show.contains(&"--name-status".to_string()) && show.contains(&"-z".to_string()));
+        assert_eq!(
+            blame("a b.txt"),
+            [
+                "--literal-pathspecs",
+                "blame",
+                "--porcelain",
+                "--",
+                "a b.txt"
+            ]
+        );
+    }
+
+    #[test]
+    fn stash_commands_are_built_from_options_and_numbered_references() {
+        assert_eq!(stash_push("", false), ["stash", "push"]);
+        assert_eq!(
+            stash_push("my work; & more", true),
+            [
+                "stash",
+                "push",
+                "--include-untracked",
+                "-m",
+                "my work; & more"
+            ]
+        );
+        assert_eq!(stash_apply("stash@{2}"), ["stash", "apply", "stash@{2}"]);
+        assert_eq!(stash_pop("stash@{0}"), ["stash", "pop", "stash@{0}"]);
+        assert_eq!(stash_drop("stash@{1}"), ["stash", "drop", "stash@{1}"]);
+        assert_eq!(stash_list()[..2], ["stash", "list"]);
     }
 
     #[test]

@@ -31,7 +31,12 @@ import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { ComposerService } from "./composerService";
+import { GitBlameService } from "./gitBlameService";
+import { GitCloneService } from "./gitCloneService";
+import { registerGitCommands } from "./gitCommands";
+import { GitHistoryService } from "./gitHistoryService";
 import { GitService } from "./gitService";
+import { GitStashService } from "./gitStashService";
 import { SourceControlService } from "./sourceControlService";
 import { ControlPanelService } from "./controlPanelService";
 import { MariaDbService } from "./mariaDbService";
@@ -119,6 +124,38 @@ const sourceControl = new SourceControlService(
   },
   (listener) => runtime.subscribe(listener),
 );
+const gitClone = new GitCloneService(
+  gitService,
+  events,
+  (path) => workspace.openFolder(path),
+  () => sourceControl.runtime(),
+);
+const gitHistory = new GitHistoryService(gitService, events, (hash, file) =>
+  sourceControl.openCommitDiff(hash, file),
+);
+const gitStash = new GitStashService(
+  gitService,
+  events,
+  () => sourceControl.refresh(),
+  () => {
+    const changes = sourceControl.status()?.changes ?? [];
+    const untracked = changes.filter((change) => change.worktree === "untracked").length;
+    return { tracked: changes.length - untracked, untracked };
+  },
+);
+const gitBlame = new GitBlameService(
+  gitService,
+  () => {
+    const tab = editorGroups.activeTab();
+    return tab ? workspace.docPath(tab.docId) : null;
+  },
+  () => sourceControl.repository(),
+);
+events.on("workspaceFolderChanged", () => {
+  gitHistory.reset();
+  gitStash.reset();
+  gitBlame.close();
+});
 const runConfigs = new RunConfigurationService(tauriIpcClient);
 const runCode = new RunCodeService(
   tauriIpcClient,
@@ -286,6 +323,7 @@ registerEditorCommands({
 });
 registerRuntimeCommands(commands, events);
 registerPhpCommands(commands, php, tauriIpcClient);
+registerGitCommands(commands, layout, gitClone, gitBlame);
 
 registerWorkbenchCommands({
   commands,
@@ -340,6 +378,10 @@ export const container = {
   controlPanel,
   git: gitService,
   sourceControl,
+  gitClone,
+  gitHistory,
+  gitStash,
+  gitBlame,
   search,
   editorGroups,
   openEditors,

@@ -294,6 +294,18 @@ export interface IpcClient {
   gitFetch: () => Promise<string>;
   gitPull: () => Promise<string>;
   gitPush: () => Promise<string>;
+  /** Clones into `<parent>/<name>`; resolves to the new folder. Never overwrites a non-empty folder. */
+  gitClone: (url: string, parent: string, name: string) => Promise<string>;
+  gitHistory: (limit: number) => Promise<GitCommit[]>;
+  gitCommitFiles: (hash: string) => Promise<GitCommitFile[]>;
+  gitCommitDiff: (hash: string, file: GitCommitFile) => Promise<GitDiffSides>;
+  /** Blame for a file of the open repository (absolute or repo-relative). */
+  gitBlame: (path: string) => Promise<GitBlameLine[]>;
+  gitStashList: () => Promise<GitStash[]>;
+  gitStashPush: (message: string, includeUntracked: boolean) => Promise<string>;
+  gitStashApply: (index: number) => Promise<string>;
+  gitStashPop: (index: number) => Promise<string>;
+  gitStashDrop: (index: number, confirmed: boolean) => Promise<void>;
   gitAllowSystem: () => Promise<boolean>;
   gitSetAllowSystem: (allow: boolean) => Promise<void>;
   /** One Git command finished (label, cwd, exit code, output) — for the Git output channel. */
@@ -434,7 +446,7 @@ export interface GitRepoStatus {
 
 /** What the Source Control view is showing (mirrors commands::git::GitSnapshot). */
 export type GitSnapshot =
-  | { state: "noWorkspace" }
+  | { state: "noWorkspace"; runtime: GitRuntime }
   | { state: "gitMissing"; reason: string; systemGit: string | null }
   | { state: "notRepository"; git: string }
   | { state: "repository"; root: string; name: string; git: string; status: GitRepoStatus };
@@ -456,6 +468,48 @@ export interface GitDiffSides {
   original: string | null;
   modified: string | null;
   binary: boolean;
+}
+
+export interface GitRuntime {
+  ready: boolean;
+  label: string | null;
+  reason: string | null;
+  systemGit: string | null;
+}
+
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  author: string;
+  /** Strict ISO 8601. */
+  date: string;
+  subject: string;
+}
+
+export interface GitCommitFile {
+  path: string;
+  origPath: string | null;
+  /** Git's status letter: A, M, D, R, C, T. */
+  status: string;
+}
+
+export interface GitBlameLine {
+  line: number;
+  shortHash: string;
+  author: string;
+  /** Seconds since the Unix epoch (0 when not committed). */
+  time: number;
+  summary: string;
+  content: string;
+  committed: boolean;
+}
+
+export interface GitStash {
+  index: number;
+  description: string;
+  message: string | null;
+  branch: string | null;
+  date: string;
 }
 
 export interface GitLogEntry {
@@ -707,6 +761,17 @@ export const tauriIpcClient: IpcClient = {
   gitFetch: () => invoke<string>("git_fetch"),
   gitPull: () => invoke<string>("git_pull"),
   gitPush: () => invoke<string>("git_push"),
+  gitClone: (url, parent, name) => invoke<string>("git_clone", { url, parent, name }),
+  gitHistory: (limit) => invoke<GitCommit[]>("git_history", { limit }),
+  gitCommitFiles: (hash) => invoke<GitCommitFile[]>("git_commit_files", { hash }),
+  gitCommitDiff: (hash, file) => invoke<GitDiffSides>("git_commit_diff", { hash, file }),
+  gitBlame: (path) => invoke<GitBlameLine[]>("git_blame", { path }),
+  gitStashList: () => invoke<GitStash[]>("git_stash_list"),
+  gitStashPush: (message, includeUntracked) =>
+    invoke<string>("git_stash_push", { message, includeUntracked }),
+  gitStashApply: (index) => invoke<string>("git_stash_apply", { index }),
+  gitStashPop: (index) => invoke<string>("git_stash_pop", { index }),
+  gitStashDrop: (index, confirmed) => invoke("git_stash_drop", { index, confirmed }),
   gitAllowSystem: () => invoke<boolean>("git_allow_system"),
   gitSetAllowSystem: (allow) => invoke("git_set_allow_system", { allow }),
   onGitLog: (handler) =>

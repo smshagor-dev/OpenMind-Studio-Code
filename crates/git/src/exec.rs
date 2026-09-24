@@ -116,7 +116,6 @@ pub fn run(
         .current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
-        .env("GIT_LITERAL_PATHSPECS", "1")
         .env("GIT_OPTIONAL_LOCKS", "0")
         .env("GIT_EDITOR", "true")
         .stdin(Stdio::null())

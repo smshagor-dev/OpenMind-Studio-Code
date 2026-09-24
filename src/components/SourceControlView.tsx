@@ -5,8 +5,11 @@ import "../styles/sourceControl.css";
 import type { Availability } from "../services/runtimeService";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { GitBranchIndicator, GitBranchPanel } from "./GitBranchIndicator";
+import { GitCloneForm } from "./GitCloneForm";
 import { GitCommitBox } from "./GitCommitBox";
 import { GitFileList } from "./GitFileList";
+import { GitHistoryPanel } from "./GitHistoryPanel";
+import { GitStashPanel } from "./GitStashPanel";
 
 function useSourceControl() {
   useSyncExternalStore(
@@ -71,6 +74,9 @@ function MoreMenu() {
           {item("Fetch", sc.remoteState("fetch"), () => void sc.fetch())}
           {item("Pull", sc.remoteState("pull"), () => void sc.pull())}
           {item("Push", sc.remoteState("push"), () => void sc.push())}
+          {item("Blame Active File", container.gitBlame.state(), () => {
+            void container.gitBlame.open();
+          })}
           {item("Discard All Changes", sc.discardAllState(), () => {
             sc.requestDiscardAll();
           })}
@@ -95,6 +101,8 @@ function RepositoryPanel() {
   const sc = useSourceControl();
   const state = sc.getState();
   const [showBranches, setShowBranches] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showStashes, setShowStashes] = useState(false);
   const snapshot = state.snapshot;
   if (snapshot?.state !== "repository") return null;
   const groups = sc.groups();
@@ -132,6 +140,34 @@ function RepositoryPanel() {
       <p className="git-repo__runtime" title={snapshot.git}>
         Git: {snapshot.git}
       </p>
+      <div className="git-repo__toggles">
+        <button
+          type="button"
+          className={showHistory ? "git-tool git-tool--on" : "git-tool"}
+          aria-pressed={showHistory}
+          onClick={() => {
+            setShowHistory((value) => !value);
+          }}
+        >
+          History
+        </button>
+        <button
+          type="button"
+          className={showStashes ? "git-tool git-tool--on" : "git-tool"}
+          aria-pressed={showStashes}
+          onClick={() => {
+            setShowStashes((value) => !value);
+          }}
+        >
+          Stashes
+        </button>
+        <ToolButton
+          label="Blame Active File"
+          text="Blame"
+          availability={container.gitBlame.state()}
+          onClick={() => void container.gitBlame.open()}
+        />
+      </div>
       {showBranches ? <GitBranchPanel /> : null}
       {state.busy ? (
         <p className="git-message" role="status">
@@ -153,6 +189,8 @@ function RepositoryPanel() {
       <GitFileList group="changes" files={groups.changes} />
       <GitFileList group="untracked" files={groups.untracked} />
       {empty ? <Message>No changes. The working tree is clean.</Message> : null}
+      {showStashes ? <GitStashPanel /> : null}
+      {showHistory ? <GitHistoryPanel /> : null}
     </div>
   );
 }
@@ -170,6 +208,7 @@ function NoFolder() {
       >
         Open Folder
       </button>
+      <GitCloneForm />
     </div>
   );
 }
@@ -203,6 +242,7 @@ function GitMissing() {
           </button>
         </>
       ) : null}
+      <GitCloneForm />
     </div>
   );
 }
@@ -223,6 +263,7 @@ function NotRepository() {
       >
         Initialize Repository
       </button>
+      <GitCloneForm />
       <p className="git-repo__runtime" title={snapshot.git}>
         Git: {snapshot.git}
       </p>

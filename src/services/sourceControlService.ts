@@ -4,10 +4,12 @@ import type { GitService } from "./gitService";
 import type {
   GitBranch,
   GitChangeKind,
+  GitCommitFile,
   GitDiffSides,
   GitFileChange,
   GitIdentity,
   GitRepoStatus,
+  GitRuntime,
   GitSnapshot,
 } from "./ipc";
 import type { Availability } from "./runtimeService";
@@ -108,13 +110,16 @@ export type PendingConfirm =
   | { kind: "deleteBranch"; name: string; title: string; message: string; confirmLabel: string };
 
 /** How a diff is titled: `a.txt (Working Tree)` or `a.txt (Staged)`. */
-export function diffTitle(path: string, staged: boolean): string {
+export function diffTitle(path: string, staged: boolean, commit: string | null = null): string {
+  if (commit !== null) return `${path} (${commit.slice(0, 7)})`;
   return `${path} (${staged ? "Staged" : "Working Tree"})`;
 }
 
 export interface DiffView {
   path: string;
   staged: boolean;
+  /** The commit (full hash) this diff belongs to, for the History panel; `null` for the working tree / index. */
+  commit: string | null;
   loading: boolean;
   sides: GitDiffSides | null;
   error: string | null;
@@ -198,7 +203,7 @@ export class SourceControlService {
         void this.refresh();
       }),
       this.onRuntimeChange(() => {
-        if (this.state.snapshot?.state === "gitMissing") void this.refresh();
+        if (this.runtime()?.ready === false) void this.refresh();
       }),
     );
     // Files change outside the app (a terminal, another tool): look again when the window gets focus back.
@@ -541,7 +546,14 @@ export class SourceControlService {
   }
 
   async openDiff(change: GitFileChange, staged: boolean): Promise<void> {
-    const view: DiffView = { path: change.path, staged, loading: true, sides: null, error: null };
+    const view: DiffView = {
+      path: change.path,
+      staged,
+      commit: null,
+      loading: true,
+      sides: null,
+      error: null,
+    };
     this.update({ diff: view });
     try {
       const sides = await this.git.ipc.gitDiff(change.path, staged);
@@ -553,6 +565,57 @@ export class SourceControlService {
         this.update({ diff: { ...view, loading: false, error: String(error) } });
       }
     }
+  }
+
+  /** Shows one file of a commit (from the History panel) against that commit's first parent. */
+  async openCommitDiff(hash: string, file: GitCommitFile): Promise<void> {
+    const view: DiffView = {
+      path: file.path,
+      staged: false,
+      commit: hash,
+      loading: true,
+      sides: null,
+      error: null,
+    };
+    this.update({ diff: view });
+    try {
+      const sides = await this.git.ipc.gitCommitDiff(hash, file);
+      if (this.state.diff?.commit === hash && this.state.diff.path === file.path) {
+        this.update({ diff: { ...view, loading: false, sides } });
+      }
+    } catch (error) {
+      if (this.state.diff?.commit === hash) {
+        this.update({ diff: { ...view, loading: false, error: String(error) } });
+      }
+    }
+  }
+
+  /** Which Git is usable, from the last snapshot (`null` until one has arrived). */
+  runtime(): GitRuntime | null {
+    const snapshot = this.state.snapshot;
+    if (snapshot === null) return null;
+    switch (snapshot.state) {
+      case "noWorkspace":
+        return snapshot.runtime;
+      case "gitMissing":
+        return {
+          ready: false,
+          label: null,
+          reason: snapshot.reason,
+          systemGit: snapshot.systemGit,
+        };
+      case "notRepository":
+      case "repository":
+        return { ready: true, label: snapshot.git, reason: null, systemGit: null };
+    }
+  }
+
+  /** The repository root and status, for panels that work on it (blame, stash). */
+  repository(): { root: string; status: GitRepoStatus } | null {
+    const snapshot = this.state.snapshot;
+    return snapshot?.state === "repository"
+      ? { root: snapshot.root, status: snapshot.status }
+      : null;
   }
 
   closeDiff(): void {
@@ -604,7 +667,7 @@ export class SourceControlService {
   /** After an action: reload the diff being shown, or close it when the file no longer has that kind of change. */
   private refreshOpenDiff(): void {
     const diff = this.state.diff;
-    if (diff === null) return;
+    if (diff === null || diff.commit !== null) return;
     const change = this.status()?.changes.find((entry) => entry.path === diff.path);
     const stillThere =
       change !== undefined &&

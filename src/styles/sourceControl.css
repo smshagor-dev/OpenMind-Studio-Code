@@ -324,3 +324,173 @@
   flex: 1 1 0;
   min-height: 0;
 }
+
+.git-clone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: stretch;
+}
+
+.git-clone__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+}
+
+.git-clone__label {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.git-clone__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.git-clone__path {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-repo__toggles {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.git-tool--on {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.git-commit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.git-commit-row:hover,
+.git-commit-row--selected {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.git-commit-row__hash {
+  color: var(--accent-fg, #3794ff);
+  font-family: Consolas, monospace;
+}
+
+.git-commit-row__subject {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-commit-files {
+  margin: 0 0 4px 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.git-stashes__form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.git-stashes__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.git-stash {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.git-stash__title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.git-stash__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.git-blame {
+  position: absolute;
+  z-index: 11;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg, #1e1e1e);
+}
+
+.git-blame__scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.git-blame__table {
+  border-collapse: collapse;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+.git-blame__table td {
+  padding: 0 8px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.git-blame__num {
+  color: var(--fg-muted);
+  text-align: right;
+}
+
+.git-blame__hash {
+  color: var(--accent-fg, #3794ff);
+}
+
+.git-blame__author,
+.git-blame__date,
+.git-blame__summary {
+  color: var(--fg-muted);
+}
+
+.git-blame__summary {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-blame__row--uncommitted .git-blame__code {
+  color: var(--warning-fg, #cca700);
+}
+
+.git-blame__code {
+  white-space: pre;
+}

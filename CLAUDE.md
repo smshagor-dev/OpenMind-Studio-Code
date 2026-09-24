@@ -215,7 +215,8 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   (searched in the Runtime Manager's injected `path_prepend` dirs), the system Git **only** when the user allowed it
   (`editor_settings` `git.allowSystem`, set by the "Use System Git" button) and then labelled "System Git at <path>";
   otherwise `NotInstalled` ("Git runtime is not installed yet."). `args` builds every command as an argument list
-  (never a shell; paths after `--`, `GIT_LITERAL_PATHSPECS=1`, `GIT_TERMINAL_PROMPT=0`, no editor/pager) and the log
+  (never a shell; paths after `--` with `--literal-pathspecs` in front — a flag, not the env variable, which
+  silently breaks `git stash --include-untracked`; `GIT_TERMINAL_PROMPT=0`, no editor/pager) and the log
   label (paths counted, commit message elided). `exec::run` runs it with a time limit inside a Job Object
   (`openmind-process`), tracked in `GitRegistry` so `stop_all()` kills stragglers on app close. `status` parses
   `status --porcelain=v2 -z --branch` (modified/added/deleted/renamed/conflicted/untracked, branch, upstream,
@@ -229,6 +230,16 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   `check-ref-format`), and fetch/pull (`--ff-only`)/push (no credential storage: a remote that wants a password
   fails with an explicit message). Tests: unit tests plus `tests/real_git.rs` against a real Git in temp folders with
   spaces (skipped if the machine has no Git).
+  **Milestone 6.1** added `clone.rs` (`validate_url`: not empty, not option-like, no control characters, never a
+  `transport::address` like `ext::`; `validate_destination`: existing parent, missing or *empty* target — a folder
+  with anything in it is refused, nothing is ever overwritten or emptied), `history.rs` (`log -z` and
+  `show --name-status -z -M --diff-merges=first-parent` parsers, hashes must be 7-40 hex digits), `blame.rs`
+  (`blame --porcelain` parser; refuses untracked, binary, >2 MB, missing and commit-less files with a reason),
+  `stash.rs` (`stash list` parser, references built from a number only, single-line messages), `extras.rs` (the
+  second `impl GitClient`: clone, history, commit files/diff sides, blame, stash list/push/apply/pop/drop — drop
+  needs `confirmed`; push refuses when there is nothing to stash and says untracked files need the option) and
+  `path::relative_to_root`. Authentication failures (HTTP, credential prompts, ssh publickey) all become
+  "Authentication is required. Credential storage is not implemented yet."; stash conflicts keep Git's CONFLICT lines.
 - `openmind-process` (Milestone 5.6.2, Windows only) — `ProcessTree`, the Job Object
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
   `openmind-terminal` so the terminal and the runner share one implementation.
@@ -476,6 +487,15 @@ internals.
   runtime changes. `SourceControlView` + `GitFileList` / `GitCommitBox` / `GitBranchIndicator` (also in the status
   bar: branch, `*` when dirty, `↑↓`) are UI only. The diff (`GitDiffViewer` + `editor/MonacoDiffHost`) is an overlay
   over the editor area, not a tab. "Install Git Runtime" opens the Runtime Manager.
+- **Git follow-ups (Milestone 6.1).** `GitCloneService` (address, destination folder from the folder dialog, folder
+  name derived from the address; pure `cloneAvailability`; the snapshot carries which Git is usable, so Clone is
+  disabled with "Git runtime is not installed yet." without a repository; never opens the clone by itself — "Open
+  Cloned Folder" is a click), `GitHistoryService` (latest 100 commits, select one for its files, a file opens that
+  commit's diff through `SourceControlService.openCommitDiff`), `GitStashService` (stash with message and
+  "Include untracked files", apply/pop/drop; drop only after the dialog; conflicts shown verbatim), `GitBlameService`
+  (blame of the active file over the editor area, pure `blameAvailability`: no repo / no file / outside / untracked).
+  UI: `GitCloneForm`, `GitHistoryPanel`, `GitStashPanel`, `GitBlameViewer`; `git.clone` and `git.blame` are
+  registered commands (`gitCommands.ts`) for the future palette. The Runtime Manager installing Git refreshes the view.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -890,6 +910,25 @@ migration file, check for stray running instances first, not just after somethin
   were verified only against a local bare repository (no network remote, no credentials by design); rename
   detection shows what Git reports and was covered by parser tests, not by hand. The test folder `E:\\omgit` could
   not be deleted by the tool (protected path). 533+ TypeScript tests, 376 Rust tests (+1 ignored).
+- [x] **Milestone 6.1** — Git clone, history, blame and stash (`feat: add git clone history blame and stash`).
+  `openmind-git` gained clone, log/commit files/commit diff, blame and stash (see above); Source Control gained the
+  Clone form, History, Stashes and Blame. Verified by hand in the built app (fresh portable copy, every path with
+  spaces, a local bare repository as the remote): Clone was disabled with its reason while Git wasn't adopted yet and
+  enabled after; clone into `clones here/cloned repo`; cloning into the same folder again was refused ("not empty.
+  Nothing is overwritten") and left it untouched; a second clone offered "Open Cloned Folder", which opened it
+  (`master 0↑ 0↓`); two commits through the UI (`2↑`); History listed all 5 commits, a commit listed its file and
+  its diff opened (`notes.txt (b8150be)`); Blame of `notes.txt` attributed every line to its commit/author/date;
+  stash with a message left a clean tree and listed it, Apply kept the stash and restored the change, a second stash
+  was Popped (list and file checked with the Git CLI), a third was Dropped after the confirmation dialog; a renamed
+  file showed as Deleted + Untracked until staged and then as `docs file.md ← readme file.md  R`, and its staged
+  diff opened safely; closing the app left no Git process; Registry User/Machine PATH identical. Real problems
+  found by tests/by hand and fixed: `GIT_LITERAL_PATHSPECS` broke `stash --include-untracked` (now a per-command
+  flag), the view didn't notice Git becoming available while no folder was open, a staged-but-uncommitted file
+  blames as "Not Committed Yet" (not an error). Known limitations: no merge/rebase, no graph, no stash diff/show, no
+  "clone with submodules"/branch options; clone output is written when the clone ends (not streamed); an editor tab
+  doesn't reload a file changed on disk by a stash/apply; an unstaged rename appears as Deleted + Untracked (that is
+  what Git reports until both are staged); the authentication message was verified by unit tests, not against a
+  real password-protected remote; `E:\\omgit` and `E:\\omgit2` are left on disk (protected path).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.

@@ -23,7 +23,7 @@ export function GitDiffViewer({ themeKind }: { themeKind: string }) {
   return (
     <section className="git-diff" aria-label="Git diff">
       <header className="git-diff__header">
-        <span className="git-diff__title">{diffTitle(diff.path, diff.staged)}</span>
+        <span className="git-diff__title">{diffTitle(diff.path, diff.staged, diff.commit)}</span>
         <button
           type="button"
           className="git-diff__close"

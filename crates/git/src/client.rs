@@ -94,7 +94,7 @@ impl GitClient {
 
     // --- Running commands ---
 
-    fn run(
+    pub(crate) fn run(
         &self,
         cwd: &Path,
         args: &[String],
@@ -119,7 +119,12 @@ impl GitClient {
     }
 
     /// Runs a command that must succeed; Git's own message is the error.
-    fn ok(&self, cwd: &Path, args: &[String], timeout: Duration) -> Result<Output, GitError> {
+    pub(crate) fn ok(
+        &self,
+        cwd: &Path,
+        args: &[String],
+        timeout: Duration,
+    ) -> Result<Output, GitError> {
         let output = self.run(cwd, args, timeout, true)?;
         if output.success() {
             Ok(output)
@@ -290,7 +295,7 @@ impl GitClient {
         build_sides(relative, original, modified)
     }
 
-    fn blob(&self, root: &Path, spec: &str) -> Result<Vec<u8>, GitError> {
+    pub(crate) fn blob(&self, root: &Path, spec: &str) -> Result<Vec<u8>, GitError> {
         let output = self.run(root, &args::cat_blob(spec), QUICK, false)?;
         if output.success() {
             Ok(output.stdout)
@@ -412,7 +417,7 @@ fn checked(paths: &[String]) -> Result<Vec<String>, GitError> {
     paths.iter().map(|path| repo_relative(path)).collect()
 }
 
-fn read_worktree_file(root: &Path, relative: &str) -> Result<Vec<u8>, GitError> {
+pub(crate) fn read_worktree_file(root: &Path, relative: &str) -> Result<Vec<u8>, GitError> {
     if crosses_symlink(root, relative) {
         return Err(GitError::OutsideRepository(relative.to_string()));
     }
@@ -433,7 +438,7 @@ fn text_of(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn build_sides(
+pub(crate) fn build_sides(
     path: String,
     original: Option<Vec<u8>>,
     modified: Option<Vec<u8>>,
@@ -464,11 +469,20 @@ fn build_sides(
 
 /// Turns a failed command into the message the user sees.
 fn failure(output: &Output) -> GitError {
-    let text = if output.stderr.trim().is_empty() {
+    let mut text = if output.stderr.trim().is_empty() {
         output.stdout_text().trim().to_string()
     } else {
         output.stderr.trim().to_string()
     };
+    // Conflicts (stash apply/pop, merges) are reported on stdout: keep those lines.
+    if !output.stderr.trim().is_empty() {
+        for line in output.stdout_text().lines() {
+            if line.contains("CONFLICT") || line.contains("stash entry is kept") {
+                text.push('\n');
+                text.push_str(line.trim());
+            }
+        }
+    }
     let lower = text.to_ascii_lowercase();
     if lower.contains("not a git repository") {
         GitError::NotARepository
@@ -476,6 +490,9 @@ fn failure(output: &Output) -> GitError {
         || lower.contains("could not read username")
         || lower.contains("could not read password")
         || lower.contains("authentication failed")
+        || lower.contains("permission denied (publickey")
+        || lower.contains("invalid username or password")
+        || lower.contains("http basic: access denied")
     {
         GitError::NeedsCredentials
     } else if text.is_empty() {
@@ -545,6 +562,42 @@ mod tests {
             failure(&out(1, "", "")),
             GitError::Failed("Git failed with exit code 1.".into())
         );
+    }
+
+    #[test]
+    fn authentication_failures_say_credentials_are_not_stored() {
+        for stderr in [
+            "fatal: Authentication failed for 'https://x/y.git/'",
+            "fatal: could not read Username for 'https://x': terminal prompts disabled",
+            "git@host: Permission denied (publickey).",
+            "remote: Invalid username or password.",
+            "remote: HTTP Basic: Access denied",
+        ] {
+            assert_eq!(
+                failure(&out(128, "", stderr)),
+                GitError::NeedsCredentials,
+                "{stderr}"
+            );
+        }
+        assert_eq!(
+            GitError::NeedsCredentials.to_string(),
+            "Authentication is required. Credential storage is not implemented yet."
+        );
+    }
+
+    #[test]
+    fn stash_conflicts_keep_the_conflict_lines_from_stdout() {
+        let error = failure(&out(
+            1,
+            "Auto-merging a.txt
+CONFLICT (content): Merge conflict in a.txt
+The stash entry is kept in case you need it again.",
+            "error: could not restore untracked files",
+        ))
+        .to_string();
+        assert!(error.contains("CONFLICT (content)"), "{error}");
+        assert!(error.contains("stash entry is kept"), "{error}");
+        assert!(!error.contains("Auto-merging"), "{error}");
     }
 
     #[test]

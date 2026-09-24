@@ -10,7 +10,8 @@ use std::sync::Arc;
 
 use openmind_db::EditorSettingsRepository;
 use openmind_git::{
-    find_system, resolve, Branch, DiffSides, GitClient, GitError, Identity, LogEntry, RepoStatus,
+    find_system, resolve, BlameLine, Branch, Commit, CommitFile, DiffSides, GitClient, GitError,
+    Identity, LogEntry, RepoStatus, StashEntry,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -24,7 +25,8 @@ const ALLOW_SYSTEM_KEY: &str = "git.allowSystem";
 #[derive(Debug, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum GitSnapshot {
-    NoWorkspace,
+    #[serde(rename_all = "camelCase")]
+    NoWorkspace { runtime: GitRuntime },
     #[serde(rename_all = "camelCase")]
     GitMissing {
         reason: String,
@@ -32,9 +34,7 @@ pub enum GitSnapshot {
         system_git: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
-    NotRepository {
-        git: String,
-    },
+    NotRepository { git: String },
     #[serde(rename_all = "camelCase")]
     Repository {
         root: String,
@@ -106,7 +106,9 @@ pub async fn git_snapshot(
     state: State<'_, AppState>,
 ) -> Result<GitSnapshot, String> {
     let Ok(workspace) = workspace_path(&state).await else {
-        return Ok(GitSnapshot::NoWorkspace);
+        return Ok(GitSnapshot::NoWorkspace {
+            runtime: runtime_info(&app, &state).await,
+        });
     };
     let client = match build_client(&app, &state).await {
         Ok(client) => client,
@@ -317,6 +319,151 @@ pub async fn git_pull(app: AppHandle, state: State<'_, AppState>) -> Result<Stri
 #[tauri::command]
 pub async fn git_push(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     on_repo(&app, &state, |git, root| git.push(root)).await
+}
+
+/// Whether Git can be used right now, and which one (for the Clone form, which needs no repository).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitRuntime {
+    pub ready: bool,
+    pub label: Option<String>,
+    pub reason: Option<String>,
+    pub system_git: Option<String>,
+}
+
+/// Which Git (if any) is usable now — reported with every snapshot so the Clone form knows.
+async fn runtime_info(app: &AppHandle, state: &AppState) -> GitRuntime {
+    match build_client(app, state).await {
+        Ok(client) => GitRuntime {
+            ready: true,
+            label: Some(client.executable().label()),
+            reason: None,
+            system_git: None,
+        },
+        Err(err) => GitRuntime {
+            ready: false,
+            label: None,
+            reason: Some(err.to_string()),
+            system_git: find_system(std::env::var_os("PATH"))
+                .map(|path| path.display().to_string()),
+        },
+    }
+}
+
+/// Clones into `<parent>/<name>` (never into a folder that has anything in it). Runs
+/// without an open repository; output goes to the Git channel like every command.
+#[tauri::command]
+pub async fn git_clone(
+    url: String,
+    parent: String,
+    name: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let client = build_client(&app, &state)
+        .await
+        .map_err(|err| err.to_string())?;
+    tokio::task::spawn_blocking(move || {
+        client
+            .clone_repository(&url, Path::new(&parent), &name)
+            .map(|path| path.display().to_string())
+    })
+    .await
+    .map_err(|err| format!("Git stopped unexpectedly: {err}"))?
+    .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub async fn git_history(
+    limit: u32,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<Commit>, String> {
+    on_repo(&app, &state, move |git, root| git.history(root, limit)).await
+}
+
+#[tauri::command]
+pub async fn git_commit_files(
+    hash: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<CommitFile>, String> {
+    on_repo(&app, &state, move |git, root| git.commit_files(root, &hash)).await
+}
+
+#[tauri::command]
+pub async fn git_commit_diff(
+    hash: String,
+    file: CommitFile,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<DiffSides, String> {
+    on_repo(&app, &state, move |git, root| {
+        git.commit_diff_sides(root, &hash, &file)
+    })
+    .await
+}
+
+/// Blame for a file of the open repository (absolute or repo-relative path).
+#[tauri::command]
+pub async fn git_blame(
+    path: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<BlameLine>, String> {
+    on_repo(&app, &state, move |git, root| git.blame(root, &path)).await
+}
+
+#[tauri::command]
+pub async fn git_stash_list(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<StashEntry>, String> {
+    on_repo(&app, &state, |git, root| git.stash_list(root)).await
+}
+
+#[tauri::command]
+pub async fn git_stash_push(
+    message: String,
+    include_untracked: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    on_repo(&app, &state, move |git, root| {
+        git.stash_push(root, &message, include_untracked)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn git_stash_apply(
+    index: u32,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    on_repo(&app, &state, move |git, root| git.stash_apply(root, index)).await
+}
+
+#[tauri::command]
+pub async fn git_stash_pop(
+    index: u32,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    on_repo(&app, &state, move |git, root| git.stash_pop(root, index)).await
+}
+
+#[tauri::command]
+pub async fn git_stash_drop(
+    index: u32,
+    confirmed: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    on_repo(&app, &state, move |git, root| {
+        git.stash_drop(root, index, confirmed)
+    })
+    .await
 }
 
 /// Whether a Git from the machine's PATH may be used when there is no portable one.

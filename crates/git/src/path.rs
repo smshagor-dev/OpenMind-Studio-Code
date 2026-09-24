@@ -28,6 +28,31 @@ pub fn repo_relative(path: &str) -> Result<String, GitError> {
     Ok(parts.join("/"))
 }
 
+/// An absolute path made relative to the repository root (either slash style,
+/// case-insensitive on Windows), then checked like any repo-relative path.
+pub fn relative_to_root(root: &Path, absolute: &str) -> Result<String, GitError> {
+    let unify = |text: &str| text.replace('\\', "/");
+    let root_text = unify(&root.to_string_lossy());
+    let root_text = root_text.trim_end_matches('/');
+    let path_text = unify(absolute);
+    let outside = || GitError::OutsideRepository(absolute.to_string());
+    if path_text.len() <= root_text.len() {
+        return Err(outside());
+    }
+    let (head, tail) = path_text
+        .split_at_checked(root_text.len())
+        .ok_or_else(outside)?;
+    let same_prefix = if cfg!(windows) {
+        head.eq_ignore_ascii_case(root_text)
+    } else {
+        head == root_text
+    };
+    match tail.strip_prefix('/') {
+        Some(relative) if same_prefix => repo_relative(relative),
+        _ => Err(outside()),
+    }
+}
+
 /// The absolute path of a checked repo-relative path.
 pub fn absolute_in(root: &Path, relative: &str) -> PathBuf {
     relative
@@ -111,6 +136,28 @@ mod tests {
         assert!(is_lexically_inside(Path::new("/r"), Path::new("/r/a/../b")));
         assert!(!is_lexically_inside(Path::new("/r"), Path::new("/r/../x")));
         assert!(!is_lexically_inside(Path::new("/r"), Path::new("/other/x")));
+    }
+
+    #[test]
+    fn absolute_paths_become_repo_relative_in_either_slash_style() {
+        let root = Path::new("E:/my repos/site");
+        assert_eq!(
+            relative_to_root(root, "E:\\my repos\\site\\src\\a b.txt").unwrap(),
+            "src/a b.txt"
+        );
+        assert_eq!(
+            relative_to_root(root, "E:/my repos/site/a.txt").unwrap(),
+            "a.txt"
+        );
+        for outside in [
+            "E:/my repos/other/a.txt",
+            "E:/my repos/site",
+            "E:/my repos/site2/a.txt",
+            "E:/my repos/site/../x.txt",
+            "D:/elsewhere/a.txt",
+        ] {
+            assert!(relative_to_root(root, outside).is_err(), "{outside}");
+        }
     }
 
     #[test]
