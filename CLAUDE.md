@@ -297,7 +297,8 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   list, no shell, no console window, the Runtime Manager's `path_prepend`/`env` on the *server's* PATH only) inside a Job Object,
   so the whole tree dies with it (verified: a hard-killed app leaves no server behind). `jsonrpc` (Content-Length framing),
   `session` (ids, waiting callers, timeouts + `$/cancelRequest`, answers the server's own requests such as
-  `workspace/configuration`, notifications to a listener; tested over in-memory pipes), `protocol` (client capabilities,
+  `workspace/configuration` (an empty object for the `css`/`scss`/`less`/`html`/`json`/`http` sections — `null` crashed the CSS
+  validator — `null` for the rest), notifications to a listener; tested over in-memory pipes), `protocol` (client capabilities,
   capability parsing, diagnostics, the fixed list of requests the UI may send — anything else is refused), `docs`
   (`DocumentSync`: didOpen once, then full-text didChange with rising versions, save, close), `uri`, `language`, and
   `LspManager` (one server per id, started lazily for a file inside the open workspace, gate per server, crash -> Error state
@@ -550,9 +551,10 @@ internals.
   `go.toDeclaration`, `go.toTypeDefinition`, `go.toImplementations`, `go.toReferences`/`lsp.findReferences`, `edit.renameSymbol`
   (F2), `edit.formatDocument` (Shift+Alt+F) on the server's capabilities (`CommandOptions.disabledReason` shows in menus),
   plus `lsp.restart`, `lsp.manage` (Language Tools dialog: install/restart/stop/logs/verbose), `lsp.openOutput`; the status
-  bar shows the active file's server or the reason. `monacoBuiltins.ts`: Monaco's own TypeScript/JavaScript service reads its
-  config once at first use, so it is switched off for good at start-up (its worker isn't available here — hovers hung on
-  "Loading…"); JSON/CSS/HTML built-ins are off only while their server runs. `documentOpened`/`documentClosed` events feed it.
+  bar shows the active file's server or the reason. `monacoBuiltins.ts`: Monaco's own TypeScript/JavaScript, JSON, CSS and HTML services are switched off for good at
+  start-up, before any model exists (their worker isn't available here — hovers hung on "Loading…"; switching them off
+  only while a server runs was tried and did not work: TypeScript reads its settings once, CSS kept a stuck hover).
+  `documentOpened`/`documentClosed` events feed the sync.
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -1026,14 +1028,33 @@ migration file, check for stray running instances first, not just after somethin
   Python: hover and an error from Pyright; PHP: an error from Intelephense; Problems grouped per file with Error/Warning/Info/
   Hint; an external overwrite of a dirty file showed the conflict banner and kept sending the editor's text, Reload from Disk
   sent the new text and Pyright's problems followed; closing the app left no node/server process (6 before, 0 after), Registry
-  User/Machine PATH identical; relaunch restored the tabs and restarted the servers. Known limitations: servers ran on the
-  labelled *system* Node (portable-first precedence is unit-tested, not exercised by hand); JSON/CSS/HTML servers and PHP hover/
-  completion were not exercised by hand (PHP diagnostics/hover pass the real-server test); Intelephense's free tier lacks rename
+  User/Machine PATH identical; relaunch restored the tabs and restarted the servers. Known limitations (see 7.1 for what was
+  verified afterwards): Intelephense's free tier lacks rename
   and some features; sync is full-text (no incremental); only files inside the open folder get a server; diagnostics exist only
   for open files; rename opens the other files as tabs (edits left unsaved) and refuses file create/rename/delete edits; no
   code actions, inlay hints, semantic tokens or workspace symbols; Python settings/interpreter selection are not passed to
-  Pyright (it finds Python on the server's PATH, portable first); without a TypeScript server .ts/.js files have no language
-  features at all; the test folders `E:\omlsp` are left on disk.
+  Pyright (it finds Python on the server's PATH, portable first); without the matching server .ts/.js/.json/.css/.html files have no language
+  features at all (Monaco's own services are off); the test folders `E:\omlsp` are left on disk.
+- [x] **Milestone 7.1** — LSP commit verification and workspace reconcile (`fix: verify lsp commit and reconcile workspace state`).
+  The exact committed Milestone 7 tree (`241fd5f`, in a clean worktree with its own target dir) was validated: fmt, clippy
+  `-D warnings`, `cargo test --workspace` (477 passed, 4 ignored) and `pnpm lint` were clean, but **`pnpm test` failed 7 tests and
+  `pnpm build` failed** — the hunk-by-hunk staging of Milestone 7 had left `fakeIpcClient.ts` without part of the LSP mocks
+  (the working tree, which had them, hid it). Fixed (688 tests, three runs, build clean). The other session's uncommitted
+  PHP control panel / tray / Composer work was left untouched and uncommitted; only my hunks were staged. Manual verification
+  (fresh copy `E:\omlsp2\OpenMind Studio`, workspace `My Site` with a space): **portable Node precedence** — with portable
+  Node 24.21.0 installed from the Runtime Manager, Language Tools said "Node.js: OpenMind portable Node.js" and the server
+  processes' executable was `...\runtimes\node\versions\24.21.0\node.exe` although a system Node 24.16 exists (before it was
+  installed the dialog said "System Node.js at ..."); **JSON** — invalid JSON showed "Trailing comma" inline and in the status
+  bar, fixing it cleared it, closing a file with an error cleared its problem; **CSS** — found and fixed a real bug: the CSS
+  server crashed while validating because `workspace/configuration` answered `null` (now `{}` for the web sections); afterwards
+  `colr` showed as an unknown-property warning, hover showed the MDN text and completion offered `display`; **HTML** —
+  completion (`<sec` -> `section`) and hover (`div`) worked; the HTML server reports no diagnostics for ordinary markup;
+  **PHP** — hover on a user function, completion (`str_rep` -> `str_repeat`, `str_replace`) and diagnostics worked, and the
+  Edit menu showed "Rename Symbol — Intelephense doesn't support Rename Symbol."; closing the app left no node/server process
+  (4 before, 0 after), Registry User/Machine PATH identical. Also fixed: the stuck "Loading…" hover for CSS (see
+  `monacoBuiltins.ts`). Not verified by hand: that a file outside the open folder starts no server (covered by the
+  `outsideWorkspace` backend check and unit tests); JSON/CSS/HTML rename/format. The test folders `E:\omlsp` and `E:\omlsp2`
+  (and the temporary worktree `E:\wt7`, target `E:\wt7-target`) are left on disk for manual deletion.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 10 — Extension system (sandboxed, contributes commands/views/themes/...).

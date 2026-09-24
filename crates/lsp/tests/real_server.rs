@@ -243,3 +243,22 @@ fn intelephense_installs_starts_and_reports_an_undefined_function() {
         (1, 10),
     );
 }
+
+#[test]
+#[ignore = "downloads the JSON/CSS/HTML servers and needs Node.js"]
+fn the_web_servers_report_json_and_css_errors() {
+    diagnoses(
+        "json",
+        "data.json",
+        "{\"a\": 1,}\n",
+        "Trailing comma",
+        (0, 2),
+    );
+    diagnoses(
+        "css",
+        "style.css",
+        "body {\n  padding: ;\n  margin: 0;\n}\n",
+        "expected",
+        (2, 4),
+    );
+}

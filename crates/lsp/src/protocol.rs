@@ -210,6 +210,18 @@ pub fn parse_diagnostics(params: &Value) -> Option<PublishedDiagnostics> {
     })
 }
 
+/// Sections the web servers dereference: they must be objects, not `null`.
+const OBJECT_SECTIONS: &[&str] = &["css", "scss", "less", "html", "json", "http"];
+
+fn configuration_section(item: &Value) -> Value {
+    let section = item.get("section").and_then(Value::as_str).unwrap_or("");
+    if OBJECT_SECTIONS.contains(&section) {
+        Value::Object(serde_json::Map::new())
+    } else {
+        Value::Null
+    }
+}
+
 /// Our answer to a request the server makes of us (`Err` = JSON-RPC error code and text).
 pub fn reply_to_server_request(
     method: &str,
@@ -218,13 +230,15 @@ pub fn reply_to_server_request(
     root_name: &str,
 ) -> Result<Value, (i64, String)> {
     match method {
-        // No user settings are stored yet: every section gets `null`, i.e. the server's defaults.
+        // No user settings are stored yet. Sections the web servers read fields from get an empty
+        // object (a `null` there crashes the CSS validator); everything else gets `null`, i.e. defaults.
         "workspace/configuration" => {
-            let count = params
-                .get("items")
-                .and_then(Value::as_array)
-                .map_or(0, Vec::len);
-            Ok(Value::Array(vec![Value::Null; count]))
+            let items = params.get("items").and_then(Value::as_array);
+            Ok(Value::Array(
+                items
+                    .map(|items| items.iter().map(configuration_section).collect())
+                    .unwrap_or_default(),
+            ))
         }
         "workspace/workspaceFolders" => Ok(json!([{ "uri": root_uri, "name": root_name }])),
         "window/workDoneProgress/create"
@@ -322,11 +336,11 @@ mod tests {
     fn server_requests_get_answers_that_keep_servers_going() {
         let cfg = reply_to_server_request(
             "workspace/configuration",
-            &json!({ "items": [{"section": "python"}, {"section": "python.analysis"}] }),
+            &json!({ "items": [{"section": "python"}, {"section": "css"}, {"section": "python.analysis"}] }),
             "file:///r",
             "r",
         );
-        assert_eq!(cfg, Ok(json!([null, null])));
+        assert_eq!(cfg, Ok(json!([null, {}, null])));
         assert_eq!(
             reply_to_server_request("client/registerCapability", &Value::Null, "file:///r", "r"),
             Ok(Value::Null)

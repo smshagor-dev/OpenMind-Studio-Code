@@ -32,7 +32,7 @@ import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { DiagnosticsService } from "./diagnosticsService";
 import { registerLspCommands } from "./lspCommands";
-import { applyBuiltinFeatures, disableTypeScriptBuiltins } from "./monacoBuiltins";
+import { disableBuiltinLanguageServices } from "./monacoBuiltins";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -53,8 +53,8 @@ import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
 import { WorkspaceService } from "./workspaceService";
 
-// Monaco's TypeScript service reads its settings once, when the first .ts/.js model appears — so this must come first.
-disableTypeScriptBuiltins();
+// Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
+disableBuiltinLanguageServices();
 
 const events = new EventBus<AppEvents>();
 const buffers = new BufferManager();
@@ -207,15 +207,11 @@ const lsp = new LspService(tauriIpcClient, events, documents, {
 const diagnostics = new DiagnosticsService(events, documents);
 
 /**
- * Starts language support once the app is up: diagnostics become editor markers,
- * Monaco's own language features step aside for languages a server handles, and
+ * Starts language support once the app is up: diagnostics become editor markers and
  * the providers (hover, completion, definition, ...) ask the language servers.
  */
 async function startLanguageTools(): Promise<void> {
   diagnostics.initialize();
-  events.on("lspChanged", () => {
-    applyBuiltinFeatures(new Set(lsp.runningServerIds()));
-  });
   registerLspProviders({ ipc: tauriIpcClient, documents, workspace, lsp });
   await lsp.initialize();
 }

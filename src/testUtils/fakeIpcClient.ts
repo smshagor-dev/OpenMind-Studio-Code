@@ -104,7 +104,6 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     fileWatchStart: vi.fn().mockResolvedValue(undefined),
     fileWatchStop: vi.fn().mockResolvedValue(undefined),
     onFsChanged: vi.fn().mockResolvedValue(() => undefined),
-    gitSnapshot: vi.fn().mockResolvedValue({
     lspStatus: vi.fn().mockResolvedValue({
       workspace: null,
       node: null,
@@ -123,6 +122,7 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     onLspDiagnostics: vi.fn().mockResolvedValue(() => undefined),
     onLspLog: vi.fn().mockResolvedValue(() => undefined),
     onLspChanged: vi.fn().mockResolvedValue(() => undefined),
+    gitSnapshot: vi.fn().mockResolvedValue({
       state: "noWorkspace",
       runtime: { ready: true, label: "OpenMind portable Git", reason: null, systemGit: null },
     }),
