@@ -1,8 +1,9 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { FileSystemService } from "./fileSystemService";
-import type { IpcClient } from "./ipc";
+import type { DirEntryInfo, IpcClient } from "./ipc";
 import { safely } from "./safely";
+import { pathKey } from "./textSync";
 
 export interface ExplorerNode {
   path: string;
@@ -301,15 +302,44 @@ export class ExplorerService {
     return created;
   }
 
-  private async loadChildren(dirPath: string): Promise<void> {
-    const entries = await safely(
-      this.events,
-      () => this.fs.readDir(dirPath),
-      "read that folder",
-      null,
-    );
+  /**
+   * Re-reads the folders that changed on disk — only those already loaded (the
+   * root and expanded folders), so a change deep in a folder nobody opened
+   * costs nothing. A folder that has vanished is skipped without an error
+   * toast. `dirs` may spell paths with either slash style.
+   */
+  /** The root and every folder whose contents are loaded. */
+  loadedFolders(): string[] {
+    const root = this.snapshot.rootPath;
+    return [...(root ? [root] : []), ...this.snapshot.childrenByPath.keys()];
+  }
+
+  async refreshLoaded(dirs: readonly string[]): Promise<number> {
+    const loaded = new Map<string, string>();
+    if (this.snapshot.rootPath) loaded.set(pathKey(this.snapshot.rootPath), this.snapshot.rootPath);
+    for (const path of this.snapshot.childrenByPath.keys()) loaded.set(pathKey(path), path);
+    const targets = new Set<string>();
+    for (const dir of dirs) {
+      const actual = loaded.get(pathKey(dir));
+      if (actual !== undefined) targets.add(actual);
+    }
+    let refreshed = 0;
+    for (const target of targets) {
+      if (await this.loadChildren(target, true)) refreshed++;
+    }
+    if (refreshed > 0) this.emitChanged();
+    return refreshed;
+  }
+
+  private async loadChildren(dirPath: string, quiet = false): Promise<boolean> {
+    let entries: DirEntryInfo[] | null;
+    if (quiet) {
+      entries = await this.fs.readDir(dirPath).catch(() => null);
+    } else {
+      entries = await safely(this.events, () => this.fs.readDir(dirPath), "read that folder", null);
+    }
     if (entries === null) {
-      return;
+      return false;
     }
 
     const nodesByPath = new Map(this.snapshot.nodesByPath);
@@ -327,6 +357,7 @@ export class ExplorerService {
     const childrenByPath = new Map(this.snapshot.childrenByPath);
     childrenByPath.set(dirPath, childPaths);
     this.snapshot = { ...this.snapshot, nodesByPath, childrenByPath };
+    return true;
   }
 
   private async persistState(): Promise<void> {

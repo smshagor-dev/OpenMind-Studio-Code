@@ -1,5 +1,7 @@
 import * as monaco from "monaco-editor";
 
+import { minimalEdit } from "./textSync";
+
 /**
  * Owns the lifecycle of in-memory text buffers (Monaco text models). Knows
  * nothing about files, paths, or persistence — that's DocumentService's
@@ -45,6 +47,23 @@ export class BufferManager {
 
   setValue(id: string, content: string): void {
     this.requireModel(id).setValue(content);
+  }
+
+  /**
+   * Replaces the text with `content` by editing only what differs, so the
+   * cursor, selections and scroll position outside the changed part stay put
+   * (unlike `setValue`, which resets them). Goes on the undo stack, so the
+   * user can undo a reload.
+   */
+  replaceContent(id: string, content: string): void {
+    const model = this.requireModel(id);
+    const edit = minimalEdit(model.getValue(), content);
+    if (edit === null) return;
+    const range = monaco.Range.fromPositions(
+      model.getPositionAt(edit.start),
+      model.getPositionAt(edit.end),
+    );
+    model.pushEditOperations([], [{ range, text: edit.text }], () => null);
   }
 
   onDidChangeContent(id: string, listener: () => void): () => void {

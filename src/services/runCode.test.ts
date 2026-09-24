@@ -54,6 +54,7 @@ function tab(path: string | null, dirty = false, id = "doc-1"): EditorTabView {
     dirty,
     encoding: "utf8",
     lineEnding: "lf",
+    external: "none",
   };
 }
 

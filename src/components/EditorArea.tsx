@@ -4,6 +4,7 @@ import type { Recents } from "../appHooks";
 import { container } from "../services/container";
 import type { WorkspaceState } from "../services/workspaceService";
 import { EditorGroupView } from "./EditorGroupView";
+import { ExternalCompareViewer } from "./ExternalCompareViewer";
 import { GitBlameViewer } from "./GitBlameViewer";
 import { GitDiffViewer } from "./GitDiffViewer";
 
@@ -25,6 +26,7 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
     <div className="editor-area" ref={rowRef}>
       <GitDiffViewer themeKind={rest.themeKind} />
       <GitBlameViewer />
+      <ExternalCompareViewer themeKind={rest.themeKind} />
       {state.groups.map((group, index) => (
         <Fragment key={group.id}>
           {index > 0 ? (

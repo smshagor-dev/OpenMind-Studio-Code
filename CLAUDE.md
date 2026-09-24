@@ -279,6 +279,14 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   outside the open workspace and runs on `spawn_blocking`; window close cancels all searches.
   `commands::system::open_external_url` opens only `http(s)` URLs, passed to `rundll32
   url.dll,FileProtocolHandler` as data (no shell). No indexing, symbols or replace yet (Milestone 9).
+- `openmind-file-watch` (Milestone 6.2) — `FileWatcher::start(root, callback)`: a `notify` 8 recursive watcher on the
+  open workspace, feeding a worker thread and a pure `Debouncer` (250 ms of quiet, merge rules such as
+  created+removed = nothing, remove+create = modified, rename pairs; more than 500 paths becomes `overflow`, meaning
+  "re-check everything"). `ignore::is_ignored` skips `node_modules`/`.git`/`target`/`dist`/`build`/`vendor`;
+  `normalize` makes event paths forward-slash and root-contained. Dropping the watcher stops the thread.
+  `commands::watch` (`watch_start`/`watch_stop`; `watch_start` accepts only the active workspace folder, so a
+  compromised webview can't watch elsewhere) pushes `fs:changed` batches; window close stops it. `document_read`
+  (`commands::document`) answers missing/file/unreadable without touching recent files.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -496,6 +504,18 @@ internals.
   (blame of the active file over the editor area, pure `blameAvailability`: no repo / no file / outside / untracked).
   UI: `GitCloneForm`, `GitHistoryPanel`, `GitStashPanel`, `GitBlameViewer`; `git.clone` and `git.blame` are
   registered commands (`gitCommands.ts`) for the future palette. The Runtime Manager installing Git refreshes the view.
+- **External file sync (Milestone 6.2).** `DocumentService` tracks `external: none | changed | deleted` per document and
+  `checkDisk` (`same|reloaded|conflict|deleted|unavailable`): a clean buffer is reloaded through
+  `BufferManager.replaceContent` (minimal prefix/suffix edit, so cursor/scroll stay and it is undoable, pure helpers in
+  `textSync.ts`); a dirty one is **never** overwritten — it becomes `changed` and `ExternalChangeBanner` offers Compare
+  (`ExternalCompareViewer`, disk left / edits right), Reload from Disk (confirm first), Keep My Changes (the disk text
+  becomes the saved baseline, the buffer stays dirty) and Save As; a vanished file becomes `deleted` (text kept, Save/
+  Save As/Close). Nothing here ever saves. `FileSyncService` consumes `fs:changed` batches (retargets a tab on a rename
+  when the target isn't already open, refreshes only the affected loaded Explorer folders, tells Source Control), and
+  re-checks all open files on window focus and via `afterGitOperation()`, which `SourceControlService` calls after switch
+  branch / discard / discard all / delete untracked / pull and `GitStashService` after apply/pop (one notice, not one per
+  file). `SourceControlService.refreshOpenDiff` closes a working-tree/staged diff that went stale with a notice. `appNotice`
+  events render as info toasts (`ErrorToast` kind `info`).
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -929,6 +949,19 @@ migration file, check for stray running instances first, not just after somethin
   doesn't reload a file changed on disk by a stash/apply; an unstaged rename appears as Deleted + Untracked (that is
   what Git reports until both are staged); the authentication message was verified by unit tests, not against a
   real password-protected remote; `E:\\omgit` and `E:\\omgit2` are left on disk (protected path).
+- [x] **Milestone 6.2** — External file change sync and Git refresh (`fix: sync editor with external file changes`).
+  New `openmind-file-watch` crate (16 tests), `watch_*`/`document_read` commands, `FileSyncService`, the document
+  external-state model and conflict UI (see above), Git-operation refresh of buffers/Explorer/Source Control, stale diff
+  handling, info toasts. Verified by hand in the built app (fresh portable copy, workspace path with spaces): clean files
+  reload on external edits, dirty files show the banner and are never overwritten (Compare, Reload from Disk after
+  confirm, Keep My Changes, Save As), deleted files keep their text, renames retarget the tab, stash apply/pop, branch
+  switch, discard and a terminal-created file refreshed editors, Explorer and Source Control; relaunch restored the
+  session; closing left no orphan process; Registry PATH unchanged. 608 TypeScript tests, Rust workspace green.
+  Known limitations: only the open workspace is watched (files outside it are caught on window focus/Git operations);
+  `.git` is not watched, so a Git command run in a terminal refreshes Source Control from the resulting file events or
+  on focus; a file with mixed line endings already shows as modified on open (pre-existing), so it takes the conflict
+  path instead of auto-reloading; notices reuse the toast component in an info style; `E:\omsync` test folders are
+  left on disk.
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.

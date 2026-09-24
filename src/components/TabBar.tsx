@@ -11,6 +11,13 @@ interface TabBarProps {
   onKeepOpen: (id: string) => void;
 }
 
+function tabTitle(tab: EditorTabView): string {
+  const base = tab.path ?? tab.title;
+  if (tab.external === "deleted") return `${base} (deleted on disk)`;
+  if (tab.external === "changed") return `${base} (changed on disk — you have unsaved changes)`;
+  return tab.preview ? `${base} (preview — double-click to keep open)` : base;
+}
+
 /**
  * VS Code editor tabs: file-type icon, name, and a close button that shows
  * on the active/hovered tab — or a dot while the file is dirty, turning back
@@ -37,6 +44,8 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen }: TabBar
           active ? "tab--active" : "",
           tab.dirty ? "tab--dirty" : "",
           tab.preview ? "tab--preview" : "",
+          tab.external === "deleted" ? "tab--deleted" : "",
+          tab.external === "changed" ? "tab--conflict" : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -46,11 +55,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen }: TabBar
             role="tab"
             aria-selected={active}
             className={className}
-            title={
-              tab.preview
-                ? `${tab.path ?? tab.title} (preview — double-click to keep open)`
-                : (tab.path ?? tab.title)
-            }
+            title={tabTitle(tab)}
             onMouseDown={(event) => {
               if (event.button === 0) onSelect(tab.id);
             }}

@@ -3,6 +3,7 @@ import { MonacoHost } from "../editor/MonacoHost";
 import { container } from "../services/container";
 import type { EditorGroupView as GroupView } from "../services/workspaceService";
 import { Breadcrumbs } from "./Breadcrumbs";
+import { ExternalChangeBanner } from "./ExternalChangeBanner";
 import { EditorHeaderActions } from "./EditorHeaderActions";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { StartPage } from "./StartPage";
@@ -65,6 +66,7 @@ export function EditorGroupView(props: EditorGroupViewProps) {
       {activeTab && props.breadcrumbsVisible ? (
         <Breadcrumbs path={activeTab.path} title={activeTab.title} rootPath={props.rootPath} />
       ) : null}
+      {activeTab && activeTab.kind === "text" ? <ExternalChangeBanner tab={activeTab} /> : null}
       <GroupContent {...props} docId={activeTab?.docId ?? null} kind={activeTab?.kind ?? null} />
     </main>
   );

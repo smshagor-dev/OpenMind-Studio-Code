@@ -48,6 +48,7 @@ export function useAppStartup(): boolean {
         container.phpMyAdmin.initialize(),
         container.composer.initialize(),
       ]);
+      await container.fileSync.initialize();
       await container.git.initialize();
       await container.sourceControl.initialize();
       if (!lifecycle.cancelled) setReady(true);
@@ -84,17 +85,25 @@ export function useToasts(): [ToastMessage[], (id: number) => void] {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const nextId = useRef(0);
 
-  useEffect(
-    () =>
-      container.events.on("appError", ({ message }) => {
-        const id = nextId.current++;
-        setToasts((prev) => [...prev, { id, message }]);
-        setTimeout(() => {
-          setToasts((prev) => prev.filter((toast) => toast.id !== id));
-        }, TOAST_LIFETIME_MS);
-      }),
-    [],
-  );
+  useEffect(() => {
+    const add = (message: string, kind?: "info") => {
+      const id = nextId.current++;
+      setToasts((prev) => [...prev, { id, message, kind }]);
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+      }, TOAST_LIFETIME_MS);
+    };
+    const offError = container.events.on("appError", ({ message }) => {
+      add(message);
+    });
+    const offNotice = container.events.on("appNotice", ({ message }) => {
+      add(message, "info");
+    });
+    return () => {
+      offError();
+      offNotice();
+    };
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));

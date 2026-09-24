@@ -2,6 +2,7 @@ import type { BufferManager } from "./bufferManager";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, LineEnding, TextEncoding } from "./ipc";
+import { pathKey, sameText } from "./textSync";
 
 export interface DocumentSnapshot {
   id: string;
@@ -10,13 +11,23 @@ export interface DocumentSnapshot {
   dirty: boolean;
   encoding: TextEncoding;
   lineEnding: LineEnding;
+  /** How the file on disk relates to this document: in sync, changed by someone else while it has unsaved edits, or gone. */
+  external: ExternalState;
 }
+
+export type ExternalState = "none" | "changed" | "deleted";
+
+/** What looking at the file on disk again found. */
+export type DiskCheck = "same" | "reloaded" | "conflict" | "deleted" | "unavailable";
 
 interface DocumentRecord {
   path: string | null;
   encoding: TextEncoding;
   lineEnding: LineEnding;
   savedContent: string;
+  external: ExternalState;
+  /** The disk text behind a "changed" state (for Compare and Keep My Changes). */
+  diskContent: string | null;
 }
 
 /**
@@ -43,6 +54,8 @@ export class DocumentService {
       encoding: "utf8",
       lineEnding: "lf",
       savedContent: "",
+      external: "none",
+      diskContent: null,
     });
     this.buffers.create(id, "");
     this.watchDirtyState(id);
@@ -63,6 +76,8 @@ export class DocumentService {
       encoding: opened.encoding,
       lineEnding: opened.lineEnding,
       savedContent: opened.content,
+      external: "none",
+      diskContent: null,
     });
     this.buffers.create(id, opened.content, languageIdForPath(opened.path));
     this.watchDirtyState(id);
@@ -138,7 +153,114 @@ export class DocumentService {
       dirty: this.isDirty(id),
       encoding: doc.encoding,
       lineEnding: doc.lineEnding,
+      external: doc.external,
     };
+  }
+
+  // --- The file on disk changed underneath an open document ---
+
+  /** The open document bound to this path (any slash style), if any. */
+  idForPath(path: string): string | null {
+    const key = pathKey(path);
+    for (const [id, doc] of this.documents) {
+      if (doc.path !== null && pathKey(doc.path) === key) return id;
+    }
+    return null;
+  }
+
+  /** Every open document that has a file behind it. */
+  fileBackedIds(): string[] {
+    return [...this.documents.entries()].filter(([, doc]) => doc.path !== null).map(([id]) => id);
+  }
+
+  externalState(id: string): ExternalState {
+    return this.requireDocument(id).external;
+  }
+
+  /** The disk text behind a "changed" state. */
+  diskContentOf(id: string): string | null {
+    return this.requireDocument(id).diskContent;
+  }
+
+  /**
+   * Looks at the file again. A clean document takes the new text (cursor and
+   * scroll are kept where the text is unchanged); a document with unsaved
+   * edits is never touched — it is marked "changed" instead; a missing file
+   * marks it "deleted" and keeps its text. Never saves anything.
+   */
+  async checkDisk(id: string): Promise<DiskCheck> {
+    const doc = this.requireDocument(id);
+    if (doc.path === null) return "same";
+    let read;
+    try {
+      read = await this.ipc.documentRead(doc.path);
+    } catch {
+      return "unavailable";
+    }
+    if (!this.documents.has(id)) return "unavailable";
+    if (read.state === "unreadable") return "unavailable";
+    if (read.state === "missing") {
+      if (doc.external === "deleted") return "deleted";
+      this.setExternal(id, "deleted", null);
+      return "deleted";
+    }
+    const dirty = this.isDirty(id);
+    if (sameText(read.content, doc.savedContent)) {
+      if (doc.external !== "none") this.setExternal(id, "none", null);
+      return "same";
+    }
+    if (!dirty || sameText(read.content, this.buffers.getValue(id))) {
+      this.applyDisk(id, doc, read);
+      return "reloaded";
+    }
+    const already = doc.external === "changed" && doc.diskContent === read.content;
+    this.setExternal(id, "changed", read.content);
+    return already ? "unavailable" : "conflict";
+  }
+
+  /** Discards unsaved edits and takes what is on disk ("Reload from Disk"). */
+  async reloadFromDisk(id: string): Promise<boolean> {
+    const doc = this.requireDocument(id);
+    if (doc.path === null) return false;
+    const read = await this.ipc.documentRead(doc.path);
+    if (read.state !== "file" || !this.documents.has(id)) return false;
+    this.applyDisk(id, doc, read);
+    return true;
+  }
+
+  /** "Keep My Changes": what is on disk becomes the base the edits are compared with; the edits stay (and saving overwrites the file, on purpose). */
+  keepMine(id: string): void {
+    const doc = this.requireDocument(id);
+    if (doc.external === "changed" && doc.diskContent !== null) doc.savedContent = doc.diskContent;
+    this.setExternal(id, "none", null);
+    this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
+  }
+
+  /** The file was renamed/moved: the open document follows it (text and edits untouched). */
+  retarget(id: string, newPath: string): void {
+    const doc = this.requireDocument(id);
+    doc.path = newPath;
+    this.setExternal(id, "none", null);
+  }
+
+  private applyDisk(
+    id: string,
+    doc: DocumentRecord,
+    read: { content: string; encoding: TextEncoding; lineEnding: LineEnding },
+  ): void {
+    this.buffers.replaceContent(id, read.content);
+    doc.encoding = read.encoding;
+    doc.lineEnding = read.lineEnding;
+    doc.savedContent = this.buffers.getValue(id);
+    this.setExternal(id, "none", null);
+    this.events.emit("documentDirtyChanged", { id, dirty: false });
+  }
+
+  private setExternal(id: string, external: ExternalState, diskContent: string | null): void {
+    const doc = this.requireDocument(id);
+    doc.external = external;
+    doc.diskContent = diskContent;
+    this.events.emit("documentExternalChanged", { id });
   }
 
   /** Replaces the buffer with the last-saved content (VS Code's "Revert File"). */
@@ -159,6 +281,9 @@ export class DocumentService {
     await this.ipc.documentSave(path, content, doc.encoding);
     doc.path = path;
     doc.savedContent = content;
+    doc.external = "none";
+    doc.diskContent = null;
+    this.events.emit("documentExternalChanged", { id });
     this.events.emit("documentDirtyChanged", { id, dirty: false });
     this.events.emit("documentSaved", { id, path });
   }

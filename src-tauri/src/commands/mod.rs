@@ -11,4 +11,5 @@ pub mod settings;
 pub mod system;
 pub mod terminal;
 pub mod theme;
+pub mod watch;
 pub mod workspace;

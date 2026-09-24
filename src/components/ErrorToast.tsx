@@ -1,6 +1,8 @@
 export interface ToastMessage {
   id: number;
   message: string;
+  /** `info` = a plain notice (a file was reloaded); the default is an error. */
+  kind?: "info";
 }
 
 interface ErrorToastProps {
@@ -17,7 +19,11 @@ export function ErrorToast({ toasts, onDismiss }: ErrorToastProps) {
   return (
     <div className="error-toast-stack" role="alert" aria-live="assertive">
       {toasts.map((toast) => (
-        <div key={toast.id} className="error-toast">
+        <div
+          key={toast.id}
+          className={toast.kind === "info" ? "error-toast error-toast--info" : "error-toast"}
+          role={toast.kind === "info" ? "status" : undefined}
+        >
           <span className="error-toast__message">{toast.message}</span>
           <button
             type="button"

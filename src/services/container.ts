@@ -31,6 +31,7 @@ import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { ComposerService } from "./composerService";
+import { FileSyncService } from "./fileSyncService";
 import { GitBlameService } from "./gitBlameService";
 import { GitCloneService } from "./gitCloneService";
 import { registerGitCommands } from "./gitCommands";
@@ -123,7 +124,13 @@ const sourceControl = new SourceControlService(
     events.emit("showRuntimeManager", undefined);
   },
   (listener) => runtime.subscribe(listener),
+  (): Promise<unknown> => fileSync.afterGitOperation(),
 );
+const fileSync = new FileSyncService(tauriIpcClient, events, documents, explorer, {
+  workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
+  workingTreeChanged: (): Promise<void> => sourceControl.refresh(),
+  loadedFolders: () => explorer.loadedFolders(),
+});
 const gitClone = new GitCloneService(
   gitService,
   events,
@@ -136,7 +143,10 @@ const gitHistory = new GitHistoryService(gitService, events, (hash, file) =>
 const gitStash = new GitStashService(
   gitService,
   events,
-  () => sourceControl.refresh(),
+  async (): Promise<void> => {
+    await sourceControl.refresh();
+    await fileSync.afterGitOperation();
+  },
   () => {
     const changes = sourceControl.status()?.changes ?? [];
     const untracked = changes.filter((change) => change.worktree === "untracked").length;
@@ -378,6 +388,7 @@ export const container = {
   controlPanel,
   git: gitService,
   sourceControl,
+  fileSync,
   gitClone,
   gitHistory,
   gitStash,

@@ -21,6 +21,27 @@ export interface OpenedDocument {
   lineEnding: LineEnding;
 }
 
+export type DiskRead =
+  | { state: "missing" }
+  | { state: "file"; content: string; encoding: TextEncoding; lineEnding: LineEnding }
+  | { state: "unreadable"; reason: string };
+
+export type FsChangeKind = "created" | "modified" | "removed" | "renamed";
+
+/** Mirrors openmind_file_watch::FileChange. */
+export interface FsChange {
+  path: string;
+  kind: FsChangeKind;
+  /** The old path of a rename. */
+  from: string | null;
+}
+
+/** Mirrors openmind_file_watch::ChangeBatch: `overflow` = too many to list, re-check everything. */
+export interface FsChangeBatch {
+  changes: FsChange[];
+  overflow: boolean;
+}
+
 // Mirrors openmind_workspace::RecentFileInfo (camelCase).
 export interface RecentFileInfo {
   path: string;
@@ -151,6 +172,8 @@ export interface IpcClient {
 
   // Documents
   documentOpen: (path: string) => Promise<OpenedDocument>;
+  /** What is on disk now, for an already-open document (does not touch recent files). */
+  documentRead: (path: string) => Promise<DiskRead>;
   documentSave: (path: string, content: string, encoding: TextEncoding) => Promise<void>;
 
   // Session / recent files / theme
@@ -272,6 +295,11 @@ export interface IpcClient {
   composerStatus: () => Promise<RunInfo[]>;
   onComposerEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
   onComposerChanged: (handler: () => void) => Promise<() => void>;
+
+  // External file changes in the open workspace (debounced, ignored folders removed).
+  fileWatchStart: (root: string) => Promise<void>;
+  fileWatchStop: () => Promise<void>;
+  onFsChanged: (handler: (batch: FsChangeBatch) => void) => Promise<() => void>;
 
   // Source Control (Git). The repository is always the open workspace's; only repo-relative file names are sent.
   gitSnapshot: () => Promise<GitSnapshot>;
@@ -603,6 +631,7 @@ export const tauriIpcClient: IpcClient = {
   },
 
   documentOpen: (path) => invoke<OpenedDocument>("document_open", { path }),
+  documentRead: (path) => invoke<DiskRead>("document_read", { path }),
 
   documentSave: (path, content, encoding) => invoke("document_save", { path, content, encoding }),
 
@@ -741,6 +770,12 @@ export const tauriIpcClient: IpcClient = {
   panelOpenFolder: (path) => invoke("panel_open_folder", { path }),
   panelOpenShell: (cwd) => invoke("panel_open_shell", { cwd }),
   panelNetstat: () => invoke<ListeningPort[]>("panel_netstat"),
+  fileWatchStart: (root) => invoke("watch_start", { root }),
+  fileWatchStop: () => invoke("watch_stop"),
+  onFsChanged: (handler) =>
+    listen<FsChangeBatch>("fs:changed", (event) => {
+      handler(event.payload);
+    }),
   gitSnapshot: () => invoke<GitSnapshot>("git_snapshot"),
   gitInit: () => invoke("git_init"),
   gitStage: (paths) => invoke("git_stage", { paths }),

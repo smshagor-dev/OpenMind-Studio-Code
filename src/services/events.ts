@@ -10,6 +10,10 @@ import type { ThemeKind, WorkspaceInfo } from "./ipc";
 export interface AppEvents extends Record<string, unknown> {
   documentDirtyChanged: { id: string; dirty: boolean };
   documentSaved: { id: string; path: string };
+  /** An open document's relationship with its file on disk changed (changed / deleted / renamed / back in sync). */
+  documentExternalChanged: { id: string };
+  /** A short, non-error message for the user (a file was reloaded, a diff was closed, ...). */
+  appNotice: { message: string };
   tabsChanged: { tabs: DocumentSnapshot[]; activeId: string | null };
   themeChanged: { theme: ThemeKind };
   workspaceFolderChanged: { workspace: WorkspaceInfo | null };

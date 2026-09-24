@@ -3,7 +3,6 @@ import type { AppEvents } from "./events";
 import type { GitService } from "./gitService";
 import type {
   GitBranch,
-  GitChangeKind,
   GitCommitFile,
   GitDiffSides,
   GitFileChange,
@@ -13,95 +12,21 @@ import type {
   GitSnapshot,
 } from "./ipc";
 import type { Availability } from "./runtimeService";
+import {
+  commitAvailability,
+  groupChanges,
+  joinRepoPath,
+  type ChangeGroups,
+} from "./sourceControlModel";
 
-export interface ChangeGroups {
-  staged: GitFileChange[];
-  changes: GitFileChange[];
-  untracked: GitFileChange[];
-}
-
-/** Splits a status into the three groups the view shows (a file can be in both Staged and Changes). */
-export function groupChanges(status: GitRepoStatus): ChangeGroups {
-  const groups: ChangeGroups = { staged: [], changes: [], untracked: [] };
-  for (const change of status.changes) {
-    if (change.worktree === "untracked") {
-      groups.untracked.push(change);
-      continue;
-    }
-    if (!change.conflicted && change.index !== "unmodified") groups.staged.push(change);
-    if (change.conflicted || change.worktree !== "unmodified") groups.changes.push(change);
-  }
-  return groups;
-}
-
-const LETTERS: Record<GitChangeKind, string> = {
-  unmodified: "",
-  modified: "M",
-  added: "A",
-  deleted: "D",
-  renamed: "R",
-  copied: "C",
-  typeChanged: "T",
-  unmerged: "U",
-  untracked: "U",
-};
-
-const WORDS: Record<GitChangeKind, string> = {
-  unmodified: "Unmodified",
-  modified: "Modified",
-  added: "Added",
-  deleted: "Deleted",
-  renamed: "Renamed",
-  copied: "Copied",
-  typeChanged: "Type changed",
-  unmerged: "Merge conflict",
-  untracked: "Untracked",
-};
-
-/** The status letter (M, A, D, ...) and its meaning for one side of a change. */
-export function badgeFor(
-  change: GitFileChange,
-  staged: boolean,
-): { letter: string; title: string } {
-  const kind: GitChangeKind = change.conflicted
-    ? "unmerged"
-    : staged
-      ? change.index
-      : change.worktree;
-  return { letter: LETTERS[kind], title: WORDS[kind] };
-}
-
-export interface CommitInput {
-  message: string;
-  stagedCount: number;
-  busy: boolean;
-  identityMissing: boolean;
-  conflicts: boolean;
-}
-
-/** Pure: whether Commit can run, and if not, why. */
-export function commitAvailability(input: CommitInput): Availability {
-  if (input.busy) return { enabled: false, reason: "Please wait — Git is busy." };
-  if (input.message.trim() === "") return { enabled: false, reason: "Enter a commit message." };
-  if (input.conflicts) {
-    return { enabled: false, reason: "Resolve the merge conflicts before committing." };
-  }
-  if (input.stagedCount === 0) {
-    return { enabled: false, reason: "There are no staged changes to commit." };
-  }
-  if (input.identityMissing) {
-    return { enabled: false, reason: "Set your name and email for commits first." };
-  }
-  return { enabled: true };
-}
-
-/** `root` + a repo-relative path, in the same slash style as `root` (so the file opens as the same document). */
-export function joinRepoPath(root: string, relative: string): string {
-  const windows = root.includes("\\") || /^[A-Za-z]:/.test(root);
-  const separator = windows ? "\\" : "/";
-  const base = (windows ? root.replace(/\//g, "\\") : root).replace(/[\\/]+$/, "");
-  return `${base}${separator}${windows ? relative.replace(/\//g, "\\") : relative}`;
-}
+export {
+  badgeFor,
+  commitAvailability,
+  groupChanges,
+  joinRepoPath,
+  type ChangeGroups,
+  type CommitInput,
+} from "./sourceControlModel";
 
 export type PendingConfirm =
   | { kind: "discard"; paths: string[]; title: string; message: string; confirmLabel: string }
@@ -178,6 +103,8 @@ export class SourceControlService {
     private readonly showRuntimeManager: () => void,
     /** Subscribes to runtime changes (`RuntimeService.subscribe`): installing Git makes the view usable at once. */
     private readonly onRuntimeChange: (listener: () => void) => () => void = () => () => undefined,
+    /** Called after an operation that can change files on disk (discard, switch, pull, delete): open editors and the Explorer catch up. */
+    private readonly filesChanged: () => Promise<unknown> = () => Promise.resolve(),
   ) {}
 
   getState(): SourceControlState {
@@ -343,6 +270,7 @@ export class SourceControlService {
       const snapshot = await this.git.ipc.gitSnapshot();
       if (seq !== this.refreshSeq) return;
       this.update({ snapshot, loading: false });
+      this.refreshOpenDiff();
       if (snapshot.state === "repository") await this.loadIdentity(seq);
       else this.update({ identity: null, branches: [] });
     } catch (error) {
@@ -442,10 +370,14 @@ export class SourceControlService {
   // --- Branches ---
 
   async switchBranch(name: string): Promise<boolean> {
-    return this.act(`Switching to ${name}`, async () => {
-      await this.git.ipc.gitSwitchBranch(name);
-      return `Switched to ${name}.`;
-    });
+    return this.act(
+      `Switching to ${name}`,
+      async () => {
+        await this.git.ipc.gitSwitchBranch(name);
+        return `Switched to ${name}.`;
+      },
+      true,
+    );
   }
 
   async createBranch(name: string): Promise<boolean> {
@@ -522,12 +454,18 @@ export class SourceControlService {
     this.update({ pending: null });
     switch (pending.kind) {
       case "discard":
-        return this.act("Discarding changes", () => this.git.ipc.gitDiscard(pending.paths, true));
+        return this.act(
+          "Discarding changes",
+          () => this.git.ipc.gitDiscard(pending.paths, true),
+          true,
+        );
       case "discardAll":
-        return this.act("Discarding all changes", () => this.git.ipc.gitDiscardAll(true));
+        return this.act("Discarding all changes", () => this.git.ipc.gitDiscardAll(true), true);
       case "deleteUntracked":
-        return this.act("Deleting the file", () =>
-          this.git.ipc.gitDeleteUntracked(pending.path, true),
+        return this.act(
+          "Deleting the file",
+          () => this.git.ipc.gitDeleteUntracked(pending.path, true),
+          true,
         );
       case "deleteBranch":
         return this.act(`Deleting ${pending.name}`, async () => {
@@ -545,13 +483,14 @@ export class SourceControlService {
     await this.openFile(joinRepoPath(snapshot.root, path));
   }
 
-  async openDiff(change: GitFileChange, staged: boolean): Promise<void> {
+  /** `keepSides`: reloading the diff already showing — the old text stays until the new arrives (no flicker). */
+  async openDiff(change: GitFileChange, staged: boolean, keepSides = false): Promise<void> {
     const view: DiffView = {
       path: change.path,
       staged,
       commit: null,
       loading: true,
-      sides: null,
+      sides: keepSides ? (this.state.diff?.sides ?? null) : null,
       error: null,
     };
     this.update({ diff: view });
@@ -645,7 +584,11 @@ export class SourceControlService {
   // --- Internals ---
 
   /** Runs one action: busy while it runs, its result as a notice, failures as an error, then a fresh status. */
-  private async act(label: string, run: () => Promise<unknown>): Promise<boolean> {
+  private async act(
+    label: string,
+    run: () => Promise<unknown>,
+    touchesFiles = false,
+  ): Promise<boolean> {
     if (this.state.busy !== null) return false;
     this.update({ busy: label, error: null, notice: null });
     try {
@@ -654,7 +597,7 @@ export class SourceControlService {
       this.update({ busy: null, notice });
       if (notice !== null) this.git.log(notice);
       await this.refresh();
-      this.refreshOpenDiff();
+      if (touchesFiles) await this.filesChanged();
       return true;
     } catch (error) {
       this.update({ busy: null });
@@ -674,8 +617,15 @@ export class SourceControlService {
       (diff.staged
         ? !change.conflicted && change.index !== "unmodified"
         : change.conflicted || change.worktree !== "unmodified");
-    if (change !== undefined && stillThere) void this.openDiff(change, diff.staged);
-    else this.closeDiff();
+    if (change !== undefined && stillThere) {
+      void this.openDiff(change, diff.staged, true);
+    } else {
+      // Don't leave stale diff text on screen: close it and say why.
+      this.closeDiff();
+      this.events.emit("appNotice", {
+        message: `Diff closed: ${diff.path} no longer has ${diff.staged ? "staged" : "unstaged"} changes.`,
+      });
+    }
   }
 
   private fail(message: string): void {

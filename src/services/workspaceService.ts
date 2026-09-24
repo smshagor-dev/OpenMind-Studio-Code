@@ -107,6 +107,10 @@ export class WorkspaceService {
       this.groups.subscribe(() => {
         this.recompute();
       }),
+      // The file behind a tab changed on disk, was deleted or renamed: the tab shows it.
+      this.events.on("documentExternalChanged", ({ id }) => {
+        if (this.groups.tabsForDoc(id).length > 0) this.recompute();
+      }),
       this.events.on("documentDirtyChanged", ({ id, dirty }) => {
         // Editing a provisional tab keeps it.
         if (dirty) this.groups.pinDoc(id);

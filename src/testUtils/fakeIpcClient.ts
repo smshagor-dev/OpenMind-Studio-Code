@@ -100,6 +100,10 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     panelOpenFolder: vi.fn().mockResolvedValue(undefined),
     panelOpenShell: vi.fn().mockResolvedValue(undefined),
     panelNetstat: vi.fn().mockResolvedValue([]),
+    documentRead: vi.fn().mockResolvedValue({ state: "missing" }),
+    fileWatchStart: vi.fn().mockResolvedValue(undefined),
+    fileWatchStop: vi.fn().mockResolvedValue(undefined),
+    onFsChanged: vi.fn().mockResolvedValue(() => undefined),
     gitSnapshot: vi.fn().mockResolvedValue({
       state: "noWorkspace",
       runtime: { ready: true, label: "OpenMind portable Git", reason: null, systemGit: null },

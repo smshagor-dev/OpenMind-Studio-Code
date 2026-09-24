@@ -263,4 +263,38 @@ describe("ExplorerService", () => {
       expect(ipc.fsDuplicate).toHaveBeenCalledWith("C:/proj", "C:/proj/a.ts", "a copy.ts");
     });
   });
+
+  it("refreshLoaded re-reads only folders already loaded, in either slash style, and shows external creates and deletes", async () => {
+    let files = [entry("C:/proj/a.txt", "a.txt", false)];
+    const readDir = vi.fn().mockImplementation((path: string) => {
+      if (path === "C:/proj") return Promise.resolve(files);
+      return Promise.resolve([]);
+    });
+    const ipc = createFakeIpc({ fsReadDir: readDir });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+    expect(service.getSnapshot().childrenByPath.get("C:/proj")).toEqual(["C:/proj/a.txt"]);
+
+    // A file created from a terminal, and one deleted; the event spells the path with backslashes.
+    files = [entry("C:/proj/new file.txt", "new file.txt", false)];
+    readDir.mockClear();
+    const backslashed = ["c:", "proj"].join(String.fromCharCode(92));
+    const refreshed = await service.refreshLoaded([backslashed, "C:/proj/never opened/deep"]);
+    expect(refreshed).toBe(1);
+    expect(readDir).toHaveBeenCalledTimes(1);
+    expect(service.getSnapshot().childrenByPath.get("C:/proj")).toEqual(["C:/proj/new file.txt"]);
+  });
+
+  it("refreshLoaded does not toast for a folder that vanished", async () => {
+    const readDir = vi.fn().mockResolvedValue([]);
+    const ipc = createFakeIpc({ fsReadDir: readDir });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+    const errors: string[] = [];
+    events.on("appError", (event) => errors.push(event.message));
+    readDir.mockRejectedValue("C:/proj does not exist");
+    expect(await service.refreshLoaded(["C:/proj"])).toBe(0);
+    expect(errors).toEqual([]);
+    expect(service.loadedFolders()).toEqual(["C:/proj", "C:/proj"]);
+  });
 });
