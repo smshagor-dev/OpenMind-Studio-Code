@@ -387,7 +387,17 @@ impl RuntimeManager {
         version: &str,
         progress: ProgressSink,
     ) -> Result<InstalledVersion, RuntimeError> {
-        let manifest = self.registry.get(kind)?.clone();
+        let mut manifest = self.registry.get(kind)?.clone();
+        // A version may carry its own seed files (they replace the manifest's).
+        if let Some(own) = manifest
+            .versions
+            .iter()
+            .find(|candidate| candidate.version == version)
+            .map(|found| found.seed_files.clone())
+            .filter(|files| !files.is_empty())
+        {
+            manifest.seed_files = own;
+        }
         let artifact = match manifest.artifact(version, &self.platform) {
             Some(artifact) => artifact.clone(),
             None if manifest.versions.iter().any(|v| v.version == version) => {

@@ -7,6 +7,10 @@
   "binDirs": ["."],
   "verifyFiles": ["node.exe", "npm.cmd", "npx.cmd"],
   "env": {},
+  "features": [
+    { "id": "npm", "label": "npm", "verifyFile": "npm.cmd", "missingNote": "npm isn't in this install. Use Repair to reinstall it." },
+    { "id": "npx", "label": "npx", "verifyFile": "npx.cmd", "missingNote": "npx isn't in this install. Use Repair to reinstall it." }
+  ],
   "notes": "Official nodejs.org Windows ZIP; SHA256 from the release's SHASUMS256.txt.",
   "versions": [
     {

@@ -211,6 +211,8 @@ export interface IpcClient {
   runtimeSetActive: (kind: string, version: string) => Promise<void>;
   runtimeDelete: (kind: string, version: string) => Promise<void>;
   onRuntimeProgress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
+  /** After any install/repair/switch/delete in any window: reload the list. */
+  onRuntimeChanged: (handler: () => void) => Promise<() => void>;
 
   // System clipboard (the webview's own clipboard API is unreliable inside Tauri)
   clipboardWriteText: (text: string) => Promise<void>;
@@ -234,9 +236,14 @@ export interface IpcClient {
   // PHP built-in server (portable PHP only, bound to 127.0.0.1; events share the run event shape)
   phpServerStart: (request: PhpServerRequest) => Promise<PhpServerInfo>;
   phpServerStop: (runId: string) => Promise<boolean>;
-  phpServerActive: () => Promise<RunInfo[]>;
+  /** The running server, or `null` — the backend is the one truth both windows read. */
+  phpServerStatus: () => Promise<PhpServerInfo | null>;
+  /** Opens the PHP Server window (or brings it to the front). */
+  phpWindowOpen: () => Promise<void>;
   phpPortFree: (port: number) => Promise<boolean>;
   onPhpEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+  /** The server started or ended (in any window): re-read `phpServerStatus`. */
+  onPhpChanged: (handler: () => void) => Promise<() => void>;
 
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
@@ -335,6 +342,8 @@ export interface PhpServerInfo {
   run: RunInfo;
   url: string;
   port: number;
+  /** The PHP version the process was started with (it keeps it after a switch). */
+  phpVersion: string | null;
 }
 
 export type ShellStyle = "powerShell" | "cmd" | "bash";
@@ -479,6 +488,11 @@ export const tauriIpcClient: IpcClient = {
       handler(event.payload);
     }),
 
+  onRuntimeChanged: (handler) =>
+    listen("runtime:changed", () => {
+      handler();
+    }),
+
   searchRun: (searchId, query) => invoke<SearchOutcome>("search_run", { searchId, query }),
 
   searchCancel: (searchId) => invoke<boolean>("search_cancel", { searchId }),
@@ -503,11 +517,16 @@ export const tauriIpcClient: IpcClient = {
 
   phpServerStart: (request) => invoke<PhpServerInfo>("php_server_start", { request }),
   phpServerStop: (runId) => invoke<boolean>("php_server_stop", { runId }),
-  phpServerActive: () => invoke<RunInfo[]>("php_server_active"),
+  phpServerStatus: () => invoke<PhpServerInfo | null>("php_server_status"),
+  phpWindowOpen: () => invoke("php_window_open"),
   phpPortFree: (port) => invoke<boolean>("php_port_free", { port }),
   onPhpEvent: (handler) =>
     listen<RunEvent>("php:event", (event) => {
       handler(event.payload);
+    }),
+  onPhpChanged: (handler) =>
+    listen("php:changed", () => {
+      handler();
     }),
 
   clipboardWriteText: (text) => writeText(text),

@@ -2,8 +2,17 @@ use openmind_runtime_manager::{InstallProgress, InstalledVersion, RuntimeStatus}
 use tauri::{AppHandle, Emitter, State};
 
 use crate::app_state::AppState;
+use crate::commands::php::php_in_use_reason;
 
 const PROGRESS_EVENT: &str = "runtime:progress";
+/// Sent after any install/repair/switch/delete, so every window reloads its list.
+const CHANGED_EVENT: &str = "runtime:changed";
+
+fn notify_changed(app: &AppHandle) {
+    if let Err(err) = app.emit(CHANGED_EVENT, ()) {
+        tracing::error!(?err, "failed to emit runtime:changed");
+    }
+}
 
 // Every error is returned as `user_message()`: what went wrong plus what to
 // do about it, so the UI never has to invent recovery advice.
@@ -20,11 +29,13 @@ pub async fn runtime_install(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<InstalledVersion, String> {
-    state
+    let result = state
         .runtime
-        .install(&kind, version.as_deref(), progress_sink(app))
+        .install(&kind, version.as_deref(), progress_sink(app.clone()))
         .await
-        .map_err(|err| err.user_message())
+        .map_err(|err| err.user_message());
+    notify_changed(&app);
+    result
 }
 
 #[tauri::command]
@@ -34,37 +45,51 @@ pub async fn runtime_repair(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<bool, String> {
-    state
+    if let Some(reason) = php_in_use_reason(&state, &kind, &version) {
+        return Err(reason);
+    }
+    let result = state
         .runtime
-        .repair(&kind, &version, progress_sink(app))
+        .repair(&kind, &version, progress_sink(app.clone()))
         .await
-        .map_err(|err| err.user_message())
+        .map_err(|err| err.user_message());
+    notify_changed(&app);
+    result
 }
 
 #[tauri::command]
 pub async fn runtime_set_active(
     kind: String,
     version: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
+    let result = state
         .runtime
         .set_active(&kind, &version)
         .await
-        .map_err(|err| err.user_message())
+        .map_err(|err| err.user_message());
+    notify_changed(&app);
+    result
 }
 
 #[tauri::command]
 pub async fn runtime_delete(
     kind: String,
     version: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state
+    if let Some(reason) = php_in_use_reason(&state, &kind, &version) {
+        return Err(reason);
+    }
+    let result = state
         .runtime
         .delete(&kind, &version)
         .await
-        .map_err(|err| err.user_message())
+        .map_err(|err| err.user_message());
+    notify_changed(&app);
+    result
 }
 
 fn progress_sink(app: AppHandle) -> openmind_runtime_manager::manager::ProgressSink {

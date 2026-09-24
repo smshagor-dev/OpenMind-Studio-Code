@@ -59,6 +59,7 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
   const search = new SearchService(ipc, events, output, () => "C:/p", { openPathAt });
   const commands = new CommandRegistry();
   commands.register("runtime.manage", () => undefined);
+  commands.register("php.openWindow", () => undefined);
   commands.register("output.clear", () => {
     output.clear(output.getState().selected);
   });
@@ -146,15 +147,14 @@ describe("ActivityBar", () => {
     });
   });
 
-  it("PHP Server is a real view: its icon switches the side bar to it", async () => {
-    const { layout } = setup();
+  it("PHP Server opens its own window and leaves the side bar view alone", () => {
+    const { layout, run } = setup();
     render(<ActivityBar sidebarVisible />);
 
     fireEvent.click(screen.getByRole("button", { name: "PHP Server" }));
 
-    await waitFor(() => {
-      expect(layout.getState().activeView).toBe("php");
-    });
+    expect(run).toHaveBeenCalledWith("php.openWindow");
+    expect(layout.getState().activeView).toBe("explorer");
   });
 
   it("Runtime Manager opens the runtime dialog through its command", () => {

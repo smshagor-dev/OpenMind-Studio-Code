@@ -18,6 +18,8 @@ const SETTINGS_KEY = "php.server";
 export interface RunningServer {
   runId: string;
   pid: number;
+  /** The PHP version the process was started with (it keeps using it after a switch). */
+  phpVersion: string | null;
   url: string;
   port: number;
   root: string;
@@ -83,7 +85,10 @@ export interface StartInput {
 export function startAvailability(input: StartInput): Availability {
   if (!input.phpInstalled) return { enabled: false, reason: "PHP runtime is not installed yet." };
   if (!input.phpHealthy) {
-    return { enabled: false, reason: "The PHP install is damaged — use Repair PHP first." };
+    return {
+      enabled: false,
+      reason: "The PHP install is damaged — repair it in Runtime Extensions first.",
+    };
   }
   if (input.root === null)
     return { enabled: false, reason: "Select a valid project folder first." };
@@ -133,6 +138,7 @@ export class PhpServerService {
   private state: PhpServerState = INITIAL;
   private readonly listeners = new Set<() => void>();
   private off: (() => void) | null = null;
+  private offChanged: (() => void) | null = null;
   /** Runs that already exited, so a late `start` result can't resurrect them. */
   private readonly exited = new Set<string>();
 
@@ -143,7 +149,6 @@ export class PhpServerService {
     private readonly runtime: RuntimeService,
     private readonly ports: PortsService,
     private readonly panel: PanelService,
-    private readonly getWorkspacePath: () => string | null,
   ) {}
 
   getState(): PhpServerState {
@@ -165,15 +170,58 @@ export class PhpServerService {
       this.off = await this.ipc.onPhpEvent((event) => {
         this.handleEvent(event);
       });
+      this.offChanged = await this.ipc.onPhpChanged(() => {
+        void this.syncServer();
+      });
     } catch (error) {
       this.events.emit("appError", { message: `PHP server output unavailable: ${String(error)}` });
     }
+    await this.syncServer();
     await this.refreshPort();
+  }
+
+  /**
+   * The backend is the one truth about the server (the PHP Server window and
+   * the main window each have their own frontend state): adopt what it reports.
+   */
+  async syncServer(): Promise<void> {
+    const info = (await this.ipc.phpServerStatus().catch(() => null)) ?? null;
+    const current = this.state.server;
+    if (info === null) {
+      if (current !== null) this.serverGone();
+      return;
+    }
+    if (current?.runId === info.run.runId) return;
+    this.update({
+      portFree: null,
+      server: {
+        runId: info.run.runId,
+        pid: info.run.pid,
+        phpVersion: info.phpVersion,
+        url: info.url,
+        port: info.port,
+        root: this.state.root ?? "",
+      },
+    });
+    this.ports.register({
+      port: info.port,
+      label: "PHP Server",
+      url: info.url,
+      source: PHP_PORT_SOURCE,
+    });
+  }
+
+  private serverGone(): void {
+    this.ports.unregisterSource(PHP_PORT_SOURCE);
+    this.update({ server: null });
+    void this.refreshPort();
   }
 
   dispose(): void {
     this.off?.();
     this.off = null;
+    this.offChanged?.();
+    this.offChanged = null;
   }
 
   // --- What the panel shows ---
@@ -231,69 +279,42 @@ export class PhpServerService {
       : { enabled: true };
   }
 
-  /** PHP install/repair/delete: repair and delete are refused while the server uses PHP. */
-  installState(id: StackComponent): Availability {
-    const view = this.component(id);
-    if (view.working) return { enabled: false, reason: "Working…" };
-    if (view.state !== "notInstalled") {
-      return { enabled: false, reason: `${view.label} is already installed.` };
-    }
-    if (id === "composer" && this.component("php").state === "notInstalled") {
-      return { enabled: false, reason: "Install PHP first — Composer runs on it." };
-    }
-    return { enabled: true };
+  /**
+   * Whether the running server is using this PHP version (its php.exe can't be
+   * deleted or repaired while it runs). `null` when it isn't.
+   */
+  versionInUse(id: StackComponent, version: string): Availability | null {
+    if (id !== "php" || this.state.server?.phpVersion !== version) return null;
+    return {
+      enabled: false,
+      reason: `The PHP server is running on PHP ${version}. Stop the server first.`,
+    };
   }
 
-  repairState(id: StackComponent): Availability {
-    const view = this.component(id);
-    if (view.state === "notInstalled") {
-      return { enabled: false, reason: `${view.label} isn't installed.` };
-    }
-    if (view.state === "installed") {
-      return { enabled: false, reason: `${view.label} is healthy — nothing to repair.` };
-    }
-    return view.working ? { enabled: false, reason: "Working…" } : { enabled: true };
-  }
-
-  deleteState(id: StackComponent): Availability {
-    const view = this.component(id);
-    if (view.state === "notInstalled") {
-      return { enabled: false, reason: `${view.label} isn't installed.` };
-    }
-    if (id === "php" && this.state.server !== null) {
-      return { enabled: false, reason: "Stop the server before deleting PHP." };
-    }
-    return view.working ? { enabled: false, reason: "Working…" } : { enabled: true };
+  /** Set while the running server still uses a PHP that is no longer the active one. */
+  restartNotice(): string | null {
+    const server = this.state.server;
+    if (server === null || server.phpVersion === null) return null;
+    const active = this.component("php").version;
+    if (active === null || active === server.phpVersion) return null;
+    return `Restart the PHP server to use the new PHP version. It is still running on PHP ${server.phpVersion}; PHP ${active} is now active.`;
   }
 
   // --- Actions ---
-
-  install(id: StackComponent): Promise<boolean> {
-    return this.runtime.install(id, null);
-  }
-
-  repair(id: StackComponent): Promise<boolean> {
-    const version = this.component(id).version;
-    return version === null ? Promise.resolve(false) : this.runtime.repair(id, version);
-  }
-
-  remove(id: StackComponent): Promise<boolean> {
-    const version = this.component(id).version;
-    return version === null ? Promise.resolve(false) : this.runtime.remove(id, version);
-  }
 
   async setRoot(root: string | null): Promise<void> {
     this.update({ root, error: null });
     await this.persist();
   }
 
+  /** Uses the folder open in the main window (the backend remembers it). */
   async useWorkspace(): Promise<boolean> {
-    const path = this.getWorkspacePath();
-    if (path === null) {
-      this.update({ error: "Open a folder first, or use Select Folder." });
+    const workspace = await this.ipc.workspaceActiveFolder().catch(() => null);
+    if (workspace === null) {
+      this.update({ error: "No folder is open in the main window — use Select Folder instead." });
       return false;
     }
-    await this.setRoot(path);
+    await this.setRoot(workspace.path);
     return true;
   }
 
@@ -339,6 +360,7 @@ export class PhpServerService {
           server: {
             runId: info.run.runId,
             pid: info.run.pid,
+            phpVersion: info.phpVersion ?? this.component("php").version,
             url: info.url,
             port: info.port,
             root,

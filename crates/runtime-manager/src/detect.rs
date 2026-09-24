@@ -61,12 +61,31 @@ pub fn detect_version(exe: &Path, command: &VersionCommand) -> Option<String> {
 }
 
 pub(crate) fn parse_version_output(output: &str, prefix: &str) -> Option<String> {
-    let line = output
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())?;
-    let version = line.strip_prefix(prefix).unwrap_or(line).trim();
-    (!version.is_empty()).then(|| version.to_string())
+    let clean = strip_ansi(output);
+    let line = clean.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let rest = line.strip_prefix(prefix).unwrap_or(line).trim();
+    // Only the version itself: `php --version` goes on with "(cli) (built: ...)"
+    // and Composer with a build date.
+    let version = rest.split_whitespace().next()?;
+    Some(version.to_string())
+}
+
+/// Removes ANSI colour sequences (`ESC [ ... m`), which Composer prints even into a pipe.
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            for next in chars.by_ref() {
+                if next.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Finds `name` on the current PATH the way a shell would (trying the usual
@@ -105,6 +124,26 @@ pub fn join_path(dirs: impl IntoIterator<Item = PathBuf>, existing: Option<OsStr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn php_and_composer_banners_reduce_to_just_the_version() {
+        assert_eq!(
+            parse_version_output(
+                "PHP 8.2.12 (cli) (built: Oct 24 2023 21:15:15) (ZTS Visual C++ 2019 x64)\n",
+                "PHP "
+            )
+            .as_deref(),
+            Some("8.2.12")
+        );
+        assert_eq!(
+            parse_version_output(
+                "\u{1b}[32mComposer\u{1b}[39m version \u{1b}[33m2.10.0\u{1b}[39m 2026-05-28 11:22:08\n",
+                "Composer version "
+            )
+            .as_deref(),
+            Some("2.10.0")
+        );
+    }
 
     #[test]
     fn parses_prefixed_and_bare_version_lines() {
@@ -178,7 +217,8 @@ mod tests {
 
         let version = detect_version(&cmd, &command).expect("a version banner");
 
-        assert!(version.contains("Windows"), "{version}");
+        // Only the first word of the banner ("Microsoft Windows [Version ...]") is kept.
+        assert_eq!(version, "Microsoft");
     }
 
     #[test]

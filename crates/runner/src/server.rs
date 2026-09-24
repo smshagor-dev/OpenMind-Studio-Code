@@ -198,6 +198,34 @@ mod tests {
     }
 
     #[test]
+    fn the_server_uses_whichever_php_the_runtime_manager_made_active() {
+        // The manager injects only the active version's folder, so the plan
+        // follows a switch from 8.4 to 8.3 with no other input.
+        let fx = fixture(true);
+        let older = fx
+            .dir
+            .path()
+            .join("runtimes")
+            .join("php")
+            .join("versions")
+            .join("8.3.35");
+        fs::create_dir_all(&older).expect("8.3 dir");
+        let name = if cfg!(windows) { "php.exe" } else { "php" };
+        fs::write(older.join(name), b"x").expect("php");
+        let root = fx.dir.path().join("site");
+        fs::create_dir_all(&root).expect("root");
+        let switched = RunEnvironment {
+            path_prepend: vec![older],
+            vars: vec![],
+        };
+
+        let plan = php_server_plan(&request(&root, 8000), &switched, None).expect("plan");
+
+        assert_eq!(plan.runtime_label, "OpenMind portable PHP 8.3.35");
+        assert!(plan.resolved.to_string_lossy().contains("8.3.35"));
+    }
+
+    #[test]
     fn privileged_or_zero_ports_are_refused() {
         assert!(validate_port(0).is_err());
         assert!(validate_port(80).is_err());

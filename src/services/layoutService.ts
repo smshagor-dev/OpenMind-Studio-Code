@@ -1,16 +1,9 @@
 import type { IpcClient } from "./ipc";
 
 /** The views the primary side bar can show, one per activity-bar icon. */
-export type SideView = "explorer" | "search" | "scm" | "debug" | "extensions" | "php";
+export type SideView = "explorer" | "search" | "scm" | "debug" | "extensions";
 
-export const SIDE_VIEWS: readonly SideView[] = [
-  "explorer",
-  "search",
-  "scm",
-  "debug",
-  "extensions",
-  "php",
-];
+export const SIDE_VIEWS: readonly SideView[] = ["explorer", "search", "scm", "debug", "extensions"];
 
 export interface LayoutState {
   sidebarVisible: boolean;

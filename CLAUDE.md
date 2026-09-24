@@ -382,15 +382,34 @@ internals.
   `[Run Code] <friendly command>`, `cwd:`, `runtime:`, `resolved:`. The dropdown's "Run Code" row prints
   the disabled reason as visible text (`showReason`), not just a tooltip.
   `RunCodeControls` (button/dropdown/status) and `RunConfigurationDialog` are UI-only.
-- `PhpServerService` (`phpServerService.ts`, Milestone 5.7) + `PhpServerView` (the PHP Server activity
-  bar view, `SideView` `php`) — document root and port (persisted as `php.server` in `editor_settings`),
-  the built-in server's lifecycle (`start`/`stop`/`restart`/`openBrowser`/`openLogs`), and PHP/Composer
-  rows read from `RuntimeService` (install/repair/delete go through it; Composer install is refused until
-  PHP is installed; PHP delete is refused while serving). Every button's enabled state and reason comes
-  from `startState()`/`stopState()`/... (pure `startAvailability`), and `php.*` commands use the same
-  predicates. Output goes to the "PHP Server" channel; a running server registers 127.0.0.1:<port> in
-  `PortsService` (source `php-server`) and unregisters on exit. Nothing starts on launch or on opening a
-  project. `PhpServerView` calls `runtime.initialize()/refresh()` on mount.
+- `PhpServerService` (`phpServerService.ts`, Milestone 5.7) + `PhpServerView` — document root and port
+  (persisted as `php.server` in `editor_settings`) and the built-in server's lifecycle (`start`/`stop`/
+  `restart`/`openBrowser`/`openLogs`). Every button's enabled state and reason comes from `startState()`/
+  `stopState()`/... (pure `startAvailability`), and `php.*` commands use the same predicates. Output goes
+  to the "PHP Server" channel; a running server registers 127.0.0.1:<port> in `PortsService` (source
+  `php-server`) and unregisters on exit. Nothing starts on launch or on opening a project.
+  **Separate window (5.7.1)**: the PHP Server is *not* a side bar view. The activity bar's PHP Server icon
+  (`php.openWindow`, also `view.showPhpServer`) calls `php_window_open`, which opens (or focuses) a second
+  native window labelled `php-server` (`capabilities/default.json` lists it) loading the same page;
+  `main.tsx` picks `PhpServerWindow` instead of `App` by the window label. Each window has its **own**
+  frontend container, so the backend is the single truth: `AppState.php_server_info` (URL, port, PHP version)
+  is read via `php_server_status`, `php:changed` (server started/ended) makes every window's
+  `PhpServerService.syncServer()` re-read it (the main window then registers the port in its Ports panel),
+  `php:event` output reaches both windows' Output, and `runtime:changed` (after any runtime
+  install/repair/switch/delete) makes every `RuntimeService` reload — so installing PHP in the PHP window
+  enables Run Code for `.php` in the main window. "Use Open Folder" asks the backend
+  (`workspaceActiveFolder`) for the main window's folder.
+- `PhpRuntimeService` (`phpRuntimeService.ts`) + `PhpRuntimeCards` (5.7.1) — the PHP and Composer version
+  manager inside the PHP Server window: the PHP card lists installed versions (active first) and the
+  available 8.0-8.4 lines (8.4 "recommended"), each row with Install / Set Active / Repair / Delete and its
+  reason; Composer shows its dependency on the active PHP (a notice when none is active) and can't be
+  installed before PHP; an update is only offered inside the same line (PHP 8.3.x -> 8.3.y, never 8.4).
+  A running server pins the PHP version it started with (`PhpServerService.versionInUse`, and the Rust
+  commands `runtime_delete`/`runtime_repair` refuse it too via `php_in_use_reason`), and after switching the
+  active PHP `restartNotice()` says "Restart the PHP server to use the new PHP version." (shown in both the
+  server section and the PHP card). Python, Node.js and Git are managed only in the Runtime Manager dialog;
+  the Extensions side bar view is still the empty state (a Runtime Extensions sidebar was built and then
+  removed at the user's request).
 - `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
   built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
@@ -713,11 +732,34 @@ migration file, check for stray running instances first, not just after somethin
   "Hello from PHP 8.4.26 via cli-server", listening on 127.0.0.1 only), the request log and port 8000
   appeared in Output/Ports, Open Browser opened it; Stop left no php process and freed the port; closing the
   app with the server running left no php/conhost; relaunch kept PHP/Composer, folder and port and did not
-  auto-start; Delete removed both installs; Registry User/Machine PATH unchanged. Known limitations: only
+  auto-start; Delete removed both installs; Registry User/Machine PATH unchanged. (Originally a side bar
+  view — moved into its own window in 5.7.1.) Known limitations: only
   NTS x64 Windows builds; PHP versions 8.4.26/8.3.35 only; the log excerpt in the panel shows the last 8
   lines (Open Logs shows all); no `composer install` button; no per-project PHP version; the panel doesn't
   detect that the server was started by something else on the same port until it re-checks.
   433 TypeScript tests, 298 Rust tests (+1 ignored).
+- [x] **Milestone 5.7.1** — PHP version matrix and the PHP Server window. PHP 8.0.30, 8.1.34, 8.2.34,
+  8.3.35 and 8.4.26 (default/recommended) are pinned (windows.php.net NTS x64, SHA256 from the official
+  `releases.json` and re-checked by downloading all five; each was started with its `php.ini` and all
+  seven extensions load cleanly). New: per-version `seedFiles` (8.0/8.1 have zip built in, so their
+  `php.ini` doesn't load `php_zip.dll`), manifest `features` for node/git/php/composer, the PHP Server
+  window (above), `PhpRuntimeService`, backend `php_server_status`/`php_window_open`/`php:changed`/
+  `runtime:changed`, the in-use guard on delete/repair, and a fix for the "System detected" version text
+  (`php --version` and Composer printed whole banners with ANSI codes: only the first word after the
+  prefix is kept now). A Runtime Extensions sidebar with Python/Node/Git/PHP/Composer cards was built and
+  verified, then removed on the user's instruction ("remove everything that was added there; PHP Server
+  opens in its own window"). Verified in the built app (fresh copy): the PHP Server icon opens a separate
+  native window; PHP 8.4.26 installed from it and Run Code for `index.php` in the *main* window became
+  enabled without a reload; "Use Open Folder" picked the main window's folder; the server started from the
+  PHP window served `index.php` on 127.0.0.1:8000 and appeared in the main window's Ports panel; earlier in
+  the same milestone (sidebar version, same backend) 8.4 -> 8.3 -> 8.4 switches were seen in `where.exe
+  php`/`php --version`, the restart notice appeared while the server ran, Restart moved it to the new PHP
+  (process path checked), deleting the PHP the server used was refused with a reason, `composer --version`
+  ran on the active PHP, and python/pip/git worked; closing the app with the server running left no
+  php/conhost; Registry PATH unchanged. Known limitations: only 8.4.26 was exercised through the UI
+  end-to-end after the move into the window (8.3 through the sidebar version); the PHP window isn't
+  restored on relaunch (open it again from the activity bar); Python/Node/Git are not in the PHP window.
+  462 TypeScript tests, 308 Rust tests (+1 ignored).
 - [ ] Milestone 6 — Git client (clone/commit/push/pull/branch/merge/rebase/stash/diff/blame).
 - [ ] Milestone 7 — LSP integration + auto-downloaded language servers.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.

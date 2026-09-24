@@ -248,6 +248,269 @@ async fn moving_the_app_folder_keeps_php_env_and_the_composer_launcher_working()
     assert!(ok && out.contains("composer.phar"), "{out}");
 }
 
+fn php_var(environment: &openmind_runtime_manager::RuntimeEnvironment) -> String {
+    environment
+        .vars
+        .iter()
+        .find(|(key, _)| key == "OPENMIND_PHP")
+        .map(|(_, value)| value.clone())
+        .expect("OPENMIND_PHP")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_first_php_is_active_and_switching_changes_php_the_terminal_and_composer_use() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let manager = manager_at(dir.path(), "app").await;
+    manager
+        .install("php", None, no_progress())
+        .await
+        .expect("php default");
+    manager
+        .install("php", Some("8.3.35"), no_progress())
+        .await
+        .expect("php 8.3");
+    manager
+        .install("composer", None, no_progress())
+        .await
+        .expect("composer");
+
+    // The recommended version was installed first, so it is the active one.
+    let before = manager.environment().await.expect("environment");
+    assert!(php_var(&before).contains("8.4.26"), "{}", php_var(&before));
+    assert!(before
+        .path_prepend
+        .iter()
+        .any(|dir| dir.ends_with("8.4.26")));
+    assert!(!before
+        .path_prepend
+        .iter()
+        .any(|dir| dir.ends_with("8.3.35")));
+
+    manager.set_active("php", "8.3.35").await.expect("switch");
+
+    // Only the newly active PHP is injected; Composer's launcher is untouched
+    // and finds PHP through OPENMIND_PHP, so it follows the switch.
+    let after = manager.environment().await.expect("environment");
+    assert!(php_var(&after).contains("8.3.35"), "{}", php_var(&after));
+    assert!(after.path_prepend.iter().any(|dir| dir.ends_with("8.3.35")));
+    assert!(!after.path_prepend.iter().any(|dir| dir.ends_with("8.4.26")));
+    let shims = after
+        .path_prepend
+        .iter()
+        .find(|dir| dir.to_string_lossy().contains("composer"))
+        .expect("composer shim dir")
+        .clone();
+    let php = fake_php(dir.path());
+    let (ok, out, _) = run_composer(&shims, Some(&php));
+    assert!(ok && out.contains("composer.phar"), "{out}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_the_active_php_promotes_the_other_and_leaves_no_stale_records_or_shims() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let manager = manager_at(dir.path(), "app").await;
+    manager
+        .install("php", None, no_progress())
+        .await
+        .expect("php default");
+    manager
+        .install("php", Some("8.3.35"), no_progress())
+        .await
+        .expect("php 8.3");
+    manager
+        .install("composer", None, no_progress())
+        .await
+        .expect("composer");
+
+    manager
+        .delete("php", "8.4.26")
+        .await
+        .expect("delete active");
+
+    let environment = manager.environment().await.expect("environment");
+    assert!(php_var(&environment).contains("8.3.35"));
+    let listed = manager.list().await.expect("list");
+    let php = listed.iter().find(|r| r.id == "php").expect("php");
+    assert_eq!(php.active_version.as_deref(), Some("8.3.35"));
+    assert_eq!(php.installed.len(), 1);
+    let runtimes = dir.path().join("app").join("runtimes");
+    assert!(!runtimes
+        .join("php")
+        .join("versions")
+        .join("8.4.26")
+        .exists());
+
+    // Deleting Composer removes its launcher folder and it stops being injected.
+    manager
+        .delete("composer", "2.10.3")
+        .await
+        .expect("composer");
+    assert!(!runtimes
+        .join("composer")
+        .join("shims")
+        .join("2.10.3")
+        .exists());
+    let after = manager.environment().await.expect("environment");
+    assert!(!after
+        .path_prepend
+        .iter()
+        .any(|dir| dir.to_string_lossy().contains("composer")));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn php_8_1_gets_its_own_ini_without_the_zip_extension() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let manager = manager_at(dir.path(), "app").await;
+    manager
+        .install("php", Some("8.1.34"), no_progress())
+        .await
+        .expect("php 8.1");
+    manager
+        .install("php", Some("8.2.34"), no_progress())
+        .await
+        .expect("php 8.2");
+
+    let versions = dir
+        .path()
+        .join("app")
+        .join("runtimes")
+        .join("php")
+        .join("versions");
+    let old = std::fs::read_to_string(versions.join("8.1.34").join("php.ini")).expect("8.1 ini");
+    let new = std::fs::read_to_string(versions.join("8.2.34").join("php.ini")).expect("8.2 ini");
+    assert!(!old.contains("extension=zip"), "{old}");
+    assert!(old.contains("extension=openssl"), "{old}");
+    assert!(new.contains("extension=zip"), "{new}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn path_injection_puts_each_runtimes_shims_before_its_own_folders_for_every_runtime() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let manager = full_manager(dir.path()).await;
+    for kind in ["python", "node", "git", "php", "composer"] {
+        manager
+            .install(kind, None, no_progress())
+            .await
+            .unwrap_or_else(|err| panic!("{kind}: {err}"));
+    }
+
+    let environment = manager.environment().await.expect("environment");
+    let position = |needle: &str| -> Vec<usize> {
+        environment
+            .path_prepend
+            .iter()
+            .enumerate()
+            .filter(|(_, dir)| dir.to_string_lossy().contains(needle))
+            .map(|(index, _)| index)
+            .collect()
+    };
+    for kind in ["python", "node", "git", "php", "composer"] {
+        assert!(
+            !position(&format!("runtimes\\{kind}\\")).is_empty(),
+            "{kind} is not on the injected PATH: {:?}",
+            environment.path_prepend
+        );
+    }
+    // Shims (pip, composer) always come before the version folders that hold
+    // tool-generated launchers with absolute paths.
+    let python_shims = position("python\\shims");
+    let python_bins = position("python\\versions");
+    assert!(
+        python_shims[0] < python_bins[0],
+        "{:?}",
+        environment.path_prepend
+    );
+    let composer_shims = position("composer\\shims");
+    assert_eq!(composer_shims.len(), 1);
+    // The PHP folder and the OPENMIND_PHP variable agree.
+    assert!(php_var(&environment).contains("runtimes\\php\\versions"));
+    assert!(environment
+        .vars
+        .iter()
+        .any(|(k, v)| k == "PYTHONNOUSERSITE" && v == "1"));
+}
+
+/// Every shipped runtime, installed from stand-in archives that hold exactly
+/// the files each manifest verifies.
+async fn full_manager(dir: &Path) -> RuntimeManager {
+    let mut manifests = Vec::new();
+    let mut downloads = HashMap::new();
+    for file in [
+        "python.json",
+        "node.json",
+        "git.json",
+        "php.json",
+        "composer.json",
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("manifests")
+            .join(file);
+        let mut json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("read")).expect("json");
+        let files: Vec<String> = json["verifyFiles"]
+            .as_array()
+            .expect("verifyFiles")
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+        for version in json["versions"].as_array_mut().expect("versions") {
+            for artifact in version["artifacts"].as_array_mut().expect("artifacts") {
+                let is_file = artifact["archive"] == "file";
+                let strip = artifact["stripComponents"].as_u64().unwrap_or(0) as usize;
+                let root = artifact["extractRoot"].as_str().map(str::to_string);
+                let bytes = if is_file {
+                    PHAR.to_vec()
+                } else {
+                    let mut names: Vec<String> = files.clone();
+                    // Files a manifest seeds itself (php.ini) are not in the archive.
+                    names.retain(|name| name != "php.ini");
+                    let prefix = format!(
+                        "{}{}",
+                        "w/".repeat(strip),
+                        root.map(|r| format!("{r}/")).unwrap_or_default()
+                    );
+                    zip_of(
+                        &names
+                            .iter()
+                            .map(|n| format!("{prefix}{n}"))
+                            .collect::<Vec<_>>(),
+                    )
+                };
+                artifact["sha256"] = serde_json::Value::String(hash_of(&bytes));
+                downloads.insert(artifact["url"].as_str().expect("url").to_string(), bytes);
+            }
+        }
+        manifests.push(RuntimeManifest::parse(&json.to_string()).expect("manifest"));
+    }
+    let db = Db::connect(&dir.join("db").join("test.db"))
+        .await
+        .expect("db");
+    RuntimeManager::new(
+        db,
+        RuntimePaths::new(
+            dir.join("app").join("runtimes"),
+            dir.join("app").join("cache"),
+        ),
+        RuntimeRegistry::from_manifests(manifests),
+        Arc::new(Server(downloads)),
+        "windows-x64",
+    )
+}
+
+fn zip_of(names: &[String]) -> Vec<u8> {
+    let mut buffer = Cursor::new(Vec::new());
+    {
+        let mut writer = zip::ZipWriter::new(&mut buffer);
+        let options = zip::write::SimpleFileOptions::default();
+        for name in names {
+            writer.start_file(name, options).expect("file");
+            writer.write_all(b"x").expect("data");
+        }
+        writer.finish().expect("finish");
+    }
+    buffer.into_inner()
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn deleting_php_stops_injecting_it_and_removes_its_folders() {
     let dir = tempfile::tempdir().expect("tempdir");

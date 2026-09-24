@@ -17,7 +17,7 @@ pub use display::{command_line, shell_command_line, ShellStyle};
 pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};
 pub use plan::{plan, RunPlan, RunRequest};
-pub use runtime::{RunEnvironment, RuntimeSource};
+pub use runtime::{portable_version, RunEnvironment, RuntimeSource};
 pub use server::{
     php_server_plan, port_is_free, server_url, validate_port, validate_root, PhpServerRequest,
     DEFAULT_PORT, LOOPBACK,

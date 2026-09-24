@@ -31,7 +31,6 @@ const VIEW_ITEMS: readonly ViewItem[] = [
   { view: "scm", label: "Source Control", shortcut: "Ctrl+Shift+G", icon: <SourceControlIcon /> },
   { view: "debug", label: "Run and Debug", shortcut: "Ctrl+Shift+D", icon: <DebugIcon /> },
   { view: "extensions", label: "Extensions", shortcut: "Ctrl+Shift+X", icon: <ExtensionsIcon /> },
-  { view: "php", label: "PHP Server", icon: <ServerIcon /> },
 ];
 
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
@@ -95,6 +94,17 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
             {item.icon}
           </button>
         ))}
+        <button
+          type="button"
+          className="activity-bar__item"
+          title="PHP Server (opens in its own window)"
+          aria-label="PHP Server"
+          onClick={() => {
+            container.run("php.openWindow");
+          }}
+        >
+          <ServerIcon />
+        </button>
         <button
           type="button"
           className="activity-bar__item"

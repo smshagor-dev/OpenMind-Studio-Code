@@ -88,6 +88,7 @@ export class RuntimeService {
   private state: RuntimeState = EMPTY;
   private readonly listeners = new Set<() => void>();
   private unsubscribe: (() => void) | null = null;
+  private unsubscribeChanged: (() => void) | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
@@ -123,11 +124,21 @@ export class RuntimeService {
     } catch (error) {
       this.events.emit("appError", { message: `Runtime progress unavailable: ${String(error)}` });
     }
+    try {
+      // A change made in another window (the PHP Server window) reloads this window's list too.
+      this.unsubscribeChanged = await this.ipc.onRuntimeChanged(() => {
+        void this.refresh();
+      });
+    } catch (error) {
+      this.events.emit("appError", { message: `Runtime changes unavailable: ${String(error)}` });
+    }
   }
 
   dispose(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.unsubscribeChanged?.();
+    this.unsubscribeChanged = null;
   }
 
   async refresh(): Promise<void> {

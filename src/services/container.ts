@@ -30,6 +30,7 @@ import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
+import { PhpRuntimeService } from "./phpRuntimeService";
 import { registerTerminalCommands } from "./terminalCommands";
 import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
@@ -79,15 +80,8 @@ const search = new SearchService(
   workspace,
 );
 
-const php = new PhpServerService(
-  tauriIpcClient,
-  events,
-  output,
-  runtime,
-  ports,
-  panel,
-  () => workspace.getActiveWorkspace()?.path ?? null,
-);
+const php = new PhpServerService(tauriIpcClient, events, output, runtime, ports, panel);
+const phpRuntime = new PhpRuntimeService(runtime, php);
 const runConfigs = new RunConfigurationService(tauriIpcClient);
 const runCode = new RunCodeService(
   tauriIpcClient,
@@ -254,7 +248,7 @@ registerEditorCommands({
   markdown,
 });
 registerRuntimeCommands(commands, events);
-registerPhpCommands(commands, php);
+registerPhpCommands(commands, php, tauriIpcClient);
 
 registerWorkbenchCommands({
   commands,
@@ -302,6 +296,7 @@ export const container = {
   runConfigs,
   ports,
   php,
+  phpRuntime,
   search,
   editorGroups,
   openEditors,

@@ -121,6 +121,10 @@ pub struct Feature {
 pub struct RuntimeVersion {
     pub version: String,
     pub artifacts: Vec<Artifact>,
+    /// Replaces the manifest's `seedFiles` for this version (PHP 8.0/8.1 have
+    /// zip built in, so their `php.ini` must not load `php_zip.dll`).
+    #[serde(default)]
+    pub seed_files: Vec<SeedFile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -267,6 +271,16 @@ impl RuntimeManifest {
             return bad("verifyFiles is empty, so an install could never be checked".into());
         }
         for version in &self.versions {
+            if version
+                .seed_files
+                .iter()
+                .any(|file| !is_safe_relative(&file.path))
+            {
+                return bad(format!(
+                    "{}: seedFiles paths must be relative paths inside the install",
+                    version.version
+                ));
+            }
             if !is_safe_component(&version.version) {
                 return bad(format!("\"{}\" is not a valid version", version.version));
             }

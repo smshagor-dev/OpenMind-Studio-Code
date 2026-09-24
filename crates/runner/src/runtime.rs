@@ -103,8 +103,9 @@ pub fn runtime_label(kind: RunnableKind, resolved: &ResolvedExecutable) -> Strin
     }
 }
 
-/// `runtimes/<kind>/versions/<version>/...` -> `<version>`.
-fn portable_version(path: &Path) -> Option<String> {
+/// `runtimes/<kind>/versions/<version>/...` -> `<version>` (public: the PHP
+/// server remembers which PHP it started with).
+pub fn portable_version(path: &Path) -> Option<String> {
     let parts: Vec<_> = path.components().collect();
     let index = parts
         .iter()

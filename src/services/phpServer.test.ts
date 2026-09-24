@@ -53,7 +53,6 @@ interface Rig {
   events: EventBus<AppEvents>;
   errors: string[];
   emit: (event: RunEvent) => void;
-  workspace: { path: string | null };
 }
 
 async function rig(
@@ -63,6 +62,9 @@ async function rig(
   let handler: (event: RunEvent) => void = () => undefined;
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue(runtimes),
+    workspaceActiveFolder: vi
+      .fn()
+      .mockResolvedValue({ id: 1, path: "C:/My Site", name: "My Site" }),
     onPhpEvent: vi.fn((h: typeof handler) => {
       handler = h;
       return Promise.resolve(() => undefined);
@@ -76,16 +78,7 @@ async function rig(
   const ports = new PortsService(ipc, events);
   const runtime = new RuntimeService(ipc, events, () => undefined);
   await runtime.refresh();
-  const workspace = { path: "C:/My Site" as string | null };
-  const php = new PhpServerService(
-    ipc,
-    events,
-    output,
-    runtime,
-    ports,
-    new PanelService(ipc),
-    () => workspace.path,
-  );
+  const php = new PhpServerService(ipc, events, output, runtime, ports, new PanelService(ipc));
   await php.initialize();
   return {
     php,
@@ -98,7 +91,6 @@ async function rig(
     emit: (e) => {
       handler(e);
     },
-    workspace,
   };
 }
 
@@ -136,7 +128,9 @@ describe("startAvailability", () => {
     expect(startAvailability({ ...ready, phpInstalled: false, root: null }).reason).toBe(
       "PHP runtime is not installed yet.",
     );
-    expect(startAvailability({ ...ready, phpHealthy: false }).reason).toContain("Repair PHP");
+    expect(startAvailability({ ...ready, phpHealthy: false }).reason).toContain(
+      "Runtime Extensions",
+    );
     expect(startAvailability({ ...ready, root: null }).reason).toBe(
       "Select a valid project folder first.",
     );
@@ -173,7 +167,6 @@ describe("PhpServerService", () => {
       enabled: false,
       reason: "PHP runtime is not installed yet.",
     });
-    expect(empty.php.installState("php")).toEqual({ enabled: true });
     expect(await empty.php.start()).toBe(false);
     expect(empty.ipc.phpServerStart).not.toHaveBeenCalled();
   });
@@ -198,11 +191,11 @@ describe("PhpServerService", () => {
   });
 
   it("Use Current Workspace needs an open folder", async () => {
-    r.workspace.path = null;
+    vi.mocked(r.ipc.workspaceActiveFolder).mockResolvedValue(null);
 
     expect(await r.php.useWorkspace()).toBe(false);
     expect(r.php.getState().root).toBeNull();
-    expect(r.php.getState().error).toContain("Open a folder");
+    expect(r.php.getState().error).toContain("No folder is open in the main window");
   });
 
   it("Select Folder stores the chosen folder and remembers it with the port", async () => {
@@ -299,6 +292,7 @@ describe("PhpServerService", () => {
         run: { runId: "php-1", file: "", pid: 1 },
         url: "http://127.0.0.1:8000",
         port: 8000,
+        phpVersion: null,
       });
     });
 
@@ -352,6 +346,7 @@ describe("PhpServerService", () => {
       run: { runId: "php-2", file: "", pid: 2 },
       url: "http://127.0.0.1:8000",
       port: 8000,
+      phpVersion: null,
     });
 
     expect(await r.php.restart()).toBe(true);
@@ -371,57 +366,98 @@ describe("PhpServerService", () => {
     expect(r.output.getState().selected).toBe(PHP_CHANNEL);
   });
 
-  it("Composer needs PHP first, shows its version, and PHP can't be deleted while serving", async () => {
-    const none = await rig([]);
-    expect(none.php.installState("composer")).toEqual({
-      enabled: false,
-      reason: "Install PHP first — Composer runs on it.",
-    });
-
+  it("shows Composer's installed version", async () => {
     const both = await rig([
       status("php", [version("8.4.26")]),
       status("composer", [version("2.10.3")]),
     ]);
     expect(both.php.component("composer")).toMatchObject({ state: "installed", version: "2.10.3" });
-    expect(both.php.installState("composer").reason).toBe("Composer is already installed.");
-    expect(both.php.deleteState("composer")).toEqual({ enabled: true });
-
-    await both.php.useWorkspace();
-    await both.php.start();
-    expect(both.php.deleteState("php")).toEqual({
-      enabled: false,
-      reason: "Stop the server before deleting PHP.",
-    });
   });
 
-  it("a damaged PHP offers Repair, refuses Start, and keeps the install button off", async () => {
+  it("a running server pins the PHP version it started with: no delete/repair of it, and a notice after a switch", async () => {
+    const both = await rig([
+      status("php", [version("8.4.26"), version("8.3.35", { active: false })]),
+    ]);
+    vi.mocked(both.ipc.phpServerStart).mockResolvedValue({
+      run: { runId: "php-1", file: "", pid: 1 },
+      url: "http://127.0.0.1:8000",
+      port: 8000,
+      phpVersion: "8.4.26",
+    });
+    await both.php.useWorkspace();
+    await both.php.start();
+
+    expect(both.php.getState().server?.phpVersion).toBe("8.4.26");
+    expect(both.php.versionInUse("php", "8.4.26")?.reason).toBe(
+      "The PHP server is running on PHP 8.4.26. Stop the server first.",
+    );
+    expect(both.php.versionInUse("php", "8.3.35")).toBeNull();
+    expect(both.php.versionInUse("composer", "8.4.26")).toBeNull();
+    expect(both.php.restartNotice()).toBeNull();
+
+    // The user makes 8.3 the active PHP while the server keeps running on 8.4.
+    vi.mocked(both.ipc.runtimeList).mockResolvedValue([
+      status("php", [version("8.4.26", { active: false }), version("8.3.35", { active: true })]),
+    ]);
+    await both.runtime.refresh();
+
+    expect(both.php.restartNotice()).toContain(
+      "Restart the PHP server to use the new PHP version.",
+    );
+    expect(both.php.restartNotice()).toContain("PHP 8.3.35 is now active");
+
+    // Stopping clears both.
+    both.emit({ runId: "php-1", type: "exited", code: null, durationMs: 1, stopped: true });
+    expect(both.php.restartNotice()).toBeNull();
+    expect(both.php.versionInUse("php", "8.4.26")).toBeNull();
+  });
+
+  it("a damaged PHP refuses Start (pointing at Runtime Extensions) and keeps the install button off", async () => {
     const damaged = await rig([status("php", [version("8.4.26", { healthy: false })])]);
     await damaged.php.useWorkspace();
 
     expect(damaged.php.component("php").state).toBe("needsRepair");
-    expect(damaged.php.repairState("php")).toEqual({ enabled: true });
-    expect(damaged.php.startState().reason).toContain("Repair PHP");
-    expect(damaged.php.installState("php").enabled).toBe(false);
+    expect(damaged.php.startState().reason).toContain("repair it");
   });
 
-  it("install/repair/delete go through the Runtime Manager", async () => {
-    const empty = await rig([]);
-    vi.mocked(empty.ipc.runtimeInstall).mockResolvedValue(undefined as never);
-    const install = vi.spyOn(empty.runtime, "install").mockResolvedValue(true);
-    await empty.php.install("php");
-    expect(install).toHaveBeenCalledWith("php", null);
+  it("adopts a server another window started, and drops it when the backend says it ended", async () => {
+    const other = await rig(PHP_INSTALLED);
+    vi.mocked(other.ipc.phpServerStatus).mockResolvedValue({
+      run: { runId: "php-9", file: "", pid: 9 },
+      url: "http://127.0.0.1:8123",
+      port: 8123,
+      phpVersion: "8.4.26",
+    });
 
-    const repair = vi.spyOn(r.runtime, "repair").mockResolvedValue(true);
-    const remove = vi.spyOn(r.runtime, "remove").mockResolvedValue(true);
-    await r.php.repair("php");
-    await r.php.remove("php");
-    expect(repair).toHaveBeenCalledWith("php", "8.4.26");
-    expect(remove).toHaveBeenCalledWith("php", "8.4.26");
+    await other.php.syncServer();
+
+    expect(other.php.getState().server).toMatchObject({ runId: "php-9", port: 8123 });
+    expect(other.ports.list()).toEqual([expect.objectContaining({ port: 8123 })]);
+    expect(other.php.stopState()).toEqual({ enabled: true });
+
+    vi.mocked(other.ipc.phpServerStatus).mockResolvedValue(null);
+    await other.php.syncServer();
+
+    expect(other.php.getState().server).toBeNull();
+    expect(other.ports.list()).toEqual([]);
+  });
+
+  it("reads a server that is already running when the window opens", async () => {
+    const opened = await rig(PHP_INSTALLED, {
+      phpServerStatus: vi.fn().mockResolvedValue({
+        run: { runId: "php-3", file: "", pid: 3 },
+        url: "http://127.0.0.1:8000",
+        port: 8000,
+        phpVersion: "8.3.35",
+      }),
+    });
+
+    expect(opened.php.getState().server).toMatchObject({ runId: "php-3", phpVersion: "8.3.35" });
   });
 
   it("the commands are enabled exactly when the panel's buttons are", async () => {
     const commands = new CommandRegistry();
-    registerPhpCommands(commands, r.php);
+    registerPhpCommands(commands, r.php, r.ipc);
     expect(commands.isEnabled("php.startServer")).toBe(false);
     expect(commands.isEnabled("php.openLogs")).toBe(true);
 

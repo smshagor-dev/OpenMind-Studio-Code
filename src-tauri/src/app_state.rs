@@ -37,4 +37,6 @@ pub struct AppState {
     pub runner: RunRegistry,
     /// The PHP built-in server (at most one), its own registry so its events never look like a Run Code run.
     pub php_server: RunRegistry,
+    /// The running built-in server (URL, port, PHP version) — the one truth both windows read.
+    pub php_server_info: std::sync::Mutex<Option<crate::commands::php::PhpServerInfo>>,
 }

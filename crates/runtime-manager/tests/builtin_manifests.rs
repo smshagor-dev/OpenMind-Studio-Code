@@ -20,6 +20,102 @@ fn every_builtin_artifact_is_https_with_a_full_sha256() {
 }
 
 #[test]
+fn php_offers_every_minor_line_from_8_0_to_8_4_with_8_4_as_the_default() {
+    let registry = RuntimeRegistry::builtin();
+    let php = registry.get("php").expect("php");
+
+    let versions = php.versions_for("windows-x64");
+    for minor in ["8.0.", "8.1.", "8.2.", "8.3.", "8.4."] {
+        assert!(
+            versions.iter().any(|v| v.starts_with(minor)),
+            "PHP {minor}x is missing: {versions:?}"
+        );
+    }
+    assert!(
+        php.default_version.starts_with("8.4."),
+        "{}",
+        php.default_version
+    );
+    assert_eq!(
+        versions.first().copied(),
+        Some(php.default_version.as_str()),
+        "the recommended version is listed first"
+    );
+}
+
+#[test]
+fn every_php_version_is_an_official_https_nts_x64_download_with_a_checksum() {
+    let registry = RuntimeRegistry::builtin();
+    let php = registry.get("php").expect("php");
+    for version in &php.versions {
+        let artifact = php
+            .artifact(&version.version, "windows-x64")
+            .expect("windows artifact");
+        assert!(
+            artifact
+                .url
+                .starts_with("https://downloads.php.net/~windows/releases/"),
+            "{}",
+            artifact.url
+        );
+        assert!(artifact.url.contains("-nts-Win32-"), "{}", artifact.url);
+        assert!(artifact.url.ends_with("-x64.zip"), "{}", artifact.url);
+        assert!(
+            artifact.url.contains(&format!("php-{}-", version.version)),
+            "{}",
+            artifact.url
+        );
+        assert_eq!(artifact.sha256.len(), 64, "{}", version.version);
+        assert!(artifact.size_bytes.is_some(), "{}", version.version);
+    }
+}
+
+#[test]
+fn php_8_0_and_8_1_do_not_load_a_zip_dll_they_do_not_have() {
+    let registry = RuntimeRegistry::builtin();
+    let php = registry.get("php").expect("php");
+    let ini_for = |version: &str| {
+        let entry = php
+            .versions
+            .iter()
+            .find(|v| v.version.starts_with(version))
+            .expect("version");
+        entry
+            .seed_files
+            .first()
+            .or_else(|| php.seed_files.first())
+            .expect("php.ini")
+            .content
+            .clone()
+    };
+    for old in ["8.0.", "8.1."] {
+        assert!(!ini_for(old).contains("extension=zip"), "{old}");
+    }
+    for current in ["8.2.", "8.3.", "8.4."] {
+        assert!(ini_for(current).contains("extension=zip"), "{current}");
+    }
+}
+
+#[test]
+fn every_runtime_declares_features_so_its_card_can_show_real_status() {
+    let registry = RuntimeRegistry::builtin();
+    let ids = |runtime: &str| -> Vec<String> {
+        registry
+            .get(runtime)
+            .expect(runtime)
+            .features
+            .iter()
+            .map(|f| f.id.clone())
+            .collect()
+    };
+    assert_eq!(ids("python"), ["pip", "venv"]);
+    assert_eq!(ids("node"), ["npm", "npx"]);
+    assert_eq!(ids("git"), ["git"]);
+    assert_eq!(ids("php"), ["cli", "server", "ini"]);
+    assert_eq!(ids("composer"), ["phar"]);
+}
+
+#[test]
 fn python_is_the_nuget_distribution_with_relocatable_pip_and_venv() {
     let registry = RuntimeRegistry::builtin();
     let python = registry.get("python").expect("python");

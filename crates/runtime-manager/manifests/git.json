@@ -7,6 +7,9 @@
   "binDirs": ["cmd"],
   "verifyFiles": ["cmd/git.exe"],
   "env": {},
+  "features": [
+    { "id": "git", "label": "git CLI", "verifyFile": "cmd/git.exe", "missingNote": "git.exe isn't in this install. Use Repair to reinstall it." }
+  ],
   "notes": "MinGit from the git-for-windows GitHub release; SHA256 from the release asset digest. MinGit has no bash or GUI.",
   "versions": [
     {

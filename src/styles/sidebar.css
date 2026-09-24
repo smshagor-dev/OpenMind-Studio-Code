@@ -568,3 +568,187 @@
   overflow-wrap: anywhere;
   font-size: 11px;
 }
+
+.ext-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 16px;
+  min-height: 0;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.ext-view__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.ext-view__card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.ext-view__card-head h3,
+.ext-view__detail-title {
+  margin: 0;
+  font-size: 13px;
+}
+
+.ext-view__section {
+  margin: 8px 0 0;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.ext-view__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.ext-view__facts dt,
+.ext-view__label,
+.ext-view__hint {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.ext-view__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ext-view__hint {
+  margin: 0;
+}
+
+.ext-view__features,
+.ext-view__versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.ext-view__versions {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.ext-view__feature--off {
+  color: var(--fg-muted);
+}
+
+.ext-view__version {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.ext-view__version-head,
+.ext-view__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.ext-view__badge {
+  padding: 0 6px;
+  border-radius: 8px;
+  background-color: var(--button-secondary-bg);
+  font-size: 10px;
+}
+
+.ext-view__badge--active,
+.ext-view__badge--installed {
+  background-color: #2d6a3a;
+  color: #fff;
+}
+
+.ext-view__badge--needs-repair {
+  background-color: #8a6d00;
+  color: #fff;
+}
+
+.ext-view__badge--recommended {
+  background-color: var(--button-bg);
+  color: #fff;
+}
+
+.ext-view__button {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 2px;
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-fg, var(--fg));
+  cursor: pointer;
+}
+
+.ext-view__button:hover:not(:disabled) {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.ext-view__button--primary {
+  background-color: var(--button-bg);
+  color: var(--button-fg, #fff);
+}
+
+.ext-view__button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ext-view__reason {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+.ext-view__error {
+  color: var(--danger-fg, #f48771);
+  overflow-wrap: anywhere;
+}
+
+.ext-view__notice,
+.ext-view__dependency--bad {
+  color: var(--warning-fg, #cca700);
+}
+
+.ext-view__progress {
+  color: var(--accent-fg, #3794ff);
+}
+
+.php-view__notice {
+  color: var(--warning-fg, #cca700);
+}
+
+.php-window {
+  height: 100%;
+  overflow: auto;
+}
+
+.php-window .php-view {
+  max-width: 640px;
+  margin: 0 auto;
+  height: auto;
+  overflow: visible;
+  font-size: 13px;
+}
+
+.php-window .ext-view--embedded {
+  padding: 0;
+}

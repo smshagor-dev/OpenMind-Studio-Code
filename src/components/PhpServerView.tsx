@@ -1,8 +1,9 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { Availability } from "../services/runtimeService";
-import { PHP_CHANNEL, type ComponentView, type StackComponent } from "../services/phpServerService";
+import { PHP_CHANNEL } from "../services/phpServerService";
+import { PhpRuntimeCards } from "./PhpRuntimeCards";
 
 /** Components that are part of the plan but not built — listed honestly, with the reason. */
 const PLANNED = [
@@ -60,61 +61,9 @@ function Action(props: {
   );
 }
 
-function ComponentRow({ view }: { view: ComponentView }) {
-  const php = usePhp();
-  const id: StackComponent = view.id;
-  const status =
-    view.state === "notInstalled"
-      ? "Not installed"
-      : view.state === "needsRepair"
-        ? `Needs repair${view.version ? ` (${view.version})` : ""}`
-        : `Installed${view.version ? ` — ${view.version}` : ""}`;
-  return (
-    <div className="php-view__component">
-      <div className="php-view__component-head">
-        <strong>{view.label}</strong>
-        <span className={`php-view__status php-view__status--${view.state}`}>{status}</span>
-      </div>
-      {view.working ? (
-        <div className="php-view__progress" role="status">
-          {view.progressLabel ?? "Working…"}
-        </div>
-      ) : null}
-      {view.error ? <div className="php-view__error">{view.error}</div> : null}
-      <div className="php-view__row">
-        <Action
-          label={`Install ${view.label}`}
-          availability={php.installState(id)}
-          primary
-          onClick={() => {
-            void php.install(id);
-          }}
-        />
-        {id === "php" ? (
-          <Action
-            label="Repair PHP"
-            availability={php.repairState(id)}
-            onClick={() => {
-              void php.repair(id);
-            }}
-          />
-        ) : null}
-        <Action
-          label={`Delete ${view.label}`}
-          availability={php.deleteState(id)}
-          onClick={() => {
-            void php.remove(id);
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
 function ProjectSection() {
   const php = usePhp();
   const { root } = php.getState();
-  const workspace = container.workspace.getActiveWorkspace();
   return (
     <section className="php-view__section" aria-label="Project">
       <h3>Project</h3>
@@ -128,13 +77,12 @@ function ProjectSection() {
         <button
           type="button"
           className="php-view__button"
-          disabled={workspace === null}
-          title={workspace === null ? "Open a folder first." : "Serve the open workspace folder"}
+          title="Serve the folder that is open in the main editor window"
           onClick={() => {
             void php.useWorkspace();
           }}
         >
-          Use Current Workspace
+          Use Open Folder
         </button>
         <button
           type="button"
@@ -283,6 +231,11 @@ function ServerSection() {
           {start.reason}
         </div>
       ) : null}
+      {php.restartNotice() ? (
+        <div className="php-view__notice" role="status">
+          {php.restartNotice()}
+        </div>
+      ) : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
     </section>
   );
@@ -306,24 +259,19 @@ function LogsSection() {
 }
 
 /**
- * The PHP Server side bar view: document root, runtime status for PHP and
- * Composer (installed through the Runtime Manager), the built-in server's
- * controls, its port, and its recent log. UI only — every decision and
- * disabled reason comes from `PhpServerService`.
+ * The PHP Server screen (shown in its own window): document root, PHP and
+ * Composer versions (installed through the Runtime Manager), the built-in
+ * server's controls, its port, and its recent log. UI only — every decision
+ * and disabled reason comes from `PhpServerService` / `PhpRuntimeService`.
  */
 export function PhpServerView() {
-  const php = usePhp();
-  useEffect(() => {
-    void container.runtime.initialize();
-    void container.runtime.refresh();
-  }, []);
+  usePhp();
   return (
     <div className="php-view">
       <ProjectSection />
-      <section className="php-view__section" aria-label="Runtime Status">
-        <h3>Runtime Status</h3>
-        <ComponentRow view={php.component("php")} />
-        <ComponentRow view={php.component("composer")} />
+      <section className="php-view__section" aria-label="PHP and Composer">
+        <h3>PHP and Composer</h3>
+        <PhpRuntimeCards />
         {PLANNED.map((item) => (
           <div
             key={item.label}

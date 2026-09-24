@@ -7,6 +7,9 @@
   "binDirs": [],
   "verifyFiles": ["composer.phar"],
   "env": {},
+  "features": [
+    { "id": "phar", "label": "Composer PHAR", "verifyFile": "composer.phar", "missingNote": "composer.phar isn't in this install. Use Repair to reinstall it." }
+  ],
   "shims": [
     { "name": "composer", "target": "composer.phar", "viaEnv": "OPENMIND_PHP" }
   ],
