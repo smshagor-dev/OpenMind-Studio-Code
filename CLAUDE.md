@@ -1054,7 +1054,7 @@ migration file, check for stray running instances first, not just after somethin
   (4 before, 0 after), Registry User/Machine PATH identical. Also fixed: the stuck "Loading…" hover for CSS (see
   `monacoBuiltins.ts`). Not verified by hand: that a file outside the open folder starts no server (covered by the
   `outsideWorkspace` backend check and unit tests); JSON/CSS/HTML rename/format. The test folders `E:\omlsp` and `E:\omlsp2`
-  (and the temporary worktree `E:\wt7`, target `E:\wt7-target`) are left on disk for manual deletion.
+  (and the build cache `E:\wt7-target`) are left on disk for manual deletion; the temporary worktree `E:\wt7` was removed.
 - [ ] Milestone 8 — Debug Adapter Protocol integration.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 10 — Extension system (sandboxed, contributes commands/views/themes/...).
