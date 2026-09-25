@@ -15,6 +15,7 @@ pub mod server;
 pub mod session;
 pub mod stack;
 pub mod template;
+pub mod webroot;
 
 pub use display::{command_line, shell_command_line, ShellStyle};
 pub use error::RunError;
@@ -34,6 +35,7 @@ pub use stack::{
     AdminAction, ComposerAction, MariaDbPaths, MARIADB_DEFAULT_PORT, MARIADB_USER,
     PHPMYADMIN_DEFAULT_PORT,
 };
+pub use webroot::{ensure_web_root, WEB_ROOT_DIR};
 
 #[cfg(test)]
 mod tests;

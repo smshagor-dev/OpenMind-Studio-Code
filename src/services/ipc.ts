@@ -363,6 +363,10 @@ export interface IpcClient {
   /** Opens the PHP Server window (or brings it to the front). */
   phpWindowOpen: () => Promise<void>;
   phpPortFree: (port: number) => Promise<boolean>;
+  /** The default web root (`<app>/htdocs`), created with a start page if needed. */
+  phpWebRoot: () => Promise<string>;
+  /** Opens a new, empty editor window (File > New Window); resolves to its label. */
+  windowNew: () => Promise<string>;
   // Control-panel buttons of the PHP Server window
   /** A module's config file, or `null` while it doesn't exist. */
   panelConfigPath: (module: PanelModule) => Promise<string | null>;
@@ -400,8 +404,6 @@ export interface IpcClient {
   fileWatchStop: () => Promise<void>;
   onFsChanged: (handler: (batch: FsChangeBatch) => void) => Promise<() => void>;
 
-  // Source Control (Git). The repository is always the open workspace's; only repo-relative file names are sent.
-  gitSnapshot: () => Promise<GitSnapshot>;
   // Language servers. The backend picks the server by file type and only serves files inside the open workspace.
   lspStatus: () => Promise<LspSnapshot>;
   lspInstall: (server: string) => Promise<void>;
@@ -416,6 +418,8 @@ export interface IpcClient {
   onLspLog: (handler: (event: LspLogEvent) => void) => Promise<() => void>;
   onLspChanged: (handler: () => void) => Promise<() => void>;
 
+  // Source Control (Git). The repository is always the open workspace's; only repo-relative file names are sent.
+  gitSnapshot: () => Promise<GitSnapshot>;
   gitInit: () => Promise<void>;
   gitStage: (paths: string[]) => Promise<void>;
   gitStageAll: () => Promise<void>;
@@ -878,6 +882,8 @@ export const tauriIpcClient: IpcClient = {
   phpServerStatus: () => invoke<PhpServerInfo | null>("php_server_status"),
   phpWindowOpen: () => invoke("php_window_open"),
   phpPortFree: (port) => invoke<boolean>("php_port_free", { port }),
+  phpWebRoot: () => invoke<string>("php_web_root"),
+  windowNew: () => invoke<string>("window_new"),
   panelConfigPath: (module) => invoke<string | null>("panel_config_path", { kind: module }),
   panelOpenFile: (path) => invoke("panel_open_file", { path }),
   panelOpenFolder: (path) => invoke("panel_open_folder", { path }),
@@ -889,9 +895,6 @@ export const tauriIpcClient: IpcClient = {
     listen<FsChangeBatch>("fs:changed", (event) => {
       handler(event.payload);
     }),
-  gitSnapshot: () => invoke<GitSnapshot>("git_snapshot"),
-  gitInit: () => invoke("git_init"),
-  gitStage: (paths) => invoke("git_stage", { paths }),
   lspStatus: () => invoke<LspSnapshot>("lsp_status"),
   lspInstall: (server) => invoke("lsp_install", { server }),
   lspSyncDocument: (path, text) => invoke<LspSyncOutcome>("lsp_sync_document", { path, text }),
@@ -913,6 +916,9 @@ export const tauriIpcClient: IpcClient = {
     listen("lsp:changed", () => {
       handler();
     }),
+  gitSnapshot: () => invoke<GitSnapshot>("git_snapshot"),
+  gitInit: () => invoke("git_init"),
+  gitStage: (paths) => invoke("git_stage", { paths }),
   gitStageAll: () => invoke("git_stage_all"),
   gitUnstage: (paths) => invoke("git_unstage", { paths }),
   gitUnstageAll: () => invoke("git_unstage_all"),

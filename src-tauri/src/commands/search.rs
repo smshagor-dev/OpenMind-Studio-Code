@@ -12,15 +12,13 @@ use crate::app_state::AppState;
 pub async fn search_run(
     search_id: String,
     query: SearchQuery,
+    window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<SearchOutcome, String> {
-    let workspace = state
-        .workspace_folder
-        .active_workspace()
-        .await
-        .map_err(|err| err.to_string())?
+    let workspace = crate::windows::window_workspace(&state, window.label())
+        .await?
         .ok_or_else(|| "Open a folder to search in it.".to_string())?;
-    // Only the open workspace can be searched, whatever path the UI sent.
+    // Only the calling window's folder can be searched, whatever path the UI sent.
     openmind_fs::ensure_within_root(Path::new(&workspace.path), &query.root)
         .map_err(|err| err.to_string())?;
 

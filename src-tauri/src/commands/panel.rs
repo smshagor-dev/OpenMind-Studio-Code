@@ -69,7 +69,7 @@ fn spawn_editor(file: &Path) -> std::io::Result<()> {
 pub fn panel_open_folder(path: String) -> Result<(), String> {
     let dir = PathBuf::from(&path);
     if !dir.is_dir() {
-        return Err("Select a valid project folder first.".into());
+        return Err("Select a valid folder first.".into());
     }
     let program = if cfg!(windows) {
         "explorer.exe"

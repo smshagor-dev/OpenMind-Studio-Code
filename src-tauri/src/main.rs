@@ -3,7 +3,9 @@
 mod app_state;
 mod commands;
 mod secret;
+mod tray;
 mod window_events;
+mod windows;
 
 use openmind_core::AppPaths;
 use openmind_db::Db;
@@ -76,6 +78,8 @@ fn main() {
             commands::php::php_server_stop,
             commands::php::php_server_status,
             commands::php::php_window_open,
+            commands::php::php_web_root,
+            windows::window_new,
             commands::database::mariadb_status,
             commands::database::mariadb_credentials,
             commands::database::mariadb_initialize,
@@ -92,8 +96,6 @@ fn main() {
             commands::document::document_read,
             commands::watch::watch_start,
             commands::watch::watch_stop,
-            commands::git::git_snapshot,
-            commands::git::git_init,
             commands::lsp::lsp_status,
             commands::lsp::lsp_install,
             commands::lsp::lsp_sync_document,
@@ -103,6 +105,8 @@ fn main() {
             commands::lsp::lsp_stop,
             commands::lsp::lsp_stop_all,
             commands::lsp::lsp_set_verbose,
+            commands::git::git_snapshot,
+            commands::git::git_init,
             commands::git::git_stage,
             commands::git::git_stage_all,
             commands::git::git_unstage,
@@ -189,9 +193,10 @@ fn main() {
                 pma_info: std::sync::Mutex::new(None),
                 composer: RunRegistry::new(),
                 git: openmind_git::GitRegistry::default(),
-                file_watch: std::sync::Mutex::new(None),
-                window_states: window_state_service.clone(),
                 lsp: commands::lsp::new_manager(app.handle().clone(), &app_paths.logs_dir),
+                file_watch: std::sync::Mutex::new(std::collections::HashMap::new()),
+                editor_windows: crate::windows::EditorWindows::default(),
+                window_states: window_state_service.clone(),
                 app_root: app_paths.root_dir.clone(),
                 terminal: TerminalRegistry::new(),
                 recent_files: RecentFilesService::new(db.clone()),

@@ -20,6 +20,7 @@ export interface Keybinding {
 export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   // File
   { key: "Ctrl+N", command: "file.new", owner: "app" },
+  { key: "Ctrl+Shift+N", command: "workbench.newWindow", owner: "app" },
   { key: "Ctrl+O", command: "file.open", owner: "app" },
   { key: "Ctrl+Shift+O", command: "file.openFolder", owner: "app" },
   { key: "Ctrl+Shift+T", command: "file.reopenClosed", owner: "app" },
@@ -59,6 +60,7 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "F1", command: "workbench.commandPalette", owner: "app" },
   { key: "F11", command: "view.toggleFullScreen", owner: "app" },
   { key: "Ctrl+B", command: "view.toggleSidebar", owner: "app" },
+  { key: "Ctrl+Alt+B", command: "view.toggleSecondarySidebar", owner: "app" },
   { key: "Ctrl+J", command: "view.togglePanel", owner: "app" },
   { key: "Ctrl+=", command: "view.zoomIn", owner: "app" },
   { key: "Ctrl+-", command: "view.zoomOut", owner: "app" },

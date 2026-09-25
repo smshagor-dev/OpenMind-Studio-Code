@@ -1,14 +1,9 @@
 import * as monaco from "monaco-editor";
 
+import { defineMonacoThemes, MONACO_THEME_MAP } from "../editor/monacoThemes";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, ThemeKind } from "./ipc";
-
-/** Foundation-level theme selection: the two Monaco ships built in. */
-const MONACO_THEME_MAP: Record<ThemeKind, string> = {
-  dark: "vs-dark",
-  light: "vs",
-};
 
 export class ThemeService {
   private current: ThemeKind = "dark";
@@ -45,6 +40,7 @@ export class ThemeService {
   }
 
   private apply(): void {
-    monaco.editor.setTheme(MONACO_THEME_MAP[this.current]);
+    defineMonacoThemes();
+    monaco.editor.setTheme(MONACO_THEME_MAP[this.current] ?? "openmind-dark");
   }
 }

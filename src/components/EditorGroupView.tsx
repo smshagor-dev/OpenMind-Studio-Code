@@ -6,13 +6,10 @@ import { Breadcrumbs } from "./Breadcrumbs";
 import { ExternalChangeBanner } from "./ExternalChangeBanner";
 import { EditorHeaderActions } from "./EditorHeaderActions";
 import { MarkdownPreview } from "./MarkdownPreview";
-import { StartPage } from "./StartPage";
 import { TabBar } from "./TabBar";
-
-const MONACO_THEME_MAP: Record<string, string> = {
-  dark: "vs-dark",
-  light: "vs",
-};
+import { useWelcome } from "./useWelcome";
+import { EditorWatermark, WelcomeContent, WelcomeTab } from "./WelcomeEditor";
+import { MONACO_THEME_MAP } from "../editor/monacoThemes";
 
 interface EditorGroupViewProps {
   group: GroupView;
@@ -35,6 +32,8 @@ interface EditorGroupViewProps {
 export function EditorGroupView(props: EditorGroupViewProps) {
   const { group, active } = props;
   const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? null;
+  const welcome = useWelcome();
+  const welcomeTab = props.showWelcome && group.tabs.length === 0 && welcome.open;
   return (
     <main
       className={active ? "editor-group editor-group--active" : "editor-group"}
@@ -45,6 +44,7 @@ export function EditorGroupView(props: EditorGroupViewProps) {
       }}
     >
       <div className="editor-group__header">
+        {welcomeTab ? <WelcomeTab /> : null}
         <TabBar
           tabs={group.tabs}
           activeId={group.activeTabId}
@@ -88,23 +88,7 @@ function GroupContent({
     return (
       <div className="editor-group__content">
         {showWelcome ? (
-          <StartPage
-            recentFiles={recents.files}
-            recentFolders={recents.folders}
-            pinnedFolders={recents.pinnedFolders}
-            onNewFile={() => {
-              container.run("file.new");
-            }}
-            onOpenFile={() => {
-              container.run("file.open");
-            }}
-            onOpenFolder={() => {
-              container.run("file.openFolder");
-            }}
-            onOpenRecentFile={(path) => void container.workspace.openPath(path)}
-            onOpenRecentFolder={(path) => void container.workspace.openFolder(path)}
-            onUnpinFolder={(path) => void container.workspace.unpinFolder(path)}
-          />
+          <EmptyFirstGroup recents={recents} />
         ) : (
           <p className="editor-group__empty">Open a file to show it in this group.</p>
         )}
@@ -122,7 +106,7 @@ function GroupContent({
     <div className="editor-group__content">
       <MonacoHost
         model={container.buffers.get(docId) ?? null}
-        theme={MONACO_THEME_MAP[themeKind] ?? "vs-dark"}
+        theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
         onEditorMounted={(editor) => {
           const detach = container.editor.attach(editor);
           const focus = editor.onDidFocusEditorWidget(() => {
@@ -136,4 +120,10 @@ function GroupContent({
       />
     </div>
   );
+}
+
+/** The only group with nothing open: the Welcome tab's page, or the watermark once it is closed. */
+function EmptyFirstGroup({ recents }: { recents: Recents }) {
+  const welcome = useWelcome();
+  return welcome.open ? <WelcomeContent recents={recents} /> : <EditorWatermark />;
 }

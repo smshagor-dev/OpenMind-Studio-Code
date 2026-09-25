@@ -1,0 +1,477 @@
+/*
+ * The window frame of VS Code's current default look: a dark frame with the
+ * activity bar + side bar, the editor area and the panel as separate rounded
+ * cards 4px apart. Loaded last, so these rules win over the older flat layout.
+ */
+
+.workbench {
+  background-color: var(--frame-bg);
+}
+
+.workbench__body {
+  gap: 4px;
+  padding: 0 4px 4px;
+}
+
+/* Activity bar and side bar share one card. */
+.workbench__side {
+  flex: 0 0 auto;
+  display: flex;
+  min-height: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background-color: var(--sidebar-bg);
+  overflow: hidden;
+}
+
+.workbench__body--sidebar-right .workbench__side {
+  flex-direction: row-reverse;
+}
+
+.workbench__main {
+  gap: 4px;
+  background: transparent;
+}
+
+.editor-area {
+  position: relative;
+  border: 1px solid var(--editor-card-border);
+  border-radius: var(--card-radius);
+  background-color: var(--editor-bg);
+  overflow: hidden;
+}
+
+.terminal-panel {
+  border: 1px solid var(--editor-card-border);
+  border-radius: var(--card-radius);
+  background-color: var(--panel-bg);
+  overflow: hidden;
+}
+
+/* Like VS Code, an unfocused window's frame and gaps turn editor-dark. */
+.workbench--inactive {
+  --frame-bg: var(--frame-inactive-bg);
+}
+
+/* --- Title bar --- */
+
+.titlebar {
+  height: 35px;
+  background-color: var(--frame-bg);
+}
+
+.titlebar__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 6px 0 4px;
+}
+
+.titlebar__action:disabled {
+  color: var(--fg-disabled);
+  cursor: default;
+}
+
+.titlebar__action:disabled:hover {
+  background: transparent;
+}
+
+.command-center {
+  flex: 0 1 540px;
+  height: 24px;
+  justify-content: flex-start;
+  padding: 0 8px;
+  color: var(--command-center-fg);
+}
+
+.command-center:hover {
+  color: var(--titlebar-fg);
+}
+
+.command-center__label {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.window-controls__button {
+  color: var(--titlebar-inactive-fg);
+}
+
+.window-controls__button:hover {
+  color: var(--titlebar-fg);
+}
+
+/* --- Activity bar: bigger icons, rounded highlight instead of a side stripe --- */
+
+.activity-bar {
+  background-color: var(--activitybar-bg);
+  padding: 4px 0;
+}
+
+.activity-bar__item {
+  height: 44px;
+}
+
+.activity-bar__item svg {
+  width: 24px;
+  height: 24px;
+}
+
+.activity-bar__item--active::before {
+  display: none;
+}
+
+.activity-bar__item--active::after {
+  content: "";
+  position: absolute;
+  inset: 4px 6px;
+  z-index: -1;
+  border-radius: 6px;
+  background-color: var(--activitybar-active-bg);
+}
+
+.activity-bar__item {
+  isolation: isolate;
+}
+
+/* --- Side bar: VS Code's title-case headers --- */
+
+.sidebar {
+  background-color: var(--sidebar-bg);
+}
+
+.sidebar__title-label {
+  font-size: 13px;
+  text-transform: none;
+  color: var(--sidebar-title-fg);
+}
+
+.pane-section__title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.pane-section__header {
+  flex-basis: 26px;
+}
+
+.pane-section + .pane-section {
+  border-top-color: var(--section-header-border);
+}
+
+/* --- Tabs --- */
+
+.tab {
+  border-right-color: var(--tab-border);
+}
+
+.tab--active {
+  color: var(--fg-strong);
+}
+
+/* --- Status bar --- */
+
+.statusbar {
+  flex-basis: 32px;
+  padding: 0 8px;
+  background-color: var(--frame-bg);
+}
+
+.statusbar--no-folder {
+  background-color: var(--frame-bg);
+}
+
+/* --- Welcome tab and page (measured against VS Code's) --- */
+
+.tab--welcome {
+  max-width: none;
+}
+
+.tab__app-icon {
+  flex: 0 0 auto;
+}
+
+.welcome {
+  padding: 100px 48px 32px;
+}
+
+.welcome__inner {
+  display: flex;
+  flex-direction: column;
+  width: min(940px, 100%);
+  min-height: 100%;
+}
+
+.welcome__title {
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--fg);
+}
+
+.welcome__subtitle {
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+.welcome__columns {
+  gap: 40px;
+  margin-top: 30px;
+}
+
+.welcome__column {
+  max-width: 470px;
+}
+
+.welcome__section h2 {
+  margin-bottom: 10px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.welcome__section + .welcome__section {
+  margin-top: 26px;
+}
+
+.welcome__list li {
+  line-height: 24px;
+}
+
+.welcome__column:first-child .welcome__section:first-child .welcome__list li {
+  line-height: 31px;
+}
+
+.welcome__link .codicon {
+  width: 20px;
+  height: 20px;
+  color: var(--link-fg);
+}
+
+.welcome__recent .welcome__link {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.welcome__recent-path {
+  min-width: 0;
+  color: var(--fg);
+}
+
+.welcome__more {
+  margin-top: 4px;
+}
+
+.welcome__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.welcome__card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background-color: var(--welcome-card-bg);
+  color: var(--fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.welcome__card:hover:not(:disabled) {
+  background-color: var(--welcome-card-hover-bg);
+}
+
+.welcome__card:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.welcome__card-icon {
+  display: flex;
+  color: var(--link-fg);
+  padding-top: 1px;
+}
+
+.welcome__card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.welcome__card-title {
+  font-weight: 600;
+}
+
+.welcome__card-description {
+  color: var(--fg);
+  line-height: 1.4;
+}
+
+.welcome__startup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 40px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.welcome__startup input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--button-bg);
+}
+
+/* --- Empty editor watermark (Welcome closed) --- */
+
+.editor-watermark {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.editor-watermark__logo {
+  width: 160px;
+  height: 160px;
+  opacity: 0.12;
+  filter: grayscale(1);
+}
+
+.editor-watermark__shortcuts {
+  display: table;
+  margin: 0;
+  border-spacing: 12px 6px;
+  color: var(--fg-muted);
+}
+
+.editor-watermark__row {
+  display: table-row;
+}
+
+.editor-watermark__row dt {
+  display: table-cell;
+  text-align: right;
+}
+
+.editor-watermark__row dd {
+  display: table-cell;
+  margin: 0;
+}
+
+.editor-watermark kbd {
+  display: inline-block;
+  margin-right: 3px;
+  padding: 1px 5px;
+  border: 1px solid var(--editor-card-border);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background-color: var(--sidebar-bg);
+  color: var(--fg);
+  font: 11px var(--font-ui);
+}
+
+/* --- Secondary side bar: a card on the far side of the editor (Run Code opens it at half width) --- */
+
+.workbench__main--split {
+  flex: 1 1 0;
+}
+
+.secondary-sidebar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  min-height: 0;
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  background-color: var(--sidebar-bg);
+  color: var(--sidebar-fg);
+}
+
+.secondary-sidebar__sash {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 6px;
+  z-index: 5;
+  cursor: ew-resize;
+}
+
+.secondary-sidebar--left .secondary-sidebar__sash {
+  left: auto;
+  right: -4px;
+}
+
+.secondary-sidebar__sash:hover {
+  background-color: var(--focus-border);
+}
+
+.secondary-sidebar__title {
+  flex: 0 0 35px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 16px;
+}
+
+.secondary-sidebar__label {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--sidebar-title-fg);
+}
+
+.secondary-sidebar__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--icon-fg);
+  cursor: pointer;
+}
+
+.secondary-sidebar__action:hover:not(:disabled) {
+  background-color: var(--toolbar-hover-bg);
+}
+
+.secondary-sidebar__action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.secondary-sidebar__empty {
+  margin: 12px 16px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.secondary-sidebar__lines {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 4px 16px 8px;
+  overflow: auto;
+  user-select: text;
+}

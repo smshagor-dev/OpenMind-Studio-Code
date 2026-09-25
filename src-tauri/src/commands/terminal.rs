@@ -40,10 +40,15 @@ pub async fn terminal_create(
     cwd: Option<String>,
     cols: u16,
     rows: u16,
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<TerminalSessionInfo, String> {
     let id = TerminalRegistry::generate_id();
+    // The terminal belongs to the window that opened it: only that window gets
+    // its output, and closing that window ends it.
+    let owner = window.label().to_string();
+    state.editor_windows.track_terminal(&id, &owner);
     // Active portable runtimes go in front of the new shell's PATH — and only
     // that shell's. A runtime problem never blocks opening a terminal.
     let runtime = match state.runtime.environment().await {
@@ -69,6 +74,7 @@ pub async fn terminal_create(
 
     let output_id = id.clone();
     let output_app = app.clone();
+    let output_owner = owner.clone();
     let exit_id = id.clone();
     let exit_app = app;
 
@@ -83,13 +89,13 @@ pub async fn terminal_create(
                     id: output_id.clone(),
                     data: BASE64.encode(chunk),
                 };
-                if let Err(err) = output_app.emit(OUTPUT_EVENT, payload) {
+                if let Err(err) = output_app.emit_to(output_owner.as_str(), OUTPUT_EVENT, payload) {
                     tracing::error!(?err, "failed to emit terminal output event");
                 }
             },
             move |code| {
                 let payload = TerminalExitPayload { id: exit_id, code };
-                if let Err(err) = exit_app.emit(EXIT_EVENT, payload) {
+                if let Err(err) = exit_app.emit_to(owner.as_str(), EXIT_EVENT, payload) {
                     tracing::error!(?err, "failed to emit terminal exit event");
                 }
             },
@@ -120,5 +126,6 @@ pub fn terminal_resize(
 
 #[tauri::command]
 pub fn terminal_close(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    state.editor_windows.forget_terminal(&id);
     state.terminal.close(&id).map_err(|err| err.to_string())
 }

@@ -1,5 +1,5 @@
-//! Tells the frontend when files in the open workspace change on disk without
-//! the editor's involvement. Only the open workspace folder can be watched
+//! Tells each editor window when files in its open folder change on disk without
+//! the editor's involvement. Only that window's open folder can be watched
 //! (whatever path the UI sends is compared with it), and what is reported is
 //! already debounced and free of `node_modules`, `.git`, `target`, `dist`,
 //! `build` and `vendor`.
@@ -12,41 +12,42 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::app_state::AppState;
 
-/// Starts (or restarts) watching `root`, which must be the open workspace folder.
+/// Starts (or restarts) watching `root`, which must be the calling window's open folder.
 #[tauri::command]
 pub async fn watch_start(
     root: String,
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let workspace = state
-        .workspace_folder
-        .active_workspace()
-        .await
-        .map_err(|err| err.to_string())?
+    let label = window.label().to_string();
+    let workspace = crate::windows::window_workspace(&state, &label)
+        .await?
         .ok_or_else(|| "Open a folder first.".to_string())?;
-    // Only the open workspace can be watched, whatever path the UI sent.
+    // Only the window's own folder can be watched, whatever path the UI sent.
     openmind_fs::ensure_within_root(Path::new(&workspace.path), Path::new(&root))
         .map_err(|err| err.to_string())?;
     if !same_folder(Path::new(&workspace.path), Path::new(&root)) {
         return Err("Only the open workspace folder can be watched.".into());
     }
     let handle = app.clone();
+    let target = label.clone();
     let watcher = FileWatcher::start(
         Path::new(&workspace.path),
         Arc::new(move |batch: ChangeBatch| {
-            let _ = handle.emit("fs:changed", batch);
+            // Each window hears only about its own folder.
+            let _ = handle.emit_to(target.as_str(), "fs:changed", batch);
         }),
     )
     .map_err(|err| err.to_string())?;
-    let mut slot = state.file_watch.lock().map_err(|err| err.to_string())?;
-    *slot = Some(watcher);
+    let mut watchers = state.file_watch.lock().map_err(|err| err.to_string())?;
+    watchers.insert(label, watcher);
     Ok(())
 }
 
 #[tauri::command]
-pub fn watch_stop(state: State<'_, AppState>) {
-    stop_watching(&state);
+pub fn watch_stop(window: tauri::Window, state: State<'_, AppState>) {
+    stop_watching_window(&state, window.label());
 }
 
 fn same_folder(a: &Path, b: &Path) -> bool {
@@ -56,13 +57,16 @@ fn same_folder(a: &Path, b: &Path) -> bool {
     }
 }
 
-pub fn stop_watching(state: &AppState) {
-    if let Ok(mut slot) = state.file_watch.lock() {
-        *slot = None;
+/// Stops the watcher of one window (dropping it stops its thread).
+pub fn stop_watching_window(state: &AppState, label: &str) {
+    if let Ok(mut watchers) = state.file_watch.lock() {
+        watchers.remove(label);
     }
 }
 
-/// Stops watching at app shutdown.
+/// Stops every watcher at app shutdown.
 pub fn stop_on_exit(app: &AppHandle) {
-    stop_watching(&app.state::<AppState>());
+    if let Ok(mut watchers) = app.state::<AppState>().file_watch.lock() {
+        watchers.clear();
+    }
 }

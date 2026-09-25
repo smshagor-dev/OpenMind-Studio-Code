@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 
+import { defineMonacoThemes } from "./monacoThemes";
+
 // No custom `MonacoEnvironment.getWorker` is configured: this project's
 // Vite 8 (Rolldown bundler) has a resolver bug bundling a web worker that
 // imports from a node_modules package (works for monaco's own internal,
@@ -32,6 +34,7 @@ export function MonacoHost({ model, theme, onEditorMounted }: MonacoHostProps) {
     if (!containerRef.current) {
       return;
     }
+    defineMonacoThemes();
     const editor = monaco.editor.create(containerRef.current, {
       automaticLayout: true,
       theme,

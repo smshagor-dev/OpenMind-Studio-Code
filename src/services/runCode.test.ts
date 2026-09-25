@@ -66,6 +66,8 @@ interface Rig {
   terminal: TerminalService;
   configs: RunConfigurationService;
   service: RunCodeService;
+  /** What Run Code opened beside the editor (the secondary side bar). */
+  showBeside: ReturnType<typeof vi.fn>;
   workspace: { tabs: EditorTabView[]; save: ReturnType<typeof vi.fn> };
   emit: (event: RunEvent) => void;
   errors: string[];
@@ -124,7 +126,17 @@ async function rig(overrides: Partial<IpcClient> = {}): Promise<Rig> {
       return Promise.resolve();
     },
   } as unknown as WorkspaceService;
-  const service = new RunCodeService(ipc, events, output, stub, configs, terminal, panel);
+  const showBeside = vi.fn();
+  const service = new RunCodeService(
+    ipc,
+    events,
+    output,
+    stub,
+    configs,
+    terminal,
+    panel,
+    showBeside,
+  );
   await service.initialize();
   return {
     ipc,
@@ -134,6 +146,7 @@ async function rig(overrides: Partial<IpcClient> = {}): Promise<Rig> {
     terminal,
     configs,
     service,
+    showBeside,
     workspace,
     emit: (event) => {
       handler(event);
@@ -408,6 +421,8 @@ describe("RunCodeService", () => {
     expect(log).toContain("Process exited with code 0.");
     expect(r.output.getState().selected).toBe("Python");
     expect(r.panel.getState()).toMatchObject({ visible: true, activeTab: "output" });
+    // The same channel also opens beside the editor (the secondary side bar).
+    expect(r.showBeside).toHaveBeenCalledWith("Python");
     expect(r.service.getState().lastRun).toMatchObject({
       path: "C:/p/hello.py",
       code: 0,
@@ -475,6 +490,8 @@ describe("RunCodeService", () => {
     expect(r.service.buttonView()).toMatchObject({ state: "error" });
     expect(r.errors).toContain("Python runtime is not installed.");
     expect(r.output.getState().selected).toBe("Run Code");
+    // The reason shows beside the editor too, like every run.
+    expect(r.showBeside).toHaveBeenCalledWith("Run Code");
   });
 
   it("does not start a second run of the same file", async () => {

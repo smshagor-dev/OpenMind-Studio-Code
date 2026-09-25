@@ -51,6 +51,8 @@ import { PhpRuntimeService } from "./phpRuntimeService";
 import { registerTerminalCommands } from "./terminalCommands";
 import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
+import { SecondarySideBarService } from "./secondarySideBarService";
+import { WelcomeService } from "./welcomeService";
 import { WorkspaceService } from "./workspaceService";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
@@ -112,7 +114,7 @@ const phpMyAdmin = new PhpMyAdminService(
   php,
   mariaDb,
 );
-const composer = new ComposerService(tauriIpcClient, events, output, runtime, panel, php);
+const composer = new ComposerService(tauriIpcClient, events, output, runtime, panel);
 const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
 const controlPanel = new ControlPanelService(
   tauriIpcClient,
@@ -175,6 +177,7 @@ events.on("workspaceFolderChanged", () => {
   gitBlame.close();
 });
 const runConfigs = new RunConfigurationService(tauriIpcClient);
+const secondarySideBar = new SecondarySideBarService(tauriIpcClient);
 const runCode = new RunCodeService(
   tauriIpcClient,
   events,
@@ -183,6 +186,7 @@ const runCode = new RunCodeService(
   runConfigs,
   terminal,
   panel,
+  (channel) => void secondarySideBar.showOutput(channel),
 );
 // An interpreter appearing or going (install / delete / switch) changes what can run.
 runtime.subscribe(() => {
@@ -205,6 +209,7 @@ const lsp = new LspService(tauriIpcClient, events, documents, {
   },
 });
 const diagnostics = new DiagnosticsService(events, documents);
+const welcome = new WelcomeService(tauriIpcClient);
 
 /**
  * Starts language support once the app is up: diagnostics become editor markers and
@@ -362,6 +367,15 @@ registerRuntimeCommands(commands, events);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerPhpCommands(commands, php, tauriIpcClient);
 registerGitCommands(commands, layout, gitClone, gitBlame);
+commands.register("help.welcome", () => {
+  welcome.open();
+});
+commands.register("workbench.newWindow", async () => {
+  await tauriIpcClient.windowNew();
+});
+commands.register("view.toggleSecondarySidebar", () => secondarySideBar.toggle(), {
+  checked: () => secondarySideBar.getState().visible,
+});
 
 registerWorkbenchCommands({
   commands,
@@ -418,6 +432,8 @@ export const container = {
   sourceControl,
   fileSync,
   lsp,
+  welcome,
+  secondarySideBar,
   startLanguageTools,
   gitClone,
   gitHistory,

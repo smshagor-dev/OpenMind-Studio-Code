@@ -13,6 +13,7 @@ export const PHP_PORT_SOURCE = "php-server";
 export const DEFAULT_PHP_PORT = 8000;
 export const MIN_PHP_PORT = 1024;
 const SETTINGS_KEY = "php.server";
+export const NO_WEB_ROOT = "Choose a web root folder first.";
 
 /** A server that is up: what the panel shows and what "Open Browser" opens. */
 export interface RunningServer {
@@ -26,8 +27,14 @@ export interface RunningServer {
 }
 
 export interface PhpServerState {
-  /** The folder served as the document root, or `null` until one is chosen. */
+  /**
+   * The folder served as the web root: every folder inside it is a site at
+   * `/<folder>/`. The app's own `htdocs` unless another folder was chosen;
+   * `null` only while that isn't known yet or couldn't be created.
+   */
   root: string | null;
+  /** Whether `root` is the app's default `htdocs` (not saved: it follows the app folder). */
+  defaultRoot: boolean;
   port: number;
   /** Whether nothing else is listening on `port` right now (`null` = not checked). */
   portFree: boolean | null;
@@ -39,6 +46,7 @@ export interface PhpServerState {
 
 const INITIAL: PhpServerState = {
   root: null,
+  defaultRoot: true,
   port: DEFAULT_PHP_PORT,
   portFree: null,
   server: null,
@@ -90,8 +98,7 @@ export function startAvailability(input: StartInput): Availability {
       reason: "The PHP install is damaged — repair it in Runtime Extensions first.",
     };
   }
-  if (input.root === null)
-    return { enabled: false, reason: "Select a valid project folder first." };
+  if (input.root === null) return { enabled: false, reason: NO_WEB_ROOT };
   if (input.running) return { enabled: false, reason: "The server is already running." };
   if (input.busy) return { enabled: false, reason: "Please wait — the server is changing state." };
   if (input.portFree === false) {
@@ -166,6 +173,7 @@ export class PhpServerService {
     const saved = await this.ipc.settingsGet(SETTINGS_KEY).catch(() => null);
     const parsed = parseSaved(saved);
     if (parsed !== null) this.update(parsed);
+    if (this.state.root === null) await this.useDefaultRoot();
     try {
       this.off = await this.ipc.onPhpEvent((event) => {
         this.handleEvent(event);
@@ -302,20 +310,23 @@ export class PhpServerService {
 
   // --- Actions ---
 
+  /** Serves another folder as the web root (saved, unlike the default). */
   async setRoot(root: string | null): Promise<void> {
-    this.update({ root, error: null });
+    this.update({ root, defaultRoot: false, error: null });
     await this.persist();
   }
 
-  /** Uses the folder open in the main window (the backend remembers it). */
-  async useWorkspace(): Promise<boolean> {
-    const workspace = await this.ipc.workspaceActiveFolder().catch(() => null);
-    if (workspace === null) {
-      this.update({ error: "No folder is open in the main window — use Select Folder instead." });
+  /** Serves the app's own `htdocs` (created by the backend if needed). */
+  async useDefaultRoot(): Promise<boolean> {
+    try {
+      const root = await this.ipc.phpWebRoot();
+      this.update({ root, defaultRoot: true, error: null });
+      await this.persist();
+      return true;
+    } catch (error) {
+      this.update({ root: null, defaultRoot: true, error: String(error) });
       return false;
     }
-    await this.setRoot(workspace.path);
-    return true;
   }
 
   async selectFolder(): Promise<boolean> {
@@ -468,7 +479,9 @@ export class PhpServerService {
   }
 
   private async persist(): Promise<void> {
-    const value = JSON.stringify({ root: this.state.root, port: this.state.port });
+    // The default web root is not saved: it is recomputed from the app folder, so it moves with it.
+    const webRoot = this.state.defaultRoot ? null : this.state.root;
+    const value = JSON.stringify({ webRoot, port: this.state.port });
     await this.ipc.settingsSet(SETTINGS_KEY, value).catch(() => undefined);
   }
 
@@ -485,7 +498,11 @@ function parseSaved(saved: string | null): Partial<PhpServerState> | null {
     if (typeof value !== "object" || value === null) return null;
     const record = value as Record<string, unknown>;
     const patch: Partial<PhpServerState> = {};
-    if (typeof record.root === "string" && record.root !== "") patch.root = record.root;
+    // `root` (a project folder, before the web root existed) is deliberately not read.
+    if (typeof record.webRoot === "string" && record.webRoot !== "") {
+      patch.root = record.webRoot;
+      patch.defaultRoot = false;
+    }
     if (
       typeof record.port === "number" &&
       Number.isInteger(record.port) &&

@@ -739,7 +739,7 @@ mod tests {
         );
         assert_eq!(
             run(&fx.dir.path().join("gone"), &phar, &fx.env),
-            "Select a valid project folder first."
+            "Select a valid folder first."
         );
     }
 

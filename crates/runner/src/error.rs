@@ -25,7 +25,7 @@ pub enum RunError {
     #[error("\"{}\" is not a folder that exists.", .0.display())]
     BadWorkingDirectory(PathBuf),
 
-    #[error("Select a valid project folder first.")]
+    #[error("Select a valid folder first.")]
     BadServerRoot,
 
     #[error("Initialize the database first.")]

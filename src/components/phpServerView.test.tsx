@@ -51,9 +51,9 @@ const PHP_LINES = ["8.4.26", "8.3.35", "8.2.34", "8.1.34", "8.0.30"];
 async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue(runtimes),
-    workspaceActiveFolder: vi
-      .fn()
-      .mockResolvedValue(hasFolder ? { id: 1, path: "C:/My Site", name: "My Site" } : null),
+    phpWebRoot: hasFolder
+      ? vi.fn().mockResolvedValue("C:/My Site")
+      : vi.fn().mockRejectedValue("Couldn't create the web root folder: access denied"),
   });
   const events = new EventBus<AppEvents>();
   const output = new OutputService();
@@ -79,7 +79,7 @@ async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
     php,
     mariaDb,
   );
-  const composer = new ComposerService(ipc, events, output, runtime, panel, php);
+  const composer = new ComposerService(ipc, events, output, runtime, panel);
   harness.current = {
     php,
     mariaDb,
@@ -101,7 +101,7 @@ describe("PhpServerView", () => {
 
   it("with nothing installed: Start is disabled with a visible reason and PHP can be installed from the cards", async () => {
     const { php } = await setup([status("php", [], PHP_LINES), status("composer", [], ["2.10.3"])]);
-    await php.useWorkspace();
+    await php.useDefaultRoot();
     render(<PhpServerView />);
 
     const start = screen.getByRole("button", { name: "Start Server" });
@@ -135,24 +135,35 @@ describe("PhpServerView", () => {
     expect(install).toHaveBeenCalledWith("php", "8.3.35");
   });
 
-  it("without a project folder Start is disabled with the folder reason", async () => {
+  it("without a web root Start is disabled with the folder reason", async () => {
     await setup([status("php", [installed("8.4.26")])], false);
     render(<PhpServerView />);
 
     expect(screen.getByRole("button", { name: "Start Server" })).toBeDisabled();
     expect(
       within(screen.getByRole("region", { name: "Server" })).getByRole("note"),
-    ).toHaveTextContent("Select a valid project folder first.");
-    expect(screen.getByText("No folder selected")).toBeInTheDocument();
+    ).toHaveTextContent("Choose a web root folder first.");
+    expect(
+      within(screen.getByRole("region", { name: "Web Root" })).getByText("Not set"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use Default (htdocs)" })).toBeEnabled();
   });
 
-  it("Use Open Folder with no folder open in the main window explains what to do", async () => {
-    await setup([status("php", [installed("8.4.26")])], false);
+  it("serves the default web root, and Change Folder picks another one", async () => {
+    const { ipc } = await setup([status("php", [installed("8.4.26")])]);
     render(<PhpServerView />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Use Open Folder" }));
+    const webRoot = within(screen.getByRole("region", { name: "Web Root" }));
+    expect(webRoot.getByText("Served folder (default)")).toBeInTheDocument();
+    expect(webRoot.getByText("C:/My Site")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use Default (htdocs)" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Use Open Folder" })).toBeNull();
 
-    expect(await screen.findByText(/No folder is open in the main window/)).toBeInTheDocument();
+    vi.mocked(ipc.openFolderDialog).mockResolvedValue("D:/Sites");
+    fireEvent.click(screen.getByRole("button", { name: "Change Folder…" }));
+    expect(await webRoot.findByText("D:/Sites")).toBeInTheDocument();
+    expect(webRoot.getByText("Served folder")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use Default (htdocs)" })).toBeEnabled();
   });
 
   it("shows the PHP and Composer versions, and lists only Apache as not available", async () => {
@@ -171,15 +182,13 @@ describe("PhpServerView", () => {
     expect(screen.getByRole("region", { name: "Composer" })).toBeInTheDocument();
   });
 
-  it("Use Open Folder then Start Server starts it and the running state shows the URL", async () => {
+  it("Start Server serves the web root and the running state shows the URL", async () => {
     const { ipc } = await setup([status("php", [installed("8.4.26")])]);
     render(<PhpServerView />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Use Open Folder" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Start Server" })).toBeEnabled();
     });
-    expect(screen.getByText("C:/My Site")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Start Server" }));
     await waitFor(() => {
@@ -211,7 +220,7 @@ describe("PhpServerView", () => {
   it("a busy port is shown as busy and blocks Start with the port in the reason", async () => {
     const { php, ipc } = await setup([status("php", [installed("8.4.26")])]);
     vi.mocked(ipc.phpPortFree).mockResolvedValue(false);
-    await php.useWorkspace();
+    await php.useDefaultRoot();
     await php.refreshPort();
     render(<PhpServerView />);
 
@@ -255,7 +264,7 @@ describe("PhpServerView", () => {
       port: 8000,
       phpVersion: "8.4.26",
     });
-    await php.useWorkspace();
+    await php.useDefaultRoot();
     await php.start();
     vi.mocked(ipc.runtimeList).mockResolvedValue([
       status("php", [installed("8.4.26", true, false), installed("8.3.35")]),

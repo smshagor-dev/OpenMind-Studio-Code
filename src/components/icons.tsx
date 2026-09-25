@@ -335,3 +335,50 @@ export function ChevronDownSmallIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function ArrowLeftIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M13 8H3M7 4 3 8l4 4" />
+    </Svg>
+  );
+}
+
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 8h10M9 4l4 4-4 4" />
+    </Svg>
+  );
+}
+
+export function LayoutPanelIcon({ visible, ...props }: IconProps & { visible?: boolean }) {
+  return (
+    <Svg {...props}>
+      <rect x="1.5" y="2.5" width="13" height="11" rx="0.5" />
+      {visible ? <path d="M2 10h12v3H2z" fill="currentColor" /> : <path d="M1.5 9.5h13" />}
+    </Svg>
+  );
+}
+
+export function NewWindowIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="1.5" y="4.5" width="10" height="9" rx="0.5" />
+      <path d="M4.5 4.5v-2h10v9h-3M1.5 7h10" />
+    </Svg>
+  );
+}
+
+export function LayoutSecondaryIcon({ visible, ...props }: IconProps & { visible?: boolean }) {
+  return (
+    <Svg {...props}>
+      <rect x="1.5" y="2.5" width="13" height="11" rx="0.5" />
+      {visible ? (
+        <path d="M10.5 2.5v11M11 3h3v10h-3z" fill="currentColor" />
+      ) : (
+        <path d="M10.5 2.5v11" />
+      )}
+    </Svg>
+  );
+}

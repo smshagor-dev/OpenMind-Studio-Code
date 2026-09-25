@@ -56,9 +56,7 @@ async function setup(
 ) {
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue(runtimes),
-    workspaceActiveFolder: vi
-      .fn()
-      .mockResolvedValue({ id: 1, path: "C:/My Site", name: "My Site" }),
+    phpWebRoot: vi.fn().mockResolvedValue("C:/My Site"),
     mariadbStatus: vi.fn().mockResolvedValue({
       initialized: true,
       running: null,
@@ -90,7 +88,7 @@ async function setup(
     mariaDb,
   );
   await phpMyAdmin.initialize();
-  const composer = new ComposerService(ipc, events, output, runtime, panel, php);
+  const composer = new ComposerService(ipc, events, output, runtime, panel);
   await composer.initialize();
   harness.current = { php, mariaDb, phpMyAdmin, composer, runtime, output, ipc };
   return { ipc, php, mariaDb, output, events };
@@ -216,8 +214,8 @@ describe("phpMyAdmin and Composer sections", () => {
     await setup([status("php", [installed("8.4.26")]), status("composer", [installed("2.10.3")])], {
       phpProjectInfo: vi.fn().mockResolvedValue({ isDir: true, hasComposerJson: false }),
     });
-    const { php } = harness.current as { php: PhpServerService };
-    await php.useWorkspace();
+    const { composer } = harness.current as { composer: ComposerService };
+    await composer.setProject("C:/My Site");
     render(<ComposerSection />);
 
     await waitFor(() => {
@@ -233,19 +231,25 @@ describe("phpMyAdmin and Composer sections", () => {
   });
 
   it("Composer: with a composer.json the actions run the matching command in the project root", async () => {
-    const { ipc, php } = await setup(
+    const { ipc } = await setup(
       [status("php", [installed("8.4.26")]), status("composer", [installed("2.10.3")])],
       {
         phpProjectInfo: vi.fn().mockResolvedValue({ isDir: true, hasComposerJson: true }),
         composerRun: vi.fn().mockResolvedValue({ runId: "c1", file: "composer", pid: 5 }),
       },
     );
-    await php.useWorkspace();
+    vi.mocked(ipc.openFolderDialog).mockResolvedValue("C:/My Site");
     render(<ComposerSection />);
+    expect(screen.getByRole("button", { name: "composer update" })).toHaveAttribute(
+      "title",
+      "Select a Composer project folder first.",
+    );
 
+    fireEvent.click(screen.getByRole("button", { name: "Select Project…" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "composer update" })).toBeEnabled();
     });
+    expect(ipc.settingsSet).toHaveBeenCalledWith("composer.project", "C:/My Site");
     fireEvent.click(screen.getByRole("button", { name: "composer update" }));
     await waitFor(() => {
       expect(ipc.composerRun).toHaveBeenCalledWith("update", "C:/My Site");

@@ -107,6 +107,16 @@ pub fn php_port_free(port: u16) -> bool {
     port_is_free(port)
 }
 
+/// The default web root (`<app>/htdocs`), created with its start page if
+/// needed. Computed from the app folder every time, so it follows the folder
+/// when the app is moved.
+#[tauri::command]
+pub fn php_web_root(state: State<'_, AppState>) -> Result<String, String> {
+    openmind_runner::ensure_web_root(&state.app_root)
+        .map(|root| root.to_string_lossy().into_owned())
+        .map_err(|err| format!("Couldn't create the web root folder: {err}"))
+}
+
 /// Opens the PHP Server window, or brings the open one to the front.
 #[tauri::command]
 pub async fn php_window_open(app: AppHandle) -> Result<(), String> {

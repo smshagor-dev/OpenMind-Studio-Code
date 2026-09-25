@@ -39,9 +39,10 @@ const PHP: RuntimeStatus = {
   busy: false,
 };
 
-async function setup() {
+async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue([PHP]),
+    ...overrides,
     panelNetstat: vi
       .fn()
       .mockResolvedValue([{ address: "0.0.0.0", port: 135, pid: 1548, process: "svchost.exe" }]),
@@ -82,8 +83,32 @@ describe("ControlPanel", () => {
     for (const label of ["Config", "Netstat", "Shell", "Explorer", "Help", "Quit"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole("button", { name: "Explorer" })).toBeDisabled();
+    // The web root always exists, so Explorer can open it.
+    expect(screen.getByRole("button", { name: "Explorer" })).toBeEnabled();
     expect(screen.getByRole("log", { name: "Log" })).toHaveTextContent("Control Panel Ready");
+  });
+
+  it("colors a running module green, XAMPP style, and shows its PID and port", async () => {
+    await setup({
+      phpServerStatus: vi.fn().mockResolvedValue({
+        run: { runId: "r1", file: "C:/site", pid: 4242 },
+        url: "http://127.0.0.1:8000",
+        port: 8000,
+        phpVersion: "8.4.26",
+      }),
+    });
+    render(<ControlPanel />);
+
+    const php = screen.getByRole("row", { name: "PHP Server" });
+    const name = within(php).getByRole("rowheader");
+    expect(name).toHaveClass("cp__module--running");
+    expect(name).toHaveAttribute("title", "Running");
+    expect(php).toHaveTextContent("4242");
+    expect(php).toHaveTextContent("8000");
+    expect(within(php).getByRole("button", { name: "Stop PHP Server" })).toBeEnabled();
+    const db = within(screen.getByRole("row", { name: "MariaDB" })).getByRole("rowheader");
+    expect(db).not.toHaveClass("cp__module--running");
+    expect(db).toHaveAttribute("title", "Stopped");
   });
 
   it("a disabled button explains itself in its tooltip", async () => {

@@ -195,7 +195,9 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   typed, never written to a file). `commands::database` exposes `mariadb_*`/`pma_*`/`composer_*` with
   `*:changed` and `*:event` broadcasts; window close stops all services. Services keep the PHP/DB version they
   started with when the active PHP changes and show a restart notice. Frontend: `MariaDbService`,
-  `PhpMyAdminService`, `ComposerService` (pure availability functions, every disabled button has a reason) and
+  `PhpMyAdminService`, `ComposerService` (its own project folder, `composer.project` in `editor_settings`, chosen
+  with "Select Project…" — the server serves the whole web root, Composer works on one project; pure availability
+  functions, every disabled button has a reason) and
   `PhpStackSections` (Database/phpMyAdmin/Composer/Logs with ellipsized, copyable paths). The PHP window is
   single-instance and its geometry is persisted in `window_state` (`WindowStateService::load_or`; the *inner*
   size is saved, because saving the outer size made a decorated window grow by its frame on every reopen).
@@ -210,7 +212,17 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   project folder, Shell opens a console (`panel_open_shell`, cwd = project, portable runtimes first on that
   console's PATH only), Netstat lists listening TCP ports with owning process (`openmind_runner::netstat`
   parses `netstat -ano` + `tasklist`; our own servers are marked). There is no "Services" button: nothing
-  here is a Windows service.
+  here is a Windows service. The main page copies XAMPP's layout (logo + title, a "Modules" group box, a
+  side column of icon buttons from `controlPanelIcons.tsx`, the log below; a running module's name cell is
+  green, MariaDB starting yellow / error red — the status text is the cell's tooltip).
+  **Tray mode**: closing the *main* window while the PHP server, MariaDB or phpMyAdmin runs hides the app
+  to the system tray instead of quitting (`src-tauri/src/tray.rs`, `tray::servers_running`; needs Tauri's
+  `tray-icon` feature). The servers keep running; the tray menu has Show OpenMind Studio (also a left
+  click; removes the icon), PHP Control Panel, Stop All Servers and Quit OpenMind Studio, which runs the
+  normal full shutdown (`window_events::shutdown`). With no server running, close quits as before. If the
+  tray icon can't be created, close quits (never an unreachable hidden app). Launching the exe again while
+  hidden starts a second instance (no single-instance lock — it would also block two portable copies in
+  different folders); its server starts fail with "port in use".
 - `openmind-git` (Milestone 6) — the Git client. `exe::resolve` picks the executable: OpenMind's portable Git first
   (searched in the Runtime Manager's injected `path_prepend` dirs), the system Git **only** when the user allowed it
   (`editor_settings` `git.allowSystem`, set by the "Use System Git" button) and then labelled "System Git at <path>";
@@ -262,8 +274,11 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   program name, paths inside the cwd made relative); `RunPlan.resolved` is the absolute interpreter,
   reported separately (`resolved:` line in Output). `server.rs` (5.7) plans the PHP built-in server:
   `php -S 127.0.0.1:<port> -t <root>` by the *portable* PHP only (never a system one), root must be an
-  existing absolute folder ("Select a valid project folder first."), ports 1024-65535, `port_is_free`
-  binds 127.0.0.1 to check. It produces an ordinary `RunPlan`, so a second `RunRegistry`
+  existing absolute folder ("Select a valid folder first."), ports 1024-65535, `port_is_free`
+  binds 127.0.0.1 to check. The root is a **web root, not a project** (XAMPP's `htdocs`): `webroot.rs`
+  `ensure_web_root` creates `<app>/htdocs` and writes a start page (`DASHBOARD_INDEX`: lists the sub-folders,
+  each a site at `/<folder>/`, every name escaped) only when the folder has no `index.php`/`index.html` —
+  a user's page is never overwritten; `php_web_root` returns it, recomputed from the app folder each time. It produces an ordinary `RunPlan`, so a second `RunRegistry`
   (`AppState.php_server`, events on `php:event`, one server at a time) starts/streams/kills it exactly
   like Run Code; `window_events.rs` calls `php_server.stop_all()` on close.
 - `openmind-search` (Milestone 5.6.1) — workspace text search, on disk with no index. `search(query,
@@ -306,6 +321,20 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   close_document/request/stop/stop_all/set_verbose`) picks the server by extension, refuses files outside the workspace,
   pushes `lsp:diagnostics`/`lsp:log`/`lsp:changed` and writes `logs/lsp/<server>.log` (rotated at 2 MB). Ignored real-network
   tests (`crates/lsp/tests/real_server.rs`) install and drive the real TypeScript, Pyright and Intelephense servers.
+- **Editor windows (File > New Window, Ctrl+Shift+N)** — `src-tauri/src/windows.rs`. One process, several editor
+  windows: `main` plus `window-2`, `window-3`, ... (`window_new`; the capability lists `window-*`; `main.tsx` shows
+  `App` for them). Each window has its own open folder: `windows::window_workspace(state, label)` gives `main` the
+  saved one (`session_restore`) and an extra window the one kept in memory (`EditorWindows`); `workspace_*`,
+  `session_*`, `search_run`, `watch_*` and every Git command take Tauri's `window` argument and use that window's
+  folder, so two windows can hold two projects. An extra window's folder still joins the recent folders
+  (`WorkspaceFolderService::remember_folder`) but is not restored; its session and the workbench keys
+  `editor.layout`/`panel.state` (`commands::settings` `MAIN_WINDOW_ONLY_KEYS`) are neither read nor written, so it
+  never overwrites the main window's. Watchers are per window and `fs:changed` goes only to that window; a terminal
+  belongs to the window that opened it (output/exit via `emit_to`) and dies with it. Closing an extra window ends its
+  terminals and watcher; closing `main` quits the app (all windows) — or hides it to the tray while a server runs.
+  Not per window yet: Run Code / Output channels (`run:event`, `git:log` still reach every window), LSP
+  (`commands/lsp.rs` still asks `active_workspace()`, i.e. the main window's folder), and extra windows are not
+  restored on relaunch.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -477,8 +506,10 @@ internals.
   `[Run Code] <friendly command>`, `cwd:`, `runtime:`, `resolved:`. The dropdown's "Run Code" row prints
   the disabled reason as visible text (`showReason`), not just a tooltip.
   `RunCodeControls` (button/dropdown/status) and `RunConfigurationDialog` are UI-only.
-- `PhpServerService` (`phpServerService.ts`, Milestone 5.7) + `PhpServerView` — document root and port
-  (persisted as `php.server` in `editor_settings`) and the built-in server's lifecycle (`start`/`stop`/
+- `PhpServerService` (`phpServerService.ts`, Milestone 5.7) + `PhpServerView` — web root and port
+  (persisted as `php.server` = `{webRoot, port}` in `editor_settings`; `webRoot` is `null` for the default
+  `htdocs`, which is never saved so it follows a moved app folder; the pre-web-root `root` project folder
+  key is deliberately ignored; "Change Folder…" / "Use Default (htdocs)", no "Use Open Folder") and the built-in server's lifecycle (`start`/`stop`/
   `restart`/`openBrowser`/`openLogs`). Every button's enabled state and reason comes from `startState()`/
   `stopState()`/... (pure `startAvailability`), and `php.*` commands use the same predicates. Output goes
   to the "PHP Server" channel; a running server registers 127.0.0.1:<port> in `PortsService` (source
@@ -570,6 +601,27 @@ internals.
   `src/testUtils/fakeIpcClient.ts` holds the one shared fully-stubbed fake every test file
   overrides from, instead of each redeclaring all ~30 methods.
 
+**Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
+(frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
+doesn't — `workbench--inactive`, from window focus/blur; editor `#121314`; side bar, panel and secondary side bar
+`#191a1b`; every card has a 1px `#2a2b2c` border and 8px corners; tabs `#202122`; text `#bfbfbf`/`#ededed`/`#8c8c8c`,
+links `#48a0c7`, buttons `#297aa0`): activity bar + side bar are one card, the editor, the panel (under the editor
+column only) and the secondary side bar (full height) are separate cards (`styles/frame.css`, loaded last), title-case
+side bar headers, 24px activity icons with a rounded active highlight, a 35px title bar with Back/Forward (disabled
+until `go.back` exists), a "Search"/folder-name command center and side bar + panel + secondary toggles, and a 32px
+status bar in the frame color. The terminal's xterm background is `--panel-bg`.
+Monaco uses `openmind-dark`/`openmind-light` (`editor/monacoThemes.ts`, defined lazily by `defineMonacoThemes()` —
+defining a theme starts Monaco's global services, which made unrelated jsdom tests fail on clicks). The Welcome page
+is a closable tab (`WelcomeService`, `WelcomeEditor.tsx`): Start (New File, Open File, Open Folder, Clone Git
+Repository, New Window), Recent (5, then More...), Get Started cards for real features, "Show welcome page on
+startup" (`workbench.welcomeOnStartup`); closed, the empty editor shows a watermark with real shortcuts; Help >
+Welcome (`help.welcome`) reopens it. Light keeps Light+ colors on the same card structure.
+**Secondary Side Bar** (VS Code's): `SecondarySideBarService` + `SecondarySideBar.tsx`, a card on the far side of the
+editor (left when the primary side bar is on the right) showing an Output channel (picker, Clear, Hide). Title-bar
+toggle and `view.toggleSecondarySidebar` (Ctrl+Alt+B). Run Code (`RunCodeService`'s optional `showBeside` callback,
+wired in `container.ts`) opens it at **half** of the editor + side bar row on the run's channel, while the bottom
+panel's Output shows the same lines; dragging its sash switches to a fixed, clamped width. Saved as
+`workbench.secondarySideBar` (a main-window-only key, like `panel.state`). The Run-in-Terminal target doesn't open it.
 UI (Milestone 3.5 — VS Code workbench layout, Dark+/Light+ colors as CSS tokens in
 `styles/theme.css`, switched by `data-theme` on `<html>`): the window is **undecorated**
 (`decorations: false`); `TitleBar` draws VS Code's Windows title bar (app icon, `MenuBar`, command

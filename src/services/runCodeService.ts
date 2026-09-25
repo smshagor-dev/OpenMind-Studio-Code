@@ -169,6 +169,12 @@ export class RunCodeService {
     private readonly configs: RunConfigurationService,
     private readonly terminal: TerminalService,
     private readonly panel: PanelService,
+    /**
+     * Also shows a run's channel beside the editor (the secondary side bar, at
+     * half width), next to the Output panel below. Optional, so tests and
+     * other hosts can leave it out.
+     */
+    private readonly showBeside: (channel: string) => void = () => undefined,
   ) {}
 
   getState(): RunState {
@@ -330,15 +336,14 @@ export class RunCodeService {
         // `started` usually arrives first and has already picked the channel;
         // if not, it selects the channel when it does arrive.
         const known = this.processes.get(info.runId);
-        if (known && this.wantOutput.delete(request.file)) this.output.select(known.channel);
+        if (known && this.wantOutput.delete(request.file)) this.revealOutput(known.channel);
       }
       return true;
     } catch (error) {
       this.wantOutput.delete(request.file);
       const message = String(error);
       this.output.append(RUN_CHANNEL, stamped(`[Run Code] ${message}`));
-      await this.panel.show("output");
-      this.output.select(RUN_CHANNEL);
+      if (showOutput) this.revealOutput(RUN_CHANNEL);
       return this.fail(message);
     } finally {
       this.starting.delete(request.file);
@@ -373,6 +378,13 @@ export class RunCodeService {
     }
   }
 
+  /** The run's channel in the Output panel below and beside the editor. */
+  private revealOutput(channel: string): void {
+    this.output.select(channel);
+    void this.panel.show("output");
+    this.showBeside(channel);
+  }
+
   private handleEvent(event: RunEvent): void {
     if (event.type === "started") {
       const channel = channelFor(event.language);
@@ -387,10 +399,7 @@ export class RunCodeService {
       this.output.append(channel, `resolved: ${event.resolved}`);
       this.output.append(channel, "");
       this.update({ running: { ...this.state.running, [event.file]: event.runId } });
-      if (this.wantOutput.delete(event.file)) {
-        this.output.select(channel);
-        void this.panel.show("output");
-      }
+      if (this.wantOutput.delete(event.file)) this.revealOutput(channel);
       return;
     }
     const process = this.processes.get(event.runId);

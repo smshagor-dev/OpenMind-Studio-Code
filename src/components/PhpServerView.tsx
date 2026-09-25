@@ -7,6 +7,7 @@ import {
   ComposerSection,
   DatabaseSection,
   LogsSection,
+  PathValue,
   PhpMyAdminSection,
 } from "./PhpStackSections";
 
@@ -58,29 +59,23 @@ function Action(props: {
   );
 }
 
-function ProjectSection() {
+function WebRootSection() {
   const php = usePhp();
-  const { root } = php.getState();
+  const { root, defaultRoot, port } = php.getState();
   return (
-    <section className="php-view__section" aria-label="Project">
-      <h3>Project</h3>
+    <section className="php-view__section" aria-label="Web Root">
+      <h3>Web Root</h3>
       <div className="php-view__field">
-        <span className="php-view__label">Document root</span>
-        <code className="php-view__value" title={root ?? undefined}>
-          {root ?? "No folder selected"}
-        </code>
+        <span className="php-view__label">
+          Served folder{defaultRoot && root !== null ? " (default)" : ""}
+        </span>
+        <PathValue path={root} label="web root" />
+        <span className="php-view__hint">
+          The server is not tied to one project: every folder inside the web root is its own site at
+          http://127.0.0.1:{port}/&lt;folder&gt;/, and the root itself lists them.
+        </span>
       </div>
       <div className="php-view__row">
-        <button
-          type="button"
-          className="php-view__button"
-          title="Serve the folder that is open in the main editor window"
-          onClick={() => {
-            void php.useWorkspace();
-          }}
-        >
-          Use Open Folder
-        </button>
         <button
           type="button"
           className="php-view__button"
@@ -88,7 +83,22 @@ function ProjectSection() {
             void php.selectFolder();
           }}
         >
-          Select Folder…
+          Change Folder…
+        </button>
+        <button
+          type="button"
+          className="php-view__button"
+          disabled={defaultRoot && root !== null}
+          title={
+            defaultRoot && root !== null
+              ? "The default web root is already served."
+              : "Serve the app's own htdocs folder"
+          }
+          onClick={() => {
+            void php.useDefaultRoot();
+          }}
+        >
+          Use Default (htdocs)
         </button>
       </div>
     </section>
@@ -248,7 +258,7 @@ export function PhpServerView() {
   usePhp();
   return (
     <div className="php-view">
-      <ProjectSection />
+      <WebRootSection />
       <section className="php-view__section" aria-label="PHP and Composer">
         <h3>PHP and Composer</h3>
         <PhpRuntimeCards />

@@ -357,16 +357,27 @@ export function ComposerSection() {
     (listener) => container.runtime.subscribe(listener),
     () => container.runtime.getState(),
   );
-  useSyncExternalStore(
-    (listener) => container.php.subscribe(listener),
-    () => container.php.getState(),
-  );
   const composer = container.composer;
   const state = composer.getState();
   const availability = composer.availability();
   return (
     <section className="php-view__section" aria-label="Composer">
       <h3>Composer</h3>
+      <div className="php-view__field">
+        <span className="php-view__label">Project folder</span>
+        <PathValue path={state.projectRoot} label="Composer project folder" />
+        <div className="php-view__row">
+          <button
+            type="button"
+            className="php-view__button"
+            onClick={() => {
+              void composer.selectProject();
+            }}
+          >
+            Select Project…
+          </button>
+        </div>
+      </div>
       <div className="php-view__row">
         {COMPOSER_ACTIONS.map((entry) => (
           <StackButton
@@ -399,7 +410,8 @@ export function ComposerSection() {
       {state.lastResult ? <div className="php-view__hint">{state.lastResult}</div> : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
       <span className="php-view__hint">
-        Runs in the project folder above on the active portable PHP; its output is in Logs.
+        Runs in the project folder above (usually one inside the web root) on the active portable
+        PHP; its output is in Logs.
       </span>
     </section>
   );

@@ -47,8 +47,11 @@ pub struct AppState {
     pub pma_info: std::sync::Mutex<Option<crate::commands::database::ServiceInfo>>,
     /// The Composer command that is running, if any (one at a time).
     pub composer: RunRegistry,
-    /// The watcher on the open workspace folder (external file changes).
-    pub file_watch: std::sync::Mutex<Option<openmind_file_watch::FileWatcher>>,
+    /// One watcher per editor window, on that window's open folder (external file changes).
+    pub file_watch:
+        std::sync::Mutex<std::collections::HashMap<String, openmind_file_watch::FileWatcher>>,
+    /// The extra editor windows' folders and terminals (File > New Window).
+    pub editor_windows: crate::windows::EditorWindows,
     /// Running Git commands, stopped on app close.
     pub git: openmind_git::GitRegistry,
     /// Language servers (started on first use, stopped on app close).

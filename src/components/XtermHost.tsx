@@ -102,7 +102,7 @@ export function XtermHost({ id, active, themeKind }: XtermHostProps) {
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.theme = {
-      background: cssVar("--editor-bg", "#1e1e1e"),
+      background: cssVar("--panel-bg", "#191a1b"),
       foreground: cssVar("--fg", "#cccccc"),
       cursor: cssVar("--fg", "#cccccc"),
     };

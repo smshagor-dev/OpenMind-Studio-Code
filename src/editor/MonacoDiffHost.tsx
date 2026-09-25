@@ -1,4 +1,6 @@
 import * as monaco from "monaco-editor";
+
+import { defineMonacoThemes } from "./monacoThemes";
 import { useEffect, useRef } from "react";
 
 import { languageForPath } from "./languageForPath";
@@ -23,6 +25,7 @@ export function MonacoDiffHost({ original, modified, path, theme }: MonacoDiffHo
 
   useEffect(() => {
     if (!containerRef.current) return;
+    defineMonacoThemes();
     const editor = monaco.editor.createDiffEditor(containerRef.current, {
       automaticLayout: true,
       theme,

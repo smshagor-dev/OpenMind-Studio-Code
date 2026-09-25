@@ -194,13 +194,7 @@ export class ControlPanelService {
   }
 
   private startState(id: ModuleId): Availability {
-    if (id === "php") {
-      const state = this.php.startState();
-      const root = this.php.getState().root;
-      return !state.enabled && root === null
-        ? { enabled: false, reason: "Select a valid project folder first — use Config." }
-        : state;
-    }
+    if (id === "php") return this.php.startState();
     return id === "mariadb" ? this.mariaDb.startState() : this.pma.startState();
   }
 
@@ -230,10 +224,10 @@ export class ControlPanelService {
     return { enabled: false, reason: reasons[id] };
   }
 
-  /** Whether the Explorer button can open the project folder, and why not. */
+  /** Whether the Explorer button can open the web root, and why not. */
   explorerState(): Availability {
     return this.php.getState().root === null
-      ? { enabled: false, reason: "Select a valid project folder first — use Config." }
+      ? { enabled: false, reason: "Choose a web root folder first — use Config." }
       : { enabled: true };
   }
 

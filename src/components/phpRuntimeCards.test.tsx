@@ -62,9 +62,7 @@ const PHP = (installed: InstalledVersion[]) =>
 async function setup(runtimes: RuntimeStatus[]) {
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue(runtimes),
-    workspaceActiveFolder: vi
-      .fn()
-      .mockResolvedValue({ id: 1, path: "C:/My Site", name: "My Site" }),
+    phpWebRoot: vi.fn().mockResolvedValue("C:/My Site"),
   });
   const events = new EventBus<AppEvents>();
   const runtime = new RuntimeService(ipc, events, () => undefined);
@@ -202,7 +200,7 @@ describe("PhpRuntimeCards", () => {
       port: 8000,
       phpVersion: "8.4.26",
     });
-    await php.useWorkspace();
+    await php.useDefaultRoot();
     await php.start();
     render(<PhpRuntimeCards />);
 

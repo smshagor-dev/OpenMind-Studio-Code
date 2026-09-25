@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use crate::app_state::AppState;
 use openmind_db::WindowState;
-use openmind_settings::WindowStateService;
-use tauri::{Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
+use openmind_settings::{WindowStateService, MAIN_WINDOW_LABEL};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewWindow, WindowEvent};
 
 /// Ceiling on the close-time window-state write. Everything else the app
 /// persists (session, explorer state, active workspace) is already saved
@@ -32,8 +32,9 @@ pub fn apply_window_state(window: &WebviewWindow, state: &WindowState) -> tauri:
 }
 
 /// Persist the window's current geometry before it actually closes, then
-/// shut the app down. `CloseRequested` is deferred (`prevent_close`) so the
-/// async save can finish first.
+/// shut the app down — or, while a PHP stack server runs, hide to the tray so
+/// the servers keep running (XAMPP style; see `tray.rs`). `CloseRequested` is
+/// deferred (`prevent_close`) so the async save can finish first.
 pub fn register_close_handler(window: &WebviewWindow, service: WindowStateService) {
     let handled_window = window.clone();
 
@@ -46,81 +47,96 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
         let window = handled_window.clone();
         let service = service.clone();
         tauri::async_runtime::spawn(async move {
-            match current_window_state(&window) {
-                Ok(state) => match tokio::time::timeout(SAVE_TIMEOUT, service.save(&state)).await {
-                    Ok(Ok(())) => {}
-                    Ok(Err(err)) => {
-                        tracing::error!(?err, "failed to persist window state on close");
-                    }
-                    Err(_) => {
-                        tracing::error!(
-                            timeout_secs = SAVE_TIMEOUT.as_secs(),
-                            "timed out persisting window state on close"
+            save_main_geometry(&window, &service).await;
+
+            let app = window.app_handle().clone();
+            if crate::tray::servers_running(&app) {
+                match crate::tray::ensure(&app) {
+                    Ok(()) => {
+                        tracing::info!(
+                            "servers are running: hiding to the tray instead of quitting"
                         );
+                        if let Err(err) = window.hide() {
+                            tracing::error!(?err, "failed to hide the main window");
+                        }
+                        return;
                     }
-                },
-                Err(err) => {
-                    tracing::error!(?err, "failed to read window geometry before close");
+                    Err(err) => {
+                        tracing::error!(?err, "no tray icon; quitting and stopping the servers");
+                    }
                 }
             }
-
-            // Kill every terminal's whole process tree first so no shell (or
-            // anything it spawned) can outlive the window.
-            let state = window.app_handle().state::<AppState>();
-            state.terminal.kill_all();
-            state.search.cancel_all();
-            // Nothing a run started may outlive the window.
-            state.runner.stop_all();
-            state.php_server.stop_all();
-            // MariaDB gets a clean shutdown (it flushes its files), then phpMyAdmin
-            // and Composer go; the PHP window's geometry is remembered first.
-            if let Some(php_window) = window
-                .app_handle()
-                .get_webview_window(crate::commands::php::PHP_WINDOW_LABEL)
-            {
-                save_secondary_geometry(&php_window).await;
-            }
-            let app = window.app_handle().clone();
-            let _ = tokio::time::timeout(
-                Duration::from_secs(25),
-                tokio::task::spawn_blocking(move || {
-                    crate::commands::watch::stop_on_exit(&app);
-                    crate::commands::lsp::stop_lsp(&app);
-                    crate::commands::git::stop_git(&app);
-                    crate::commands::database::stop_all_services(&app)
-                }),
-            )
-            .await;
-
-            // `.destroy()`, not `.close()`: `.close()` re-emits
-            // `CloseRequested` (documented behavior — "like a
-            // user-initiated close request so you can intercept it"),
-            // which would recurse straight back into this same handler.
-            // `.destroy()` force-closes without emitting events, running
-            // native teardown directly rather than going through
-            // `AppHandle::cleanup_before_exit`'s hide-and-clear-resources
-            // path. See CLAUDE.md's shutdown note: the WebView2-orphan
-            // report from Milestone 3 turned out to be a misdiagnosis (it
-            // was counting Windows Search's and other apps' *own*
-            // `msedgewebview2.exe` processes, not this app's), so this call
-            // is a defensive improvement, not a fix for a confirmed bug —
-            // process-ancestry testing showed the app's own WebView2
-            // children already exited cleanly without it.
-            if let Err(err) = window.destroy() {
-                tracing::error!(?err, "failed to destroy window before exit");
-            }
-
-            // Tauri 2 doesn't exit the process just because no windows
-            // remain (that's what lets tray-icon apps keep running).
-            // OpenMind Studio has no background/tray mode yet, so closing
-            // the main window should quit the app, same as any
-            // single-window desktop editor. `AppHandle::exit` runs the
-            // graceful `RunEvent::ExitRequested`/`RunEvent::Exit` sequence
-            // (which includes `cleanup_before_exit`) rather than calling
-            // `std::process::exit` directly.
-            window.app_handle().exit(0);
+            shutdown(app).await;
         });
     });
+}
+
+async fn save_main_geometry(window: &WebviewWindow, service: &WindowStateService) {
+    match current_window_state(window) {
+        Ok(state) => match tokio::time::timeout(SAVE_TIMEOUT, service.save(&state)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(err)) => {
+                tracing::error!(?err, "failed to persist window state on close");
+            }
+            Err(_) => {
+                tracing::error!(
+                    timeout_secs = SAVE_TIMEOUT.as_secs(),
+                    "timed out persisting window state on close"
+                );
+            }
+        },
+        Err(err) => {
+            tracing::error!(?err, "failed to read window geometry before close");
+        }
+    }
+}
+
+/// Quits for real: stops every terminal, run, server and Git process, then
+/// destroys the main window and exits. Used by a normal close and by the
+/// tray's Quit.
+pub async fn shutdown(app: AppHandle) {
+    // Kill every terminal's whole process tree first so no shell (or
+    // anything it spawned) can outlive the app.
+    let state = app.state::<AppState>();
+    state.terminal.kill_all();
+    state.search.cancel_all();
+    // Nothing a run started may outlive the app.
+    state.runner.stop_all();
+    state.php_server.stop_all();
+    // MariaDB gets a clean shutdown (it flushes its files), then phpMyAdmin
+    // and Composer go; the PHP window's geometry is remembered first.
+    if let Some(php_window) = app.get_webview_window(crate::commands::php::PHP_WINDOW_LABEL) {
+        save_secondary_geometry(&php_window).await;
+    }
+    let stopper = app.clone();
+    let _ = tokio::time::timeout(
+        Duration::from_secs(25),
+        tokio::task::spawn_blocking(move || {
+            crate::commands::watch::stop_on_exit(&stopper);
+            crate::commands::lsp::stop_lsp(&stopper);
+            crate::commands::git::stop_git(&stopper);
+            crate::commands::database::stop_all_services(&stopper)
+        }),
+    )
+    .await;
+
+    // `.destroy()`, not `.close()`: `.close()` re-emits `CloseRequested`
+    // (documented behavior — "like a user-initiated close request so you can
+    // intercept it"), which would recurse straight back into the close
+    // handler. See CLAUDE.md's shutdown note: the WebView2-orphan report from
+    // Milestone 3 was a misdiagnosis, so this is a defensive improvement, not
+    // a fix for a confirmed bug.
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        if let Err(err) = window.destroy() {
+            tracing::error!(?err, "failed to destroy window before exit");
+        }
+    }
+
+    // Tauri 2 doesn't exit the process just because no windows remain (that's
+    // what lets tray apps keep running), so quit explicitly. `AppHandle::exit`
+    // runs the graceful `RunEvent::ExitRequested`/`RunEvent::Exit` sequence
+    // (which includes `cleanup_before_exit`), not `std::process::exit`.
+    app.exit(0);
 }
 
 /// Saves a secondary window's geometry (best effort, bounded).

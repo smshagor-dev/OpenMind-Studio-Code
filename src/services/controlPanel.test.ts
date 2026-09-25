@@ -35,9 +35,7 @@ function status(id: string, versions: InstalledVersion[]): RuntimeStatus {
 async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue([status("php", [installed("8.4.26")])]),
-    workspaceActiveFolder: vi
-      .fn()
-      .mockResolvedValue({ id: 1, path: "C:/My Site", name: "My Site" }),
+    phpWebRoot: vi.fn().mockResolvedValue("C:/My Site"),
     ...overrides,
   });
   const events = new EventBus<AppEvents>();
@@ -77,25 +75,25 @@ describe("ControlPanelService", () => {
   });
 
   it("every disabled button carries a reason", async () => {
-    const { control } = await setup();
+    const { control } = await setup({
+      phpWebRoot: vi.fn().mockRejectedValue("Couldn't create the web root folder: denied"),
+    });
     const rows = control.rows();
     expect(rows[0]?.toggle.availability).toEqual({
       enabled: false,
-      reason: "Select a valid project folder first — use Config.",
+      reason: "Choose a web root folder first.",
     });
     expect(rows[0]?.admin.reason).toBe("Start the server first — there is no URL yet.");
     expect(rows[0]?.config.reason).toContain("php.ini");
     expect(rows[1]?.toggle.availability.reason).toBe("MariaDB runtime is not installed yet.");
     expect(rows[1]?.admin.reason).toContain("phpMyAdmin");
     expect(rows[2]?.toggle.availability.reason).toBe("phpMyAdmin is not installed yet.");
-    expect(control.explorerState().reason).toBe(
-      "Select a valid project folder first — use Config.",
-    );
+    expect(control.explorerState().reason).toBe("Choose a web root folder first — use Config.");
   });
 
   it("shows the running PHP server's PID and port, and turns Start into Stop", async () => {
     const { control, php } = await setup();
-    await php.useWorkspace();
+    await php.useDefaultRoot();
     php.getState();
     const startIpc = vi.spyOn(php, "start");
     await control.toggle("php");
@@ -144,7 +142,7 @@ describe("ControlPanelService", () => {
 
   it("Explorer, Shell and Quit call the backend / window", async () => {
     const { control, php, ipc, close } = await setup();
-    await php.useWorkspace();
+    await php.useDefaultRoot();
     expect(control.explorerState()).toEqual({ enabled: true });
     await control.openExplorer();
     expect(ipc.panelOpenFolder).toHaveBeenCalledWith("C:/My Site");

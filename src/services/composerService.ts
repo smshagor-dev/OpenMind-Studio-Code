@@ -4,10 +4,11 @@ import type { ComposerAction, IpcClient, ProjectInfo, RunEvent, RunInfo } from "
 import type { OutputService } from "./outputService";
 import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
-import type { PhpServerService } from "./phpServerService";
 import type { Availability, RuntimeService } from "./runtimeService";
 
 export const COMPOSER_CHANNEL = "Composer";
+const SETTINGS_KEY = "composer.project";
+export const NO_COMPOSER_PROJECT = "Select a Composer project folder first.";
 
 export const COMPOSER_ACTIONS: readonly { action: ComposerAction; label: string }[] = [
   { action: "install", label: "composer install" },
@@ -20,7 +21,10 @@ export interface ComposerState {
   running: RunInfo | null;
   runningAction: ComposerAction | null;
   project: ProjectInfo | null;
-  /** The folder `project` was worked out for. */
+  /**
+   * The project Composer works on — its own choice, not the PHP server's web
+   * root (the server serves every site; Composer works on one project).
+   */
   projectRoot: string | null;
   /** How the last command ended, until the next one starts. */
   lastResult: string | null;
@@ -53,7 +57,7 @@ export function composerAvailability(input: ComposerInput): Availability {
     return { enabled: false, reason: "No PHP is active — set a PHP version active first." };
   }
   if (input.root === null || input.project?.isDir === false) {
-    return { enabled: false, reason: "Select a valid project folder first." };
+    return { enabled: false, reason: NO_COMPOSER_PROJECT };
   }
   if (input.project?.hasComposerJson === false) {
     return { enabled: false, reason: "This folder has no composer.json." };
@@ -79,7 +83,6 @@ export class ComposerService {
     private readonly output: OutputService,
     private readonly runtime: RuntimeService,
     private readonly panel: PanelService,
-    private readonly php: PhpServerService,
   ) {}
 
   getState(): ComposerState {
@@ -106,12 +109,8 @@ export class ComposerService {
     } catch (error) {
       this.events.emit("appError", { message: `Composer output unavailable: ${String(error)}` });
     }
-    // The project folder is chosen in the PHP Server section: follow it.
-    this.offs.push(
-      this.php.subscribe(() => {
-        if (this.php.getState().root !== this.state.projectRoot) void this.refreshProject();
-      }),
-    );
+    const saved = await this.ipc.settingsGet(SETTINGS_KEY).catch(() => null);
+    if (saved !== null && saved !== "") this.update({ projectRoot: saved });
     await this.syncRunning();
     await this.refreshProject();
   }
@@ -122,13 +121,27 @@ export class ComposerService {
 
   /** Re-reads whether the project folder exists and has a composer.json. */
   async refreshProject(): Promise<void> {
-    const root = this.php.getState().root;
+    const root = this.state.projectRoot;
     if (root === null) {
-      this.update({ project: null, projectRoot: null });
+      this.update({ project: null });
       return;
     }
     const project = (await this.ipc.phpProjectInfo(root).catch(() => null)) ?? null;
-    if (root === this.php.getState().root) this.update({ project, projectRoot: root });
+    if (root === this.state.projectRoot) this.update({ project });
+  }
+
+  /** Chooses the project Composer works on (saved). */
+  async setProject(root: string): Promise<void> {
+    this.update({ projectRoot: root, project: null, error: null, lastResult: null });
+    await this.ipc.settingsSet(SETTINGS_KEY, root).catch(() => undefined);
+    await this.refreshProject();
+  }
+
+  async selectProject(): Promise<boolean> {
+    const picked = await this.ipc.openFolderDialog();
+    if (picked === null) return false;
+    await this.setProject(picked);
+    return true;
   }
 
   private async syncRunning(): Promise<void> {
@@ -146,13 +159,13 @@ export class ComposerService {
   availability(): Availability {
     const status = (id: string) =>
       this.runtime.getState().runtimes.find((entry) => entry.id === id);
-    const root = this.php.getState().root;
+    const root = this.state.projectRoot;
     return composerAvailability({
       composerInstalled: (status("composer")?.installed.length ?? 0) > 0,
       phpInstalled: (status("php")?.installed.length ?? 0) > 0,
       phpActive: status("php")?.installed.some((entry) => entry.active && entry.healthy) ?? false,
       root,
-      project: this.state.projectRoot === root ? this.state.project : null,
+      project: this.state.project,
       running: this.state.running !== null,
     });
   }
@@ -166,7 +179,7 @@ export class ComposerService {
   // --- Actions ---
 
   async run(action: ComposerAction): Promise<boolean> {
-    const root = this.php.getState().root;
+    const root = this.state.projectRoot;
     const availability = this.availability();
     if (!availability.enabled || root === null) {
       return this.fail(availability.reason ?? "Composer can't run.");

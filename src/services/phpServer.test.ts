@@ -62,9 +62,7 @@ async function rig(
   let handler: (event: RunEvent) => void = () => undefined;
   const ipc = createFakeIpc({
     runtimeList: vi.fn().mockResolvedValue(runtimes),
-    workspaceActiveFolder: vi
-      .fn()
-      .mockResolvedValue({ id: 1, path: "C:/My Site", name: "My Site" }),
+    phpWebRoot: vi.fn().mockResolvedValue("C:/My Site"),
     onPhpEvent: vi.fn((h: typeof handler) => {
       handler = h;
       return Promise.resolve(() => undefined);
@@ -132,7 +130,7 @@ describe("startAvailability", () => {
       "Runtime Extensions",
     );
     expect(startAvailability({ ...ready, root: null }).reason).toBe(
-      "Select a valid project folder first.",
+      "Choose a web root folder first.",
     );
     expect(startAvailability({ ...ready, running: true }).reason).toBe(
       "The server is already running.",
@@ -160,7 +158,7 @@ describe("PhpServerService", () => {
 
   it("without PHP, Start is disabled with the reason and Install is offered", async () => {
     const empty = await rig([]);
-    await empty.php.useWorkspace();
+    await empty.php.useDefaultRoot();
 
     expect(empty.php.component("php")).toMatchObject({ state: "notInstalled", version: null });
     expect(empty.php.startState()).toEqual({
@@ -171,15 +169,26 @@ describe("PhpServerService", () => {
     expect(empty.ipc.phpServerStart).not.toHaveBeenCalled();
   });
 
-  it("without a project folder, Start is disabled with the folder reason", () => {
-    expect(r.php.startState()).toEqual({
+  it("serves the app's htdocs by default and doesn't save that path (it follows the app folder)", () => {
+    expect(r.php.getState()).toMatchObject({ root: "C:/My Site", defaultRoot: true });
+    expect(r.ipc.phpWebRoot).toHaveBeenCalled();
+    expect(r.php.startState()).toEqual({ enabled: true });
+  });
+
+  it("when the web root can't be created, Start is disabled with the folder reason", async () => {
+    const broken = await rig(PHP_INSTALLED, {
+      phpWebRoot: vi.fn().mockRejectedValue("Couldn't create the web root folder: denied"),
+    });
+    expect(broken.php.getState().root).toBeNull();
+    expect(broken.php.getState().error).toContain("Couldn't create the web root folder");
+    expect(broken.php.startState()).toEqual({
       enabled: false,
-      reason: "Select a valid project folder first.",
+      reason: "Choose a web root folder first.",
     });
   });
 
   it("with PHP and a folder Start is enabled; Stop, Restart and Open Browser are not yet", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
 
     expect(r.php.startState()).toEqual({ enabled: true });
     expect(r.php.stopState().enabled).toBe(false);
@@ -190,12 +199,16 @@ describe("PhpServerService", () => {
     });
   });
 
-  it("Use Current Workspace needs an open folder", async () => {
-    vi.mocked(r.ipc.workspaceActiveFolder).mockResolvedValue(null);
+  it("Use Default goes back to htdocs after another folder was chosen", async () => {
+    await r.php.setRoot("D:/Sites");
+    expect(r.php.getState()).toMatchObject({ root: "D:/Sites", defaultRoot: false });
 
-    expect(await r.php.useWorkspace()).toBe(false);
-    expect(r.php.getState().root).toBeNull();
-    expect(r.php.getState().error).toContain("No folder is open in the main window");
+    expect(await r.php.useDefaultRoot()).toBe(true);
+    expect(r.php.getState()).toMatchObject({ root: "C:/My Site", defaultRoot: true });
+    expect(r.ipc.settingsSet).toHaveBeenLastCalledWith(
+      "php.server",
+      JSON.stringify({ webRoot: null, port: 8000 }),
+    );
   });
 
   it("Select Folder stores the chosen folder and remembers it with the port", async () => {
@@ -206,21 +219,36 @@ describe("PhpServerService", () => {
     expect(r.php.getState().root).toBe("D:/Sites/shop");
     expect(r.ipc.settingsSet).toHaveBeenCalledWith(
       "php.server",
-      JSON.stringify({ root: "D:/Sites/shop", port: 8000 }),
+      JSON.stringify({ webRoot: "D:/Sites/shop", port: 8000 }),
     );
   });
 
   it("restores the saved folder and port on start-up", async () => {
     const saved = await rig(PHP_INSTALLED, {
-      settingsGet: vi.fn().mockResolvedValue(JSON.stringify({ root: "D:/kept", port: 8123 })),
+      settingsGet: vi.fn().mockResolvedValue(JSON.stringify({ webRoot: "D:/kept", port: 8123 })),
     });
 
-    expect(saved.php.getState()).toMatchObject({ root: "D:/kept", port: 8123, server: null });
+    expect(saved.php.getState()).toMatchObject({
+      root: "D:/kept",
+      defaultRoot: false,
+      port: 8123,
+      server: null,
+    });
     expect(saved.ipc.phpServerStart).not.toHaveBeenCalled(); // never auto-starts
   });
 
+  it("an old project folder setting is not reused: the server serves the web root", async () => {
+    const old = await rig(PHP_INSTALLED, {
+      settingsGet: vi
+        .fn()
+        .mockResolvedValue(JSON.stringify({ root: "D:/one-project", port: 8123 })),
+    });
+
+    expect(old.php.getState()).toMatchObject({ root: "C:/My Site", defaultRoot: true, port: 8123 });
+  });
+
   it("starts the server, shows its URL, and registers the port for the Ports panel", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
 
     expect(await r.php.start()).toBe(true);
 
@@ -239,7 +267,7 @@ describe("PhpServerService", () => {
   });
 
   it("logs the command, cwd, runtime, resolved path, port and every output line", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
 
     r.emit(started());
@@ -260,7 +288,7 @@ describe("PhpServerService", () => {
   });
 
   it("Stop asks the backend, and the exit event clears the server and unregisters the port", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
 
     await r.php.stop();
@@ -274,7 +302,7 @@ describe("PhpServerService", () => {
   });
 
   it("a server that dies on its own is reported with its exit code and frees the port entry", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
 
     r.emit({ runId: "php-1", type: "exited", code: 255, durationMs: 5, stopped: false });
@@ -285,7 +313,7 @@ describe("PhpServerService", () => {
   });
 
   it("an exit that arrives before the start call returns doesn't leave a ghost server", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     vi.mocked(r.ipc.phpServerStart).mockImplementation(() => {
       r.emit({ runId: "php-1", type: "exited", code: 1, durationMs: 1, stopped: false });
       return Promise.resolve({
@@ -306,11 +334,11 @@ describe("PhpServerService", () => {
     const busy = await rig(PHP_INSTALLED, {
       phpPortFree: vi.fn().mockResolvedValue(false),
     });
-    await busy.php.useWorkspace();
+    await busy.php.useDefaultRoot();
     expect(busy.php.getState().portFree).toBe(false);
     expect(busy.php.startState().reason).toContain("Port 8000 is already in use");
 
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     vi.mocked(r.ipc.phpServerStart).mockRejectedValue("Port 8000 is already in use.");
     expect(await r.php.start()).toBe(false);
     expect(r.php.getState().error).toBe("Port 8000 is already in use.");
@@ -327,14 +355,14 @@ describe("PhpServerService", () => {
     expect(r.ipc.phpPortFree).toHaveBeenLastCalledWith(8081);
     expect(r.ipc.settingsSet).toHaveBeenCalledWith("php.server", expect.stringContaining("8081"));
 
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
     expect(r.ipc.phpServerStart).toHaveBeenCalledWith({ root: "C:/My Site", port: 8081 });
     expect(r.php.getState().portFree).toBeNull(); // not re-checked while it is ours
   });
 
   it("Restart stops, waits for the exit, and starts again", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
     vi.mocked(r.ipc.phpServerStop).mockImplementation(() => {
       setTimeout(() => {
@@ -356,7 +384,7 @@ describe("PhpServerService", () => {
   });
 
   it("Open Browser opens the running server's URL, and Open Logs shows the Output channel", async () => {
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
 
     await r.php.openBrowser();
@@ -384,7 +412,7 @@ describe("PhpServerService", () => {
       port: 8000,
       phpVersion: "8.4.26",
     });
-    await both.php.useWorkspace();
+    await both.php.useDefaultRoot();
     await both.php.start();
 
     expect(both.php.getState().server?.phpVersion).toBe("8.4.26");
@@ -414,7 +442,7 @@ describe("PhpServerService", () => {
 
   it("a damaged PHP refuses Start (pointing at Runtime Extensions) and keeps the install button off", async () => {
     const damaged = await rig([status("php", [version("8.4.26", { healthy: false })])]);
-    await damaged.php.useWorkspace();
+    await damaged.php.useDefaultRoot();
 
     expect(damaged.php.component("php").state).toBe("needsRepair");
     expect(damaged.php.startState().reason).toContain("repair it");
@@ -456,12 +484,18 @@ describe("PhpServerService", () => {
   });
 
   it("the commands are enabled exactly when the panel's buttons are", async () => {
+    r = await rig(PHP_INSTALLED, {
+      phpWebRoot: vi
+        .fn()
+        .mockRejectedValueOnce("Couldn't create the web root folder: busy")
+        .mockResolvedValue("C:/My Site"),
+    });
     const commands = new CommandRegistry();
     registerPhpCommands(commands, r.php, r.ipc);
     expect(commands.isEnabled("php.startServer")).toBe(false);
     expect(commands.isEnabled("php.openLogs")).toBe(true);
 
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     expect(commands.isEnabled("php.startServer")).toBe(true);
     await commands.execute("php.startServer");
     expect(commands.isEnabled("php.stopServer")).toBe(true);

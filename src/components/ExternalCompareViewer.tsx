@@ -3,8 +3,7 @@ import { useSyncExternalStore } from "react";
 import { MonacoDiffHost } from "../editor/MonacoDiffHost";
 import { container } from "../services/container";
 import "../styles/externalSync.css";
-
-const THEMES: Record<string, string> = { dark: "vs-dark", light: "vs" };
+import { MONACO_THEME_MAP } from "../editor/monacoThemes";
 
 /**
  * "Compare" for a file that changed on disk while it has unsaved edits: the
@@ -39,7 +38,7 @@ export function ExternalCompareViewer({ themeKind }: { themeKind: string }) {
         original={compare.disk}
         modified={compare.buffer}
         path={compare.title}
-        theme={THEMES[themeKind] ?? "vs-dark"}
+        theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
       />
     </section>
   );

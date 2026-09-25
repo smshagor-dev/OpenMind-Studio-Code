@@ -44,6 +44,20 @@ impl WorkspaceFolderService {
         })
     }
 
+    /// Adds `path` to the recent folders without making it the saved open
+    /// folder (an extra window's folder: it isn't restored on launch).
+    pub async fn remember_folder(&self, path: &str) -> Result<WorkspaceInfo, WorkspaceError> {
+        let name = folder_name(path);
+        let id = OpenedProjectsRepository::new(self.db.pool())
+            .touch(path, Some(&name), false)
+            .await?;
+        Ok(WorkspaceInfo {
+            id,
+            path: path.to_string(),
+            name,
+        })
+    }
+
     pub async fn close_folder(&self) -> Result<(), WorkspaceError> {
         SessionRepository::new(self.db.pool())
             .set_active_project(None)
@@ -114,6 +128,31 @@ mod tests {
         assert_eq!(info.name, "my-app");
         let active = service.active_workspace().await.expect("active");
         assert_eq!(active, Some(info));
+    }
+
+    #[tokio::test]
+    async fn remember_folder_adds_a_recent_folder_but_keeps_the_saved_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = Db::connect(&dir.path().join("test.db"))
+            .await
+            .expect("connect");
+        let service = WorkspaceFolderService::new(db);
+        let main = service.open_folder("C:/proj/main-app").await.expect("open");
+
+        let other = service
+            .remember_folder("C:/proj/second app")
+            .await
+            .expect("remember");
+
+        assert_eq!(other.name, "second app");
+        assert_eq!(
+            service.active_workspace().await.expect("active"),
+            Some(main)
+        );
+        let recent = service.recent_folders(10).await.expect("recent");
+        assert!(recent
+            .iter()
+            .any(|folder| folder.path == "C:/proj/second app"));
     }
 
     #[tokio::test]

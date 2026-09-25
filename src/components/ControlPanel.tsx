@@ -1,11 +1,20 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 
+import appIcon from "../../src-tauri/icons/32x32.png";
 import { container } from "../services/container";
 import type { ModuleRow } from "../services/controlPanelService";
 import { MODULE_NAMES } from "../services/controlPanelService";
 import type { Availability } from "../services/runtimeService";
 import "../styles/controlPanel.css";
+import {
+  ConfigIcon,
+  ExplorerIcon,
+  HelpIcon,
+  NetstatIcon,
+  QuitIcon,
+  ShellIcon,
+} from "./controlPanelIcons";
 import { PhpServerView } from "./PhpServerView";
 
 /** Re-renders when the panel or any module service changes. */
@@ -40,21 +49,34 @@ function PanelButton(props: {
   availability?: Availability;
   onClick: () => void;
   active?: boolean;
+  icon?: ReactNode;
+  className?: string;
 }) {
   const availability = props.availability ?? { enabled: true };
+  const classes = ["cp__button"];
+  if (props.className !== undefined) classes.push(props.className);
+  if (props.active === true) classes.push("cp__button--active");
   return (
     <button
       type="button"
-      className={props.active === true ? "cp__button cp__button--active" : "cp__button"}
+      className={classes.join(" ")}
       disabled={!availability.enabled}
       title={availability.enabled ? props.label : availability.reason}
       aria-label={props.label}
       aria-pressed={props.active}
       onClick={props.onClick}
     >
-      {props.text ?? props.label}
+      {props.icon}
+      <span>{props.text ?? props.label}</span>
     </button>
   );
+}
+
+/** XAMPP colors the module name by state: green running, yellow starting, red error. */
+function moduleTone(row: ModuleRow): string {
+  if (row.status === "Starting…") return "cp__module cp__module--starting";
+  if (row.status === "Error") return "cp__module cp__module--error";
+  return row.running ? "cp__module cp__module--running" : "cp__module";
 }
 
 function ModuleTableRow({ row }: { row: ModuleRow }) {
@@ -62,12 +84,12 @@ function ModuleTableRow({ row }: { row: ModuleRow }) {
   const filter = panel.getState().filter;
   return (
     <tr className={row.running ? "cp__row cp__row--running" : "cp__row"} aria-label={row.name}>
-      <th scope="row" className="cp__module">
+      <th scope="row" className={moduleTone(row)} title={row.status}>
         {row.name}
+        <span className="cp__sr-only"> — {row.status}</span>
       </th>
       <td className="cp__pid">{row.pid ?? ""}</td>
       <td className="cp__port">{row.ports}</td>
-      <td className="cp__status">{row.status}</td>
       <td>
         <div className="cp__actions">
           <PanelButton
@@ -136,7 +158,8 @@ function LogView() {
       {lines.map((line) => (
         <div key={line.id} className="cp__log-line">
           <span className="cp__log-time">{line.time}</span>{" "}
-          <span className="cp__log-tag">[{line.tag}]</span> <span>{line.text}</span>
+          <span className="cp__log-tag">[{line.tag}]</span>{" "}
+          <span className="cp__log-text">{line.text}</span>
         </div>
       ))}
     </div>
@@ -149,24 +172,32 @@ function SideButtons() {
     <nav className="cp__side" aria-label="Control panel">
       <PanelButton
         label="Config"
+        icon={<ConfigIcon />}
+        className="cp__side-button"
         onClick={() => {
           panel.setPage("config");
         }}
       />
       <PanelButton
         label="Netstat"
+        icon={<NetstatIcon />}
+        className="cp__side-button"
         onClick={() => {
           panel.setPage("netstat");
         }}
       />
       <PanelButton
         label="Shell"
+        icon={<ShellIcon />}
+        className="cp__side-button"
         onClick={() => {
           void panel.openShell();
         }}
       />
       <PanelButton
         label="Explorer"
+        icon={<ExplorerIcon />}
+        className="cp__side-button"
         availability={panel.explorerState()}
         onClick={() => {
           void panel.openExplorer();
@@ -174,12 +205,16 @@ function SideButtons() {
       />
       <PanelButton
         label="Help"
+        icon={<HelpIcon />}
+        className="cp__side-button"
         onClick={() => {
           panel.setPage("help");
         }}
       />
       <PanelButton
         label="Quit"
+        icon={<QuitIcon />}
+        className="cp__side-button"
         onClick={() => {
           void panel.quit();
         }}
@@ -188,28 +223,35 @@ function SideButtons() {
   );
 }
 
+/** XAMPP's layout: logo + title and the "Modules" box on the left, the side buttons on the right, the log below. */
 function MainPage() {
   const panel = usePanel();
   return (
     <div className="cp__main">
       <div className="cp__top">
-        <div className="cp__table-wrap">
-          <table className="cp__table">
-            <thead>
-              <tr>
-                <th>Module</th>
-                <th>PID(s)</th>
-                <th>Port(s)</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {panel.rows().map((row) => (
-                <ModuleTableRow key={row.id} row={row} />
-              ))}
-            </tbody>
-          </table>
+        <div className="cp__left">
+          <header className="cp__header">
+            <img className="cp__logo" src={appIcon} alt="" width={32} height={32} />
+            <h1 className="cp__title">OpenMind PHP Control Panel</h1>
+          </header>
+          <fieldset className="cp__modules">
+            <legend>Modules</legend>
+            <table className="cp__table">
+              <thead>
+                <tr>
+                  <th>Module</th>
+                  <th>PID(s)</th>
+                  <th>Port(s)</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {panel.rows().map((row) => (
+                  <ModuleTableRow key={row.id} row={row} />
+                ))}
+              </tbody>
+            </table>
+          </fieldset>
         </div>
         <SideButtons />
       </div>
@@ -298,16 +340,20 @@ function HelpPage() {
     <SubPage title="Help">
       <ul className="cp__help">
         <li>
-          <b>Start / Stop</b> starts or stops that module. Nothing starts by itself; closing
-          OpenMind Studio stops everything.
+          <b>Start / Stop</b> starts or stops that module. Nothing starts by itself.
+        </li>
+        <li>
+          The PHP server is not tied to one project: it serves the <b>web root</b> (the app&apos;s{" "}
+          <code>htdocs</code> folder unless you choose another), and every folder inside it is its
+          own site at <code>http://127.0.0.1:8000/&lt;folder&gt;/</code>. The root page lists them.
         </li>
         <li>
           <b>Admin</b> opens the module in your browser (MariaDB is managed through phpMyAdmin).
         </li>
         <li>
           <b>Config</b> in a row opens that module&apos;s config file in Notepad. The <b>Config</b>{" "}
-          button on the right opens the project folder, ports, PHP versions, Composer and the
-          MariaDB password.
+          button on the right opens the web root, ports, PHP versions, Composer (with its own
+          project folder) and the MariaDB password.
         </li>
         <li>
           <b>Logs</b> shows only that module&apos;s lines in the log below; click again for all.
@@ -315,11 +361,13 @@ function HelpPage() {
         <li>
           <b>Netstat</b> lists the TCP ports that are listening on this computer, with their
           process. <b>Shell</b> opens a console with the portable PHP, Composer, Python, Node and
-          Git first on PATH. <b>Explorer</b> opens the project folder.
+          Git first on PATH, in the web root. <b>Explorer</b> opens the web root.
         </li>
         <li>
-          <b>Quit</b> closes this window. Servers keep running until you stop them or close OpenMind
-          Studio.
+          <b>Quit</b> closes this window; the servers keep running. Closing the main OpenMind Studio
+          window while a server runs hides the app in the system tray (servers keep running). The
+          tray icon brings it back, has <b>Stop All Servers</b>, and <b>Quit OpenMind Studio</b>{" "}
+          stops everything.
         </li>
         <li>
           Everything listens on 127.0.0.1 only. No Windows service, admin rights or PATH change.
@@ -331,7 +379,7 @@ function HelpPage() {
 
 /**
  * The PHP Server window, XAMPP-control-panel style: a module table, the side
- * buttons and a log. Installing versions, the project folder and ports live
+ * buttons and a log. Installing versions, the web root and ports live
  * behind the Config button. UI only — `ControlPanelService` decides everything.
  */
 export function ControlPanel() {

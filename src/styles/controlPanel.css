@@ -9,15 +9,55 @@
 
 .cp__top {
   display: flex;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 8px 8px 6px;
   align-items: flex-start;
 }
 
-.cp__table-wrap {
+/* Logo + title and the "Modules" box, like XAMPP's left side. */
+.cp__left {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cp__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 36px;
+}
+
+.cp__logo {
+  flex: 0 0 auto;
+}
+
+.cp__title {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp__modules {
+  margin: 0;
+  padding: 2px 6px 6px;
+  min-width: 0;
+  border: 1px solid var(--section-header-border, var(--border));
+  border-radius: 3px;
+}
+
+.cp__modules legend {
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
 }
 
 .cp__table {
@@ -27,43 +67,90 @@
 
 .cp__table th,
 .cp__table td {
-  padding: 4px 6px;
+  padding: 3px 6px;
   text-align: left;
   white-space: nowrap;
+}
+
+.cp__table--net th,
+.cp__table--net td {
   border-bottom: 1px solid var(--border);
 }
 
 .cp__table thead th {
-  color: var(--fg-muted);
   font-weight: 600;
+}
+
+.cp__modules .cp__table thead th {
+  text-align: center;
 }
 
 .cp__module {
-  font-weight: 600;
+  min-width: 84px;
+  text-align: center !important;
+  font-weight: 400;
+  border-radius: 2px;
 }
 
-.cp__row--running .cp__module,
-.cp__row--running .cp__status {
-  color: var(--success-fg, #89d185);
+/* Running modules get XAMPP's green name cell. */
+.cp__module--running {
+  background: #2e7d32;
+  color: #ffffff;
+}
+
+.cp__module--starting {
+  background: #b58900;
+  color: #ffffff;
+}
+
+.cp__module--error {
+  background: var(--danger-bg, #a1260d);
+  color: #ffffff;
+}
+
+.cp__pid,
+.cp__port {
+  min-width: 56px;
+  text-align: center !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.cp__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .cp__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+}
+
+.cp__actions .cp__button {
+  width: 58px;
+  justify-content: center;
 }
 
 .cp__side {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  flex: 0 0 auto;
+  gap: 5px;
+  flex: 0 0 96px;
 }
 
 .cp__button {
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  min-height: 24px;
+  border: 1px solid var(--menu-border, var(--border));
+  border-radius: 3px;
+  background: var(--button-secondary-bg, transparent);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -71,29 +158,50 @@
 }
 
 .cp__button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--button-secondary-hover-bg, rgba(255, 255, 255, 0.08));
+}
+
+.cp__button:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
 }
 
 .cp__button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .cp__button--active {
-  background: var(--accent-bg, #0e639c);
-  color: #fff;
+  background: var(--button-bg, #0e639c);
+  color: var(--button-fg, #fff);
 }
 
+.cp__side-button {
+  width: 100%;
+  min-height: 26px;
+}
+
+.cp__side-button span {
+  flex: 1;
+  text-align: center;
+}
+
+.cp__icon {
+  flex: 0 0 auto;
+}
+
+/* The log: XAMPP's white box with the clock, the module tag and the text. */
 .cp__log {
   flex: 1 1 0;
   min-height: 80px;
   margin: 0 8px 8px;
   padding: 4px 6px;
   overflow: auto;
-  border: 1px solid var(--border);
-  background: var(--input-bg, rgba(0, 0, 0, 0.2));
-  font-family: Consolas, monospace;
-  font-size: 11.5px;
+  border: 1px solid var(--menu-border, var(--border));
+  background: var(--editor-bg, rgba(0, 0, 0, 0.2));
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.55;
   user-select: text;
 }
 
@@ -103,10 +211,14 @@
 
 .cp__log-time {
   color: var(--fg-muted);
+  display: inline-block;
+  min-width: 76px;
 }
 
 .cp__log-tag {
-  color: var(--accent-fg, #3794ff);
+  color: var(--link-fg, #3794ff);
+  display: inline-block;
+  min-width: 96px;
 }
 
 .cp__log-filter {
@@ -167,10 +279,23 @@
   font-weight: 600;
 }
 
-.cp__actions {
-  flex-wrap: wrap;
+/* The Actions column takes only what its buttons need; PID and Port share the rest. */
+.cp__modules .cp__table td:last-child {
+  width: 1%;
 }
 
-.cp__table:not(.cp__table--net) td:last-child {
-  white-space: normal;
+.cp__modules .cp__actions {
+  flex-wrap: nowrap;
+}
+
+/* Too narrow for four buttons in a row (the window's minimum is 560px): let them wrap. */
+@media (max-width: 660px) {
+  .cp__modules .cp__table td:last-child {
+    width: auto;
+    white-space: normal;
+  }
+
+  .cp__modules .cp__actions {
+    flex-wrap: wrap;
+  }
 }

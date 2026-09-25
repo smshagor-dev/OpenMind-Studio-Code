@@ -1,19 +1,45 @@
+import { useState, type ReactNode } from "react";
+
 import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "../services/ipc";
-import { NewFileIcon, NewFolderIcon, PinIcon } from "./icons";
+import {
+  NewFileIcon,
+  NewFolderIcon,
+  NewWindowIcon,
+  PinIcon,
+  RuntimeIcon,
+  ServerIcon,
+  SourceControlIcon,
+} from "./icons";
+
+/** A card in the right-hand column: a real feature, opened by its command. */
+export interface WelcomeCard {
+  id: string;
+  title: string;
+  description: string;
+  icon: "runtime" | "server" | "language";
+  enabled: boolean;
+  onOpen: () => void;
+}
 
 interface StartPageProps {
   recentFiles: RecentFileInfo[];
   recentFolders: WorkspaceInfo[];
   pinnedFolders: PinnedFolderEntry[];
+  cards: WelcomeCard[];
+  showOnStartup: boolean;
   onNewFile: () => void;
   onOpenFile: () => void;
   onOpenFolder: () => void;
+  onCloneRepository: () => void;
+  onNewWindow: () => void;
   onOpenRecentFile: (path: string) => void;
   onOpenRecentFolder: (path: string) => void;
   onUnpinFolder: (path: string) => void;
+  onShowOnStartupChange: (show: boolean) => void;
 }
 
-const RECENT_LIMIT = 8;
+/** VS Code lists five recent entries, then "More...". */
+const RECENT_LIMIT = 5;
 
 function parentDir(path: string): string {
   const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
@@ -25,9 +51,34 @@ function baseName(path: string): string {
   return index >= 0 ? path.slice(index + 1) : path;
 }
 
-/** Shown when no editor is open — laid out like VS Code's Welcome page (Start + Recent). */
+const CARD_ICONS = {
+  runtime: <RuntimeIcon />,
+  server: <ServerIcon />,
+  language: <NewFileIcon />,
+} as const;
+
+/** The Welcome tab's page, laid out like VS Code's: Start + Recent on the left, cards on the right. */
 export function StartPage(props: StartPageProps) {
-  const { recentFiles, recentFolders, pinnedFolders, onOpenRecentFile, onOpenRecentFolder } = props;
+  const [allRecent, setAllRecent] = useState(false);
+  const recent = [
+    ...props.recentFolders.map((folder) => ({
+      key: `folder:${folder.path}`,
+      name: folder.name,
+      path: folder.path,
+      open: () => {
+        props.onOpenRecentFolder(folder.path);
+      },
+    })),
+    ...props.recentFiles.map((file) => ({
+      key: `file:${file.path}`,
+      name: baseName(file.path),
+      path: file.path,
+      open: () => {
+        props.onOpenRecentFile(file.path);
+      },
+    })),
+  ];
+  const shown = allRecent ? recent : recent.slice(0, RECENT_LIMIT);
   return (
     <div className="welcome">
       <div className="welcome__inner">
@@ -40,35 +91,37 @@ export function StartPage(props: StartPageProps) {
             <section className="welcome__section">
               <h2>Start</h2>
               <ul className="welcome__list">
-                <li>
-                  <button type="button" className="welcome__link" onClick={props.onNewFile}>
-                    <NewFileIcon /> New File...
-                  </button>
-                </li>
-                <li>
-                  <button type="button" className="welcome__link" onClick={props.onOpenFile}>
-                    <NewFileIcon /> Open File...
-                  </button>
-                </li>
-                <li>
-                  <button type="button" className="welcome__link" onClick={props.onOpenFolder}>
-                    <NewFolderIcon /> Open Folder...
-                  </button>
-                </li>
+                <StartLink icon={<NewFileIcon />} label="New File..." onClick={props.onNewFile} />
+                <StartLink icon={<NewFileIcon />} label="Open File..." onClick={props.onOpenFile} />
+                <StartLink
+                  icon={<NewFolderIcon />}
+                  label="Open Folder..."
+                  onClick={props.onOpenFolder}
+                />
+                <StartLink
+                  icon={<SourceControlIcon />}
+                  label="Clone Git Repository..."
+                  onClick={props.onCloneRepository}
+                />
+                <StartLink
+                  icon={<NewWindowIcon />}
+                  label="New Window"
+                  onClick={props.onNewWindow}
+                />
               </ul>
             </section>
-            {pinnedFolders.length > 0 ? (
+            {props.pinnedFolders.length > 0 ? (
               <section className="welcome__section">
                 <h2>Pinned</h2>
                 <ul className="welcome__list">
-                  {pinnedFolders.map((folder) => (
+                  {props.pinnedFolders.map((folder) => (
                     <li key={`pinned:${folder.path}`} className="welcome__recent">
                       <button
                         type="button"
                         className="welcome__link"
                         title={folder.path}
                         onClick={() => {
-                          onOpenRecentFolder(folder.path);
+                          props.onOpenRecentFolder(folder.path);
                         }}
                       >
                         {folder.label ?? baseName(folder.path)}
@@ -90,49 +143,83 @@ export function StartPage(props: StartPageProps) {
                 </ul>
               </section>
             ) : null}
-            {recentFolders.length > 0 || recentFiles.length > 0 ? (
+            {recent.length > 0 ? (
               <section className="welcome__section">
                 <h2>Recent</h2>
                 <ul className="welcome__list">
-                  {recentFolders.slice(0, RECENT_LIMIT).map((folder) => (
-                    <RecentRow
-                      key={`folder:${folder.path}`}
-                      name={folder.name}
-                      detail={parentDir(folder.path)}
-                      title={folder.path}
-                      onOpen={() => {
-                        onOpenRecentFolder(folder.path);
-                      }}
-                    />
-                  ))}
-                  {recentFiles.slice(0, RECENT_LIMIT).map((file) => (
-                    <RecentRow
-                      key={`file:${file.path}`}
-                      name={baseName(file.path)}
-                      detail={parentDir(file.path)}
-                      title={file.path}
-                      onOpen={() => {
-                        onOpenRecentFile(file.path);
-                      }}
-                    />
+                  {shown.map((entry) => (
+                    <li key={entry.key} className="welcome__recent">
+                      <button
+                        type="button"
+                        className="welcome__link"
+                        title={entry.path}
+                        onClick={entry.open}
+                      >
+                        {entry.name}
+                      </button>
+                      <span className="welcome__recent-path">{parentDir(entry.path)}</span>
+                    </li>
                   ))}
                 </ul>
+                {recent.length > RECENT_LIMIT ? (
+                  <button
+                    type="button"
+                    className="welcome__link welcome__more"
+                    onClick={() => {
+                      setAllRecent(!allRecent);
+                    }}
+                  >
+                    {allRecent ? "Less..." : "More..."}
+                  </button>
+                ) : null}
               </section>
             ) : null}
           </div>
+          <div className="welcome__column">
+            <section className="welcome__section">
+              <h2>Get Started</h2>
+              <ul className="welcome__cards">
+                {props.cards.map((card) => (
+                  <li key={card.id}>
+                    <button
+                      type="button"
+                      className="welcome__card"
+                      disabled={!card.enabled}
+                      onClick={card.onOpen}
+                    >
+                      <span className="welcome__card-icon">{CARD_ICONS[card.icon]}</span>
+                      <span className="welcome__card-text">
+                        <span className="welcome__card-title">{card.title}</span>
+                        <span className="welcome__card-description">{card.description}</span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
         </div>
+        <label className="welcome__startup">
+          <input
+            type="checkbox"
+            checked={props.showOnStartup}
+            onChange={(event) => {
+              props.onShowOnStartupChange(event.target.checked);
+            }}
+          />
+          Show welcome page on startup
+        </label>
       </div>
     </div>
   );
 }
 
-function RecentRow(props: { name: string; detail: string; title: string; onOpen: () => void }) {
+function StartLink(props: { icon: ReactNode; label: string; onClick: () => void }) {
   return (
-    <li className="welcome__recent">
-      <button type="button" className="welcome__link" title={props.title} onClick={props.onOpen}>
-        {props.name}
+    <li>
+      <button type="button" className="welcome__link" onClick={props.onClick}>
+        {props.icon} {props.label}
       </button>
-      <span className="welcome__recent-path">{props.detail}</span>
     </li>
   );
 }

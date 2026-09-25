@@ -95,6 +95,8 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     phpServerStatus: vi.fn().mockResolvedValue(null),
     phpWindowOpen: vi.fn().mockResolvedValue(undefined),
     phpPortFree: vi.fn().mockResolvedValue(true),
+    phpWebRoot: vi.fn().mockResolvedValue("C:/OpenMind Studio/htdocs"),
+    windowNew: vi.fn().mockResolvedValue("window-2"),
     panelConfigPath: vi.fn().mockResolvedValue(null),
     panelOpenFile: vi.fn().mockResolvedValue(undefined),
     panelOpenFolder: vi.fn().mockResolvedValue(undefined),

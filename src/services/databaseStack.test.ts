@@ -89,7 +89,7 @@ describe("Composer availability", () => {
       "No PHP is active",
     );
     expect(composerAvailability({ ...ready, root: null }).reason).toBe(
-      "Select a valid project folder first.",
+      "Select a Composer project folder first.",
     );
     expect(
       composerAvailability({ ...ready, project: { isDir: true, hasComposerJson: false } }).reason,

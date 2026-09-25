@@ -70,9 +70,7 @@ async function rig(runtimes: RuntimeStatus[]): Promise<Rig> {
   const list = vi.fn().mockResolvedValue(runtimes);
   const ipc = createFakeIpc({
     runtimeList: list,
-    workspaceActiveFolder: vi
-      .fn()
-      .mockResolvedValue({ id: 1, path: "C:/My Site", name: "My Site" }),
+    phpWebRoot: vi.fn().mockResolvedValue("C:/My Site"),
     onPhpEvent: vi.fn((h: typeof handler) => {
       handler = h;
       return Promise.resolve(() => undefined);
@@ -354,7 +352,7 @@ describe("Composer and PHP", () => {
       port: 8000,
       phpVersion: "8.4.26",
     });
-    await r.php.useWorkspace();
+    await r.php.useDefaultRoot();
     await r.php.start();
 
     const rows = r.cards.card("php").installedVersions;

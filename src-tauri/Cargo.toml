@@ -29,7 +29,7 @@ openmind-terminal = { version = "0.1.0", path = "../crates/terminal" }
 openmind-workspace = { version = "0.1.0", path = "../crates/workspace" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-tauri = { version = "2.11.6", features = [] }
+tauri = { version = "2.11.6", features = ["tray-icon"] }
 getrandom = "0.3"
 tauri-plugin-clipboard-manager = "2.3.3"
 tauri-plugin-dialog = "2.7.3"

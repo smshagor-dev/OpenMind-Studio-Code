@@ -53,12 +53,10 @@ async fn allow_system(state: &AppState) -> bool {
         .is_some_and(|value| value == "true")
 }
 
-async fn workspace_path(state: &AppState) -> Result<PathBuf, String> {
-    let workspace = state
-        .workspace_folder
-        .active_workspace()
-        .await
-        .map_err(|err| err.to_string())?
+/// The folder open in the window that called (each editor window has its own).
+async fn workspace_path(state: &AppState, label: &str) -> Result<PathBuf, String> {
+    let workspace = crate::windows::window_workspace(state, label)
+        .await?
         .ok_or_else(|| "Open a folder to use Source Control.".to_string())?;
     Ok(PathBuf::from(workspace.path))
 }
@@ -82,12 +80,17 @@ async fn build_client(app: &AppHandle, state: &AppState) -> Result<GitClient, Gi
 }
 
 /// Runs `operation` against the open workspace's repository on a worker thread.
-async fn on_repo<T, F>(app: &AppHandle, state: &AppState, operation: F) -> Result<T, String>
+async fn on_repo<T, F>(
+    app: &AppHandle,
+    state: &AppState,
+    label: &str,
+    operation: F,
+) -> Result<T, String>
 where
     T: Send + 'static,
     F: FnOnce(&GitClient, &Path) -> Result<T, GitError> + Send + 'static,
 {
-    let workspace = workspace_path(state).await?;
+    let workspace = workspace_path(state, label).await?;
     let client = build_client(app, state)
         .await
         .map_err(|err| err.to_string())?;
@@ -102,10 +105,11 @@ where
 
 #[tauri::command]
 pub async fn git_snapshot(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<GitSnapshot, String> {
-    let Ok(workspace) = workspace_path(&state).await else {
+    let Ok(workspace) = workspace_path(&state, window.label()).await else {
         return Ok(GitSnapshot::NoWorkspace {
             runtime: runtime_info(&app, &state).await,
         });
@@ -144,8 +148,12 @@ pub async fn git_snapshot(
 }
 
 #[tauri::command]
-pub async fn git_init(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let workspace = workspace_path(&state).await?;
+pub async fn git_init(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let workspace = workspace_path(&state, window.label()).await?;
     let client = build_client(&app, &state)
         .await
         .map_err(|err| err.to_string())?;
@@ -157,40 +165,63 @@ pub async fn git_init(app: AppHandle, state: State<'_, AppState>) -> Result<(), 
 
 #[tauri::command]
 pub async fn git_stage(
+    window: tauri::Window,
     paths: Vec<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| git.stage(root, &paths)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.stage(root, &paths)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn git_stage_all(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    on_repo(&app, &state, |git, root| git.stage_all(root)).await
+pub async fn git_stage_all(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    on_repo(&app, &state, window.label(), |git, root| {
+        git.stage_all(root)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_unstage(
+    window: tauri::Window,
     paths: Vec<String>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| git.unstage(root, &paths)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.unstage(root, &paths)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn git_unstage_all(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    on_repo(&app, &state, |git, root| git.unstage_all(root)).await
+pub async fn git_unstage_all(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    on_repo(&app, &state, window.label(), |git, root| {
+        git.unstage_all(root)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_discard(
+    window: tauri::Window,
     paths: Vec<String>,
     confirmed: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.discard(root, &paths, confirmed)
     })
     .await
@@ -198,11 +229,12 @@ pub async fn git_discard(
 
 #[tauri::command]
 pub async fn git_discard_all(
+    window: tauri::Window,
     confirmed: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.discard_all(root, confirmed)
     })
     .await
@@ -210,12 +242,13 @@ pub async fn git_discard_all(
 
 #[tauri::command]
 pub async fn git_delete_untracked(
+    window: tauri::Window,
     path: String,
     confirmed: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.delete_untracked(root, &path, confirmed)
     })
     .await
@@ -223,26 +256,35 @@ pub async fn git_delete_untracked(
 
 #[tauri::command]
 pub async fn git_commit(
+    window: tauri::Window,
     message: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    on_repo(&app, &state, move |git, root| git.commit(root, &message)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.commit(root, &message)
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn git_identity(app: AppHandle, state: State<'_, AppState>) -> Result<Identity, String> {
-    on_repo(&app, &state, |git, root| git.identity(root)).await
+pub async fn git_identity(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Identity, String> {
+    on_repo(&app, &state, window.label(), |git, root| git.identity(root)).await
 }
 
 #[tauri::command]
 pub async fn git_set_identity(
+    window: tauri::Window,
     name: String,
     email: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.set_identity(root, &name, &email)
     })
     .await
@@ -250,12 +292,13 @@ pub async fn git_set_identity(
 
 #[tauri::command]
 pub async fn git_diff(
+    window: tauri::Window,
     path: String,
     staged: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DiffSides, String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.diff_sides(root, &path, staged)
     })
     .await
@@ -263,19 +306,21 @@ pub async fn git_diff(
 
 #[tauri::command]
 pub async fn git_branches(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<Branch>, String> {
-    on_repo(&app, &state, |git, root| git.branches(root)).await
+    on_repo(&app, &state, window.label(), |git, root| git.branches(root)).await
 }
 
 #[tauri::command]
 pub async fn git_switch_branch(
+    window: tauri::Window,
     name: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.switch_branch(root, &name)
     })
     .await
@@ -283,11 +328,12 @@ pub async fn git_switch_branch(
 
 #[tauri::command]
 pub async fn git_create_branch(
+    window: tauri::Window,
     name: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.create_branch(root, &name)
     })
     .await
@@ -295,30 +341,43 @@ pub async fn git_create_branch(
 
 #[tauri::command]
 pub async fn git_delete_branch(
+    window: tauri::Window,
     name: String,
     confirmed: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.delete_branch(root, &name, confirmed)
     })
     .await
 }
 
 #[tauri::command]
-pub async fn git_fetch(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    on_repo(&app, &state, |git, root| git.fetch(root)).await
+pub async fn git_fetch(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    on_repo(&app, &state, window.label(), |git, root| git.fetch(root)).await
 }
 
 #[tauri::command]
-pub async fn git_pull(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    on_repo(&app, &state, |git, root| git.pull(root)).await
+pub async fn git_pull(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    on_repo(&app, &state, window.label(), |git, root| git.pull(root)).await
 }
 
 #[tauri::command]
-pub async fn git_push(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
-    on_repo(&app, &state, |git, root| git.push(root)).await
+pub async fn git_push(
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    on_repo(&app, &state, window.label(), |git, root| git.push(root)).await
 }
 
 /// Whether Git can be used right now, and which one (for the Clone form, which needs no repository).
@@ -375,30 +434,39 @@ pub async fn git_clone(
 
 #[tauri::command]
 pub async fn git_history(
+    window: tauri::Window,
     limit: u32,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<Commit>, String> {
-    on_repo(&app, &state, move |git, root| git.history(root, limit)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.history(root, limit)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_commit_files(
+    window: tauri::Window,
     hash: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<CommitFile>, String> {
-    on_repo(&app, &state, move |git, root| git.commit_files(root, &hash)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.commit_files(root, &hash)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_commit_diff(
+    window: tauri::Window,
     hash: String,
     file: CommitFile,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DiffSides, String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.commit_diff_sides(root, &hash, &file)
     })
     .await
@@ -407,29 +475,38 @@ pub async fn git_commit_diff(
 /// Blame for a file of the open repository (absolute or repo-relative path).
 #[tauri::command]
 pub async fn git_blame(
+    window: tauri::Window,
     path: String,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<BlameLine>, String> {
-    on_repo(&app, &state, move |git, root| git.blame(root, &path)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.blame(root, &path)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_stash_list(
+    window: tauri::Window,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<StashEntry>, String> {
-    on_repo(&app, &state, |git, root| git.stash_list(root)).await
+    on_repo(&app, &state, window.label(), |git, root| {
+        git.stash_list(root)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_stash_push(
+    window: tauri::Window,
     message: String,
     include_untracked: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.stash_push(root, &message, include_untracked)
     })
     .await
@@ -437,30 +514,39 @@ pub async fn git_stash_push(
 
 #[tauri::command]
 pub async fn git_stash_apply(
+    window: tauri::Window,
     index: u32,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    on_repo(&app, &state, move |git, root| git.stash_apply(root, index)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.stash_apply(root, index)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_stash_pop(
+    window: tauri::Window,
     index: u32,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    on_repo(&app, &state, move |git, root| git.stash_pop(root, index)).await
+    on_repo(&app, &state, window.label(), move |git, root| {
+        git.stash_pop(root, index)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn git_stash_drop(
+    window: tauri::Window,
     index: u32,
     confirmed: bool,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    on_repo(&app, &state, move |git, root| {
+    on_repo(&app, &state, window.label(), move |git, root| {
         git.stash_drop(root, index, confirmed)
     })
     .await

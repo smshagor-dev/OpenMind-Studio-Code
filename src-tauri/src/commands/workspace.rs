@@ -2,6 +2,7 @@ use openmind_workspace::{ExplorerState, RecentFileInfo, SessionSnapshot, Workspa
 use tauri::State;
 
 use crate::app_state::AppState;
+use crate::windows::{is_main, window_workspace};
 
 const RECENT_FOLDERS_LIMIT: i64 = 20;
 
@@ -23,16 +24,28 @@ pub async fn recent_files_clear(state: State<'_, AppState>) -> Result<(), String
         .map_err(|err| err.to_string())
 }
 
+/// The saved session belongs to the main window; an extra window starts empty.
 #[tauri::command]
-pub async fn session_load(state: State<'_, AppState>) -> Result<SessionSnapshot, String> {
+pub async fn session_load(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<SessionSnapshot, String> {
+    if !is_main(window.label()) {
+        return Ok(SessionSnapshot::default());
+    }
     state.session.load().await.map_err(|err| err.to_string())
 }
 
+/// Only the main window's session is saved (an extra window's isn't restored).
 #[tauri::command]
 pub async fn session_save(
     snapshot: SessionSnapshot,
+    window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    if !is_main(window.label()) {
+        return Ok(());
+    }
     state
         .session
         .save(&snapshot)
@@ -40,20 +53,42 @@ pub async fn session_save(
         .map_err(|err| err.to_string())
 }
 
+/// Opens `path` in the calling window. The main window's folder is saved (and
+/// restored on launch); an extra window's is only remembered while it is open.
+/// Either way the folder joins the recent folders.
 #[tauri::command]
 pub async fn workspace_open_folder(
     path: String,
+    window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceInfo, String> {
-    state
+    if is_main(window.label()) {
+        return state
+            .workspace_folder
+            .open_folder(&path)
+            .await
+            .map_err(|err| err.to_string());
+    }
+    let info = state
         .workspace_folder
-        .open_folder(&path)
+        .remember_folder(&path)
         .await
-        .map_err(|err| err.to_string())
+        .map_err(|err| err.to_string())?;
+    state
+        .editor_windows
+        .set_folder(window.label(), Some(info.clone()));
+    Ok(info)
 }
 
 #[tauri::command]
-pub async fn workspace_close_folder(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn workspace_close_folder(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if !is_main(window.label()) {
+        state.editor_windows.set_folder(window.label(), None);
+        return Ok(());
+    }
     state
         .workspace_folder
         .close_folder()
@@ -72,15 +107,13 @@ pub async fn workspace_recent_folders(
         .map_err(|err| err.to_string())
 }
 
+/// The folder open in the calling window (`null` in a new, empty window).
 #[tauri::command]
 pub async fn workspace_active_folder(
+    window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<Option<WorkspaceInfo>, String> {
-    state
-        .workspace_folder
-        .active_workspace()
-        .await
-        .map_err(|err| err.to_string())
+    window_workspace(&state, window.label()).await
 }
 
 #[tauri::command]

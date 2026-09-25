@@ -4,8 +4,7 @@ import { MonacoDiffHost } from "../editor/MonacoDiffHost";
 import { container } from "../services/container";
 import { diffTitle } from "../services/sourceControlService";
 import "../styles/sourceControl.css";
-
-const THEMES: Record<string, string> = { dark: "vs-dark", light: "vs" };
+import { MONACO_THEME_MAP } from "../editor/monacoThemes";
 
 /**
  * The Git diff over the editor area: the original on the left and the
@@ -57,7 +56,7 @@ export function GitDiffViewer({ themeKind }: { themeKind: string }) {
             original={sides.original}
             modified={sides.modified}
             path={sides.path}
-            theme={THEMES[themeKind] ?? "vs-dark"}
+            theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
           />
         </>
       ) : null}

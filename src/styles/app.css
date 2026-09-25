@@ -6,6 +6,7 @@
 @import "./editor.css";
 @import "./statusbar.css";
 @import "./overlays.css";
+@import "./frame.css";
 
 * {
   box-sizing: border-box;

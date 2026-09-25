@@ -9,6 +9,9 @@ export const INITIAL_OUTPUT_CHANNELS = [
   "LSP",
 ] as const;
 
+/** What a channel that doesn't exist (yet) returns — always the same array, so `useSyncExternalStore` stays stable. */
+const NO_LINES: readonly string[] = Object.freeze([]);
+
 /** A channel keeps this many lines; older ones fall off so a chatty service can't grow memory without bound. */
 export const MAX_OUTPUT_LINES = 5000;
 
@@ -43,7 +46,7 @@ export class OutputService {
 
   /** The lines of `channel` — a new array whenever it changes, so it works with `useSyncExternalStore`. */
   getLines(channel: string): readonly string[] {
-    return this.lines.get(channel) ?? [];
+    return this.lines.get(channel) ?? NO_LINES;
   }
 
   subscribe(listener: () => void): () => void {

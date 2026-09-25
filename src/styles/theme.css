@@ -1,76 +1,93 @@
 /*
- * Workbench color tokens, taken from VS Code's "Dark+" / "Light+" themes so the
- * chrome matches Monaco's built-in `vs-dark` / `vs` editor themes exactly.
+ * Workbench color tokens. Dark follows VS Code's current default dark theme
+ * (floating cards on a #121314 frame, measured from a real VS Code window);
+ * light keeps Light+ with the same frame/card structure. Monaco gets matching
+ * editor themes in `editor/monacoThemes.ts`.
  * `data-theme` on <html> is set by App from ThemeService.
  */
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
   --font-ui: "Segoe WPC", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --fg: #cccccc;
-  --fg-muted: #9d9d9d;
-  --fg-disabled: rgba(204, 204, 204, 0.5);
-  --focus-border: #007fd4;
-  --border: #2b2b2b;
-  --icon-fg: #c5c5c5;
-  --toolbar-hover-bg: rgba(90, 93, 94, 0.31);
+  --fg: #bfbfbf;
+  --fg-strong: #ededed;
+  --fg-muted: #8c8c8c;
+  --fg-disabled: #555555;
+  --focus-border: #297aa0;
+  --border: #2a2b2c;
+  --icon-fg: #8c8c8c;
+  --toolbar-hover-bg: rgba(255, 255, 255, 0.08);
 
-  --titlebar-bg: #3c3c3c;
-  --titlebar-fg: #cccccc;
-  --titlebar-inactive-fg: rgba(204, 204, 204, 0.6);
-  --menubar-hover-bg: rgba(255, 255, 255, 0.1);
-  --command-center-bg: rgba(255, 255, 255, 0.05);
-  --command-center-border: rgba(204, 204, 204, 0.2);
-  --command-center-hover-bg: rgba(255, 255, 255, 0.08);
+  /* The window frame, and the floating cards on it (VS Code's current default dark theme):
+     the frame and the gaps between cards are lighter than the editor while the window has
+     focus, and turn editor-dark when it loses it. */
+  --frame-bg: #191a1b;
+  --frame-inactive-bg: #121314;
+  --card-border: #2a2b2c;
+  --editor-card-border: #2a2b2c;
+  --card-radius: 8px;
+  --panel-bg: #191a1b;
 
-  --menu-bg: #252526;
-  --menu-fg: #cccccc;
-  --menu-border: #454545;
-  --menu-selection-bg: #04395e;
+  --titlebar-bg: #121314;
+  --titlebar-fg: #bfbfbf;
+  --titlebar-inactive-fg: #8c8c8c;
+  --menubar-hover-bg: rgba(255, 255, 255, 0.08);
+  --command-center-bg: #191a1b;
+  --command-center-border: #2a2b2c;
+  --command-center-hover-bg: #202122;
+  --command-center-fg: #7d7d7d;
+
+  --menu-bg: #202122;
+  --menu-fg: #bfbfbf;
+  --menu-border: #2a2b2c;
+  --menu-selection-bg: #297aa0;
   --menu-selection-fg: #ffffff;
-  --menu-separator: #454545;
+  --menu-separator: #2a2b2c;
 
-  --activitybar-bg: #333333;
-  --activitybar-fg: #ffffff;
-  --activitybar-inactive-fg: rgba(255, 255, 255, 0.4);
-  --activitybar-active-border: #ffffff;
+  --activitybar-bg: #191a1b;
+  --activitybar-fg: #ededed;
+  --activitybar-inactive-fg: #8c8c8c;
+  --activitybar-active-bg: #313233;
+  --activitybar-active-border: transparent;
 
-  --sidebar-bg: #252526;
-  --sidebar-fg: #cccccc;
-  --sidebar-title-fg: #bbbbbb;
+  --sidebar-bg: #191a1b;
+  --sidebar-fg: #bfbfbf;
+  --sidebar-title-fg: #bfbfbf;
   --section-header-bg: transparent;
-  --section-header-border: rgba(204, 204, 204, 0.2);
+  --section-header-border: #2a2b2c;
 
-  --list-hover-bg: #2a2d2e;
-  --list-active-selection-bg: #04395e;
-  --list-active-selection-fg: #ffffff;
-  --list-inactive-selection-bg: #37373d;
+  --list-hover-bg: #202122;
+  --list-active-selection-bg: #1d3a4a;
+  --list-active-selection-fg: #ededed;
+  --list-inactive-selection-bg: #2a2b2c;
   --list-drop-bg: rgba(83, 89, 93, 0.5);
-  --tree-indent-guide: #585858;
+  --tree-indent-guide: #3c3d3e;
 
-  --editor-bg: #1e1e1e;
-  --tabs-bg: #252526;
-  --tab-inactive-bg: #2d2d2d;
-  --tab-active-bg: #1e1e1e;
-  --tab-active-fg: #ffffff;
-  --tab-inactive-fg: rgba(255, 255, 255, 0.5);
-  --tab-border: #252526;
-  --breadcrumb-fg: rgba(204, 204, 204, 0.8);
-  --breadcrumb-hover-fg: #e0e0e0;
+  --editor-bg: #121314;
+  --tabs-bg: #202122;
+  --tab-inactive-bg: #202122;
+  --tab-active-bg: #121314;
+  --tab-active-fg: #ededed;
+  --tab-inactive-fg: #8c8c8c;
+  --tab-border: #2a2b2c;
+  --breadcrumb-fg: #8c8c8c;
+  --breadcrumb-hover-fg: #ededed;
 
-  --statusbar-bg: #007acc;
-  --statusbar-no-folder-bg: #68217a;
-  --statusbar-fg: #ffffff;
-  --statusbar-hover-bg: rgba(255, 255, 255, 0.12);
+  --statusbar-bg: #191a1b;
+  --statusbar-no-folder-bg: #191a1b;
+  --statusbar-fg: #8c8c8c;
+  --statusbar-hover-bg: rgba(255, 255, 255, 0.08);
 
-  --button-bg: #0e639c;
-  --button-hover-bg: #1177bb;
+  --button-bg: #297aa0;
+  --button-hover-bg: #3189b2;
   --button-fg: #ffffff;
-  --button-secondary-bg: #3a3d41;
-  --button-secondary-hover-bg: #45494e;
-  --input-bg: #3c3c3c;
-  --link-fg: #3794ff;
-  --widget-shadow: rgba(0, 0, 0, 0.36);
+  --button-secondary-bg: #2b2b2b;
+  --button-secondary-hover-bg: #353637;
+  --input-bg: #191a1b;
+  --link-fg: #48a0c7;
+  --welcome-card-bg: #2b2b2b;
+  --welcome-card-hover-bg: #333435;
+  --widget-shadow: rgba(0, 0, 0, 0.5);
   --danger-bg: #a1260d;
   --error-fg: #f14c4c;
 }
@@ -78,6 +95,23 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --fg: #616161;
+  --fg-strong: #333333;
+  --frame-bg: #f3f3f3;
+  --frame-inactive-bg: #f3f3f3;
+  --panel-bg: #f8f8f8;
+  --card-border: #e5e5e5;
+  --editor-card-border: #e0e0e0;
+  --command-center-fg: #6f6f6f;
+  --activitybar-active-bg: #e0e0e0;
+  --welcome-card-bg: #f3f3f3;
+  --welcome-card-hover-bg: #e8e8e8;
+  --statusbar-bg: #f8f8f8;
+  --statusbar-no-folder-bg: #f8f8f8;
+  --statusbar-fg: #3b3b3b;
+  --statusbar-hover-bg: rgba(0, 0, 0, 0.08);
+  --button-bg: #005fb8;
+  --button-hover-bg: #0258a8;
+  --tab-border: #e5e5e5;
   --fg-muted: #717171;
   --fg-disabled: rgba(97, 97, 97, 0.5);
   --focus-border: #0090f1;
@@ -85,7 +119,7 @@
   --icon-fg: #424242;
   --toolbar-hover-bg: rgba(184, 184, 184, 0.31);
 
-  --titlebar-bg: #dddddd;
+  --titlebar-bg: #f3f3f3;
   --titlebar-fg: #333333;
   --titlebar-inactive-fg: rgba(51, 51, 51, 0.6);
   --menubar-hover-bg: rgba(0, 0, 0, 0.1);
@@ -100,12 +134,12 @@
   --menu-selection-fg: #ffffff;
   --menu-separator: #d4d4d4;
 
-  --activitybar-bg: #2c2c2c;
-  --activitybar-fg: #ffffff;
-  --activitybar-inactive-fg: rgba(255, 255, 255, 0.4);
-  --activitybar-active-border: #ffffff;
+  --activitybar-bg: #f8f8f8;
+  --activitybar-fg: #1f1f1f;
+  --activitybar-inactive-fg: #616161;
+  --activitybar-active-border: transparent;
 
-  --sidebar-bg: #f3f3f3;
+  --sidebar-bg: #f8f8f8;
   --sidebar-fg: #616161;
   --sidebar-title-fg: #6f6f6f;
   --section-header-border: rgba(97, 97, 97, 0.19);

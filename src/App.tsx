@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import {
   useAboutDialog,
@@ -20,9 +20,11 @@ import { ErrorToast } from "./components/ErrorToast";
 import { RunConfigurationDialog } from "./components/RunConfigurationDialog";
 import { LanguageToolsDialog } from "./components/LanguageToolsDialog";
 import { RuntimeManagerDialog } from "./components/RuntimeManagerDialog";
+import { SecondarySideBar } from "./components/SecondarySideBar";
 import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
+import { container } from "./services/container";
 import { buildMenuBar } from "./services/menus";
 
 /** The VS Code-style workbench: title bar, activity bar, side bar, editor group, status bar. */
@@ -35,6 +37,11 @@ export function App() {
   const [runtimesOpen, closeRuntimes] = useRuntimeManagerDialog();
   const [languageToolsOpen, closeLanguageTools] = useLanguageToolsDialog();
   const [runConfigOpen, closeRunConfig] = useRunConfigurationDialog();
+  const secondary = useSyncExternalStore(
+    (listener) => container.secondarySideBar.subscribe(listener),
+    () => container.secondarySideBar.getState(),
+  );
+  const focused = useWindowFocused();
   useGlobalKeybindings();
   useCommandStateRefresh();
 
@@ -63,10 +70,10 @@ export function App() {
   );
 
   return (
-    <div className="workbench">
+    <div className={focused ? "workbench" : "workbench workbench--inactive"}>
       <TitleBar
         menus={menus}
-        title={activeWorkspace?.name ?? "OpenMind Studio"}
+        title={activeWorkspace?.name ?? "Search"}
         sidebarVisible={layout.sidebarVisible}
         sidebarRight={layout.sidebarPosition === "right"}
         onMenuOpen={refreshRecents}
@@ -78,19 +85,27 @@ export function App() {
             : "workbench__body"
         }
       >
-        <ActivityBar sidebarVisible={layout.sidebarVisible} />
-        {layout.sidebarVisible ? (
-          <SideBar
-            layout={layout}
-            tabs={allTabs}
-            activeId={workspaceState.activeId}
-            activeGroupId={workspaceState.activeGroupId}
-            activeDocPath={activeTab?.path ?? null}
-            dirtyPaths={dirtyPaths}
-            workspace={activeWorkspace}
-          />
-        ) : null}
-        <div className="workbench__main">
+        <div className="workbench__side">
+          <ActivityBar sidebarVisible={layout.sidebarVisible} />
+          {layout.sidebarVisible ? (
+            <SideBar
+              layout={layout}
+              tabs={allTabs}
+              activeId={workspaceState.activeId}
+              activeGroupId={workspaceState.activeGroupId}
+              activeDocPath={activeTab?.path ?? null}
+              dirtyPaths={dirtyPaths}
+              workspace={activeWorkspace}
+            />
+          ) : null}
+        </div>
+        <div
+          className={
+            secondary.visible && secondary.half
+              ? "workbench__main workbench__main--split"
+              : "workbench__main"
+          }
+        >
           <EditorArea
             state={workspaceState}
             ready={ready}
@@ -101,6 +116,9 @@ export function App() {
           />
           <BottomPanel themeKind={themeKind} />
         </div>
+        {secondary.visible ? (
+          <SecondarySideBar onLeft={layout.sidebarPosition === "right"} />
+        ) : null}
       </div>
       {layout.statusBarVisible ? (
         <StatusBar activeDocument={activeTab} hasWorkspace={activeWorkspace !== null} />
@@ -112,4 +130,24 @@ export function App() {
       {runConfigOpen ? <RunConfigurationDialog onClose={closeRunConfig} /> : null}
     </div>
   );
+}
+
+/** Whether this window has focus (VS Code darkens the frame of an unfocused window). */
+function useWindowFocused(): boolean {
+  const [focused, setFocused] = useState(() => document.hasFocus());
+  useEffect(() => {
+    const onFocus = () => {
+      setFocused(true);
+    };
+    const onBlur = () => {
+      setFocused(false);
+    };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+  return focused;
 }

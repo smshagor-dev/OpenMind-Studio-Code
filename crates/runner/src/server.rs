@@ -193,7 +193,7 @@ mod tests {
             file,
         ] {
             let error = php_server_plan(&request(&root, 8000), &fx.env, None).expect_err("refused");
-            assert_eq!(error.to_string(), "Select a valid project folder first.");
+            assert_eq!(error.to_string(), "Select a valid folder first.");
         }
     }
 
