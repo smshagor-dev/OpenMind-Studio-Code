@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { formatCount } from "../services/extensionMarketplaceService";
+import { useQuietTitle } from "./useQuietTitle";
 import { CloudDownloadIcon, ExtensionsIcon, GearIcon, StarIcon, VerifiedIcon } from "./icons";
 
 export interface ListItemProps {
@@ -52,6 +53,7 @@ export function ExtensionIcon({ url, size }: { url: string | null; size: number 
 /** One row of the Extensions view, laid out like VS Code's. */
 export function ExtensionListItem(props: ListItemProps) {
   const { action } = props;
+  const manageTip = useQuietTitle("Manage");
   return (
     <li
       className={props.selected ? "ext-item ext-item--selected" : "ext-item"}
@@ -117,7 +119,7 @@ export function ExtensionListItem(props: ListItemProps) {
             <button
               type="button"
               className="ext-item__manage"
-              title="Manage"
+              {...manageTip}
               aria-label={`Manage ${props.name}`}
               onClick={(event) => {
                 action.onManage(event.currentTarget.getBoundingClientRect());

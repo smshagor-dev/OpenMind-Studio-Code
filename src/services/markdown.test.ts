@@ -74,6 +74,22 @@ describe("parseMarkdown blocks", () => {
   });
 });
 
+describe("badges and other linked images", () => {
+  it("a linked badge becomes a link with its alt text, never raw markdown, and loads nothing", () => {
+    const [node] = parseInline("[![Build Status](https://ci.example.com/badge.svg)](https://github.com/x/y/actions)");
+    expect(node).toMatchObject({ t: "link", href: "https://github.com/x/y/actions" });
+    expect(inlineText(parseInline("[![Build Status](https://ci.example.com/badge.svg)](https://github.com/x/y)"))).toBe("Build Status");
+    // A bare image is its alt text; a link with an unsafe target is plain text.
+    expect(inlineText(parseInline("![Marketplace](https://img.shields.io/x.svg)"))).toBe("Marketplace");
+    expect(parseInline("[![a](https://x/i.svg)](javascript:alert(1))").some((n) => n.t === "link")).toBe(false);
+    const line = inlineText(
+      parseInline("![Visual Studio Marketplace](https://marketplace.example/x) ![License](https://x/l.svg)"),
+    );
+    expect(line).toBe("Visual Studio Marketplace License");
+    expect(line).not.toContain("](");
+  });
+});
+
 describe("parseInline", () => {
   it("parses emphasis, strong, strike and code", () => {
     expect(parseInline("a **b** *c* ~~d~~ `e`").map((n) => n.t)).toEqual([

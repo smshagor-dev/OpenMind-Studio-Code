@@ -1485,9 +1485,6 @@ right after start-up (the extension list marks it "Activates at every start-up (
   Marketplace/views pass before merge (built app from e276ef0): Popular loaded from Open VSX, local VSIX install/enable/disable/uninstall, tree-view sample (welcome button,
   items, command click, refresh), a webview view shown as unsupported, a broken view contribution reported without crashing, F1 palette listing and running a contributed
   command. Found and fixed: with two extensions contributing one command id the palette showed the second one's title; the owner (first) now wins (test added).
-  Follow-ups (cosmetic, found in the last manual pass, not fixed in the merge): (1) with the info notice banner showing, the Extensions view's Load Popular button can overlap the
-  "Extension host" status line; (2) Open VSX READMEs show badge/image markdown as raw text (`![..](..)`), since the Markdown renderer loads no images; (3) the tooltip of the extension gear
-  menu ("Manage") covers its first row (Enable/Disable).
 - [x] **Extension views and editor integration (after 10.1)** — extensions' `viewsContainers.activitybar` become activity bar icons
   (after Extensions; the icon rail scrolls when full, the Manage gear stays) and open a side bar view (`ext:<extension>/<container>` in
   `LayoutService`, falls back to the Explorer when the extension is gone): `crates/extensions/src/views.rs` parses containers, views and
@@ -1503,6 +1500,17 @@ right after start-up (the extension list marks it "Activates at every start-up (
   `when`-picked welcome; its activation stops at the permission guard because it reads VS Code's own `projects.json` under `%APPDATA%`,
   outside the workspace, without `filesystemOutsideWorkspace`). Not done: webview views, views in built-in containers (Explorer, SCM,
   panel), `TreeView.reveal`, checkboxes, drag and drop, item context menus, complex `when` clauses.
+- [x] **Milestone 10.2** — Extension UI polish and marketplace reliability (`fix: polish extension marketplace ui reliability`). Fixed the three known rough edges and
+  tested the marketplace states. (1) Layout: the Extensions view scrolls as a whole when the window is too short, the notice banner is capped (30%, scrolls) and the growing
+  Popular/Marketplace section keeps a minimum height and scrolls, so the Load Popular block can no longer overlap the "Extension host" line. (2) README: a linked image
+  (`[![Build](img)](link)`, every badge) now parses as a link with its alt text; images are still never loaded, unsafe link targets stay plain text, no HTML/scripts. (3) Tooltips:
+  `useQuietTitle` drops a menu button's native tooltip while it is pressed (gear, Filter, More Actions) so it can't cover the menu it opens. (4) States: not loaded yet ("Online
+  marketplace results are loaded only when you request them." + Load Popular), failure with Retry, and "No extensions found for \"query\".". Extension auto-discovery/auto-load and
+  lazy activation are unchanged. Verified by hand in a fresh copy (`E:\omext`): launch with the Extensions view active made no network request and started no node; installed
+  extensions and the tree-view icon appeared with no manual step after a relaunch; F1 listed the contributed command with the host "Not running" and running it started the
+  host; Load Popular, search, an empty search and the YAML page (badges as "[Visual Studio Marketplace] [Build Status] ..." links) worked; the gear menu had no tooltip over it;
+  a 700x420 window scrolled instead of overlapping; a normal close left no node/conhost/WebView2/app process; User/Machine PATH unchanged. Known limitations: images in READMEs
+  are text only; offline was covered by a unit test (a rejected request shows the retry state), not by cutting the network; the outside-workspace grant was not re-run by hand.
 - [ ] Milestone 11 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 12 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).

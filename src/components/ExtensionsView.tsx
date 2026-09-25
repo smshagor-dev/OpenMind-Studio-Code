@@ -9,6 +9,7 @@ import "../styles/extensions.css";
 import "../styles/extensionsMarket.css";
 import { manageMenu, moreActionsMenu, sortMenu } from "./extensionMenus";
 import { ExtensionListItem } from "./ExtensionListItem";
+import { useQuietTitle } from "./useQuietTitle";
 import { ChevronIcon, EllipsisIcon, FilterIcon } from "./icons";
 import { MenuPopup, type PopupItem } from "./MenuPopup";
 import { useDismissOnOutside } from "./useDismissOnOutside";
@@ -265,7 +266,12 @@ function MarketList(props: {
     return <p className="ext-empty">Loading…</p>;
   }
   if (market.items.length === 0) {
-    return <p className="ext-empty">No extensions found.</p>;
+    const query = market.query.trim();
+    return (
+      <p className="ext-empty">
+        {query === "" ? "No extensions found." : `No extensions found for "${query}".`}
+      </p>
+    );
   }
   return (
     <ul
@@ -299,6 +305,8 @@ function MarketList(props: {
 export function ExtensionsView() {
   const { registryState, ui, market } = useExtensionsState();
   const { registry, service, marketplace } = container.extensions;
+  const filterTip = useQuietTitle("Filter Extensions...");
+  const moreTip = useQuietTitle("More Actions...");
   const [menu, setMenu] = useState<OpenMenu>(null);
   useDismissOnOutside(menu !== null, () => {
     setMenu(null);
@@ -342,9 +350,11 @@ export function ExtensionsView() {
         <button
           type="button"
           className="ext-search__action"
-          title="Filter Extensions..."
+          title={filterTip.title}
+          onMouseLeave={filterTip.onMouseLeave}
           aria-label="Filter Extensions"
           onMouseDown={(event) => {
+            filterTip.onMouseDown();
             event.stopPropagation();
             openMenu(sortMenu(), event.currentTarget.getBoundingClientRect(), "Filter Extensions");
           }}
@@ -354,9 +364,11 @@ export function ExtensionsView() {
         <button
           type="button"
           className="ext-search__action"
-          title="More Actions..."
+          title={moreTip.title}
+          onMouseLeave={moreTip.onMouseLeave}
           aria-label="More Actions"
           onMouseDown={(event) => {
+            moreTip.onMouseDown();
             event.stopPropagation();
             openMenu(
               moreActionsMenu(),

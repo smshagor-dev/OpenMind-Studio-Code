@@ -106,6 +106,47 @@ describe("ExtensionsView", () => {
     expect(r.api.search).toHaveBeenCalledWith("", "installs", 0, 30);
   });
 
+  it("does not fetch just because the view renders, and keeps the message readable next to the host line", async () => {
+    const r = await mount([command], {}, LOCAL_ONLY, false);
+    expect(await screen.findByText("Online marketplace results are loaded only when you request them.")).toBeTruthy();
+    expect(screen.getByLabelText("Extension host status")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load Popular" })).toBeTruthy();
+    expect(r.api.search).not.toHaveBeenCalled();
+    expect(r.api.details).not.toHaveBeenCalled();
+    // Installed extensions are there without any marketplace call.
+    expect(within(screen.getByLabelText("Installed extensions")).getByText("Sample Command")).toBeTruthy();
+  });
+
+  it("says nothing was found for a search with no results", async () => {
+    await mount([], {}, { ...LOCAL_ONLY, search: vi.fn().mockResolvedValue({ total: 0, offset: 0, items: [] }) });
+    fireEvent.change(screen.getByLabelText("Search Extensions in Marketplace"), { target: { value: "zzzz" } });
+    expect(await screen.findByText('No extensions found for "zzzz".')).toBeTruthy();
+  });
+
+  it("a failed request shows the retry state, and Retry asks again", async () => {
+    const search = vi.fn().mockRejectedValueOnce("offline").mockResolvedValue({ total: 1, offset: 0, items: [marketItem()] });
+    await mount([], {}, { ...LOCAL_ONLY, search });
+    expect(await screen.findByText("Couldn't reach the marketplace (Open VSX).")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByLabelText("Marketplace extensions")).toBeTruthy();
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops the native tooltip while a menu button is pressed so it can't cover the menu, and restores it after", async () => {
+    await mount([command]);
+    const more = screen.getByRole("button", { name: "More Actions" });
+    expect(more.getAttribute("title")).toBe("More Actions...");
+    fireEvent.mouseDown(more);
+    expect(screen.getByRole("button", { name: "More Actions" }).getAttribute("title")).toBeNull();
+    fireEvent.mouseLeave(screen.getByRole("button", { name: "More Actions" }));
+    expect(screen.getByRole("button", { name: "More Actions" }).getAttribute("title")).toBe("More Actions...");
+
+    const manage = await screen.findByRole("button", { name: /^Manage / });
+    expect(manage.getAttribute("title")).toBe("Manage");
+    fireEvent.mouseDown(manage);
+    expect(screen.getByRole("button", { name: /^Manage / }).getAttribute("title")).toBeNull();
+  });
+
   it("searches the marketplace as you type", async () => {
     const r = await mount(
       [],

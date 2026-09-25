@@ -1,5 +1,6 @@
 /* --- Extensions view and extension page, laid out like VS Code's --- */
 
+/* The view scrolls as a whole when the window is too short for every part, so parts never overlap. */
 .ext-view--market {
   display: flex;
   flex-direction: column;
@@ -7,7 +8,8 @@
   min-height: 0;
   padding: 0;
   gap: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .ext-searchbar {
@@ -63,6 +65,9 @@
 }
 
 .ext-view--market .ext-banner {
+  flex: 0 0 auto;
+  max-height: 30%;
+  overflow-y: auto;
   margin: 0 12px 8px 20px;
 }
 
@@ -80,6 +85,8 @@
 .ext-section--grow {
   flex: 1 1 auto;
   max-height: none;
+  min-height: 132px;
+  overflow-y: auto;
 }
 
 .ext-section__header {

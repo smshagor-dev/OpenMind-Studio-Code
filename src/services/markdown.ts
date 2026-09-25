@@ -264,7 +264,7 @@ function parseParagraph(lines: string[], start: number, out: Block[]): number {
 // --- Inline ---
 
 const INLINE_TOKEN =
-  /(`+)([\s\S]*?[^`])\1(?!`)|!\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|\[([^\]]+)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|~~([\s\S]+?)~~|\*([^*\s][^*]*?)\*|(?<![\w])_([^_\s][^_]*?)_(?![\w])|( {2,}|\\)\n/;
+  /(`+)([\s\S]*?[^`])\1(?!`)|!\[([^\]]*)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|\[((?:[^[\]]|!\[[^\]]*\]\([^)]*\))+)\]\(([^)\s]*)(?:\s+"[^"]*")?\)|<(https?:\/\/[^>\s]+)>|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|~~([\s\S]+?)~~|\*([^*\s][^*]*?)\*|(?<![\w])_([^_\s][^_]*?)_(?![\w])|( {2,}|\\)\n/;
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -292,6 +292,7 @@ function pushText(out: Inline[], value: string): void {
 
 function tokenToInline(match: RegExpExecArray): Inline[] {
   if (match[2] !== undefined) return [{ t: "code", v: match[2].trim() }];
+  // Nothing is loaded for an image: it becomes its alt text (a badge reads as its name).
   if (match[3] !== undefined) return [{ t: "image", alt: match[3] === "" ? "image" : match[3] }];
   if (match[5] !== undefined) return linkInline(match[6] ?? "", parseInline(match[5]));
   if (match[7] !== undefined) return linkInline(match[7], [{ t: "text", v: match[7] }]);
