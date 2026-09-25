@@ -774,6 +774,8 @@ fn every_sample_installs_disables_enables_and_uninstalls_cleanly() {
         "webview-blocked-remote",
         "webview-dispose",
         "webview-unsupported-api-still-clear",
+        "webview-state-counter",
+        "webview-path-tricks",
     ] {
         let extension = install(&fixture, name);
         let id = extension.id.clone();

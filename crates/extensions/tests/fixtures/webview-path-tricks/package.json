@@ -1,0 +1,10 @@
+{
+  "name": "sample-webview-path-tricks",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleWebviewTricks.run", "title": "Sample: Try Webview Path Tricks" }]
+  }
+}

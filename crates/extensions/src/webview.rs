@@ -260,4 +260,104 @@ mod tests {
         let err = read_resource(&roots, &big).expect_err("too big");
         assert!(err.to_string().contains("larger than 5 MB"));
     }
+
+    fn roots_for(r: &Rig, sub: &str) -> Vec<PathBuf> {
+        let work = r.root.join("work");
+        let ext = r.root.join("ext");
+        let p = policy(&ext, &work, &[]);
+        allowed_roots(&p, &[r.root.join(sub)]).expect("allowed")
+    }
+
+    #[test]
+    fn a_sibling_folder_sharing_the_root_name_prefix_is_not_inside_it() {
+        let r = rig();
+        let sibling = r.root.join("ext-other");
+        fs::create_dir_all(&sibling).expect("mkdir");
+        fs::write(sibling.join("a.png"), b"a").expect("write");
+        let roots = roots_for(&r, "ext");
+        assert!(read_resource(&roots, &sibling.join("a.png")).is_err());
+    }
+
+    #[test]
+    fn encoded_traversal_and_backslash_tricks_are_just_missing_names_never_a_way_out() {
+        let r = rig();
+        let roots = roots_for(&r, "ext");
+        let base = r.root.join("ext");
+        for name in [
+            "%2e%2e/secret.txt",
+            "..%2fsecret.txt",
+            r"media\..\..\elsewhere\x.png",
+        ] {
+            let target = base.join(name);
+            assert!(read_resource(&roots, &target).is_err(), "{name}");
+        }
+        // Mixed slashes that really do stay inside the root work (Windows accepts both).
+        let mixed = format!(r"{}/media\logo.png", base.display());
+        #[cfg(windows)]
+        assert!(read_resource(&roots, Path::new(&mixed)).is_ok());
+        #[cfg(not(windows))]
+        let _ = mixed;
+    }
+
+    #[test]
+    fn spaces_and_unicode_in_paths_work() {
+        let r = rig();
+        let dir = r.root.join("ext").join("médias & über");
+        fs::create_dir_all(&dir).expect("mkdir");
+        fs::write(dir.join("ログ file.png"), b"u").expect("write");
+        let roots = roots_for(&r, "ext");
+        let read = read_resource(&roots, &dir.join("ログ file.png")).expect("read");
+        assert_eq!(read.bytes, b"u");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_case_differences_stay_inside_and_stream_or_unc_names_are_refused() {
+        let r = rig();
+        let roots = roots_for(&r, "ext");
+        let upper = r
+            .root
+            .join("ext")
+            .join("media")
+            .join("logo.png")
+            .to_string_lossy()
+            .to_uppercase();
+        assert!(read_resource(&roots, Path::new(&upper)).is_ok());
+        let stream = r.root.join("ext").join("secret.txt:hidden.png");
+        assert!(read_resource(&roots, &stream).is_err());
+        assert!(read_resource(&roots, Path::new(r"\\localhost\c$\Windows\win.ini")).is_err());
+    }
+
+    /// A link inside an allowed root that points outside it must not be followed out: the canonical target is
+    /// what is checked. Skipped where the machine won't create links (Windows without developer mode).
+    #[test]
+    fn a_link_pointing_out_of_the_root_is_refused() {
+        let r = rig();
+        let link = r.root.join("ext").join("out.png");
+        let target = r.root.join("elsewhere").join("x.png");
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(&target, &link).is_ok();
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&target, &link).is_ok();
+        if !made {
+            return;
+        }
+        let roots = roots_for(&r, "ext");
+        let err = read_resource(&roots, &link).expect_err("link out");
+        assert!(err
+            .to_string()
+            .contains("outside this webview's local resource roots"));
+    }
+
+    #[test]
+    fn the_missing_file_error_names_the_file_and_the_reason() {
+        let r = rig();
+        let roots = roots_for(&r, "ext");
+        let err = read_resource(&roots, &r.root.join("ext").join("gone.png")).expect_err("missing");
+        let text = err.to_string();
+        assert!(
+            text.contains("gone.png") && text.contains("doesn't exist"),
+            "{text}"
+        );
+    }
 }

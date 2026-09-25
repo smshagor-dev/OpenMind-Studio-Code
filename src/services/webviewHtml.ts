@@ -1,6 +1,10 @@
 /** Scheme of the URIs `asWebviewUri` returns (the app turns them into inline data; nothing is fetched by the page). */
 export const RESOURCE_SCHEME = "openmind-webview-resource:";
 
+/** A page may pull in at most this many local files, and this many bytes in total, when it is prepared. */
+export const MAX_RESOURCES = 200;
+export const MAX_INLINE_BYTES = 20 * 1024 * 1024;
+
 export interface PrepareOptions {
   enableScripts: boolean;
   /** Secret the page's own script must present when it posts to the app. */
@@ -22,8 +26,26 @@ const SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 type Kind = "empty" | "fragment" | "resource" | "image-data" | "remote" | "unsafe" | "relative";
 
+/**
+ * What a browser sees in a URL: control characters and spaces around it go, and tabs/newlines inside it are
+ * ignored, so "java\nscript:" is "javascript:" (and gets classified as unsafe, not as a relative path).
+ */
+export function normalizeUrl(raw: string): string {
+  let text = "";
+  for (let i = 0; i < raw.length; i += 1) {
+    const code = raw.charCodeAt(i);
+    if (code === 9 || code === 10 || code === 13) continue;
+    text += raw.charAt(i);
+  }
+  let start = 0;
+  let end = text.length;
+  while (start < end && text.charCodeAt(start) <= 32) start += 1;
+  while (end > start && text.charCodeAt(end - 1) <= 32) end -= 1;
+  return text.slice(start, end);
+}
+
 function classify(raw: string): Kind {
-  const value = raw.trim();
+  const value = normalizeUrl(raw);
   if (value === "") return "empty";
   if (value.startsWith("#")) return "fragment";
   if (value.toLowerCase().startsWith(RESOURCE_SCHEME)) return "resource";
@@ -57,7 +79,9 @@ export function contentSecurityPolicy(enableScripts: boolean): string {
 /** `acquireVsCodeApi()` for the page: posts only to the app's frame, with the token, as JSON text. */
 export function bridgeScript(token: string, state: string | null): string {
   const t = JSON.stringify(token);
-  const s = state === null ? "undefined" : state.replace(/</g, "\\u003c");
+  // The saved state goes in as a string and is parsed inside the page: none of it is ever script text.
+  const s =
+    state === null ? "undefined" : `JSON.parse(${JSON.stringify(state).replace(/</g, "\\u003c")})`;
   return `(function(){var token=${t},state=${s},acquired=false;window.acquireVsCodeApi=function(){if(acquired)throw new Error('An instance of the VS Code API has already been acquired');acquired=true;var send=function(type,key,value){parent.postMessage({omWebview:token,type:type,[key]:value},'*')};return Object.freeze({postMessage:function(message){var text;try{text=JSON.stringify(message)}catch(e){throw new Error('The message must be JSON-serializable')}if(text===undefined)throw new Error('The message must be JSON-serializable data');send('message','message',text)},getState:function(){return state},setState:function(next){state=next;send('state','state',JSON.stringify(next)===undefined?'null':JSON.stringify(next));return next}})}})();`;
 }
 
@@ -101,12 +125,12 @@ async function cssUrl(url: string, options: PrepareOptions, found: Collector): P
   const kind = classify(url);
   if (kind === "resource") {
     try {
-      return `url("${await options.readResource(url.trim())}")`;
+      return `url("${await options.readResource(normalizeUrl(url))}")`;
     } catch (error) {
       found.add(`Local resource not loaded: ${reason(error)}`);
     }
   } else if (kind === "image-data") {
-    return `url("${url.trim()}")`;
+    return `url("${normalizeUrl(url)}")`;
   } else if (kind === "remote") {
     found.add(`Remote content blocked: ${shorten(url)}`);
   } else if (kind !== "empty") {
@@ -136,7 +160,7 @@ async function resourceOrDrop(
   if (kind === "empty") return;
   if (kind === "resource") {
     try {
-      element.setAttribute(attribute, await options.readResource(value.trim()));
+      element.setAttribute(attribute, await options.readResource(normalizeUrl(value)));
       return;
     } catch (error) {
       found.add(`Local resource not loaded: ${reason(error)}`);
@@ -164,7 +188,25 @@ async function resourceOrDrop(
  * The result is meant for `<iframe sandbox srcdoc>` (never `allow-same-origin`), so even a mistake here can't
  * reach the app, its storage or the disk.
  */
-export async function prepareWebviewHtml(html: string, options: PrepareOptions): Promise<Prepared> {
+export async function prepareWebviewHtml(html: string, given: PrepareOptions): Promise<Prepared> {
+  // One budget for the whole page, so a page can't make the app read or inline without end.
+  let files = 0;
+  let bytes = 0;
+  const options: PrepareOptions = {
+    ...given,
+    readResource: async (uri) => {
+      files += 1;
+      if (files > MAX_RESOURCES) {
+        throw new Error(`A page may load at most ${String(MAX_RESOURCES)} local files.`);
+      }
+      const data = await given.readResource(uri);
+      bytes += data.length;
+      if (bytes > MAX_INLINE_BYTES) {
+        throw new Error("The local files of one page may not add up to more than 20 MB.");
+      }
+      return data;
+    },
+  };
   const found = new Collector();
   const doc = new DOMParser().parseFromString(html, "text/html");
 
@@ -187,7 +229,7 @@ export async function prepareWebviewHtml(html: string, options: PrepareOptions):
     const src = script.getAttribute("src") ?? "";
     if (classify(src) === "resource") {
       try {
-        const text = decodeDataText(await options.readResource(src.trim()));
+        const text = decodeDataText(await options.readResource(normalizeUrl(src)));
         script.removeAttribute("src");
         script.textContent = text.replace(/<\/script/gi, "<\\/script");
         continue;
@@ -206,7 +248,7 @@ export async function prepareWebviewHtml(html: string, options: PrepareOptions):
       try {
         const style = doc.createElement("style");
         style.textContent = await rewriteCss(
-          decodeDataText(await options.readResource(href.trim())),
+          decodeDataText(await options.readResource(normalizeUrl(href))),
           options,
           found,
         );

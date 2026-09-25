@@ -1,6 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MAX_MESSAGE_BYTES, MAX_PANELS, resourcePath, WebviewService } from "./webviewService";
+import {
+  MAX_HTML_BYTES,
+  MAX_MESSAGE_BYTES,
+  MAX_PANELS,
+  MAX_STATE_BYTES,
+  MAX_TITLE_LENGTH,
+  MAX_VIEW_TYPE_LENGTH,
+  resourcePath,
+  WebviewService,
+} from "./webviewService";
 
 function rig() {
   const sent: [string, unknown][] = [];
@@ -161,5 +170,51 @@ describe("WebviewService", () => {
       '[t.sample] webview "Panel 1": Remote content blocked: https://x.test/a.png',
     ]);
     expect(service.find(id)?.blocked).toHaveLength(1);
+  });
+});
+
+describe("WebviewService hardening", () => {
+  it("clips long titles and view types and ignores an oversized html document", () => {
+    const { service, errors, create } = rig();
+    const id = create(1, "t.sample", { title: "T".repeat(500), viewType: "v".repeat(500) });
+    expect(service.find(id)?.title).toHaveLength(MAX_TITLE_LENGTH);
+    expect(service.find(id)?.viewType).toHaveLength(MAX_VIEW_TYPE_LENGTH);
+    service.handleEvent("webview/title", { extension: "t.sample", id, title: "N".repeat(500) });
+    expect(service.find(id)?.title).toHaveLength(MAX_TITLE_LENGTH);
+    service.handleEvent("webview/html", {
+      extension: "t.sample",
+      id,
+      html: "x".repeat(MAX_HTML_BYTES + 1),
+    });
+    expect(service.find(id)?.html).toBe("");
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("page state is per panel, must be JSON and small, and dies with the panel", () => {
+    const { service, create } = rig();
+    const a = create(1);
+    const b = create(2);
+    service.setPageState(a, '{"n":1}');
+    service.setPageState(b, '{"n":2}');
+    expect(service.find(a)?.state).toBe('{"n":1}');
+    expect(service.find(b)?.state).toBe('{"n":2}');
+    service.setPageState(a, "not json");
+    service.setPageState(a, JSON.stringify({ big: "x".repeat(MAX_STATE_BYTES) }));
+    service.setPageState("t.sample#wv-404", "{}");
+    expect(service.find(a)?.state).toBe('{"n":1}');
+    service.close(a);
+    create(1);
+    expect(service.find(a)?.state ?? null).toBeNull();
+    service.handleEvent("webview/reset", {});
+    expect(service.getState().panels).toEqual([]);
+  });
+
+  it("choosing or revealing a panel asks the page for the keyboard", () => {
+    const { service, create } = rig();
+    const a = create(1);
+    create(2);
+    const before = service.getState().focusSeq;
+    service.setActive(a);
+    expect(service.getState().focusSeq).toBeGreaterThan(before);
   });
 });

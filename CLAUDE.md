@@ -1567,6 +1567,40 @@ right after start-up (the extension list marks it "Activates at every start-up (
   VS Code parity — no webview views, serializers/restore, command URIs, port mapping, `vscode-resource`/`vscode-webview` schemes, remote content, `<iframe>`/`<object>` inside a page, forms, service workers or
   `localStorage` for the page, CSP differences (ours is always applied first), the VS Code theme CSS variables/classes, `retainContextWhenHidden` keeps the page alive but scroll/focus state is the browser's, and
   any extension that relies on those will fail or look plain; the frame's isolation is the browser sandbox, not more.
+- [x] **Milestone 10.4.1** — Webview security and UX hardening (`fix: harden webview security and ux`). Not a feature milestone: the Milestone 10.4 Webview API is still a **subset** (no webview views, no command URIs,
+  no VS Code parity), remote content stays blocked, there is no Node integration in a page and the frame's isolation is the browser sandbox.
+  **Security audit** (sandbox, script switch, HTML rewriting, CSP, protocols, resources, messages, cleanup) found no way out, and added defence in depth: `normalizeUrl` strips tabs/newlines/control characters before every scheme
+  or resource decision (`java\nscript:`, `da\tta:`), at most 200 local resources and 20 MB inlined per page, the saved page state is embedded as a JSON *string* parsed inside the page (never script text; `<` escaped),
+  the host refuses UNC (`\\server`, `//server`) and NUL paths in `asWebviewUri` before resolving them, and the app-side caps: HTML 5 MB (`webview/html` above that is ignored + error), title 200 and view type 100
+  characters (clipped), page state 1 MB and valid JSON only (else refused), messages 1 MB, messages queued for a page that hasn't loaded are capped, 20 panels. The frame has `allow=""` (no camera/clipboard/etc.),
+  `referrerpolicy="no-referrer"`, `sandbox` without `allow-same-origin`/`allow-forms`/`allow-popups`/`allow-top-navigation`; in WebView2 the sandboxed frame is its own out-of-process target (seen in the DevTools target list).
+  **Tauri CSP decision — Option B: `csp` stays `null`.** Tried for real: a partial app CSP (`object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`) is answered by Tauri as
+  `script-src 'self' 'sha256-…'` plus those directives, and a `srcdoc` frame **inherits the embedding document's CSP**, so every extension page script was blocked (the Count button did nothing; `acquireVsCodeApi` was undefined) —
+  reverted. What protects the app instead: the UI is rendered by React (no HTML strings, no `dangerouslySetInnerHTML`), the Markdown preview builds elements, and a webview page can't reach the app (opaque origin,
+  no same-origin, token + `event.source` checked messages) and carries its own strict CSP first. **Follow-up:** to get a strict app CSP, serve the webview from its own origin (a custom protocol URL in `src`, not `srcdoc`) so the app CSP
+  is no longer inherited, then add `default-src`/`script-src 'self'` to `tauri.conf.json` and re-test Monaco, xterm, the extension icons and the Open VSX pages.
+  **Local resources** (Rust `webview.rs` tests added; host and app both check): roots are canonicalized, the extension folder is the default root, a sibling folder sharing a name prefix is outside, `..`/encoded `%2e%2e`/backslash and
+  mixed slash names never lead out (a percent-encoded name is just an odd file name and is not decoded), a link pointing out of the root is refused (the test skips where links can't be made), case differences on Windows stay inside,
+  `file:stream` and UNC names are refused, spaces/Unicode paths work, only the short file-type list loads (no HTML/executables, no directory listing), 5 MB cap, and a missing file names the file and the reason.
+  **Remote content** stays blocked even with the `network` permission accepted (verified by hand with an extension that asked for it: the install dialog showed Network "High risk", the page showed the blocked-content notice
+  and the app's process tree, WebView2 helpers included, made no connection to example.com; the only remote connection seen was one WebView2 browser-process connection to a Microsoft address that exists at launch too).
+  **`retainContextWhenHidden`** — fixed a real defect: the frames were remounted when the Editors button was toggled (the panel tree changed shape); the frames now live in one stable tree. Behaviour, verified by hand with the
+  counter sample: a retained panel keeps running while hidden or unselected (runtime counter 3 survived a tab switch and Editors → Webviews (3)); a plain panel is taken out of the page when it isn't shown and drawn again when
+  it comes back (runtime counter back to 0), keeping only what the page saved with `setState`. **`setState`/`getState`**: per panel (nothing is readable by another panel or extension), JSON only, 1 MB, held in the
+  application's memory for the panel's life, cleared when the panel is disposed, the extension is disabled/uninstalled, the host restarts or the app closes — **it does not survive an app restart** (no webview serializer).
+  **UX**: the tab strip ellipsizes long titles (full title in the tooltip), tabs shrink instead of overflowing, the close target is 22 px, the active tab is underlined, tabs are keyboard reachable (Arrow keys move, Enter/Space
+  select, Delete closes; selecting a panel focuses its page, so arrow keys then belong to the page), focus rings, the "Editors" and "Webviews (n)" buttons, the blocked notice lists five entries and "…and N more", and panels
+  hide with the `hidden` attribute. **Verified by hand in the built app** (fresh copy `E:\omext\OpenMind Studio`, workspace `My Site` with a space; a debug build with WebView2 remote debugging was used only to take
+  measurements and to open the folder): no marketplace fetch at launch (the Load Popular button, no request); **local VSIX install through the UI** — Install from VSIX… → native file dialog → trust dialog (permissions,
+  contribution points) → Install → the extension appeared in Installed at once, F1 listed its commands before any host existed, the first command started the host lazily and opened the webview, the extension was still
+  there after a relaunch, Restart Extension Host closed every panel (no stale frames), Disable closed the panel and moved the folder to `disabled/`, Uninstall (confirm dialog) removed the folder, the panel and its
+  frame; the tree-view sample added its activity bar icon immediately after install; a normal close left no OpenMindStudio/node/conhost/WebView2 process of the copy and User/Machine PATH were identical before and
+  after. **Not re-clicked by hand**: TextEditor.edit after a host restart, status bar items, the `filesystemOutsideWorkspace` grant and the unsupported-API message are covered by the existing automated tests (all
+  green) and were verified by hand in Milestones 10.3/10.4; F1 doesn't reach the app while a webview page has the keyboard — click Editors first. Tests: TS webviewHtml/webviewService/WebviewPanels (obfuscated
+  schemes, budget, safe state embedding, caps, per-panel state, focus, retain frame identity, keyboard/long titles), Rust `webview.rs` (path cases above), integration against real Node
+  (`as_webview_uri_refuses_every_way_out…`, `retain_context_is_reported_per_panel…`) and the new sample extensions `webview-state-counter` and `webview-path-tricks`. **Limitations**: the Webview API remains a subset
+  (webview views, serializers, command URIs, port mapping and remote content are not implemented), the app has no Tauri CSP (see above), page state is lost on app restart, and a hostile extension still runs with the user's
+  rights in its Node host (the permission guard is not a sandbox). Left on disk for manual deletion: `E:\omext`, `E:\wt10-target`.
 - [ ] Milestone 11 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 12 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).

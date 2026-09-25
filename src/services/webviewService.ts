@@ -23,6 +23,8 @@ export interface WebviewState {
   activeId: string | null;
   /** The panels cover the editor area; hidden with "Editors", the panels stay alive. */
   overlay: boolean;
+  /** Goes up whenever a panel should take the keyboard focus (opened, revealed, chosen). */
+  focusSeq: number;
 }
 
 export interface WebviewDeps {
@@ -38,8 +40,18 @@ export interface WebviewDeps {
 export const MAX_PANELS = 20;
 /** A message from a page or to it may not be larger than this (JSON text). */
 export const MAX_MESSAGE_BYTES = 1024 * 1024;
+/** Limits on what an extension may set on a panel. */
+export const MAX_HTML_BYTES = 5 * 1024 * 1024;
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_VIEW_TYPE_LENGTH = 100;
+/** The saved page state (`setState`) of one panel may not be larger than this (JSON text). */
+export const MAX_STATE_BYTES = 1024 * 1024;
 
-const INITIAL: WebviewState = { panels: [], activeId: null, overlay: true };
+const INITIAL: WebviewState = { panels: [], activeId: null, overlay: true, focusSeq: 0 };
+
+function clip(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
 
 function str(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -117,11 +129,17 @@ export class WebviewService {
     const panel = this.find(id);
     if (!panel || panel.extension !== extension) return;
     switch (method) {
-      case "webview/html":
-        this.patch(id, { html: str(params.html), blocked: [] });
+      case "webview/html": {
+        const html = str(params.html);
+        if (byteLength(html) > MAX_HTML_BYTES) {
+          this.deps.onError?.(`${extension} set webview HTML larger than 5 MB; it was ignored.`);
+          return;
+        }
+        this.patch(id, { html, blocked: [] });
         return;
+      }
       case "webview/title":
-        this.patch(id, { title: str(params.title) });
+        this.patch(id, { title: clip(str(params.title), MAX_TITLE_LENGTH) });
         return;
       case "webview/options":
         this.patch(id, {
@@ -155,8 +173,8 @@ export class WebviewService {
     const panel: WebviewPanelView = {
       id,
       extension,
-      viewType: str(params.viewType),
-      title: str(params.title),
+      viewType: clip(str(params.viewType), MAX_VIEW_TYPE_LENGTH),
+      title: clip(str(params.title), MAX_TITLE_LENGTH),
       html: "",
       enableScripts: params.enableScripts === true,
       retain: params.retain === true,
@@ -187,7 +205,7 @@ export class WebviewService {
   setActive(id: string): void {
     if (!this.find(id)) return;
     const previous = this.state.activeId;
-    this.set({ activeId: id, overlay: true });
+    this.set({ activeId: id, overlay: true, focusSeq: this.state.focusSeq + 1 });
     if (previous !== null && previous !== id && this.find(previous)) {
       this.deps.notifyHost("host/webviewViewState", {
         id: previous,
@@ -245,7 +263,16 @@ export class WebviewService {
 
   /** The page's `setState` value, kept so a re-drawn page gets it back from `getState`. */
   setPageState(id: string, json: string): void {
-    if (byteLength(json) > MAX_MESSAGE_BYTES) return;
+    if (!this.find(id)) return;
+    if (byteLength(json) > MAX_STATE_BYTES) {
+      this.deps.onError?.("A webview's saved state is larger than 1 MB; it was not kept.");
+      return;
+    }
+    try {
+      JSON.parse(json);
+    } catch {
+      return;
+    }
     this.patch(id, { state: json });
   }
 

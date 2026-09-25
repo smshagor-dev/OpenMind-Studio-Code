@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
 import { container } from "../services/container";
 import { prepareWebviewHtml } from "../services/webviewHtml";
-import type { WebviewPanelView } from "../services/webviewService";
+import { MAX_MESSAGE_BYTES, type WebviewPanelView } from "../services/webviewService";
 import "../styles/webview.css";
 import { CloseIcon } from "./icons";
 
@@ -12,19 +12,32 @@ function newToken(): string {
   return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/** Messages that arrive before the page has loaded wait here, up to this many bytes. */
+const MAX_PENDING_BYTES = MAX_MESSAGE_BYTES;
+
 /**
  * One extension page in a sandboxed frame: `sandbox` without `allow-same-origin` (so the page has an opaque
  * origin: no access to this app, its storage, cookies or the disk), `allow-scripts` only when the extension asked
- * for scripts, the HTML prepared by `prepareWebviewHtml` (CSP first), no referrer. Messages go through
- * `postMessage` only: from the page only when the sender is this very frame and carries this frame's token.
+ * for scripts, `allow=""` (no device or clipboard features), the HTML prepared by `prepareWebviewHtml` (CSP
+ * first), no referrer. Messages go through `postMessage` only: from the page only when the sender is this very
+ * frame and carries this frame's token.
  */
-function WebviewFrame({ panel, visible }: { panel: WebviewPanelView; visible: boolean }) {
+function WebviewFrame({
+  panel,
+  visible,
+  focusSeq,
+}: {
+  panel: WebviewPanelView;
+  visible: boolean;
+  focusSeq: number;
+}) {
   const { webviews } = container.extensions;
   const frame = useRef<HTMLIFrameElement | null>(null);
   const [token] = useState(() => newToken());
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const ready = useRef(false);
   const pending = useRef<string[]>([]);
+  const focused = useRef(focusSeq);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,11 +82,21 @@ function WebviewFrame({ panel, visible }: { panel: WebviewPanelView; visible: bo
     () =>
       webviews.onMessageToPage((id, json) => {
         if (id !== panel.id) return;
-        if (ready.current) frame.current?.contentWindow?.postMessage(JSON.parse(json), "*");
-        else pending.current.push(json);
+        if (ready.current) {
+          frame.current?.contentWindow?.postMessage(JSON.parse(json), "*");
+          return;
+        }
+        const size = pending.current.reduce((sum, item) => sum + item.length, json.length);
+        if (size <= MAX_PENDING_BYTES) pending.current.push(json);
       }),
     [panel.id, webviews],
   );
+
+  // A panel that was just opened, revealed or chosen takes the keyboard, so the page can be used at once.
+  useEffect(() => {
+    if (visible && focusSeq !== focused.current) frame.current?.focus();
+    focused.current = focusSeq;
+  }, [visible, focusSeq]);
 
   return (
     <iframe
@@ -81,22 +104,49 @@ function WebviewFrame({ panel, visible }: { panel: WebviewPanelView; visible: bo
       className="webview-frame"
       title={panel.title}
       sandbox={panel.enableScripts ? "allow-scripts" : ""}
+      allow=""
       referrerPolicy="no-referrer"
       srcDoc={srcDoc ?? ""}
-      style={visible ? undefined : { display: "none" }}
+      hidden={!visible}
       onLoad={() => {
         ready.current = true;
         for (const json of pending.current.splice(0)) {
           frame.current?.contentWindow?.postMessage(JSON.parse(json), "*");
         }
+        if (visible && focusSeq !== 0) frame.current?.focus();
       }}
     />
   );
 }
 
+function onTabKey(
+  event: KeyboardEvent<HTMLDivElement>,
+  index: number,
+  ids: string[],
+  select: (id: string) => void,
+  close: (id: string) => void,
+) {
+  const id = ids[index];
+  if (id === undefined) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    select(id);
+  } else if (event.key === "Delete") {
+    event.preventDefault();
+    close(id);
+  } else if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+    event.preventDefault();
+    const next = ids[(index + (event.key === "ArrowRight" ? 1 : ids.length - 1)) % ids.length];
+    if (next !== undefined) select(next);
+  }
+}
+
 /**
  * The extensions' webview panels over the editor area, with their own tab strip. "Editors" hides them without
- * closing anything (a small "Webviews" button brings them back); closing a tab disposes the panel.
+ * closing anything (a small "Webviews (n)" button brings them back); closing a tab disposes the panel. The frames
+ * live in one place in the tree, so a panel with `retainContextWhenHidden` keeps running (and keeps its page
+ * state) while hidden; any other panel is taken out of the page when it is not shown and drawn again — with
+ * the state its page saved by `setState` — when it comes back.
  */
 export function WebviewPanels() {
   const { webviews } = container.extensions;
@@ -105,10 +155,11 @@ export function WebviewPanels() {
     () => webviews.getState(),
   );
   if (state.panels.length === 0) return null;
-  if (!state.overlay) {
-    const retained = state.panels.filter((panel) => panel.retain);
-    return (
-      <>
+  const active = state.panels.find((panel) => panel.id === state.activeId) ?? state.panels[0];
+  const ids = state.panels.map((panel) => panel.id);
+  return (
+    <>
+      {state.overlay ? null : (
         <button
           type="button"
           className="webview-reopen"
@@ -119,72 +170,91 @@ export function WebviewPanels() {
         >
           Webviews ({state.panels.length})
         </button>
-        <div className="webview-retained" aria-hidden="true">
-          {retained.map((panel) => (
-            <WebviewFrame key={panel.id} panel={panel} visible={false} />
-          ))}
-        </div>
-      </>
-    );
-  }
-  const active = state.panels.find((panel) => panel.id === state.activeId) ?? state.panels[0];
-  return (
-    <section className="webview-host" aria-label="Extension webviews">
-      <div className="webview-host__tabbar" role="tablist">
-        <button
-          type="button"
-          className="webview-host__editors"
-          title="Back to the editors (the panels stay open)"
-          onClick={() => {
-            webviews.hideOverlay();
-          }}
-        >
-          Editors
-        </button>
-        {state.panels.map((panel) => (
-          <div
-            key={panel.id}
-            role="tab"
-            aria-selected={panel.id === active?.id}
-            className={panel.id === active?.id ? "tab tab--active" : "tab"}
-            title={`${panel.title} (${panel.extension})`}
+      )}
+      <section className="webview-host" aria-label="Extension webviews" hidden={!state.overlay}>
+        <div className="webview-host__tabbar" role="tablist" aria-label="Webview panels">
+          <button
+            type="button"
+            className="webview-host__editors"
+            title="Back to the editors (the panels stay open)"
             onClick={() => {
-              webviews.setActive(panel.id);
+              webviews.hideOverlay();
             }}
           >
-            <span className="tab__label">{panel.title || panel.viewType}</span>
-            <button
-              type="button"
-              className="tab__close"
-              aria-label={`Close ${panel.title}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                webviews.close(panel.id);
-              }}
-            >
-              <CloseIcon />
-            </button>
-          </div>
-        ))}
-      </div>
-      {active && active.blocked.length > 0 ? (
-        <div className="webview-host__blocked" role="status">
-          <strong>Some content was blocked.</strong> Remote content and files outside the panel's
-          local resource roots are never loaded.
-          <ul>
-            {active.blocked.slice(0, 5).map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ul>
+            Editors
+          </button>
+          {state.panels.map((panel, index) => {
+            const isActive = panel.id === active?.id;
+            return (
+              <div
+                key={panel.id}
+                role="tab"
+                tabIndex={isActive ? 0 : -1}
+                aria-selected={isActive}
+                className={isActive ? "tab tab--active" : "tab"}
+                title={`${panel.title} (${panel.extension})`}
+                onClick={() => {
+                  webviews.setActive(panel.id);
+                }}
+                onKeyDown={(event) => {
+                  onTabKey(
+                    event,
+                    index,
+                    ids,
+                    (id) => {
+                      webviews.setActive(id);
+                    },
+                    (id) => {
+                      webviews.close(id);
+                    },
+                  );
+                }}
+              >
+                <span className="tab__label">{panel.title || panel.viewType}</span>
+                <button
+                  type="button"
+                  className="tab__close webview-host__close"
+                  aria-label={`Close ${panel.title}`}
+                  tabIndex={-1}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    webviews.close(panel.id);
+                  }}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+            );
+          })}
         </div>
-      ) : null}
-      <div className="webview-host__body">
-        {state.panels.map((panel) =>
-          panel.id === active?.id || panel.retain ? (
-            <WebviewFrame key={panel.id} panel={panel} visible={panel.id === active?.id} />
-          ) : null,
-        )}
-      </div>
-    </section>
+        {active && active.blocked.length > 0 ? (
+          <div className="webview-host__blocked" role="status">
+            <strong>Some content was blocked.</strong> Remote content and files outside the panel's
+            local resource roots are never loaded.
+            <ul>
+              {active.blocked.slice(0, 5).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+              {active.blocked.length > 5 ? (
+                <li>…and {active.blocked.length - 5} more (see the Extension Host output).</li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
+        <div className="webview-host__body">
+          {state.panels.map((panel) => {
+            const shown = state.overlay && panel.id === active?.id;
+            return shown || panel.retain ? (
+              <WebviewFrame
+                key={panel.id}
+                panel={panel}
+                visible={shown}
+                focusSeq={state.focusSeq}
+              />
+            ) : null;
+          })}
+        </div>
+      </section>
+    </>
   );
 }

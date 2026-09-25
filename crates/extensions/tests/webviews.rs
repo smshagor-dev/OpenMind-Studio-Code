@@ -338,3 +338,50 @@ fn unsupported_webview_features_fail_with_the_clear_message_and_a_bad_message_is
     );
     host.stop();
 }
+
+#[test]
+fn as_webview_uri_refuses_every_way_out_and_accepts_the_extension_own_files() {
+    let fixture = setup();
+    let extension = install(&fixture, "webview-path-tricks");
+    let Some(host) = start(&fixture, &extension) else {
+        eprintln!("no Node.js on this machine: skipped");
+        return;
+    };
+    let results = run(&host, "sampleWebviewTricks.run");
+    for name in ["parent", "unc", "uncSlashes", "http", "data", "javascript"] {
+        let text = results[name].as_str().expect("text");
+        assert!(text.starts_with("blocked: "), "{name}: {text}");
+    }
+    // A percent-encoded `..` is never decoded: it is only an odd file name inside the root, and Rust refuses the
+    // read later because that file doesn't exist.
+    let encoded = results["encoded"].as_str().expect("text");
+    assert!(encoded.starts_with("allowed: "), "{encoded}");
+    let inside = results["inside"].as_str().expect("text");
+    assert!(
+        inside.starts_with("allowed: openmind-webview-resource://panel/"),
+        "{inside}"
+    );
+    host.stop();
+}
+
+#[test]
+fn retain_context_is_reported_per_panel_and_a_long_title_is_passed_on_whole() {
+    let fixture = setup();
+    let extension = install(&fixture, "webview-state-counter");
+    let Some(host) = start(&fixture, &extension) else {
+        eprintln!("no Node.js on this machine: skipped");
+        return;
+    };
+    run(&host, "sampleWebviewCounter.retained");
+    run(&host, "sampleWebviewCounter.plain");
+    run(&host, "sampleWebviewCounter.longTitle");
+    fixture.events.wait_for("creates", |events| {
+        events.named("webview/create").len() == 3
+    });
+    let creates = fixture.events.named("webview/create");
+    assert_eq!(creates[0]["retain"], json!(true));
+    assert_eq!(creates[1]["retain"], json!(false));
+    assert!(creates[2]["title"].as_str().expect("title").len() > 60);
+    assert_eq!(creates[0]["enableScripts"], json!(true));
+    host.stop();
+}

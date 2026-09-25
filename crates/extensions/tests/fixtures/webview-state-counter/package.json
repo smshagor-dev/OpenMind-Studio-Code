@@ -1,0 +1,16 @@
+{
+  "name": "sample-webview-counter",
+  "displayName": "Sample Webview Counter",
+  "description": "Counters that show what retainContextWhenHidden and setState/getState keep.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "sampleWebviewCounter.retained", "title": "Sample: Open Retained Counter Webview" },
+      { "command": "sampleWebviewCounter.plain", "title": "Sample: Open Plain Counter Webview" },
+      { "command": "sampleWebviewCounter.longTitle", "title": "Sample: Open Webview With a Very Long Title" }
+    ]
+  }
+}

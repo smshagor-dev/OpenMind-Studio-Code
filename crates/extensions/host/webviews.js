@@ -119,8 +119,12 @@ function createWebviewApi({ host, ext, need, track, Disposable, EventEmitter, Ur
       onDidReceiveMessage: (listener, thisArg, disposables) => messages.event(asExtension(listener), thisArg, disposables),
       asWebviewUri(uri) {
         alive();
-        const file = path.resolve(uri && uri.fsPath ? uri.fsPath : String(uri));
         if (uri && uri.scheme && uri.scheme !== 'file') throw new Error(`Only file: Uris can be used in a webview, not ${uri.scheme}:.`);
+        const raw = uri && uri.fsPath ? uri.fsPath : String(uri);
+        if (raw.includes(String.fromCharCode(0))) throw new Error('That is not a valid file path.');
+        // Network paths (UNC, \\server\share) are never a local resource, whatever the roots say.
+        if (raw.startsWith('\\') || raw.startsWith('//')) throw new Error(`Network paths can't be used in a webview: ${raw}`);
+        const file = path.resolve(raw);
         if (!current.roots.some((root) => within(root, file))) {
           throw new Error(`The file is outside this webview's localResourceRoots: ${file}`);
         }

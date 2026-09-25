@@ -86,9 +86,49 @@
   cursor: pointer;
 }
 
-.webview-retained {
-  position: absolute;
-  width: 0;
-  height: 0;
+
+/* Keep [hidden] working against the display rules above (a hidden panel host and frame take no space). */
+.webview-host[hidden],
+.webview-frame[hidden] {
+  display: none;
+}
+
+/* Long titles are cut with an ellipsis (the tooltip has the whole title); the strip scrolls when it is full. */
+.webview-host__tabbar .tab {
+  flex: 0 1 auto;
+  min-width: 90px;
+}
+
+.webview-host__tabbar .tab__label {
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A comfortable close target: 22px square, easy to hit and not too close to the label. */
+.webview-host__close {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.webview-host__close:hover {
+  background-color: var(--toolbar-hover-bg);
+}
+
+.webview-host__tabbar .tab:focus-visible,
+.webview-host__editors:focus-visible,
+.webview-reopen:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+.webview-host__tabbar .tab--active {
+  box-shadow: inset 0 -2px 0 var(--focus-border);
 }

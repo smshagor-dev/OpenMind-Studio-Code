@@ -188,3 +188,43 @@ describe("prepareWebviewHtml: local resources", () => {
     expect(r.blocked.join("\n")).toContain("outside this webview's local resource roots");
   });
 });
+
+describe("prepareWebviewHtml: hardening", () => {
+  it("does not let tab/newline-obfuscated schemes through", async () => {
+    const { doc, opts } = await prepare(
+      '<a href="java\nscript:alert(1)">a</a><img src="da\tta:image/png;base64,AAAA"><iframe src="  javascript:1"></iframe>',
+    );
+    expect(doc.querySelector("a")?.getAttribute("href") ?? "").not.toMatch(/javascript/i);
+    expect(doc.querySelector("iframe")).toBeNull();
+    expect(opts.readResource).not.toHaveBeenCalled();
+  });
+
+  it("stops reading local resources after the budget of files", async () => {
+    const html = Array.from(
+      { length: 250 },
+      (_, n) => `<img src="${RESOURCE_SCHEME}//panel/p${String(n)}">`,
+    ).join("");
+    const readResource = vi.fn<(uri: string) => Promise<string>>(() => Promise.resolve(PNG));
+    const { blocked } = await prepare(html, false, { readResource });
+    expect(readResource.mock.calls.length).toBeLessThanOrEqual(200);
+    expect(blocked.length).toBeGreaterThan(0);
+  });
+
+  it("embeds saved state as data that cannot close the script element", () => {
+    const script = bridgeScript("tok", JSON.stringify({ a: "</script><script>alert(1)</script>" }));
+    expect(script).not.toContain("</script>");
+    expect(script).toContain("JSON.parse(");
+  });
+
+  it("blocks remote, file and data:text/html sources whatever the network permission", async () => {
+    const { doc } = await prepare(
+      '<img src="https://x.test/a.png"><img src="file:///C:/a.png"><iframe src="data:text/html,<p>x</p>"></iframe><meta http-equiv="refresh" content="0;url=https://x.test"><base href="https://x.test/"><form action="https://x.test"></form>',
+      true,
+    );
+    for (const img of doc.querySelectorAll("img")) expect(img.getAttribute("src") ?? "").toBe("");
+    expect(doc.querySelector("iframe")).toBeNull();
+    expect(doc.querySelector("meta[http-equiv=refresh]")).toBeNull();
+    expect(doc.querySelector("base")).toBeNull();
+    expect(doc.querySelector("form")?.getAttribute("action") ?? "").toBe("");
+  });
+});

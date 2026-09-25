@@ -146,4 +146,40 @@ describe("WebviewPanels", () => {
       expect(screen.queryByLabelText("Extension webviews")).toBeNull();
     });
   });
+
+  it("a retained panel keeps its frame element while hidden and across tab changes; a plain one is taken out", async () => {
+    const { webviews, open } = mount();
+    const keep = open(1, { retain: true });
+    const plain = open(2);
+    const frames = () => [...document.querySelectorAll("iframe")];
+    await waitFor(() => {
+      expect(frames()).toHaveLength(2);
+    });
+    // Panel 2 (last opened) is active: the retained frame is there but hidden.
+    const retained = frames().find((frame) => frame.title === "Panel 1");
+    expect(retained?.hidden).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Editors" }));
+    fireEvent.click(screen.getByRole("button", { name: /Webviews \(2\)/ }));
+    expect(frames().find((frame) => frame.title === "Panel 1")).toBe(retained);
+    webviews.setActive(keep);
+    await waitFor(() => {
+      expect(frames()).toHaveLength(1);
+    });
+    expect(frames()[0]).toBe(retained);
+    expect(frames()[0]?.hidden).toBe(false);
+    expect(webviews.find(plain)).toBeDefined();
+  });
+
+  it("tabs are keyboard reachable: arrows move, Enter selects, Delete closes; long titles are cut by CSS and kept in the tooltip", async () => {
+    const { webviews, open } = mount();
+    const a = open(1);
+    const long = open(2, { title: "L".repeat(150) });
+    const tab = await screen.findByRole("tab", { name: /L{20}/ });
+    expect(tab.getAttribute("title")).toContain("L".repeat(150));
+    fireEvent.keyDown(tab, { key: "ArrowLeft" });
+    expect(webviews.getState().activeId).toBe(a);
+    fireEvent.keyDown(screen.getByRole("tab", { name: /Panel 1/ }), { key: "Delete" });
+    expect(webviews.find(a)).toBeUndefined();
+    expect(webviews.find(long)).toBeDefined();
+  });
 });
