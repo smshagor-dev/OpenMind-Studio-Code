@@ -1,4 +1,5 @@
 import type { ExtensionPromptService } from "./extensionPromptService";
+import type { ExtensionEditorService } from "./extensionEditorService";
 import type { OutputService } from "./outputService";
 
 /** The document as the host wants it (0-based lines are the host's business, not part of this). */
@@ -52,6 +53,10 @@ export interface BridgeDeps {
   onHostCommandsChanged: () => void;
   /** `views/*` notifications (tree views), and `views/reset` when the host went away. */
   onViewEvent?: (method: string, params: Record<string, unknown>) => void;
+  /** Edits, selection and reveal requests of extensions (`editor/*`). */
+  editorApi?: ExtensionEditorService;
+  /** `statusBar/*` notifications, and `statusBar/reset` when the host went away. */
+  onStatusBarEvent?: (method: string, params: Record<string, unknown>) => void;
 }
 
 /** Every channel an extension creates shows up under this suffix when it would clash with a built-in one. */
@@ -141,6 +146,10 @@ export class HostBridge {
           p.target === "workspace" ? "workspace" : "user",
         );
         return null;
+      case "editor/applyEdits":
+        return this.editorApi().applyEdits(p);
+      case "editor/applyWorkspaceEdit":
+        return this.editorApi().applyWorkspaceEdit(p);
       case "commands/execute":
         return this.deps.runCommand(text(p.command), Array.isArray(p.args) ? p.args : []);
       case "commands/getCommands":
@@ -187,9 +196,21 @@ export class HostBridge {
           Array.isArray(p.diagnostics) ? (p.diagnostics as HostDiagnostic[]) : [],
         );
         return;
+      case "editor/setSelections":
+        this.deps.editorApi?.setSelections(p);
+        return;
+      case "editor/revealRange":
+        this.deps.editorApi?.revealRange(p);
+        return;
       default:
         if (method.startsWith("views/")) this.deps.onViewEvent?.(method, p);
+        else if (method.startsWith("statusBar/")) this.deps.onStatusBarEvent?.(method, p);
     }
+  }
+
+  private editorApi(): ExtensionEditorService {
+    if (!this.deps.editorApi) throw new Error("Editing isn't available here.");
+    return this.deps.editorApi;
   }
 
   /** The host went away: what it had registered is gone with it. */
@@ -200,6 +221,7 @@ export class HostBridge {
     this.deps.prompts.dismissAll();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
+    this.deps.onStatusBarEvent?.("statusBar/reset", {});
   }
 
   private log(extension: string, channel: string, line: string): void {

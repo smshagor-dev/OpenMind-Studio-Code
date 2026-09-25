@@ -1,0 +1,13 @@
+{
+  "name": "sample-editor-overlap",
+  "displayName": "Sample Editor Overlap",
+  "description": "Tries overlapping edits: they must be refused and the buffer must stay as it was.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleOverlap.run", "title": "Sample: Try Overlapping Edits" }],
+    "keybindings": [{ "command": "sampleOverlap.run", "key": "ctrl+alt+f3" }]
+  }
+}

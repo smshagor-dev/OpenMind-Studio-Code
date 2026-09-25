@@ -9,6 +9,7 @@ import {
   type ProviderInvoke,
   type ProviderRegistration,
 } from "./extensionHostBridge";
+import { ExtensionEditorService } from "./extensionEditorService";
 import { ExtensionHostService } from "./extensionHostService";
 import { HostDocumentSync } from "./extensionHostSync";
 import {
@@ -26,6 +27,7 @@ import type { IpcClient, SettingValue } from "./ipc";
 import type { KeybindingsManager } from "./keybindingsManager";
 import { type OutputService, stamped } from "./outputService";
 import type { SettingsService } from "./settingsService";
+import { StatusBarItemsService } from "./statusBarItemsService";
 import type { ThemeService } from "./themeService";
 
 export interface ExtensionsWiringDeps {
@@ -55,6 +57,8 @@ export interface ExtensionsWiringDeps {
   ) => () => void;
   languageIds: () => string[];
   languageForPath: (path: string) => string;
+  /** Whether a text editor (not only a preview) shows this document. */
+  hasTextTab: (docId: string) => boolean;
 }
 
 /**
@@ -111,6 +115,37 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     notify: (method, params) => {
       if (host.isRunning()) void ipc.extHostNotify(method, params).catch(() => undefined);
     },
+    editorState: (id) => {
+      const uri = documents.modelUri(id);
+      if (uri === null) return null;
+      const selections = deps.editor.selectionsFor(uri);
+      const options = deps.editor.optionsFor(uri);
+      return selections === null || options === null ? null : { selections, ...options };
+    },
+    onSelectionChange: (listener) => deps.editor.subscribe(listener),
+  });
+  /** An app command, or one an extension registered in the host. */
+  async function runAnyCommand(command: string, args: unknown[]): Promise<unknown> {
+    if (commands.has(command)) {
+      await commands.execute(command, ...args);
+      return null;
+    }
+    if (bridge.registeredCommands().has(command)) return host.executeCommand(command, args);
+    throw new Error(`command '${command}' not found`);
+  }
+  const editorApi = new ExtensionEditorService({
+    documents,
+    editor: deps.editor,
+    sync,
+    hasTextTab: deps.hasTextTab,
+  });
+  // Items extensions put in the status bar; they follow the host and the enabled extensions.
+  const statusBar = new StatusBarItemsService({
+    hasCommand: (command) => commands.has(command) || bridge.registeredCommands().has(command),
+    runCommand: (command, args) => runAnyCommand(command, args),
+    onError: (message) => {
+      events.emit("appError", { message });
+    },
   });
 
   const bridge: HostBridge = new HostBridge({
@@ -147,19 +182,27 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
         return id === undefined ? null : documents.snapshot(id).path;
       }),
     setDiagnostics,
-    runCommand: async (command, args) => {
-      if (commands.has(command)) {
-        await commands.execute(command, ...args);
-        return null;
-      }
-      if (bridge.registeredCommands().has(command)) return host.executeCommand(command, args);
-      throw new Error(`command '${command}' not found`);
-    },
+    runCommand: (command, args) => runAnyCommand(command, args),
     knownCommands: () => [...new Set([...commands.list(), ...bridge.registeredCommands()])],
     onHostCommandsChanged: () => undefined,
     onViewEvent: (method, params) => {
       views.handleEvent(method, params);
     },
+    editorApi,
+    onStatusBarEvent: (method, params) => {
+      statusBar.handleEvent(method, params);
+    },
+  });
+  registry.subscribe(() => {
+    if (registry.getState().snapshot === null) return;
+    statusBar.keepOnly(
+      new Set(
+        registry
+          .all()
+          .filter((e) => e.enabled)
+          .map((e) => e.id),
+      ),
+    );
   });
 
   const host: ExtensionHostService = new ExtensionHostService({
@@ -169,6 +212,9 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     bridge,
     sync,
     settingsValues: () => settings.values(),
+    onRestarted: () => {
+      if (startupFinished) contributions.started(deps.workspacePath());
+    },
     log,
     workspaceFolders: () => {
       const path = deps.workspacePath();
@@ -247,6 +293,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     service,
     contributions,
     views,
+    statusBar,
     start,
     finishStartup,
   };

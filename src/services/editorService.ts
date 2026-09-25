@@ -1,25 +1,31 @@
 import type * as monaco from "monaco-editor";
 
 import type { ExtensionEditorAction } from "./extensionContributionService";
+import type { HostRange, HostSelection } from "./hostEdits";
 import type { IpcClient } from "./ipc";
 
 /** The slice of Monaco's editor API this service uses — structural, so tests can pass a fake. */
-export type CodeEditorLike = Partial<Pick<monaco.editor.IStandaloneCodeEditor, "addAction">> &
+export type CodeEditorLike = Partial<
   Pick<
-  monaco.editor.IStandaloneCodeEditor,
-  | "focus"
-  | "trigger"
-  | "setSelection"
-  | "revealRangeInCenter"
-  | "onDidFocusEditorWidget"
-  | "updateOptions"
-  | "getSelections"
-  | "getModel"
-  | "onDidChangeCursorSelection"
-  | "onDidChangeModel"
-  | "onDidChangeModelLanguage"
-  | "onDidChangeModelOptions"
->;
+    monaco.editor.IStandaloneCodeEditor,
+    "addAction" | "setSelections" | "revealRangeInCenterIfOutsideViewport"
+  >
+> &
+  Pick<
+    monaco.editor.IStandaloneCodeEditor,
+    | "focus"
+    | "trigger"
+    | "setSelection"
+    | "revealRangeInCenter"
+    | "onDidFocusEditorWidget"
+    | "updateOptions"
+    | "getSelections"
+    | "getModel"
+    | "onDidChangeCursorSelection"
+    | "onDidChangeModel"
+    | "onDidChangeModelLanguage"
+    | "onDidChangeModelOptions"
+  >;
 
 /** User-toggleable editor view options (VS Code's View / Selection menu toggles). */
 export interface EditorViewOptions {
@@ -270,6 +276,57 @@ export class EditorService {
     target.revealRangeInCenter(range);
     target.focus();
     this.refreshStatus();
+  }
+
+  // --- What extensions see and do in an editor (selections, options, reveal), by the model's URI ---
+
+  private editorShowing(uri: string): CodeEditorLike | undefined {
+    const candidates = this.editor ? [this.editor, ...this.editors] : [...this.editors];
+    return candidates.find((editor) => editor.getModel()?.uri.toString() === uri);
+  }
+
+  /** The selections of the editor showing this model (host coordinates, 0-based), or `null` if none shows it. */
+  selectionsFor(uri: string): HostSelection[] | null {
+    const selections = this.editorShowing(uri)?.getSelections();
+    if (!selections || selections.length === 0) return null;
+    return selections.map((selection) => ({
+      anchorLine: selection.selectionStartLineNumber - 1,
+      anchorColumn: selection.selectionStartColumn - 1,
+      activeLine: selection.positionLineNumber - 1,
+      activeColumn: selection.positionColumn - 1,
+    }));
+  }
+
+  /** Tab size and insert-spaces of the model as its editor uses them. */
+  optionsFor(uri: string): { tabSize: number; insertSpaces: boolean } | null {
+    const options = this.editorShowing(uri)?.getModel()?.getOptions();
+    return options ? { tabSize: options.tabSize, insertSpaces: options.insertSpaces } : null;
+  }
+
+  setSelectionsFor(uri: string, selections: HostSelection[]): boolean {
+    const editor = this.editorShowing(uri);
+    if (!editor?.setSelections) return false;
+    editor.setSelections(
+      selections.map((s) => ({
+        selectionStartLineNumber: s.anchorLine + 1,
+        selectionStartColumn: s.anchorColumn + 1,
+        positionLineNumber: s.activeLine + 1,
+        positionColumn: s.activeColumn + 1,
+      })),
+    );
+    return true;
+  }
+
+  revealRangeFor(uri: string, range: HostRange): boolean {
+    const editor = this.editorShowing(uri);
+    if (!editor) return false;
+    editor.revealRangeInCenter({
+      startLineNumber: range.startLine + 1,
+      startColumn: range.startColumn + 1,
+      endLineNumber: range.endLine + 1,
+      endColumn: range.endColumn + 1,
+    });
+    return true;
   }
 
   hasEditor(): boolean {

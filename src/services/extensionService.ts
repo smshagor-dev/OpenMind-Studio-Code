@@ -197,7 +197,8 @@ export class ExtensionService {
           `${displayName(extension)} is ${enabled ? "enabled" : "disabled"}.` +
           (languages && !enabled ? " Its languages stay registered until OpenMind Studio restarts." : ""),
       });
-      if (enabled) await this.wake(extension);
+      // `extension` is how it was before this change: it is enabled now.
+      if (enabled) await this.wake({ ...extension, enabled: true });
     } catch (error) {
       this.set({ busy: null, error: cleanMessage(error) });
     }

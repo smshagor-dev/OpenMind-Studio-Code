@@ -763,6 +763,11 @@ fn every_sample_installs_disables_enables_and_uninstalls_cleanly() {
         "duplicate-command",
         "permission-denied",
         "startup-star",
+        "editor-edit-basic",
+        "editor-edit-overlap",
+        "statusbar-basic",
+        "statusbar-dispose",
+        "unsupported-api-still-clear",
     ] {
         let extension = install(&fixture, name);
         let id = extension.id.clone();

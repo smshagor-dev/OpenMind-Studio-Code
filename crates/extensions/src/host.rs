@@ -26,6 +26,8 @@ const HOST_JS: &str = include_str!("../host/host.js");
 const VSCODE_JS: &str = include_str!("../host/vscode.js");
 const GUARD_JS: &str = include_str!("../host/guard.js");
 const TREEVIEWS_JS: &str = include_str!("../host/treeviews.js");
+const EDITORS_JS: &str = include_str!("../host/editors.js");
+const STATUSBAR_JS: &str = include_str!("../host/statusbar.js");
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -312,6 +314,8 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
         ("vscode.js", VSCODE_JS),
         ("guard.js", GUARD_JS),
         ("treeviews.js", TREEVIEWS_JS),
+        ("editors.js", EDITORS_JS),
+        ("statusbar.js", STATUSBAR_JS),
     ] {
         let file = paths.host_dir.join(name);
         if std::fs::read_to_string(&file).is_ok_and(|current| current == content) {

@@ -48,3 +48,20 @@ button.statusbar__item:hover {
   width: 14px;
   height: 14px;
 }
+
+/* Items extensions put in the status bar: plain text, cut with an ellipsis (the tooltip has all of it). */
+.statusbar__item--extension {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  line-height: 22px;
+  flex: 0 1 auto;
+}
+
+.statusbar__left,
+.statusbar__right {
+  overflow: hidden;
+}

@@ -523,6 +523,10 @@ const extensions = wireExtensions({
     registerHostProvider(registration, invoke, (model) => pathOfModel(model.uri.toString())),
   languageIds: () => monaco.languages.getLanguages().map((language) => language.id),
   languageForPath,
+  hasTextTab: (docId) =>
+    workspace.getState().groups.some((group) =>
+      group.tabs.some((tab) => tab.docId === docId && tab.kind === "text"),
+    ),
 });
 contributionsRef = extensions.contributions;
 

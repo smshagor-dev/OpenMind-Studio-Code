@@ -35,7 +35,11 @@ describe("permissions", () => {
     expect(lines.map((line) => line.name)).toEqual(["network", "processExecution", "commands"]);
     expect(lines[0]).toMatchObject({ highRisk: true, origin: "requested", accepted: true });
     expect(lines[2]).toMatchObject({ highRisk: false, origin: "inferred" });
-    expect(permissionLines(testExtension({ permissions: { requested: [], inferred: [], accepted: [], highRisk: [] } }))).toEqual([]);
+    expect(
+      permissionLines(
+        testExtension({ permissions: { requested: [], inferred: [], accepted: [], highRisk: [] } }),
+      ),
+    ).toEqual([]);
     expect(PERMISSION_LIMITS_NOTE).toContain("not a sandbox");
   });
 
@@ -51,15 +55,29 @@ describe("permissions", () => {
     expect(OUTSIDE_WORKSPACE_WARNING).toBe(
       "This allows the extension to access files outside your open workspace. Grant only for extensions you trust.",
     );
-    expect(outsideWorkspaceBlock("Permission 'filesystemOutsideWorkspace' is required for this extension API.")).toContain("Blocked");
+    expect(
+      outsideWorkspaceBlock(
+        "Permission 'filesystemOutsideWorkspace' is required for this extension API.",
+      ),
+    ).toContain("Blocked");
     expect(outsideWorkspaceBlock(null)).toBeNull();
-    expect(outsideWorkspaceBlock("Permission 'network' is required for this extension API.")).toBeNull();
+    expect(
+      outsideWorkspaceBlock("Permission 'network' is required for this extension API."),
+    ).toBeNull();
 
     const granted = testExtension({
-      permissions: { requested: [], inferred: ["commands"], accepted: ["commands", "filesystemOutsideWorkspace"], highRisk: [] },
+      permissions: {
+        requested: [],
+        inferred: ["commands"],
+        accepted: ["commands", "filesystemOutsideWorkspace"],
+        highRisk: [],
+      },
     });
     expect(canGrantOutsideWorkspace(granted)).toBe(false);
-    expect(permissionLines(granted).map((l) => [l.name, l.accepted])).toContainEqual(["filesystemOutsideWorkspace", true]);
+    expect(permissionLines(granted).map((l) => [l.name, l.accepted])).toContainEqual([
+      "filesystemOutsideWorkspace",
+      true,
+    ]);
 
     const r = await started([command], { node: NODE });
     r.service.requestGrantOutsideWorkspace(command.id);
@@ -77,7 +95,12 @@ describe("permissions", () => {
 });
 
 describe("extension host state and restarts", () => {
-  const crashed: ExtensionHostStatus = { state: "crashed", pid: null, node: null, error: "It died." };
+  const crashed: ExtensionHostStatus = {
+    state: "crashed",
+    pid: null,
+    node: null,
+    error: "It died.",
+  };
 
   async function running() {
     const r = await started([command], { node: NODE });
@@ -88,18 +111,27 @@ describe("extension host state and restarts", () => {
     });
     await r.host.initialize();
     expect(await r.host.start()).toBe(true);
-    return { r, crash: () => {
-      push(crashed);
-    } };
+    return {
+      r,
+      crash: () => {
+        push(crashed);
+      },
+    };
   }
 
   it("describes every state in words", () => {
     const base = { pid: null, node: null, error: null };
     expect(hostStateText({ ...base, state: "starting" })).toBe("Starting…");
     expect(hostStateText({ ...base, state: "restarting" })).toContain("Restarting");
-    expect(hostStateText({ ...base, state: "crashed", error: "x" })).toBe("Stopped unexpectedly: x");
-    expect(hostStateText({ ...base, state: "stopped" })).toContain("starts when an extension needs it");
-    expect(hostStateText({ ...base, state: "running", node: "OpenMind portable Node.js" })).toBe("Running (OpenMind portable Node.js)");
+    expect(hostStateText({ ...base, state: "crashed", error: "x" })).toBe(
+      "Stopped unexpectedly: x",
+    );
+    expect(hostStateText({ ...base, state: "stopped" })).toContain(
+      "starts when an extension needs it",
+    );
+    expect(hostStateText({ ...base, state: "running", node: "OpenMind portable Node.js" })).toBe(
+      "Running (OpenMind portable Node.js)",
+    );
   });
 
   it("a crash is announced, logged and the host is restarted", async () => {
@@ -129,12 +161,40 @@ describe("extension host state and restarts", () => {
     }
     crash();
     expect(r.host.status().state).toBe("crashed");
-    expect(r.logs.some((line) => line.includes("Not restarting the extension host again automatically"))).toBe(true);
+    expect(
+      r.logs.some((line) => line.includes("Not restarting the extension host again automatically")),
+    ).toBe(true);
     expect(vi.mocked(r.ipc.extHostStart)).toHaveBeenCalledTimes(MAX_AUTO_RESTARTS + 1);
     // Restart Extension Host is still there and works.
     await r.service.reloadHost();
     expect(r.host.status().state).toBe("running");
     expect(vi.mocked(r.ipc.extHostStart)).toHaveBeenCalledTimes(MAX_AUTO_RESTARTS + 2);
+  });
+
+  it("Restart Extension Host repeats the start-up wake-up, so items and features of `*` / onStartupFinished extensions come back", async () => {
+    const r = await started([command], { node: NODE });
+    await r.host.start();
+    expect(r.restarted).toEqual([]);
+    await r.service.reloadHost();
+    expect(r.restarted).toHaveLength(1);
+  });
+
+  it("enabling a disabled start-up extension wakes it at once", async () => {
+    const early = testExtension({
+      enabled: false,
+      manifest: { ...command.manifest, name: "early" },
+      activationEvents: ["onStartupFinished"],
+    });
+    const r = await started([early], { node: NODE });
+    vi.mocked(r.ipc.extSetEnabled).mockImplementation(() => {
+      r.snapshot.current = emptyExtensionsSnapshot({
+        extensions: [{ ...early, enabled: true }],
+        node: NODE,
+      });
+      return Promise.resolve({ ...early, enabled: true });
+    });
+    await r.service.setEnabled(early.id, true);
+    expect(vi.mocked(r.ipc.extActivateFor)).toHaveBeenCalledWith({ kind: "startup" });
   });
 
   it("a host that failed to start is not restarted by itself", async () => {
@@ -149,8 +209,18 @@ describe("extension host state and restarts", () => {
     const r = await started([command, other], {
       node: NODE,
       activity: {
-        [command.id]: { active: false, lastError: "Activating a.b failed: boom", activationCount: 0, lastActivation: null },
-        [other.id]: { active: true, lastError: null, activationCount: 3, lastActivation: "2026-09-25 10:00:00" },
+        [command.id]: {
+          active: false,
+          lastError: "Activating a.b failed: boom",
+          activationCount: 0,
+          lastActivation: null,
+        },
+        [other.id]: {
+          active: true,
+          lastError: null,
+          activationCount: 3,
+          lastActivation: "2026-09-25 10:00:00",
+        },
       },
     });
     expect(r.registry.activityOf(command.id).lastError).toBe("Activating a.b failed: boom");
@@ -184,11 +254,15 @@ describe("extension logs", () => {
     const r = await started([command], { node: NODE });
     vi.mocked(r.ipc.extPickVsix).mockResolvedValue("C:/a.vsix");
     vi.mocked(r.ipc.extInspectVsix).mockResolvedValue(command);
-    vi.mocked(r.ipc.extInstall).mockRejectedValue(new Error("the theme file \"./x.json\" is missing from the package"));
+    vi.mocked(r.ipc.extInstall).mockRejectedValue(
+      new Error('the theme file "./x.json" is missing from the package'),
+    );
     await r.service.chooseVsix();
     await r.service.confirmInstall();
     expect(r.logs.join("\n")).toContain("Install failed: the theme file");
-    vi.mocked(r.ipc.extActivateFor).mockResolvedValue([{ id: command.id, ok: false, error: "boom" }]);
+    vi.mocked(r.ipc.extActivateFor).mockResolvedValue([
+      { id: command.id, ok: false, error: "boom" },
+    ]);
     await r.host.activateFor({ kind: "startup" });
     expect(r.logs.join("\n")).toContain(`Activation failed for ${command.id}: boom`);
   });
@@ -205,7 +279,9 @@ describe("extension logs", () => {
     });
     const r = await started([language]);
     await r.service.setEnabled(language.id, false);
-    expect(r.service.getState().notice).toContain("languages stay registered until OpenMind Studio restarts");
+    expect(r.service.getState().notice).toContain(
+      "languages stay registered until OpenMind Studio restarts",
+    );
   });
 });
 
@@ -220,8 +296,12 @@ describe("contribution hardening", () => {
     });
     const r = await started([command, duplicate], { node: NODE });
     expect(r.commands.list().filter((id) => id === "sampleCommand.hello")).toHaveLength(1);
-    expect(r.contributions.commandInfos().filter((info) => info.id === "sampleCommand.hello")).toHaveLength(2);
-    const actions = (r.editorActions as ExtensionEditorAction[]).filter((a) => a.command === "sampleCommand.hello");
+    expect(
+      r.contributions.commandInfos().filter((info) => info.id === "sampleCommand.hello"),
+    ).toHaveLength(2);
+    const actions = (r.editorActions as ExtensionEditorAction[]).filter(
+      (a) => a.command === "sampleCommand.hello",
+    );
     expect(actions).toHaveLength(1);
     expect(actions[0]?.label).not.toContain("(duplicate)");
   });
@@ -229,7 +309,10 @@ describe("contribution hardening", () => {
   it("disabling an extension removes its keybindings, commands and editor actions at once", async () => {
     const r = await started([command], { node: NODE });
     expect(r.contributions.keybindings()).toHaveLength(1);
-    r.snapshot.current = emptyExtensionsSnapshot({ extensions: [{ ...command, enabled: false }], node: NODE });
+    r.snapshot.current = emptyExtensionsSnapshot({
+      extensions: [{ ...command, enabled: false }],
+      node: NODE,
+    });
     await r.registry.refresh();
     expect(r.contributions.keybindings()).toEqual([]);
     expect(r.commands.has("sampleCommand.hello")).toBe(false);
@@ -254,7 +337,9 @@ describe("contribution hardening", () => {
     await r.registry.initialize();
     r.contributions.initialize();
     await vi.waitFor(() => {
-      expect(r.errors.some((message) => message.includes("couldn't load ./snippets.json"))).toBe(true);
+      expect(r.errors.some((message) => message.includes("couldn't load ./snippets.json"))).toBe(
+        true,
+      );
     });
   });
 
@@ -270,7 +355,9 @@ describe("contribution hardening", () => {
     });
     const r = await started([themed]);
     vi.mocked(r.ipc.extReadFile).mockResolvedValue("[1, 2]");
-    await expect(r.contributions.load(`extension:${themed.id}/Broken`)).rejects.toThrow("JSON object");
+    await expect(r.contributions.load(`extension:${themed.id}/Broken`)).rejects.toThrow(
+      "JSON object",
+    );
   });
 });
 
@@ -279,11 +366,21 @@ describe("theme fallback", () => {
     const themed = testExtension({
       manifest: {
         ...command.manifest,
-        contributes: { ...command.manifest.contributes, themes: [{ label: "Night", uiTheme: "vs-dark", path: "./t.json" }] },
+        contributes: {
+          ...command.manifest.contributes,
+          themes: [{ label: "Night", uiTheme: "vs-dark", path: "./t.json" }],
+        },
       },
     });
     const r = await started([themed]);
-    const settings = (r.service as unknown as { settings: { string: (id: string, d: string) => string; reset: (s: string, id: string) => Promise<unknown> } }).settings;
+    const settings = (
+      r.service as unknown as {
+        settings: {
+          string: (id: string, d: string) => string;
+          reset: (s: string, id: string) => Promise<unknown>;
+        };
+      }
+    ).settings;
     vi.spyOn(settings, "string").mockReturnValue(`extension:${themed.id}/Night`);
     const reset = vi.spyOn(settings, "reset").mockResolvedValue({ ok: true });
     await r.service.setEnabled(themed.id, false);

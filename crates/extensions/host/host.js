@@ -350,6 +350,12 @@ const notifications = {
     state.documents.delete(params.path);
     events.fire('documentClosed', doc || params);
   },
+  'host/selectionChanged': (params) => {
+    if (state.activeEditor && state.activeEditor.path === params.path) {
+      state.activeEditor = { ...state.activeEditor, selections: params.selections || [] };
+    }
+    events.fire('selectionChanged', params);
+  },
   'host/activeEditorChanged': (params) => {
     state.activeEditor = params.editor || null;
     events.fire('activeEditor', { editor: state.activeEditor });

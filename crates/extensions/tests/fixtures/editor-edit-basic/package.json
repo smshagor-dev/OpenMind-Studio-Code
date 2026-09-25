@@ -1,0 +1,17 @@
+{
+  "name": "sample-editor-edit",
+  "displayName": "Sample Editor Edit",
+  "description": "Reads the selection and replaces it (or inserts at the cursor) with TextEditor.edit.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "openmindPermissions": ["workspaceWrite"],
+  "contributes": {
+    "commands": [
+      { "command": "sampleEdit.transform", "title": "Sample: Uppercase Selection or Insert" },
+      { "command": "sampleEdit.workspaceEdit", "title": "Sample: Append a Line With applyEdit" }
+    ],
+    "keybindings": [{ "command": "sampleEdit.transform", "key": "ctrl+alt+f2" }]
+  }
+}

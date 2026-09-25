@@ -6,6 +6,8 @@
 const path = require('path');
 const { permissionError, within } = require('./guard.js');
 const { createTreeApi, TreeItem, TreeItemCollapsibleState, ThemeIcon } = require('./treeviews.js');
+const { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind } = require('./editors.js');
+const { createStatusBarApi, StatusBarAlignment, ThemeColor } = require('./statusbar.js');
 
 // Called with the message whenever an unsupported API is used (the host logs it, attributed to the extension).
 let unsupportedReporter = null;
@@ -154,6 +156,15 @@ class Position {
   isAfter(other) {
     return !this.isEqual(other) && !this.isBefore(other);
   }
+  isBeforeOrEqual(other) {
+    return !this.isAfter(other);
+  }
+  isAfterOrEqual(other) {
+    return !this.isBefore(other);
+  }
+  compareTo(other) {
+    return this.isBefore(other) ? -1 : this.isAfter(other) ? 1 : 0;
+  }
   translate(lineDelta = 0, characterDelta = 0) {
     return new Position(this.line + lineDelta, this.character + characterDelta);
   }
@@ -167,6 +178,9 @@ class Range {
     if (typeof a === 'number') {
       this.start = new Position(a, b);
       this.end = new Position(c, d);
+    } else if (b.isBefore(a)) {
+      this.start = b;
+      this.end = a;
     } else {
       this.start = a;
       this.end = b;
@@ -186,13 +200,30 @@ class Range {
   isEqual(other) {
     return this.start.isEqual(other.start) && this.end.isEqual(other.end);
   }
+  intersection(other) {
+    const start = this.start.isAfter(other.start) ? this.start : other.start;
+    const end = this.end.isBefore(other.end) ? this.end : other.end;
+    return start.isAfter(end) ? undefined : new Range(start, end);
+  }
+  union(other) {
+    return new Range(this.start.isBefore(other.start) ? this.start : other.start, this.end.isAfter(other.end) ? this.end : other.end);
+  }
+  with(start = this.start, end = this.end) {
+    return new Range(start, end);
+  }
 }
 
 class Selection extends Range {
+  // The anchor is where the selection started, the active end is the cursor: a reversed selection keeps both.
   constructor(a, b, c, d) {
-    super(a, b, c, d);
-    this.anchor = this.start;
-    this.active = this.end;
+    const anchor = typeof a === 'number' ? new Position(a, b) : a;
+    const active = typeof a === 'number' ? new Position(c, d) : b;
+    super(anchor, active);
+    this.anchor = anchor;
+    this.active = active;
+  }
+  get isReversed() {
+    return this.anchor.isAfter(this.active);
   }
 }
 
@@ -294,7 +325,6 @@ function toPath(value) {
 
 function createApi(host, ext) {
   const { state, request, notify } = host;
-  const documentObjects = new Map();
   let handleCounter = 0;
   const granted = new Set(ext.permissions || []);
   const need = (permission) => {
@@ -308,85 +338,16 @@ function createApi(host, ext) {
   };
   // Listeners run as this extension, so what they log or do is attributed to it.
   const asExtension = (fn) => (host.als ? (...args) => host.als.run(ext.id, () => fn(...args)) : fn);
-
-  function document(data) {
-    if (!data) return undefined;
-    let doc = documentObjects.get(data.path);
-    if (!doc) {
-      doc = {};
-      documentObjects.set(data.path, doc);
-    }
-    const lines = () => String(data.text).split(/\r\n|\r|\n/);
-    Object.assign(doc, {
-      uri: Uri.file(data.path),
-      fileName: data.path,
-      languageId: data.languageId,
-      version: data.version,
-      isDirty: !!data.isDirty,
-      isUntitled: false,
-      isClosed: false,
-      get lineCount() {
-        return lines().length;
-      },
-      getText(range) {
-        if (!range) return data.text;
-        const all = lines();
-        const parts = [];
-        for (let line = range.start.line; line <= range.end.line && line < all.length; line += 1) {
-          const from = line === range.start.line ? range.start.character : 0;
-          const to = line === range.end.line ? range.end.character : all[line].length;
-          parts.push(all[line].slice(from, to));
-        }
-        return parts.join('\n');
-      },
-      lineAt(lineOrPosition) {
-        const line = typeof lineOrPosition === 'number' ? lineOrPosition : lineOrPosition.line;
-        const text = lines()[line];
-        if (text === undefined) throw new Error('Illegal value for `line`');
-        return {
-          lineNumber: line,
-          text,
-          range: new Range(line, 0, line, text.length),
-          isEmptyOrWhitespace: text.trim().length === 0,
-        };
-      },
-      offsetAt(position) {
-        const all = lines();
-        let offset = 0;
-        for (let line = 0; line < position.line && line < all.length; line += 1) offset += all[line].length + 1;
-        return offset + position.character;
-      },
-      positionAt(offset) {
-        const all = lines();
-        let remaining = offset;
-        for (let line = 0; line < all.length; line += 1) {
-          if (remaining <= all[line].length) return new Position(line, remaining);
-          remaining -= all[line].length + 1;
-        }
-        return new Position(all.length - 1, all[all.length - 1].length);
-      },
-      getWordRangeAtPosition(position) {
-        const text = lines()[position.line] || '';
-        const pattern = /[A-Za-z0-9_$]+/g;
-        let match;
-        while ((match = pattern.exec(text))) {
-          if (position.character >= match.index && position.character <= match.index + match[0].length) {
-            return new Range(position.line, match.index, position.line, match.index + match[0].length);
-          }
-        }
-        return undefined;
-      },
-    });
-    return doc;
-  }
-
-  function editor(data) {
-    if (!data) return undefined;
-    const selection = data.selection
-      ? new Selection(data.selection.startLine, data.selection.startColumn, data.selection.endLine, data.selection.endColumn)
-      : new Selection(0, 0, 0, 0);
-    return { document: document(state.documents.get(data.path) || data), selection, selections: [selection], viewColumn: 1, options: {} };
-  }
+  const editors = createEditorApi({
+    host,
+    ext,
+    need,
+    namespace,
+    asExtension,
+    Disposable,
+    types: { Position, Range, Selection, Uri },
+  });
+  const { document, editor } = editors;
 
   const event = (name) => (listener, thisArg, disposables) =>
     track(host.events.on(name)(asExtension(listener), thisArg, disposables));
@@ -509,6 +470,7 @@ function createApi(host, ext) {
     Disposable,
     EventEmitter,
   });
+  const statusBar = createStatusBarApi({ host, ext, track, Disposable });
   const window = namespace('window', {
     registerTreeDataProvider: trees.registerTreeDataProvider,
     createTreeView: trees.createTreeView,
@@ -546,14 +508,17 @@ function createApi(host, ext) {
       return value === null ? undefined : value;
     },
     get activeTextEditor() {
-      return editor(state.activeEditor);
+      return editors.activeEditor();
     },
     get visibleTextEditors() {
-      const active = editor(state.activeEditor);
+      const active = editors.activeEditor();
       return active ? [active] : [];
     },
     onDidChangeActiveTextEditor: (listener, thisArg, disposables) =>
-      host.events.on('activeEditor')((data) => listener(editor(data.editor)), thisArg, disposables),
+      track(host.events.on('activeEditor')(asExtension((data) => listener(editor(data.editor))), thisArg, disposables)),
+    onDidChangeTextEditorSelection: (listener, thisArg, disposables) =>
+      track(editors.selectionEvent(listener, thisArg, disposables)),
+    createStatusBarItem: statusBar.createStatusBarItem,
   });
 
   // -- workspace
@@ -637,6 +602,7 @@ function createApi(host, ext) {
       state.documents.set(file, data);
       return document(data);
     },
+    applyEdit: (edit) => editors.applyEdit(edit),
     onDidOpenTextDocument: documentEvent('documentOpened'),
     onDidCloseTextDocument: documentEvent('documentClosed'),
     onDidChangeTextDocument: documentEvent('documentChanged'),
@@ -816,6 +782,12 @@ function createApi(host, ext) {
     CancellationTokenSource,
     ConfigurationTarget,
     ViewColumn,
+    EndOfLine,
+    TextEditorRevealType,
+    TextEditorSelectionChangeKind,
+    StatusBarAlignment,
+    ThemeColor,
+    WorkspaceEdit: editors.WorkspaceEdit,
     TreeItem,
     TreeItemCollapsibleState,
     ThemeIcon,

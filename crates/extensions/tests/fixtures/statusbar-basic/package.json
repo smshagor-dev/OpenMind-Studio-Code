@@ -1,0 +1,13 @@
+{
+  "name": "sample-statusbar",
+  "displayName": "Sample Status Bar",
+  "description": "Puts an item in the status bar; clicking it runs a command.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [{ "command": "sampleStatus.clicked", "title": "Sample: Status Bar Item Clicked" }]
+  }
+}

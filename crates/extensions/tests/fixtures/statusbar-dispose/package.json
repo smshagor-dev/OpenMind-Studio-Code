@@ -1,0 +1,12 @@
+{
+  "name": "sample-statusbar-dispose",
+  "displayName": "Sample Status Bar Dispose",
+  "description": "Creates, hides, shows and disposes a status bar item.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleStatusDispose.cycle", "title": "Sample: Cycle a Status Bar Item" }]
+  }
+}

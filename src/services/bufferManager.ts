@@ -1,5 +1,6 @@
 import * as monaco from "monaco-editor";
 
+import type { HostTextEdit } from "./hostEdits";
 import { minimalEdit } from "./textSync";
 
 /**
@@ -64,6 +65,46 @@ export class BufferManager {
       model.getPositionAt(edit.end),
     );
     model.pushEditOperations([], [{ range, text: edit.text }], () => null);
+  }
+
+  /**
+   * Applies edits from an extension as ONE undoable step. Everything is checked first (every range inside
+   * the text, no two ranges overlapping) so a bad batch changes nothing. Line/column are 0-based.
+   */
+  applyHostEdits(id: string, edits: HostTextEdit[]): void {
+    const model = this.requireModel(id);
+    const operations = edits.map((edit) => {
+      const range = new monaco.Range(
+        edit.startLine + 1,
+        edit.startColumn + 1,
+        edit.endLine + 1,
+        edit.endColumn + 1,
+      );
+      if (!model.validateRange(range).equalsRange(range)) {
+        throw new Error("An edit is outside the document.");
+      }
+      return {
+        range,
+        text: edit.text,
+        offsets: [
+          model.getOffsetAt(range.getStartPosition()),
+          model.getOffsetAt(range.getEndPosition()),
+        ],
+      };
+    });
+    const sorted = [...operations].sort((a, b) => (a.offsets[0] ?? 0) - (b.offsets[0] ?? 0));
+    for (let i = 1; i < sorted.length; i += 1) {
+      if ((sorted[i]?.offsets[0] ?? 0) < (sorted[i - 1]?.offsets[1] ?? 0)) {
+        throw new Error("Overlapping ranges are not allowed!");
+      }
+    }
+    model.pushStackElement();
+    model.pushEditOperations(
+      [],
+      operations.map(({ range, text }) => ({ range, text })),
+      () => null,
+    );
+    model.pushStackElement();
   }
 
   /** Replaces the markers `owner` set on the buffer (an empty list clears them). */

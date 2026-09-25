@@ -263,7 +263,10 @@ describe("HostDocumentSync", () => {
       events.emit("documentOpened", { id: "doc-2" });
       expect(sent[1]?.[0]).toBe("host/documentOpened");
       events.emit("tabsChanged", { tabs: [], activeId: "doc-2" });
-      expect(sent[2]).toEqual(["host/activeEditorChanged", { editor: { path: "C:/My Site/doc-2.txt" } }]);
+      expect(sent[2]).toEqual([
+        "host/activeEditorChanged",
+        { editor: { path: "C:/My Site/doc-2.txt", selections: [{ anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 0 }], tabSize: 4, insertSpaces: true } },
+      ]);
       events.emit("documentClosed", { id: "doc-2", path: "C:/My Site/doc-2.txt" });
       expect(sent[3]).toEqual(["host/documentClosed", { path: "C:/My Site/doc-2.txt" }]);
       sync.stop();

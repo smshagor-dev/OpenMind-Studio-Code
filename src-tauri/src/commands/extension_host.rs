@@ -30,7 +30,7 @@ const ALLOWED_REQUESTS: [&str; 5] = [
     "host/tree",
 ];
 /// Notifications the window may send to the host.
-const ALLOWED_NOTIFICATIONS: [&str; 7] = [
+const ALLOWED_NOTIFICATIONS: [&str; 8] = [
     "host/configurationChanged",
     "host/workspaceFoldersChanged",
     "host/documentOpened",
@@ -38,6 +38,7 @@ const ALLOWED_NOTIFICATIONS: [&str; 7] = [
     "host/documentSaved",
     "host/documentClosed",
     "host/activeEditorChanged",
+    "host/selectionChanged",
 ];
 
 fn publish(app: &AppHandle, status: HostStatus) {

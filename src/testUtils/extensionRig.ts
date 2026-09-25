@@ -16,7 +16,11 @@ import type { ExtensionsSnapshot, InstalledExtension } from "../services/extensi
 import type { IpcClient } from "../services/ipc";
 import { OutputService } from "../services/outputService";
 import { SettingsService } from "../services/settingsService";
-import { createFakeExtensionsIpc, emptyExtensionsSnapshot, testExtension } from "./fakeExtensionsIpc";
+import {
+  createFakeExtensionsIpc,
+  emptyExtensionsSnapshot,
+  testExtension,
+} from "./fakeExtensionsIpc";
 import { createFakeIpc } from "./fakeIpcClient";
 
 export const command = testExtension({
@@ -51,9 +55,14 @@ export interface Rig {
   logs: string[];
   editorActions: unknown[];
   snapshot: { current: ExtensionsSnapshot };
+  /** One entry each time the host came back after a restart (the start-up wake-up is repeated then). */
+  restarted: number[];
 }
 
-export function rig(extensions: InstalledExtension[] = [], overrides: Partial<ExtensionsSnapshot> = {}): Rig {
+export function rig(
+  extensions: InstalledExtension[] = [],
+  overrides: Partial<ExtensionsSnapshot> = {},
+): Rig {
   const snapshot = { current: emptyExtensionsSnapshot({ extensions, ...overrides }) };
   const ipc = createFakeIpc({
     ...createFakeExtensionsIpc(),
@@ -88,7 +97,9 @@ export function rig(extensions: InstalledExtension[] = [], overrides: Partial<Ex
     knownCommands: () => [],
     onHostCommandsChanged: () => undefined,
   });
+  const restarted: number[] = [];
   const host = new ExtensionHostService({
+    onRestarted: () => restarted.push(1),
     ipc,
     events,
     registry,
@@ -101,7 +112,9 @@ export function rig(extensions: InstalledExtension[] = [], overrides: Partial<Ex
   });
   const settings = new SettingsService(ipc, events);
   vi.spyOn(settings, "reload").mockResolvedValue(undefined);
-  const service = new ExtensionService(ipc, events, registry, host, settings, (line) => logs.push(line));
+  const service = new ExtensionService(ipc, events, registry, host, settings, (line) =>
+    logs.push(line),
+  );
   const editorActions: unknown[] = [];
   const contributions = new ExtensionContributionService({
     ipc,
@@ -116,13 +129,35 @@ export function rig(extensions: InstalledExtension[] = [], overrides: Partial<Ex
     },
     languageOf: () => "plaintext",
   });
-  return { ipc, events, registry, host, service, marketplace: new ExtensionMarketplaceService(createFakeMarketplaceApi(), { install: (path) => service.inspect(path), onError: (message) => errors.push(message) }), contributions, commands, prompts, output, bridge, errors, logs, editorActions, snapshot };
+  return {
+    ipc,
+    events,
+    registry,
+    host,
+    service,
+    marketplace: new ExtensionMarketplaceService(createFakeMarketplaceApi(), {
+      install: (path) => service.inspect(path),
+      onError: (message) => errors.push(message),
+    }),
+    contributions,
+    commands,
+    prompts,
+    output,
+    bridge,
+    errors,
+    logs,
+    editorActions,
+    snapshot,
+    restarted,
+  };
 }
 
-export async function started(extensions: InstalledExtension[], overrides: Partial<ExtensionsSnapshot> = {}) {
+export async function started(
+  extensions: InstalledExtension[],
+  overrides: Partial<ExtensionsSnapshot> = {},
+) {
   const r = rig(extensions, overrides);
   await r.registry.initialize();
   r.contributions.initialize();
   return r;
 }
-

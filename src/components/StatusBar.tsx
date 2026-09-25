@@ -7,6 +7,7 @@ import type { LineEnding, TextEncoding } from "../services/ipc";
 import { DebugStatusItem } from "./DebugStatusItem";
 import { GitBranchIndicator } from "./GitBranchIndicator";
 import { LspStatusItem } from "./LspStatusItem";
+import { ExtensionStatusItems } from "./ExtensionStatusItems";
 import { ErrorIcon, WarningIcon } from "./icons";
 
 const ENCODING_LABELS: Record<TextEncoding, string> = {
@@ -86,39 +87,43 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
             }}
           />
         ) : null}
+        <ExtensionStatusItems alignment="left" />
       </div>
-      {status && activeDocument ? (
-        <div className="statusbar__right">
-          <button
-            type="button"
-            className="statusbar__item"
-            title="Go to Line/Column"
-            onClick={() => {
-              container.run("go.toLine");
-            }}
-          >
-            Ln {status.line}, Col {status.column}
-            {status.selectedChars > 0
-              ? status.selectionCount > 1
-                ? ` (${status.selectedChars} selected in ${status.selectionCount} selections)`
-                : ` (${status.selectedChars} selected)`
-              : ""}
-          </button>
-          <span className="statusbar__item" title="Indentation">
-            {status.insertSpaces ? "Spaces" : "Tab Size"}: {status.tabSize}
-          </span>
-          <span className="statusbar__item" title="Encoding">
-            {ENCODING_LABELS[activeDocument.encoding]}
-          </span>
-          <span className="statusbar__item" title="End of Line Sequence">
-            {EOL_LABELS[activeDocument.lineEnding]}
-          </span>
-          <LspStatusItem />
-          <span className="statusbar__item" title="Language Mode">
-            {languageName(status.languageId)}
-          </span>
-        </div>
-      ) : null}
+      <div className="statusbar__right">
+        <ExtensionStatusItems alignment="right" />
+        {status && activeDocument ? (
+          <>
+            <button
+              type="button"
+              className="statusbar__item"
+              title="Go to Line/Column"
+              onClick={() => {
+                container.run("go.toLine");
+              }}
+            >
+              Ln {status.line}, Col {status.column}
+              {status.selectedChars > 0
+                ? status.selectionCount > 1
+                  ? ` (${status.selectedChars} selected in ${status.selectionCount} selections)`
+                  : ` (${status.selectedChars} selected)`
+                : ""}
+            </button>
+            <span className="statusbar__item" title="Indentation">
+              {status.insertSpaces ? "Spaces" : "Tab Size"}: {status.tabSize}
+            </span>
+            <span className="statusbar__item" title="Encoding">
+              {ENCODING_LABELS[activeDocument.encoding]}
+            </span>
+            <span className="statusbar__item" title="End of Line Sequence">
+              {EOL_LABELS[activeDocument.lineEnding]}
+            </span>
+            <LspStatusItem />
+            <span className="statusbar__item" title="Language Mode">
+              {languageName(status.languageId)}
+            </span>
+          </>
+        ) : null}
+      </div>
     </footer>
   );
 }

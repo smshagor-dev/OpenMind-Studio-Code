@@ -3,6 +3,7 @@ import type * as monaco from "monaco-editor";
 import type { BufferManager } from "./bufferManager";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
+import type { HostTextEdit } from "./hostEdits";
 import type { IpcClient, LineEnding, TextEncoding } from "./ipc";
 import { pathKey, sameText } from "./textSync";
 
@@ -148,6 +149,12 @@ export class DocumentService {
   /** The current text of an open document (the Markdown preview renders this live). */
   contentOf(id: string): string {
     return this.buffers.getValue(id);
+  }
+
+  /** Edits from an extension, applied to the open buffer only (nothing is written to disk). */
+  applyHostEdits(id: string, edits: HostTextEdit[]): void {
+    this.requireDocument(id);
+    this.buffers.applyHostEdits(id, edits);
   }
 
   /** Calls `listener` whenever the document's text changes; returns the unsubscribe function. */

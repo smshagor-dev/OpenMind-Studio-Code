@@ -29,6 +29,11 @@ export interface HostServiceDeps {
   log?: (line: string) => void;
   /** Wait before an automatic restart (tests make it short). */
   restartDelayMs?: number;
+  /**
+   * A host that was stopped or died is running again (Restart Extension Host, an automatic restart): the app's
+   * start-up wake-up (`*`, `onStartupFinished`) is repeated, as VS Code does when it restarts its host.
+   */
+  onRestarted?: () => void;
 }
 
 /**
@@ -136,7 +141,9 @@ export class ExtensionHostService {
     this.deps.events.emit("extensionsChanged", undefined);
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
-      void this.start();
+      void this.start().then((started) => {
+        if (started) this.deps.onRestarted?.();
+      });
     }, this.deps.restartDelayMs ?? 1000);
   }
 
@@ -189,7 +196,7 @@ export class ExtensionHostService {
     this.log("Reloading the extension host…");
     await this.stop();
     this.localStatus = null;
-    if (this.needsHost()) await this.start();
+    if (this.needsHost() && (await this.start())) this.deps.onRestarted?.();
   }
 
   /** Wakes the extensions `trigger` names. Failures are shown to the user and returned. */

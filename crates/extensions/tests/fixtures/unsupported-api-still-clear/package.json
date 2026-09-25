@@ -1,0 +1,12 @@
+{
+  "name": "sample-unsupported-still-clear",
+  "displayName": "Sample Unsupported Still Clear",
+  "description": "APIs that stay unsupported must keep failing with a clear message.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleStillUnsupported.run", "title": "Sample: Call APIs That Stay Unsupported" }]
+  }
+}
