@@ -947,7 +947,7 @@ Two Windows x64 editions, neither code-signed (no signing is configured):
   fills instead. The old AppData folder is left alone (delete it by hand if you want the space back).
 
 Startup baseline (this machine, Windows 11, a fresh unzipped portable copy, nothing installed, a folder open, launched cold):
-release build — window visible after ~0.16 s; debug build ~0.9 s (plus a console window). Idle after 12 s: the app process 43 MB and
+release build — window visible after ~0.16 s; debug build ~0.9 s (it used to add a console window; since the fix every build is a GUI-subsystem exe). Idle after 12 s: the app process 43 MB and
 6 WebView2 processes 414 MB, ~457 MB in total. The **only** child processes are those six WebView2 helpers (the debug build adds one
 console host): no language server, debug adapter, Git, PHP/MariaDB/phpMyAdmin server, Composer, shell or terminal starts by itself;
 each starts only on an explicit action (open a file with a supported language *and* an installed server, Start Debugging, Start in the
