@@ -22,12 +22,11 @@ use tauri::Manager;
 use app_state::AppState;
 
 fn main() {
-    openmind_core::init_logging();
-
     let app_paths = AppPaths::resolve().expect("failed to resolve application paths");
     app_paths
         .ensure_dirs()
         .expect("failed to create application directory layout");
+    openmind_core::init_logging_to_file(&app_paths.logs_dir);
 
     tracing::info!(db_path = %app_paths.db_path.display(), "starting OpenMind Studio");
 
