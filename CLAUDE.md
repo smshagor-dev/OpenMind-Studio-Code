@@ -1152,6 +1152,35 @@ migration file, check for stray running instances first, not just after somethin
   debugging; Ctrl+F5 stays Run Code; portable-interpreter precedence for debugging is unit-tested, not re-run by hand here;
   Step Into/Out, Pause, Restart and Watch were covered by tests and real-adapter backend runs but not clicked by hand; the
   test folders `E:\omdbg8` (and `E:\omdbg` from an earlier attempt), `E:\wt7-target`, `E:\wt8` are left for manual deletion.
+- [x] **Milestone 8.1** — Debugger rebase and portable-runtime verification (`fix: merge and verify debugger integration`).
+  Milestone 8 (`9102963`) was rebased onto master `d9c09f2` (the workbench frame / windows / PHP web root commit) with four
+  conflicts, all additive and resolved by keeping both sides: `CLAUDE.md` (the "Editor windows" and `openmind-dap` entries),
+  `src-tauri/src/main.rs` (master had moved the git command list and `file_watch`/`editor_windows` state; only the
+  `commands::debug::*` handlers and the `dap` field were kept), `src-tauri/src/window_events.rs` (master moved close handling
+  into `shutdown(app)`; `stop_debug` was added to its blocking stop list) and `src/services/ipc.ts` (debug methods
+  kept, git declarations already lived elsewhere in master). Validation of the rebased tree in its own worktree: fmt, clippy
+  `-D warnings`, `cargo test --workspace`, `pnpm lint`, `pnpm test` x3 (764 tests) and `pnpm build` all clean.
+  Verified by hand in the built app (fresh portable copy `E:\omdbg81\OpenMind Debug`, workspace `My Debug Site`, with
+  OpenMind portable Python 3.14.7 and Node.js 24.21.0 installed from the Runtime Manager while system Python/Node exist too):
+  **Python** — the adapter, the launcher and the debuggee were all `...\runtimes\python\versions\3.14.7\python.exe` (not
+  `C:\Python314`); debugpy installed with the view's Install Debugger; a breakpoint on `s = add(x, y)` stopped there (yellow
+  line, Locals x/y, call stack `main`/`<module>`); Step Into -> `add` (a, b), Step Out -> back in `main`, Step Over -> next line
+  with `s = 3`; a Watch `s` showed the real `NameError` before the assignment and `3` after; Restart replaced all three
+  processes and stopped at the breakpoint again; Pause on `while True` stopped in `<module>` (`count` = 14); Continue printed
+  `sum 3`/`end` in the Debug Console and ended the session; Stop (Shift+F5) left no python. **Node** — adapter and debuggee were
+  `...\runtimes\node\versions\24.21.0\node.exe`; the same steps worked (Step Into `add`, Step Out `main`, Step Over with `sum 3`
+  printed, Watch `s` = 3 — `evaluate failed` while `s` is still in its temporal dead zone — Restart, Pause on a `setInterval`
+  script (paused inside `processTimers`, a frame with no file), Continue, Stop). **Keys** — F5 started a session and F10 stepped
+  over (`Ln 9` -> `Ln 10`, `s` = 3) in both languages when the editor had focus; the earlier F10 failure was a focus problem of
+  the test harness; Shift+F5 stops. **Cleanup** — closing the app during a running Python session and during a running Node
+  session each left 0 python/node/conhost processes (3 before, 0 after); Registry User and Machine PATH were identical before
+  and after; relaunch restored the breakpoints (and the watch expression), started nothing and showed no session. Found and
+  fixed: the Runtime Manager said the debug adapters were "In new terminals' PATH" although they inject nothing; it now says
+  "Used only by the debugger — not added to any PATH" (with a test). Known limitations: no launch.json, conditional/log
+  breakpoints or hover evaluate; PHP/Xdebug not implemented; Step Out lands on the calling line (debugpy) or the next line
+  (js-debug), as each adapter reports it; a Node session that ends normally prints "The debug session ended." without an
+  exit-code line; Pause shows runtime frames without a file for Node. Left on disk for manual deletion: `E:\omdbg81`,
+  `E:\omdbg8`, `E:\omdbg`, `E:\omlsp`, `E:\omlsp2`, `E:\wt7-target`, and the worktree `E:\wt8` after the merge.
 - [ ] Milestone 9 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 10 — Extension system (sandboxed, contributes commands/views/themes/...).
 - [ ] Milestone 11 — AI provider plugin architecture (local + hosted providers, chat, embeddings,

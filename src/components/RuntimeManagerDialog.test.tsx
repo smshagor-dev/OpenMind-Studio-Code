@@ -79,6 +79,24 @@ describe("RuntimeManagerDialog", () => {
     expect(within(git).getByText("Active: 2.55.0.5")).toBeInTheDocument();
   });
 
+  it("does not claim a debug adapter is on the terminal PATH", async () => {
+    await open([
+      runtime({
+        id: "debugpy",
+        displayName: "Python debugger (debugpy)",
+        installed: [{ version: "1.8.22", path: "p", active: true, healthy: true, features: [] }],
+        activeVersion: "1.8.22",
+        availableVersions: ["1.8.22"],
+        defaultVersion: "1.8.22",
+      }),
+    ]);
+
+    const card = screen.getByRole("region", { name: "Python debugger (debugpy)" });
+    expect(within(card).getByText(/Used only by the debugger/)).toBeInTheDocument();
+    expect(within(card).queryByText("In new terminals’ PATH")).toBeNull();
+    expect(within(card).queryByText("In new terminals' PATH")).toBeNull();
+  });
+
   it("shows a copy already on the system PATH as information", async () => {
     await open([runtime({ globalVersion: "20.1.0" })]);
 

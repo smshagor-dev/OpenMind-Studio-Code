@@ -155,6 +155,9 @@ function RuntimeCard({ runtime }: { runtime: RuntimeStatus }) {
   );
 }
 
+/** Debug adapters are started by the debugger itself; nothing of them is put on a terminal PATH. */
+const DEBUG_ADAPTERS = new Set(["debugpy", "js-debug"]);
+
 function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: InstalledVersion }) {
   useSyncExternalStore(
     (listener) => container.runtime.subscribe(listener),
@@ -164,7 +167,9 @@ function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: Install
   const activate = service.activateAvailability(runtime, entry.version);
   const repair = service.repairAvailability(runtime, entry.version);
   const remove = service.deleteAvailability(runtime);
-  const injection = injectionStatus(entry);
+  const injection = DEBUG_ADAPTERS.has(runtime.id)
+    ? { injected: false, label: "Used only by the debugger — not added to any PATH" }
+    : injectionStatus(entry);
 
   return (
     <li className="runtime-version">
