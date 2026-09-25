@@ -4,12 +4,13 @@ import { createFakeMarketplaceApi, marketItem } from "../testUtils/fakeMarketpla
 import { ExtensionMarketplaceService, formatCount, marketId } from "./extensionMarketplaceService";
 import type { MarketPage } from "./marketplaceIpc";
 
-function service(api = createFakeMarketplaceApi()) {
+function service(api = createFakeMarketplaceApi(), autoFetch = true) {
   const install = vi.fn().mockResolvedValue(undefined);
   const errors: string[] = [];
   const market = new ExtensionMarketplaceService(api, {
     install,
     onError: (message) => errors.push(message),
+    autoFetch: () => autoFetch,
   });
   return { api, market, install, errors };
 }
@@ -31,6 +32,18 @@ describe("ExtensionMarketplaceService", () => {
     expect(formatCount(2_000_000)).toBe("2M");
     expect(formatCount(1_500_000_000)).toBe("1.5B");
     expect(marketId("MS-Python", "Python")).toBe("ms-python.python");
+  });
+
+  it("makes no request on start unless auto-fetch is on; browse and search are the user's requests", async () => {
+    const { api, market } = service(createFakeMarketplaceApi(), false);
+    market.start();
+    market.setQuery("");
+    await market.setSort("rating");
+    expect(api.search).not.toHaveBeenCalled();
+    expect(market.getState().requested).toBe(false);
+    await market.browse();
+    expect(api.search).toHaveBeenCalledTimes(1);
+    expect(market.getState().requested).toBe(true);
   });
 
   it("an empty search lists by install count; a query by relevance, or the chosen sort", async () => {

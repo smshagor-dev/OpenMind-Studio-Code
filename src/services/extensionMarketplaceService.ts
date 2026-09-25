@@ -45,6 +45,8 @@ export interface MarketplaceState {
   /** Extensions being downloaded, by id, with what is happening. */
   installing: Record<string, string>;
   page: ExtensionPage | null;
+  /** Whether the user has asked the marketplace for anything yet (nothing is fetched before that). */
+  requested: boolean;
 }
 
 const PAGE_SIZE = 30;
@@ -60,12 +62,15 @@ const INITIAL: MarketplaceState = {
   error: null,
   installing: {},
   page: null,
+  requested: false,
 };
 
 export interface MarketplaceHooks {
   /** Hands a downloaded `.vsix` to the normal install flow (trust dialog, then install). */
   install: (path: string) => Promise<void>;
   onError: (message: string) => void;
+  /** `extensions.marketplace.autoFetch`: load Popular when the view shows. Off unless the user turned it on. */
+  autoFetch?: () => boolean;
 }
 
 /**
@@ -99,17 +104,27 @@ export class ExtensionMarketplaceService {
     };
   }
 
-  /** The first time the view shows: load the popular list. */
+  /**
+   * The first time the view shows. Nothing is fetched (no network call) unless the user turned on
+   * `extensions.marketplace.autoFetch`; otherwise the view offers "Load Popular".
+   */
   start(): void {
     if (this.started) return;
     this.started = true;
-    void this.refresh();
+    if (this.hooks.autoFetch?.() === true) void this.refresh();
+  }
+
+  /** The user's explicit "Load Popular" / "Browse Open VSX". */
+  async browse(): Promise<void> {
+    await this.refresh();
   }
 
   /** Search-as-you-type: waits for a pause in typing. */
   setQuery(query: string): void {
     this.set({ query });
     if (this.timer !== null) clearTimeout(this.timer);
+    // Emptying the box before anything was requested is not a request.
+    if (query.trim() === "" && !this.state.requested) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.refresh();
@@ -118,7 +133,7 @@ export class ExtensionMarketplaceService {
 
   async setSort(sort: MarketSort): Promise<void> {
     this.set({ sort });
-    await this.refresh();
+    if (this.state.requested) await this.refresh();
   }
 
   /** The Open VSX sort actually used: an empty search lists by install count (Popular). */
@@ -130,7 +145,7 @@ export class ExtensionMarketplaceService {
 
   async refresh(): Promise<void> {
     const token = ++this.token;
-    this.set({ loading: true, error: null });
+    this.set({ loading: true, error: null, requested: true });
     try {
       const page = await this.api.search(this.state.query, this.effectiveSort(), 0, PAGE_SIZE);
       if (token !== this.token) return;

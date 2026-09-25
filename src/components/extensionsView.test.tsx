@@ -29,12 +29,14 @@ async function mount(
   extensions = [] as ReturnType<typeof testExtension>[],
   overrides: Parameters<typeof rig>[1] = {},
   market: Partial<MarketplaceApi> = LOCAL_ONLY,
+  autoFetch = true,
 ): Promise<Rig & { api: MarketplaceApi; marketplace: ExtensionMarketplaceService }> {
   const r = rig(extensions, overrides);
   const api = createFakeMarketplaceApi(market);
   const marketplace = new ExtensionMarketplaceService(api, {
     install: (path) => r.service.inspect(path),
     onError: (message) => r.errors.push(message),
+    autoFetch: () => autoFetch,
   });
   harness.current = {
     extensions: {
@@ -88,6 +90,19 @@ describe("ExtensionsView", () => {
     expect(within(popular).getByText("3.9")).toBeTruthy();
     expect(within(popular).getByRole("button", { name: "Install" })).toBeTruthy();
     // An empty search lists the most installed extensions.
+    expect(r.api.search).toHaveBeenCalledWith("", "installs", 0, 30);
+  });
+
+  it("fetches nothing from Open VSX until the user asks, and works locally meanwhile", async () => {
+    const r = await mount([command], {}, LOCAL_ONLY, false);
+    expect(
+      await screen.findByText("Online marketplace results are loaded only when you request them."),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load Popular" })).toBeTruthy();
+    expect(within(screen.getByLabelText("Installed extensions")).getByText("Sample Command")).toBeTruthy();
+    expect(r.api.search).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Load Popular" }));
+    expect(await screen.findByLabelText("Marketplace extensions")).toBeTruthy();
     expect(r.api.search).toHaveBeenCalledWith("", "installs", 0, 30);
   });
 

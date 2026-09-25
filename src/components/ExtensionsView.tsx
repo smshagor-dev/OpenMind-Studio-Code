@@ -247,6 +247,20 @@ function MarketList(props: {
       </div>
     );
   }
+  if (!market.requested) {
+    return (
+      <div className="ext-empty">
+        <p>Online marketplace results are loaded only when you request them.</p>
+        <p className="ext-empty__hint">
+          Nothing has been fetched from Open VSX. Type in the search box, or load the most installed
+          extensions.
+        </p>
+        <button type="button" className="ext-button" onClick={() => void marketplace.browse()}>
+          Load Popular
+        </button>
+      </div>
+    );
+  }
   if (market.loading && market.items.length === 0) {
     return <p className="ext-empty">Loading…</p>;
   }
@@ -382,7 +396,7 @@ export function ExtensionsView() {
       {installedOnly ? null : (
         <Section
           title={query === "" ? "Popular" : "Marketplace"}
-          count={market.loading ? null : market.total}
+          count={market.loading || !market.requested ? null : market.total}
           grow
         >
           <MarketList installedById={installedById} onMenu={setMenu} />

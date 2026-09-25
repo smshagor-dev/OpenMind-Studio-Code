@@ -1461,7 +1461,8 @@ right after start-up (the extension list marks it "Activates at every start-up (
   lists with counts, filter/sort, an extension page, install (the download is checked against Open VSX's published SHA256, then the same trust dialog as a local VSIX) and
   uninstall. **It is a foundation, not a complete marketplace**: Open VSX (open-vsx.org) is the only source, there is no account/API key, no ratings/reviews/publishing,
   no update checks or auto-update, no recommendations, and many VS Code-only extensions will not run (unsupported API). The only network calls are to open-vsx.org:
-  the Popular list loads when the Extensions view is first shown (also at launch if it was the active view), then search, page and download on the user's action; nothing
+  **nothing is fetched at launch or when the view is shown** (the view says "Online marketplace results are loaded only when you request them." and offers Load Popular);
+  requests happen on Load Popular, a search, opening an extension page or an install; the setting `extensions.marketplace.autoFetch` (default off) opts in to loading Popular when the view shows; nothing
   is installed without the trust dialog; (3) the activity bar/tree views described in the next entry.
   What landed is described under "Hardening (Milestone 10.1)" in `openmind-extensions` and in "VS Code API compatibility matrix (extensions)":
   the permission model (request/infer/accept/store/enforce in the host, honestly *not* a sandbox), stricter install validation and limits, host states with
