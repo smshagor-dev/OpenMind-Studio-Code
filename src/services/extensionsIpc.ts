@@ -233,6 +233,8 @@ export interface ExtensionsIpc {
   extInstall: (path: string, replace: boolean) => Promise<InstalledExtension>;
   extSetEnabled: (id: string, enabled: boolean) => Promise<InstalledExtension>;
   extUninstall: (id: string) => Promise<void>;
+  /** The user's own grant of a permission the extension doesn't request (outside-workspace files). */
+  extGrantPermission: (id: string, permission: PermissionName) => Promise<InstalledExtension>;
   extReadFile: (id: string, path: string) => Promise<string>;
   /** An `.svg`/`.png` inside the extension as a `data:` URL. */
   extReadIcon: (id: string, path: string) => Promise<string>;
@@ -256,6 +258,8 @@ export const tauriExtensionsIpc: ExtensionsIpc = {
   extInstall: (path, replace) => invoke<InstalledExtension>("ext_install", { path, replace }),
   extSetEnabled: (id, enabled) => invoke<InstalledExtension>("ext_set_enabled", { id, enabled }),
   extUninstall: (id) => invoke("ext_uninstall", { id }),
+  extGrantPermission: (id, permission) =>
+    invoke<InstalledExtension>("ext_grant_permission", { id, permission }),
   extReadFile: (id, path) => invoke<string>("ext_read_file", { id, path }),
   extReadIcon: (id, path) => invoke<string>("ext_read_icon", { id, path }),
   extHostLog: () => invoke<string>("ext_host_log"),

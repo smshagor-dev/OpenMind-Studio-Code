@@ -152,7 +152,7 @@ export interface PermissionLine {
 /** Every permission an extension asks for or implies, requested ones first. */
 export function permissionLines(extension: InstalledExtension): PermissionLine[] {
   const { requested, inferred, accepted, highRisk } = extension.permissions;
-  const names = [...new Set([...requested, ...inferred])];
+  const names = [...new Set([...requested, ...inferred, ...accepted])];
   return names
     .map((name): PermissionLine => ({
       name,
@@ -162,6 +162,24 @@ export function permissionLines(extension: InstalledExtension): PermissionLine[]
       accepted: accepted.includes(name),
     }))
     .sort((a, b) => Number(b.highRisk) - Number(a.highRisk) || a.label.localeCompare(b.label));
+}
+
+/** The one permission a user can add by hand to an extension that doesn't ask for it. */
+export const OUTSIDE_WORKSPACE: PermissionName = "filesystemOutsideWorkspace";
+
+export const OUTSIDE_WORKSPACE_WARNING =
+  "This allows the extension to access files outside your open workspace. Grant only for extensions you trust.";
+
+/** Whether the "Grant access to files outside the workspace" action applies to this extension. */
+export function canGrantOutsideWorkspace(extension: InstalledExtension): boolean {
+  return !extension.permissions.accepted.includes(OUTSIDE_WORKSPACE);
+}
+
+/** Set when an extension's last error was the guard refusing it files outside the open folder. */
+export function outsideWorkspaceBlock(lastError: string | null): string | null {
+  return lastError !== null && lastError.includes(`Permission '${OUTSIDE_WORKSPACE}'`)
+    ? "Blocked: this extension tried to use files outside your open workspace, which it hasn't been granted."
+    : null;
 }
 
 export const PERMISSION_LIMITS_NOTE =

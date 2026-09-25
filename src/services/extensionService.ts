@@ -1,7 +1,7 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { ExtensionHostService } from "./extensionHostService";
-import { NODE_REQUIRED, displayName } from "./extensionModel";
+import { NODE_REQUIRED, OUTSIDE_WORKSPACE, displayName } from "./extensionModel";
 import type { ExtensionRegistryService } from "./extensionRegistryService";
 import type { InstalledExtension } from "./extensionsIpc";
 import type { IpcClient } from "./ipc";
@@ -19,6 +19,8 @@ export interface ExtensionUiState {
   selectedId: string | null;
   pendingInstall: PendingInstall | null;
   pendingUninstall: string | null;
+  /** An extension the user is about to give access to files outside the workspace. */
+  pendingGrant: string | null;
   /** The extension host's log, shown in the Extensions view while open. */
   logs: string | null;
   busy: string | null;
@@ -35,6 +37,7 @@ const INITIAL: ExtensionUiState = {
   selectedId: null,
   pendingInstall: null,
   pendingUninstall: null,
+  pendingGrant: null,
   logs: null,
   busy: null,
   notice: null,
@@ -195,6 +198,35 @@ export class ExtensionService {
           (languages && !enabled ? " Its languages stay registered until OpenMind Studio restarts." : ""),
       });
       if (enabled) await this.wake(extension);
+    } catch (error) {
+      this.set({ busy: null, error: cleanMessage(error) });
+    }
+  }
+
+  requestGrantOutsideWorkspace(id: string): void {
+    this.set({ pendingGrant: id });
+  }
+
+  cancelGrant(): void {
+    this.set({ pendingGrant: null });
+  }
+
+  /** After the warning: stores the permission, then reloads the host so the extension can retry with it. */
+  async confirmGrant(): Promise<void> {
+    const id = this.state.pendingGrant;
+    if (id === null) return;
+    const extension = this.registry.find(id);
+    this.set({ pendingGrant: null, busy: "Granting access…", error: null });
+    try {
+      await this.ipc.extGrantPermission(id, OUTSIDE_WORKSPACE);
+      await this.registry.refresh();
+      this.log(`${id}: granted access to files outside the workspace.`);
+      if (this.host.isRunning()) await this.host.reload();
+      this.set({
+        busy: null,
+        notice: `${extension ? displayName(extension) : id} can now use files outside the open workspace.`,
+      });
+      this.events.emit("extensionsChanged", undefined);
     } catch (error) {
       this.set({ busy: null, error: cleanMessage(error) });
     }

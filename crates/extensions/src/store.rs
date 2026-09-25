@@ -354,6 +354,27 @@ impl ExtensionStore {
             .map_err(|err| ExtensionError::io(format!("Couldn't remove {}", target.display()), err))
     }
 
+    /// Adds a permission the user chose to give (see `permissions::USER_GRANTABLE`) and returns the extension.
+    pub fn grant_permission(
+        &self,
+        id: &str,
+        permission: permissions::Permission,
+    ) -> Result<InstalledExtension, ExtensionError> {
+        let extension = self.find(id)?;
+        let folder = match &extension.path {
+            path if path.is_dir() => path.clone(),
+            _ => return Err(ExtensionError::NotInstalled(id.to_string())),
+        };
+        let inferred = permissions::infer(&extension.manifest.contributes);
+        permissions::grant(
+            &folder,
+            &extension.manifest.requested_permissions,
+            &inferred,
+            permission,
+        )?;
+        self.find(id)
+    }
+
     /// Deletes the extension's folder (only ever inside `installed/` or `disabled/`). Its own storage is
     /// kept, like VS Code does.
     pub fn uninstall(&self, id: &str) -> Result<(), ExtensionError> {

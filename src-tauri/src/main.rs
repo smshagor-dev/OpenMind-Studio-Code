@@ -130,6 +130,7 @@ fn main() {
             commands::marketplace::ext_market_download,
             commands::extension_manage::ext_set_enabled,
             commands::extension_manage::ext_uninstall,
+            commands::extension_manage::ext_grant_permission,
             commands::extension_manage::ext_read_file,
             commands::extension_manage::ext_host_log,
             commands::extension_host::ext_host_start,

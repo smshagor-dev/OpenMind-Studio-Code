@@ -81,6 +81,10 @@ impl Permission {
     }
 }
 
+/// Permissions the user may add to an installed extension later, though its manifest never asked for
+/// them ("Grant access to files outside the workspace"). Never given by default, to any extension.
+pub const USER_GRANTABLE: [Permission; 1] = [Permission::FilesystemOutsideWorkspace];
+
 /// What the UI shows about an extension's permissions.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -170,8 +174,8 @@ pub fn for_installed(
     let stored = fs::read_to_string(folder.join(ACCEPTED_FILE))
         .ok()
         .and_then(|text| serde_json::from_str::<Vec<Permission>>(&text).ok());
-    // Only what the manifest really requests or implies can have been accepted.
-    let allowed = union(requested, inferred);
+    // Only what the manifest requests or implies, or the user granted by hand, can have been accepted.
+    let allowed = union(&union(requested, inferred), &USER_GRANTABLE);
     let accepted = match stored {
         Some(list) => list
             .into_iter()
@@ -209,10 +213,58 @@ pub fn store_accepted(folder: &Path, accepted: &[Permission]) -> Result<(), Exte
         .map_err(|err| ExtensionError::io("Couldn't store the accepted permissions", err))
 }
 
+/// The user's own decision to give an installed extension a permission it doesn't request. Only
+/// [`USER_GRANTABLE`] ones can be added this way; the accepted list in `folder` is rewritten.
+pub fn grant(
+    folder: &Path,
+    requested: &[Permission],
+    inferred: &[Permission],
+    permission: Permission,
+) -> Result<(), ExtensionError> {
+    let allowed = union(requested, inferred);
+    if !USER_GRANTABLE.contains(&permission) && !allowed.contains(&permission) {
+        return Err(ExtensionError::Refused(format!(
+            "The permission \"{}\" can't be granted by hand.",
+            permission.name()
+        )));
+    }
+    let mut accepted = for_installed(requested, inferred, folder).accepted;
+    if !accepted.contains(&permission) {
+        accepted.push(permission);
+    }
+    accepted.sort();
+    store_accepted(folder, &accepted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_user_grant_of_outside_files_is_stored_and_nothing_else_can_be_added_by_hand() {
+        let dir = std::env::temp_dir().join(format!("om-perm-grant-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("dir");
+        let inferred = [Permission::Commands];
+        let before = for_installed(&[], &inferred, &dir);
+        assert!(!before
+            .accepted
+            .contains(&Permission::FilesystemOutsideWorkspace));
+        grant(&dir, &[], &inferred, Permission::FilesystemOutsideWorkspace).expect("grant");
+        let after = for_installed(&[], &inferred, &dir);
+        assert_eq!(
+            after.accepted,
+            vec![Permission::Commands, Permission::FilesystemOutsideWorkspace]
+        );
+        // Network wasn't requested: it can't be granted by hand.
+        let err = grant(&dir, &[], &inferred, Permission::Network).expect_err("refused");
+        assert!(err.to_string().contains("can't be granted by hand"));
+        assert!(!for_installed(&[], &inferred, &dir)
+            .accepted
+            .contains(&Permission::Network));
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn names_round_trip_and_unknown_ones_are_rejected_with_the_valid_list() {

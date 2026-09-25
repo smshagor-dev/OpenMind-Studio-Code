@@ -4,6 +4,8 @@ import { container } from "../services/container";
 import {
   API_SUBSET_NOTE,
   describeActivation,
+  canGrantOutsideWorkspace,
+  outsideWorkspaceBlock,
   PERMISSION_LIMITS_NOTE,
   displayName,
   hostStateText,
@@ -92,6 +94,31 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
           ))}
         </ul>
       )}
+      {outsideWorkspaceBlock(activity.lastError) ? (
+        <p className="ext-banner ext-banner--problem" role="alert">
+          {outsideWorkspaceBlock(activity.lastError)}
+        </p>
+      ) : null}
+      {canGrantOutsideWorkspace(extension) ? (
+        <p className="ext-note">
+          Files outside the open folder — not granted. By default an extension can't read or change
+          them; if it needs to, it is told so and you can allow it here.
+        </p>
+      ) : null}
+      {canGrantOutsideWorkspace(extension) ? (
+        <p>
+          <button
+            type="button"
+            className="ext-button"
+            title="Off by default. You are asked to confirm first."
+            onClick={() => {
+              service.requestGrantOutsideWorkspace(extension.id);
+            }}
+          >
+            Grant access to files outside the workspace
+          </button>
+        </p>
+      ) : null}
       <p className="ext-note">{PERMISSION_LIMITS_NOTE}</p>
       <h4>Contribution points</h4>
       {lines.length === 0 ? (

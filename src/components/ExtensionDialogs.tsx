@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
-import { displayName } from "../services/extensionModel";
+import { displayName, OUTSIDE_WORKSPACE_WARNING } from "../services/extensionModel";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { ExtensionInstallDialog } from "./ExtensionInstallDialog";
 
@@ -18,8 +18,22 @@ export function ExtensionDialogs() {
   );
   const pendingUninstall =
     ui.pendingUninstall === null ? undefined : registry.find(ui.pendingUninstall);
+  const pendingGrant = ui.pendingGrant === null ? undefined : registry.find(ui.pendingGrant);
   return (
     <>
+      {pendingGrant ? (
+        <ConfirmDialog
+          title="Grant Access Outside the Workspace"
+          message={`${OUTSIDE_WORKSPACE_WARNING} (${displayName(pendingGrant)})`}
+          confirmLabel="Grant Access"
+          onConfirm={() => {
+            void service.confirmGrant();
+          }}
+          onCancel={() => {
+            service.cancelGrant();
+          }}
+        />
+      ) : null}
       {ui.pendingInstall ? <ExtensionInstallDialog pending={ui.pendingInstall} /> : null}
       {pendingUninstall ? (
         <ConfirmDialog

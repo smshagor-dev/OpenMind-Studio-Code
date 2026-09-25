@@ -439,7 +439,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   field `"openmindPermissions": [...]` (an unknown name is refused, listing the valid ones); the contributions *imply* the harmless ones (commands,
   settings, languages, themes, snippets). The install dialog shows both (dangerous ones marked "High risk"), installing accepts them, and the accepted
   list is stored in `.openmind-permissions.json` inside the extension folder (so it moves with enable/disable and dies with uninstall; a file can't grant
-  more than the manifest asks for; an extension installed before this milestone only gets the implied ones). The host descriptor carries the accepted
+  more than the manifest asks for, except the one the user can add by hand, filesystemOutsideWorkspace; an extension installed before this milestone only gets the implied ones). The host descriptor carries the accepted
   list and `host/guard.js` enforces it — **a guard, not a sandbox** (the host is an ordinary Node process; native addons, `process.binding` or a
   hand-made loader can get around it, and a symlink inside the workspace can point outside it). Exactly: `require('child_process'|'cluster')` needs
   `processExecution`; `require('net'|'http'|'https'|'http2'|'tls'|'dgram'|'dns')`, the globals `fetch`/`WebSocket` (attributed with `AsyncLocalStorage`, so it
@@ -1463,7 +1463,7 @@ right after start-up (the extension list marks it "Activates at every start-up (
   no update checks or auto-update, no recommendations, and many VS Code-only extensions will not run (unsupported API). The only network calls are to open-vsx.org:
   **nothing is fetched at launch or when the view is shown** (the view says "Online marketplace results are loaded only when you request them." and offers Load Popular);
   requests happen on Load Popular, a search, opening an extension page or an install; the setting `extensions.marketplace.autoFetch` (default off) opts in to loading Popular when the view shows; nothing
-  is installed without the trust dialog; (3) the activity bar/tree views described in the next entry.
+  is installed without the trust dialog; (3) the activity bar/tree views described in the next entry; (4) **a user-controlled outside-workspace grant**: `filesystemOutsideWorkspace` is off for every extension by default; the Extension page's Features tab has "Grant access to files outside the workspace" (warning: "This allows the extension to access files outside your open workspace. Grant only for extensions you trust."), `ext_grant_permission` stores it in `.openmind-permissions.json` (`permissions::USER_GRANTABLE` — only that permission can be added by hand, nothing else the manifest doesn't ask for), the host reloads so the extension can retry, and the permission is listed afterwards. Also in this milestone: `package.nls.json` `%key%` titles and `vscode.l10n.t`. Not claimed: full VS Code compatibility, webview support (webview views show an "unsupported" message), ratings/reviews/recommendations/updates in the marketplace, a sandbox (the permission guard is not one).
   What landed is described under "Hardening (Milestone 10.1)" in `openmind-extensions` and in "VS Code API compatibility matrix (extensions)":
   the permission model (request/infer/accept/store/enforce in the host, honestly *not* a sandbox), stricter install validation and limits, host states with
   a bounded automatic restart, activation count/last activation/last error, the Extensions and Extension Host Output channels, shim cleanup and duplicate-command

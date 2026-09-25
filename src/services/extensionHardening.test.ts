@@ -4,7 +4,14 @@ import type { ExtensionEditorAction } from "./extensionContributionService";
 import { command, rig, started } from "../testUtils/extensionRig";
 import { emptyExtensionsSnapshot, testExtension } from "../testUtils/fakeExtensionsIpc";
 import { MAX_AUTO_RESTARTS } from "./extensionHostService";
-import { PERMISSION_LIMITS_NOTE, hostStateText, permissionLines } from "./extensionModel";
+import {
+  OUTSIDE_WORKSPACE_WARNING,
+  PERMISSION_LIMITS_NOTE,
+  canGrantOutsideWorkspace,
+  hostStateText,
+  outsideWorkspaceBlock,
+  permissionLines,
+} from "./extensionModel";
 import type { ExtensionHostStatus, InstalledExtension } from "./extensionsIpc";
 
 const NODE = { portable: true, system: null, allowSystem: false };
@@ -37,6 +44,35 @@ describe("permissions", () => {
       permissions: { requested: ["network"], inferred: [], accepted: [], highRisk: ["network"] },
     });
     expect(permissionLines(legacy)[0]).toMatchObject({ name: "network", accepted: false });
+  });
+
+  it("outside-workspace files are off by default; the grant is a separate, warned step and shows afterwards", async () => {
+    expect(canGrantOutsideWorkspace(risky)).toBe(true);
+    expect(OUTSIDE_WORKSPACE_WARNING).toBe(
+      "This allows the extension to access files outside your open workspace. Grant only for extensions you trust.",
+    );
+    expect(outsideWorkspaceBlock("Permission 'filesystemOutsideWorkspace' is required for this extension API.")).toContain("Blocked");
+    expect(outsideWorkspaceBlock(null)).toBeNull();
+    expect(outsideWorkspaceBlock("Permission 'network' is required for this extension API.")).toBeNull();
+
+    const granted = testExtension({
+      permissions: { requested: [], inferred: ["commands"], accepted: ["commands", "filesystemOutsideWorkspace"], highRisk: [] },
+    });
+    expect(canGrantOutsideWorkspace(granted)).toBe(false);
+    expect(permissionLines(granted).map((l) => [l.name, l.accepted])).toContainEqual(["filesystemOutsideWorkspace", true]);
+
+    const r = await started([command], { node: NODE });
+    r.service.requestGrantOutsideWorkspace(command.id);
+    expect(r.service.getState().pendingGrant).toBe(command.id);
+    expect(r.ipc.extGrantPermission).not.toHaveBeenCalled();
+    r.service.cancelGrant();
+    expect(r.service.getState().pendingGrant).toBeNull();
+    expect(r.ipc.extGrantPermission).not.toHaveBeenCalled();
+
+    r.service.requestGrantOutsideWorkspace(command.id);
+    await r.service.confirmGrant();
+    expect(r.ipc.extGrantPermission).toHaveBeenCalledWith(command.id, "filesystemOutsideWorkspace");
+    expect(r.service.getState().pendingGrant).toBeNull();
   });
 });
 
