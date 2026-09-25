@@ -1485,6 +1485,9 @@ right after start-up (the extension list marks it "Activates at every start-up (
   Marketplace/views pass before merge (built app from e276ef0): Popular loaded from Open VSX, local VSIX install/enable/disable/uninstall, tree-view sample (welcome button,
   items, command click, refresh), a webview view shown as unsupported, a broken view contribution reported without crashing, F1 palette listing and running a contributed
   command. Found and fixed: with two extensions contributing one command id the palette showed the second one's title; the owner (first) now wins (test added).
+  Follow-ups (cosmetic, found in the last manual pass, not fixed in the merge): (1) with the info notice banner showing, the Extensions view's Load Popular button can overlap the
+  "Extension host" status line; (2) Open VSX READMEs show badge/image markdown as raw text (`![..](..)`), since the Markdown renderer loads no images; (3) the tooltip of the extension gear
+  menu ("Manage") covers its first row (Enable/Disable).
 - [x] **Extension views and editor integration (after 10.1)** — extensions' `viewsContainers.activitybar` become activity bar icons
   (after Extensions; the icon rail scrolls when full, the Manage gear stays) and open a side bar view (`ext:<extension>/<container>` in
   `LayoutService`, falls back to the Explorer when the extension is gone): `crates/extensions/src/views.rs` parses containers, views and
