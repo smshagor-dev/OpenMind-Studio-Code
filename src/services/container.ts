@@ -273,7 +273,7 @@ const debug: DebugService = new DebugService(
     workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
     showConsole: () => {
       void layout.showView("debug");
-      if (settings.bool("debug.openConsoleOnStart", true)) void panel.show("debugConsole");
+      if (settings.bool("debug.openConsoleOnStart", false)) void panel.show("debugConsole");
     },
     stopOnEntry: () => settings.bool("debug.stopOnEntry", false),
     log: log("Debug"),

@@ -87,7 +87,7 @@ describe("App", () => {
     });
     expect(screen.getByText("New File...")).toBeInTheDocument();
     expect(screen.getByText("Open Folder...")).toBeInTheDocument();
-    expect(screen.getByText("Portable AI-ready development environment")).toBeInTheDocument();
+    expect(screen.getByText("Code anywhere")).toBeInTheDocument();
     expect(screen.getByText("You have not yet opened a folder.")).toBeInTheDocument();
   });
 

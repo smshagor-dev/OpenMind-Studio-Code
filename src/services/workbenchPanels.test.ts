@@ -191,7 +191,7 @@ describe("PanelService", () => {
     expect(panel.getState()).toMatchObject({ visible: true, activeTab: "ports" });
   });
 
-  it("persists its state and restores it", async () => {
+  it("persists its height and tab and restores them, but always starts hidden", async () => {
     const ipc = createFakeIpc();
     const panel = new PanelService(ipc);
     await panel.show("problems");
@@ -204,7 +204,8 @@ describe("PanelService", () => {
     );
     await restored.initialize();
 
-    expect(restored.getState()).toEqual({ visible: true, height: 400, activeTab: "problems" });
+    // The terminal area opens only when the user opens it, never by itself at launch.
+    expect(restored.getState()).toEqual({ visible: false, height: 400, activeTab: "problems" });
   });
 
   it("clamps the height", () => {
@@ -229,7 +230,7 @@ describe("PanelService", () => {
       }),
     );
     await odd.initialize();
-    expect(odd.getState()).toMatchObject({ visible: true, activeTab: "terminal" });
+    expect(odd.getState()).toMatchObject({ visible: false, activeTab: "terminal" });
   });
 });
 

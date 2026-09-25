@@ -188,7 +188,6 @@ export class ComposerService {
     try {
       const run = await this.ipc.composerRun(action, root);
       this.update({ running: run, runningAction: action });
-      await this.panel.show("output");
       this.output.select(COMPOSER_CHANNEL);
       return true;
     } catch (error) {

@@ -349,7 +349,6 @@ export class RunCodeService {
     try {
       const info = await this.ipc.runStart(request);
       if (showOutput) {
-        await this.panel.show("output");
         // `started` usually arrives first and has already picked the channel;
         // if not, it selects the channel when it does arrive.
         const known = this.processes.get(info.runId);
@@ -395,10 +394,12 @@ export class RunCodeService {
     }
   }
 
-  /** The run's channel in the Output panel below and beside the editor. */
+  /**
+   * Shows the run's channel beside the editor, and selects it in the bottom
+   * panel's Output without opening the panel (it opens only when the user does).
+   */
   private revealOutput(channel: string): void {
     this.output.select(channel);
-    void this.panel.show("output");
     this.showBeside(channel);
   }
 

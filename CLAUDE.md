@@ -688,8 +688,11 @@ Welcome (`help.welcome`) reopens it. Light keeps Light+ colors on the same card 
 **Secondary Side Bar** (VS Code's): `SecondarySideBarService` + `SecondarySideBar.tsx`, a card on the far side of the
 editor (left when the primary side bar is on the right) showing an Output channel (picker, Clear, Hide). Title-bar
 toggle and `view.toggleSecondarySidebar` (Ctrl+Alt+B). Run Code (`RunCodeService`'s optional `showBeside` callback,
-wired in `container.ts`) opens it at **half** of the editor + side bar row on the run's channel, while the bottom
-panel's Output shows the same lines; dragging its sash switches to a fixed, clamped width. Saved as
+wired in `container.ts`) opens it at **half** of the editor + side bar row on the run's channel; the bottom
+panel's Output channel gets the same lines but is only *selected*, not opened. **The bottom panel (terminal area)
+never opens by itself**: `PanelService.initialize` restores height/tab but always starts hidden, and no automatic
+path calls `panel.show` (Run Code, Composer runs, debug start — `debug.openConsoleOnStart` defaults to false); only
+user actions open it (Ctrl+J/Ctrl+`, New Terminal, View menu, Open Logs, Show Git Output, Run Code in Terminal); dragging its sash switches to a fixed, clamped width. Saved as
 `workbench.secondarySideBar` (a main-window-only key, like `panel.state`). The Run-in-Terminal target doesn't open it.
 UI (Milestone 3.5 — VS Code workbench layout, Dark+/Light+ colors as CSS tokens in
 `styles/theme.css`, switched by `data-theme` on `<html>`): the window is **undecorated**

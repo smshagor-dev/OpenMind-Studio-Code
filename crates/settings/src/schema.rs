@@ -215,7 +215,7 @@ fn tools_definitions() -> Vec<SettingDef> {
         def("lsp.enabled", "Language Servers", "Enable Language Servers", "Start language servers for files in the open folder. Turning it off stops the running ones.", SettingKind::Bool, json!(true), Both),
         def("lsp.verboseLogging", "Language Servers", "Verbose Logging", "Write every message exchanged with a language server to the LSP output channel.", SettingKind::Bool, json!(false), User),
         def("debug.stopOnEntry", "Debugger", "Stop on Entry", "Pause at the first line when a debug session starts.", SettingKind::Bool, json!(false), Both),
-        def("debug.openConsoleOnStart", "Debugger", "Open Debug Console on Start", "Show the Debug Console panel when a debug session starts.", SettingKind::Bool, json!(true), Both),
+        def("debug.openConsoleOnStart", "Debugger", "Open Debug Console on Start", "Show the Debug Console panel when a debug session starts (off: the panel opens only when you open it).", SettingKind::Bool, json!(false), Both),
     ]
 }
 

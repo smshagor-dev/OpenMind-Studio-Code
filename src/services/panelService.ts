@@ -71,6 +71,9 @@ export class PanelService {
         this.state = parseLegacy(legacy);
       }
     }
+    // The panel (terminal area) opens only when the user opens it: its height and
+    // tab are restored, but it always starts hidden.
+    this.state = { ...this.state, visible: false };
     this.notify();
   }
 

@@ -88,7 +88,7 @@ export function StartPage(props: StartPageProps) {
       <div className="welcome__inner">
         <header className="welcome__header">
           <h1 className="welcome__title">OpenMind Studio</h1>
-          <p className="welcome__subtitle">Portable AI-ready development environment</p>
+          <p className="welcome__subtitle">Code anywhere</p>
         </header>
         <div className="welcome__columns">
           <div className="welcome__column">

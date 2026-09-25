@@ -435,7 +435,7 @@ describe("RunCodeService", () => {
     expect(r.output.getLines("Python")).not.toContain("old line");
   });
 
-  it("runs the file, streams stdout and stderr into the language channel and shows the Output panel", async () => {
+  it("runs the file, streams stdout and stderr into the language channel, shown beside the editor", async () => {
     await r.service.refresh();
 
     expect(await r.service.run()).toBe(true);
@@ -470,7 +470,8 @@ describe("RunCodeService", () => {
     expect(log).toContain("[Run Code] python hello.py");
     expect(log).toContain("Process exited with code 0.");
     expect(r.output.getState().selected).toBe("Python");
-    expect(r.panel.getState()).toMatchObject({ visible: true, activeTab: "output" });
+    // The bottom panel stays closed (it opens only when the user opens it).
+    expect(r.panel.getState().visible).toBe(false);
     // The same channel also opens beside the editor (the secondary side bar).
     expect(r.showBeside).toHaveBeenCalledWith("Python");
     expect(r.service.getState().lastRun).toMatchObject({

@@ -93,8 +93,9 @@ describe("BottomPanel", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("offers New Terminal in a restored-open panel that has no terminals yet", async () => {
+  it("offers New Terminal in a panel the user opened that has no terminals yet", async () => {
     await setup([POWERSHELL, CMD], '{"visible":true}');
+    await panel.show("terminal");
     render(<BottomPanel themeKind="dark" />);
 
     fireEvent.click(screen.getByRole("button", { name: "New Terminal", description: "" }));

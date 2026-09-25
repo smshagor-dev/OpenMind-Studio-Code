@@ -75,7 +75,8 @@ describe("TerminalService", () => {
     await panel.initialize();
 
     expect(service.getState()).toMatchObject({ lastShell: "cmd", sessions: [] });
-    expect(panel.getState()).toMatchObject({ visible: true, height: 300 });
+    // Left open last time, it still starts hidden: only the user opens it.
+    expect(panel.getState()).toMatchObject({ visible: false, height: 300 });
     expect(ipc.terminalCreate).not.toHaveBeenCalled();
   });
 
