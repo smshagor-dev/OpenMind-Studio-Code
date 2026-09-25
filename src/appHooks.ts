@@ -72,6 +72,8 @@ export function useAppStartup(): boolean {
       await container.startDebugTools();
       await container.git.initialize();
       await container.sourceControl.initialize();
+      // Only now may extensions with "*" / onStartupFinished run: the window is up and the session restored.
+      if (isMainWindow()) container.finishExtensionsStartup();
       if (!lifecycle.cancelled) setReady(true);
     })();
     return () => {

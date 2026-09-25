@@ -391,3 +391,48 @@ export function LayoutSecondaryIcon({ visible, ...props }: IconProps & { visible
     </Svg>
   );
 }
+
+export function StarIcon({ filled, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <Svg {...props}>
+      <path
+        d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"
+        fill={filled ? "currentColor" : "none"}
+      />
+    </Svg>
+  );
+}
+
+export function CloudDownloadIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 11.5h-.8a2.7 2.7 0 0 1-.3-5.4 3.8 3.8 0 0 1 7.3-.9 2.9 2.9 0 0 1 1.6 5.6" />
+      <path d="M8 7.5v6M5.8 11.3 8 13.5l2.2-2.2" />
+    </Svg>
+  );
+}
+
+export function VerifiedIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path
+        d="M8 1.2l1.6 1.2 2-.1.6 1.9 1.6 1.2-.6 1.9.6 1.9-1.6 1.2-.6 1.9-2-.1L8 14.8l-1.6-1.2-2 .1-.6-1.9-1.6-1.2.6-1.9-.6-1.9 1.6-1.2.6-1.9 2 .1z"
+        fill="currentColor"
+        stroke="none"
+      />
+      <path
+        d="M5.6 8.1l1.6 1.6 3.2-3.3"
+        stroke="var(--verified-check, #ffffff)"
+        strokeWidth="1.3"
+      />
+    </Svg>
+  );
+}
+
+export function FilterIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2 3.5h12L9.5 8.8v4.2l-3 1.5V8.8z" />
+    </Svg>
+  );
+}

@@ -1,7 +1,9 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { container } from "../services/container";
-import type { LayoutState, SideView } from "../services/layoutService";
+import type { BuiltInView, LayoutState, SideView } from "../services/layoutService";
+import { isExtensionView } from "../services/extensionViewsService";
+import { ExtensionContainerView } from "./ExtensionContainerView";
 import { EXPLORER_VIEWS_MENU } from "../services/menus";
 import type { EditorTabView } from "../services/workspaceService";
 import { ExplorerPanel } from "./ExplorerPanel";
@@ -27,7 +29,7 @@ interface SideBarProps {
   workspace: { name: string; path: string } | null;
 }
 
-const VIEW_TITLES: Record<SideView, string> = {
+const VIEW_TITLES: Record<BuiltInView, string> = {
   explorer: "Explorer",
   search: "Search",
   scm: "Source Control",
@@ -43,6 +45,17 @@ const VIEW_TITLES: Record<SideView, string> = {
 export function SideBar(props: SideBarProps) {
   const { layout } = props;
   const [viewsMenu, setViewsMenu] = useState<DOMRect | null>(null);
+  useSyncExternalStore(
+    (listener) => container.extensions.views.subscribe(listener),
+    () => container.extensions.views.getVersion(),
+  );
+  // An extension's container whose extension is gone or disabled falls back to the Explorer.
+  const extension = isExtensionView(layout.activeView)
+    ? container.extensions.views.find(layout.activeView)
+    : undefined;
+  const view: SideView =
+    extension || !isExtensionView(layout.activeView) ? layout.activeView : "explorer";
+  const title = extension ? extension.container.title : VIEW_TITLES[view as BuiltInView];
 
   const closeViewsMenu = useCallback(() => {
     setViewsMenu(null);
@@ -53,11 +66,11 @@ export function SideBar(props: SideBarProps) {
     <aside
       className={layout.sidebarPosition === "right" ? "sidebar sidebar--right" : "sidebar"}
       style={{ width: layout.sidebarWidth }}
-      aria-label={VIEW_TITLES[layout.activeView]}
+      aria-label={title}
     >
       <div className="sidebar__title">
-        <h2 className="sidebar__title-label">{VIEW_TITLES[layout.activeView]}</h2>
-        {layout.activeView === "explorer" ? (
+        <h2 className="sidebar__title-label">{title}</h2>
+        {view === "explorer" ? (
           <button
             type="button"
             className="sidebar__title-action"
@@ -73,7 +86,7 @@ export function SideBar(props: SideBarProps) {
         ) : null}
       </div>
       <div className="sidebar__content">
-        <SideViewContent view={layout.activeView} explorer={<ExplorerContent {...props} />} />
+        <SideViewContent view={view} explorer={<ExplorerContent {...props} />} />
       </div>
       <Sash side={layout.sidebarPosition === "right" ? "left" : "right"} />
       {viewsMenu ? (
@@ -90,6 +103,7 @@ export function SideBar(props: SideBarProps) {
 }
 
 function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNode }) {
+  if (isExtensionView(view)) return <ExtensionContainerView key={view} viewKey={view} />;
   switch (view) {
     case "explorer":
       return explorer;

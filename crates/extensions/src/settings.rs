@@ -38,7 +38,7 @@ pub fn extras_for(extensions: &[InstalledExtension]) -> Extras {
     extras
 }
 
-fn setting(property: &ConfigurationProperty, category: &str) -> SettingDef {
+pub(crate) fn setting(property: &ConfigurationProperty, category: &str) -> SettingDef {
     let kind = match &property.kind {
         ConfigurationKind::Boolean => SettingKind::Bool,
         ConfigurationKind::Integer { minimum, maximum } => SettingKind::Int {

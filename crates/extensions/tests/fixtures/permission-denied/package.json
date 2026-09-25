@@ -1,0 +1,29 @@
+{
+  "name": "sample-permissions",
+  "displayName": "Sample Permission Denied",
+  "description": "Tries privileged APIs without asking for the permissions.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "samplePermission.run",
+        "title": "Sample: Try Privileged APIs"
+      },
+      {
+        "command": "samplePermission.own",
+        "title": "Sample: Use Own Storage"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "samplePermission.run",
+        "key": "ctrl+alt+f7"
+      }
+    ]
+  }
+}

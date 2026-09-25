@@ -1,0 +1,25 @@
+{
+  "name": "sample-unsupported",
+  "displayName": "Sample Unsupported API",
+  "description": "Calls VS Code APIs OpenMind Studio doesn't have.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sampleUnsupported.run",
+        "title": "Sample: Call Unsupported API"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "sampleUnsupported.run",
+        "key": "ctrl+alt+f6"
+      }
+    ]
+  }
+}

@@ -23,6 +23,7 @@ export function emptyContributions(): ExtensionContributions {
     iconThemes: [],
     debuggers: [],
     problemMatchers: [],
+    views: { containers: [], elsewhere: 0, otherContainers: 0 },
     unsupported: {},
   };
 }
@@ -53,11 +54,13 @@ export function testExtension(
       extensionDependencies: [],
       extensionPack: [],
       contributes: { ...emptyContributions(), ...contributes },
+      requestedPermissions: [],
     },
     points: [],
     runtimeRequirement: "Node.js runtime is required for extension host.",
     warnings: [],
     activationEvents: [],
+    permissions: { requested: [], inferred: ["commands"], accepted: ["commands"], highRisk: [] },
     ...rest,
   };
 }
@@ -86,6 +89,7 @@ export function createFakeExtensionsIpc(): ExtensionsIpc {
     extSetEnabled: vi.fn().mockResolvedValue(testExtension()),
     extUninstall: vi.fn().mockResolvedValue(undefined),
     extReadFile: vi.fn().mockResolvedValue("{}"),
+    extReadIcon: vi.fn().mockResolvedValue("data:image/svg+xml;base64,PHN2Zy8+"),
     extHostLog: vi.fn().mockResolvedValue(""),
     extHostStart: vi
       .fn()

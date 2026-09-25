@@ -27,6 +27,8 @@ pub struct Contributions {
     pub icon_themes: Vec<IconThemeContribution>,
     pub debuggers: Vec<DebuggerContribution>,
     pub problem_matchers: Vec<String>,
+    /// Activity bar containers and their views (see [`crate::views`]).
+    pub views: crate::views::Views,
     /// Contribution points this app doesn't know at all, with how many entries each has.
     pub unsupported: BTreeMap<String, usize>,
 }
@@ -215,9 +217,9 @@ fn parse_commands(value: &Value) -> Vec<CommandContribution> {
                 Some(Value::Object(object)) => object
                     .get("value")
                     .and_then(Value::as_str)
-                    .unwrap_or(&command)
+                    .unwrap_or_default()
                     .to_string(),
-                _ => command.clone(),
+                _ => String::new(),
             };
             Some(CommandContribution {
                 command,
@@ -449,6 +451,7 @@ impl Contributions {
                 })
             })
             .collect();
+        out.views = crate::views::parse(value);
         out.problem_matchers = list(value, "problemMatchers")
             .iter()
             .filter_map(|entry| text(entry, "name"))
@@ -466,6 +469,9 @@ impl Contributions {
             "iconThemes",
             "debuggers",
             "problemMatchers",
+            "viewsContainers",
+            "views",
+            "viewsWelcome",
         ];
         for (point, body) in object {
             if !KNOWN.contains(&point.as_str()) {
@@ -540,6 +546,32 @@ impl Contributions {
             self.problem_matchers.len(),
             Support::Metadata,
             Some("Registered as metadata only: problem matchers aren't used yet."),
+        );
+        let views = &self.views;
+        add(
+            "viewsContainers",
+            views.containers.len(),
+            Support::Supported,
+            Some("Shown as icons in the activity bar."),
+        );
+        add("views (tree)", views.tree_count(), Support::Supported, None);
+        add(
+            "views (webview)",
+            views.webview_count(),
+            Support::Unsupported,
+            Some("Webview views aren't supported yet."),
+        );
+        add(
+            "views outside the extension's own containers",
+            views.elsewhere,
+            Support::Unsupported,
+            Some("Views in the Explorer, Source Control or the panel aren't supported yet."),
+        );
+        add(
+            "viewsContainers: panel",
+            views.other_containers,
+            Support::Unsupported,
+            Some(NOT_SUPPORTED_NOTE),
         );
         for location in &self.unsupported_menus {
             add(
@@ -682,8 +714,10 @@ mod tests {
         assert_eq!(c.snippets[0].path, "./snippets/hello.json");
         assert_eq!(c.themes[0].label, "Hello Dark");
         assert_eq!(c.debuggers[0].kind, "hello");
-        assert_eq!(c.unsupported.get("views"), Some(&1));
-        assert_eq!(c.unsupported.get("viewsContainers"), Some(&1));
+        // Views in the Explorer aren't shown; they are counted, never dropped.
+        assert_eq!(c.views.elsewhere, 2);
+        assert!(c.views.containers.is_empty());
+        assert!(c.unsupported.is_empty());
     }
 
     #[test]

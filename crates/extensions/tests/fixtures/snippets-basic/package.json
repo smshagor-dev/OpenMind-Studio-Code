@@ -1,0 +1,12 @@
+{
+  "name": "sample-snippets",
+  "displayName": "Sample Snippets",
+  "description": "A language with a snippet, no code.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "contributes": {
+    "languages": [{ "id": "openmind-snippets", "aliases": ["OpenMind Snippets"], "extensions": [".omsnip"] }],
+    "snippets": [{ "language": "openmind-snippets", "path": "./snippets.json" }]
+  }
+}

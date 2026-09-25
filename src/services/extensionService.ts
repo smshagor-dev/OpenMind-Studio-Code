@@ -56,6 +56,7 @@ export class ExtensionService {
     private readonly registry: ExtensionRegistryService,
     private readonly host: ExtensionHostService,
     private readonly settings: SettingsService,
+    private readonly log: (line: string) => void = () => undefined,
   ) {}
 
   getState(): ExtensionUiState {
@@ -144,6 +145,7 @@ export class ExtensionService {
       const installed = await this.ipc.extInstall(pending.path, pending.replaces !== null);
       await this.registry.refresh();
       await this.settings.reload();
+      this.log(`Installed ${installed.id} ${installed.manifest.version} (permissions: ${installed.permissions.accepted.join(", ") || "none"}).`);
       this.set({
         busy: null,
         selectedId: installed.id,
@@ -151,6 +153,7 @@ export class ExtensionService {
       });
       await this.wake(installed);
     } catch (error) {
+      this.log(`Install failed: ${cleanMessage(error)}`);
       this.set({ busy: null, error: cleanMessage(error) });
     }
   }
@@ -165,17 +168,31 @@ export class ExtensionService {
 
   // --- enable / disable / uninstall ---
 
+  /** A colour theme of this extension in use goes back to the default (Dark) instead of staying as a dangling value. */
+  private async releaseTheme(id: string): Promise<void> {
+    const current = this.settings.string("workbench.colorTheme", "");
+    if (current.startsWith(`extension:${id}/`)) {
+      await this.settings.reset("user", "workbench.colorTheme");
+      this.log(`The colour theme of ${id} was in use: back to the default theme.`);
+    }
+  }
+
   async setEnabled(id: string, enabled: boolean): Promise<void> {
     const extension = this.registry.find(id);
     if (extension === undefined) return;
+    if (!enabled) await this.releaseTheme(id);
     this.set({ busy: `${enabled ? "Enabling" : "Disabling"} ${displayName(extension)}…`, error: null });
     try {
       await this.ipc.extSetEnabled(id, enabled);
       await this.registry.refresh();
       await this.settings.reload();
+      this.log(`${extension.id} ${enabled ? "enabled" : "disabled"}.`);
+      const languages = extension.manifest.contributes.languages.length > 0;
       this.set({
         busy: null,
-        notice: `${displayName(extension)} is ${enabled ? "enabled" : "disabled"}.`,
+        notice:
+          `${displayName(extension)} is ${enabled ? "enabled" : "disabled"}.` +
+          (languages && !enabled ? " Its languages stay registered until OpenMind Studio restarts." : ""),
       });
       if (enabled) await this.wake(extension);
     } catch (error) {
@@ -195,11 +212,13 @@ export class ExtensionService {
     const id = this.state.pendingUninstall;
     if (id === null) return;
     const extension = this.registry.find(id);
+    await this.releaseTheme(id);
     this.set({ pendingUninstall: null, busy: "Uninstalling…" });
     try {
       await this.ipc.extUninstall(id);
       await this.registry.refresh();
       await this.settings.reload();
+      this.log(`${id} uninstalled.`);
       this.set({
         busy: null,
         selectedId: this.state.selectedId === id ? null : this.state.selectedId,

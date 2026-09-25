@@ -50,6 +50,8 @@ export interface BridgeDeps {
   /** The command ids that can be run: built in, contributed and registered by activated extensions. */
   knownCommands: () => string[];
   onHostCommandsChanged: () => void;
+  /** `views/*` notifications (tree views), and `views/reset` when the host went away. */
+  onViewEvent?: (method: string, params: Record<string, unknown>) => void;
 }
 
 /** Every channel an extension creates shows up under this suffix when it would clash with a built-in one. */
@@ -186,6 +188,7 @@ export class HostBridge {
         );
         return;
       default:
+        if (method.startsWith("views/")) this.deps.onViewEvent?.(method, p);
     }
   }
 
@@ -196,6 +199,7 @@ export class HostBridge {
     this.hostCommands.clear();
     this.deps.prompts.dismissAll();
     this.deps.onHostCommandsChanged();
+    this.deps.onViewEvent?.("views/reset", {});
   }
 
   private log(extension: string, channel: string, line: string): void {

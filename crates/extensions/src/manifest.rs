@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::contributions::Contributions;
 use crate::error::ExtensionError;
+use crate::permissions::{self, Permission};
 
 /// A parsed, validated manifest.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -27,6 +28,8 @@ pub struct Manifest {
     pub extension_dependencies: Vec<String>,
     pub extension_pack: Vec<String>,
     pub contributes: Contributions,
+    /// `openmindPermissions`: what the extension asks for (the UI adds what its contributions imply).
+    pub requested_permissions: Vec<Permission>,
 }
 
 /// Publisher used when a package has none (allowed by `vsce` for local packages).
@@ -83,10 +86,41 @@ impl ActivationEvent {
         }
     }
 
-    /// Whether something in the app can trigger it. `onView` has no trigger: there are no extension views yet.
+    /// Whether something in the app can trigger it. `onView` triggers only for views in the extension's own
+    /// activity bar containers (the store warns about the others).
     pub fn is_supported(&self) -> bool {
-        !matches!(self, Self::Unsupported(_) | Self::OnView(_))
+        !matches!(self, Self::Unsupported(_))
     }
+}
+
+/// What a manifest must get right about its contributions: every command has an id and a title (and the
+/// ids are unique), and every setting's default is a valid value for the setting.
+fn validate_contributions(contributes: &Contributions) -> Result<(), ExtensionError> {
+    let mut seen = std::collections::BTreeSet::new();
+    for (index, command) in contributes.commands.iter().enumerate() {
+        if command.title.trim().is_empty() {
+            return Err(ExtensionError::Manifest(format!(
+                "contributes.commands[{index}] (\"{}\") has no title",
+                command.command
+            )));
+        }
+        if !seen.insert(command.command.as_str()) {
+            return Err(ExtensionError::Manifest(format!(
+                "contributes.commands lists \"{}\" twice",
+                command.command
+            )));
+        }
+    }
+    for property in &contributes.configuration {
+        let definition = crate::settings::setting(property, "");
+        if let Err(reason) = openmind_settings::schema::validate(&definition, &property.default) {
+            return Err(ExtensionError::Manifest(format!(
+                "the default of setting \"{}\" is invalid: {reason}",
+                property.key
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn bad(field: &str, why: &str) -> ExtensionError {
@@ -166,10 +200,18 @@ impl Manifest {
 
     /// Parses and validates the text of a `package.json`.
     pub fn parse(text: &str) -> Result<Self, ExtensionError> {
-        let root: Value =
+        Self::parse_localized(text, None)
+    }
+
+    /// Parses `package.json`, first replacing its `%key%` strings from `package.nls.json` (when given).
+    pub fn parse_localized(text: &str, nls: Option<&str>) -> Result<Self, ExtensionError> {
+        let mut root: Value =
             serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|err| {
                 ExtensionError::Manifest(format!("package.json is not valid JSON: {err}"))
             })?;
+        if let Some(nls) = nls {
+            crate::nls::localize(&mut root, &crate::nls::parse_bundle(nls));
+        }
         if !root.is_object() {
             return Err(ExtensionError::Manifest(
                 "package.json must contain one JSON object".into(),
@@ -230,6 +272,8 @@ impl Manifest {
             Some(value @ Value::Object(_)) => Contributions::from_value(value),
             Some(_) => return Err(bad("contributes", "must be an object")),
         };
+        validate_contributions(&contributes)?;
+        let requested_permissions = permissions::parse_requested(root.get("openmindPermissions"))?;
         Ok(Manifest {
             name,
             display_name: optional_text(&root, "displayName")?,
@@ -245,6 +289,7 @@ impl Manifest {
             extension_dependencies: string_list(&root, "extensionDependencies")?,
             extension_pack: string_list(&root, "extensionPack")?,
             contributes,
+            requested_permissions,
         })
     }
 
@@ -260,6 +305,13 @@ impl Manifest {
         }
         for language in &self.contributes.languages {
             let event = ActivationEvent::OnLanguage(language.id.clone());
+            if !events.contains(&event) {
+                events.push(event);
+            }
+        }
+        // Opening a contributed view wakes its extension (VS Code implies `onView:<id>` too).
+        for view in self.contributes.views.view_ids() {
+            let event = ActivationEvent::OnView(view.to_string());
             if !events.contains(&event) {
                 events.push(event);
             }

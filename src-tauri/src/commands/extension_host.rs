@@ -22,11 +22,12 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 const PROVIDE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Requests the window may send to the host.
-const ALLOWED_REQUESTS: [&str; 4] = [
+const ALLOWED_REQUESTS: [&str; 5] = [
     "host/activate",
     "host/deactivate",
     "host/executeCommand",
     "host/provide",
+    "host/tree",
 ];
 /// Notifications the window may send to the host.
 const ALLOWED_NOTIFICATIONS: [&str; 7] = [
@@ -69,6 +70,15 @@ pub async fn ext_host_start(
     if state.extensions.running_host().is_some() {
         return Ok(lock(&state.extensions.status).clone());
     }
+    publish(
+        &app,
+        HostStatus {
+            state: "starting",
+            pid: None,
+            node: None,
+            error: None,
+        },
+    );
     let environment = environment(&state).await;
     let allow_system = user_bool(&state, "extensions.allowSystemNode");
     let path = std::env::var_os("PATH");
@@ -122,7 +132,7 @@ pub async fn ext_host_start(
         error: None,
     };
     *lock(&state.extensions.host) = Some(Arc::new(host));
-    lock(&state.extensions.activity).clear();
+    state.extensions.reset_active();
     publish(&app, status.clone());
     Ok(status)
 }
@@ -135,7 +145,7 @@ pub fn stop_host(app: &AppHandle) {
     if let Some(host) = host {
         host.stop();
     }
-    lock(&state.extensions.activity).clear();
+    state.extensions.reset_active();
     state.extensions.set_status(HostStatus::stopped());
 }
 
@@ -158,7 +168,8 @@ fn host_or_reason(state: &AppState) -> Result<Arc<ExtensionHost>, String> {
 
 fn timeout_for(method: &str) -> Duration {
     match method {
-        "host/executeCommand" => COMMAND_TIMEOUT,
+        // A tree item's click runs its command, which may wait for the user too.
+        "host/executeCommand" | "host/tree" => COMMAND_TIMEOUT,
         "host/provide" => PROVIDE_TIMEOUT,
         _ => ACTIVATE_TIMEOUT,
     }

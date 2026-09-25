@@ -329,3 +329,33 @@
   align-items: center;
   gap: 6px;
 }
+
+.ext-risk {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--warning-bg);
+  color: var(--on-accent-fg);
+  font-size: 11px;
+}
+
+.ext-install__heading {
+  margin: 8px 0 2px;
+  font-size: 12px;
+}
+
+.ext-install__facts {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 2px 8px;
+  margin: 0;
+}
+
+.ext-install__facts dd {
+  margin: 0;
+}
+
+.ext-host-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+}

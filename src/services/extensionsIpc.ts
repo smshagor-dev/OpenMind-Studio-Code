@@ -64,6 +64,30 @@ export interface ExtensionThemeContribution {
   path: string;
 }
 
+/** A tree (drawn by the app) or webview (not supported) view inside an activity bar container. */
+export interface ExtensionViewContribution {
+  id: string;
+  name: string;
+  kind: "tree" | "webview";
+  /** `viewsWelcome` entries shown while the view is empty, each with its `when` clause. */
+  welcome: { contents: string; when: string | null }[];
+}
+
+/** One activity bar icon an extension contributes. */
+export interface ExtensionViewContainer {
+  id: string;
+  title: string;
+  /** A file inside the extension, or a product icon such as `$(list-tree)`. */
+  icon: string | null;
+  views: ExtensionViewContribution[];
+}
+
+export interface ExtensionViews {
+  containers: ExtensionViewContainer[];
+  elsewhere: number;
+  otherContainers: number;
+}
+
 export interface ExtensionContributions {
   commands: ExtensionCommandContribution[];
   menus: Record<string, ExtensionMenuContribution[]>;
@@ -79,7 +103,29 @@ export interface ExtensionContributions {
   iconThemes: { id: string; label: string; path: string }[];
   debuggers: { kind: string; label: string | null }[];
   problemMatchers: string[];
+  views: ExtensionViews;
   unsupported: Record<string, number>;
+}
+
+export type PermissionName =
+  | "workspaceRead"
+  | "workspaceWrite"
+  | "commands"
+  | "settings"
+  | "languages"
+  | "themes"
+  | "snippets"
+  | "network"
+  | "processExecution"
+  | "terminal"
+  | "filesystemOutsideWorkspace";
+
+/** What an extension asked for, what its contributions imply, and what the host lets it use. */
+export interface PermissionSet {
+  requested: PermissionName[];
+  inferred: PermissionName[];
+  accepted: PermissionName[];
+  highRisk: PermissionName[];
 }
 
 export interface ExtensionManifest {
@@ -96,6 +142,7 @@ export interface ExtensionManifest {
   extensionDependencies: string[];
   extensionPack: string[];
   contributes: ExtensionContributions;
+  requestedPermissions: PermissionName[];
 }
 
 export interface InstalledExtension {
@@ -109,6 +156,7 @@ export interface InstalledExtension {
   runtimeRequirement: string | null;
   warnings: string[];
   activationEvents: string[];
+  permissions: PermissionSet;
 }
 
 export interface BrokenExtension {
@@ -120,9 +168,13 @@ export interface BrokenExtension {
 export interface ExtensionActivity {
   active: boolean;
   lastError: string | null;
+  /** How many times it was activated since the app started. */
+  activationCount: number;
+  lastActivation: string | null;
 }
 
-export type ExtensionHostState = "stopped" | "running" | "crashed" | "unavailable";
+export type ExtensionHostState =
+  "stopped" | "starting" | "running" | "crashed" | "restarting" | "unavailable";
 
 export interface ExtensionHostStatus {
   state: ExtensionHostState;
@@ -182,6 +234,8 @@ export interface ExtensionsIpc {
   extSetEnabled: (id: string, enabled: boolean) => Promise<InstalledExtension>;
   extUninstall: (id: string) => Promise<void>;
   extReadFile: (id: string, path: string) => Promise<string>;
+  /** An `.svg`/`.png` inside the extension as a `data:` URL. */
+  extReadIcon: (id: string, path: string) => Promise<string>;
   extHostLog: () => Promise<string>;
   extHostStart: (initial: unknown) => Promise<ExtensionHostStatus>;
   extHostStop: () => Promise<void>;
@@ -203,6 +257,7 @@ export const tauriExtensionsIpc: ExtensionsIpc = {
   extSetEnabled: (id, enabled) => invoke<InstalledExtension>("ext_set_enabled", { id, enabled }),
   extUninstall: (id) => invoke("ext_uninstall", { id }),
   extReadFile: (id, path) => invoke<string>("ext_read_file", { id, path }),
+  extReadIcon: (id, path) => invoke<string>("ext_read_icon", { id, path }),
   extHostLog: () => invoke<string>("ext_host_log"),
   extHostStart: (initial) => invoke<ExtensionHostStatus>("ext_host_start", { initial }),
   extHostStop: () => invoke("ext_host_stop"),

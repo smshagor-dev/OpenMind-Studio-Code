@@ -1,0 +1,169 @@
+/* --- Extension views: activity bar icons and tree views (VS Code's look) --- */
+
+/* The icon rail scrolls when there are more icons than fit; the Manage gear stays at the bottom. */
+.activity-bar__top {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.activity-bar__top::-webkit-scrollbar {
+  display: none;
+}
+
+.activity-bar__top > .activity-bar__item {
+  flex: 0 0 auto;
+}
+
+.activity-bar__bottom {
+  flex: 0 0 auto;
+}
+
+/* An extension's icon is used as a mask, so it takes the activity bar's colours like the built-in ones. */
+.activity-bar__ext-icon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.activity-bar__ext-icon--image {
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.ext-container-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.ext-tree,
+.ext-tree__group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ext-tree {
+  overflow-y: auto;
+}
+
+.ext-tree__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+}
+
+.ext-tree__row:hover {
+  background-color: var(--list-hover-bg);
+}
+
+.ext-tree__row:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+.ext-tree__twistie {
+  flex: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--icon-fg);
+}
+
+.ext-tree__icon,
+.ext-tree__glyph {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--icon-fg);
+  object-fit: contain;
+}
+
+.ext-tree__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-tree__description {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.ext-view-note {
+  margin: 8px 20px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.ext-view-note--error {
+  color: var(--error-fg);
+}
+
+.ext-view-welcome {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 20px;
+  color: var(--fg);
+  line-height: 1.4;
+}
+
+.ext-view-welcome p {
+  margin: 0;
+}
+
+.ext-view-welcome__button {
+  width: 100%;
+  max-width: 300px;
+  height: 26px;
+  border: none;
+  border-radius: 2px;
+  background-color: var(--button-bg);
+  color: var(--button-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ext-view-welcome__button:hover {
+  background-color: var(--button-hover-bg);
+}
+
+.ext-view-problem {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 12px 8px 20px;
+  padding: 8px 10px;
+  border: 1px solid var(--editor-card-border, var(--border));
+  border-radius: 4px;
+  color: var(--fg);
+}
+
+.ext-view-problem p {
+  margin: 0;
+  color: var(--warning-fg);
+}

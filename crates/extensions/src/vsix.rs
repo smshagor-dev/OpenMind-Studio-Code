@@ -11,9 +11,27 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use crate::error::ExtensionError;
 use crate::manifest::Manifest;
 
-const MAX_ENTRIES: usize = 50_000;
-const MAX_TOTAL_BYTES: u64 = 1024 * 1024 * 1024;
-const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
+/// What a `.vsix` may be before it is refused (checked before anything is written).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    /// The `.vsix` file itself.
+    pub max_archive_bytes: u64,
+    /// Everything it would extract to.
+    pub max_total_bytes: u64,
+    pub max_entries: usize,
+    pub max_manifest_bytes: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            max_archive_bytes: 256 * 1024 * 1024,
+            max_total_bytes: 512 * 1024 * 1024,
+            max_entries: 20_000,
+            max_manifest_bytes: 1024 * 1024,
+        }
+    }
+}
 
 /// The folder inside a `.vsix` that holds the extension.
 const PAYLOAD: &str = "extension/";
@@ -49,17 +67,29 @@ pub fn safe_relative(name: &str) -> Result<Option<PathBuf>, ExtensionError> {
     Ok(Some(path))
 }
 
-fn open(vsix: &Path) -> Result<ZipArchive<File>, ExtensionError> {
+fn open(vsix: &Path, limits: &Limits) -> Result<ZipArchive<File>, ExtensionError> {
     let file = File::open(vsix)
         .map_err(|err| ExtensionError::io(format!("Couldn't open {}", vsix.display()), err))?;
+    let size = file
+        .metadata()
+        .map_err(|err| ExtensionError::io(format!("Couldn't read {}", vsix.display()), err))?
+        .len();
+    if size > limits.max_archive_bytes {
+        return Err(ExtensionError::UnsafeArchive(format!(
+            "the package is {} MB, more than the {} MB limit",
+            size / (1024 * 1024),
+            limits.max_archive_bytes / (1024 * 1024)
+        )));
+    }
     ZipArchive::new(file).map_err(|err| ExtensionError::NotAVsix(err.to_string()))
 }
 
 /// Checks every entry name and the archive's size limits without extracting.
-fn check_entries(archive: &mut ZipArchive<File>) -> Result<(), ExtensionError> {
-    if archive.len() > MAX_ENTRIES {
+fn check_entries(archive: &mut ZipArchive<File>, limits: &Limits) -> Result<(), ExtensionError> {
+    if archive.len() > limits.max_entries {
         return Err(ExtensionError::UnsafeArchive(format!(
-            "it has more than {MAX_ENTRIES} entries"
+            "it has more than {} files",
+            limits.max_entries
         )));
     }
     let mut total: u64 = 0;
@@ -78,10 +108,11 @@ fn check_entries(archive: &mut ZipArchive<File>) -> Result<(), ExtensionError> {
             )));
         }
         total = total.saturating_add(entry.size());
-        if total > MAX_TOTAL_BYTES {
-            return Err(ExtensionError::UnsafeArchive(
-                "it would extract to more than 1 GB".into(),
-            ));
+        if total > limits.max_total_bytes {
+            return Err(ExtensionError::UnsafeArchive(format!(
+                "it would extract to more than {} MB",
+                limits.max_total_bytes / (1024 * 1024)
+            )));
         }
     }
     Ok(())
@@ -95,12 +126,16 @@ pub struct Inspected {
 
 /// Validates the archive and reads `extension/package.json`.
 pub fn inspect(vsix: &Path) -> Result<Inspected, ExtensionError> {
-    let mut archive = open(vsix)?;
-    check_entries(&mut archive)?;
+    inspect_with(vsix, &Limits::default())
+}
+
+pub fn inspect_with(vsix: &Path, limits: &Limits) -> Result<Inspected, ExtensionError> {
+    let mut archive = open(vsix, limits)?;
+    check_entries(&mut archive, limits)?;
     let mut entry = archive
         .by_name("extension/package.json")
         .map_err(|_| ExtensionError::NotAVsix("it has no extension/package.json".into()))?;
-    if entry.size() > MAX_MANIFEST_BYTES {
+    if entry.size() > limits.max_manifest_bytes {
         return Err(ExtensionError::Manifest(
             "package.json is unreasonably large".into(),
         ));
@@ -109,15 +144,29 @@ pub fn inspect(vsix: &Path) -> Result<Inspected, ExtensionError> {
     entry.read_to_string(&mut text).map_err(|err| {
         ExtensionError::Manifest(format!("package.json can't be read as text: {err}"))
     })?;
+    drop(entry);
+    // The display strings (`%key%`) live in package.nls.json, as VS Code reads them.
+    let nls = archive
+        .by_name("extension/package.nls.json")
+        .ok()
+        .filter(|entry| entry.size() <= limits.max_manifest_bytes)
+        .and_then(|mut entry| {
+            let mut nls = String::new();
+            entry.read_to_string(&mut nls).ok().map(|_| nls)
+        });
     Ok(Inspected {
-        manifest: Manifest::parse(&text)?,
+        manifest: Manifest::parse_localized(&text, nls.as_deref())?,
     })
 }
 
 /// Extracts `extension/` of the archive into `dest` (created; must not exist yet or be empty).
 pub fn extract(vsix: &Path, dest: &Path) -> Result<(), ExtensionError> {
-    let mut archive = open(vsix)?;
-    check_entries(&mut archive)?;
+    extract_with(vsix, dest, &Limits::default())
+}
+
+pub fn extract_with(vsix: &Path, dest: &Path, limits: &Limits) -> Result<(), ExtensionError> {
+    let mut archive = open(vsix, limits)?;
+    check_entries(&mut archive, limits)?;
     fs::create_dir_all(dest)
         .map_err(|err| ExtensionError::io(format!("Couldn't create {}", dest.display()), err))?;
     for index in 0..archive.len() {

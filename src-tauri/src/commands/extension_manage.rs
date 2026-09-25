@@ -81,6 +81,27 @@ pub fn ext_read_file(
         .map_err(|err| err.to_string())
 }
 
+/// An extension's icon (activity bar container, tree item) as a `data:` URL: `.svg`/`.png` inside its folder only.
+#[tauri::command]
+pub fn ext_read_icon(
+    id: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    let extension = state
+        .extensions
+        .store
+        .find(&id)
+        .map_err(|err| err.to_string())?;
+    let (bytes, mime) = openmind_extensions::views::read_icon(&extension.path, &path)
+        .map_err(|err| err.to_string())?;
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
 /// The end of `logs/extension-host.log`.
 #[tauri::command]
 pub fn ext_host_log(state: State<'_, AppState>) -> String {

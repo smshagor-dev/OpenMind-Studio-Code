@@ -1,0 +1,8 @@
+{
+  // comments are allowed in snippet files
+  "Sample loop": {
+    "prefix": "omloop",
+    "body": ["repeat ${1:3} {", "\t$0", "}"],
+    "description": "A sample loop",
+  }
+}

@@ -28,8 +28,12 @@ export interface HostLocation {
   range: HostRange;
 }
 
-/** Monaco's `CompletionItemKind` for each VS Code kind, indexed by the VS Code number. */
-const KIND_TO_MONACO = [
+/**
+ * Monaco's `CompletionItemKind` for each VS Code kind, indexed by the VS Code number. The two enums differ
+ * (Monaco also has Customcolor and Tool), and Monaco renumbers when it adds one — the test checks this table
+ * against Monaco's own enum by name.
+ */
+export const KIND_TO_MONACO = [
   18, // Text
   0, // Method
   1, // Function
@@ -44,17 +48,50 @@ const KIND_TO_MONACO = [
   13, // Value
   15, // Enum
   17, // Keyword
-  27, // Snippet
+  28, // Snippet
   19, // Color
   20, // File
   21, // Reference
-  22, // Folder
+  23, // Folder
   16, // EnumMember
   14, // Constant
   6, // Struct
   10, // Event
   11, // Operator
-  23, // TypeParameter
+  24, // TypeParameter
+  25, // User
+  26, // Issue
+];
+
+/** VS Code's `CompletionItemKind` names, by number (the order of `KIND_TO_MONACO`). */
+export const VSCODE_KIND_NAMES = [
+  "Text",
+  "Method",
+  "Function",
+  "Constructor",
+  "Field",
+  "Variable",
+  "Class",
+  "Interface",
+  "Module",
+  "Property",
+  "Unit",
+  "Value",
+  "Enum",
+  "Keyword",
+  "Snippet",
+  "Color",
+  "File",
+  "Reference",
+  "Folder",
+  "EnumMember",
+  "Constant",
+  "Struct",
+  "Event",
+  "Operator",
+  "TypeParameter",
+  "User",
+  "Issue",
 ];
 
 export function monacoCompletionKind(kind: number | undefined): number {

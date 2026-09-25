@@ -1,7 +1,13 @@
 import { useEffect, useRef } from "react";
 
 import { container } from "../services/container";
-import { TRUST_WARNING, displayName, pointLines } from "../services/extensionModel";
+import {
+  PERMISSION_LIMITS_NOTE,
+  TRUST_WARNING,
+  displayName,
+  permissionLines,
+  pointLines,
+} from "../services/extensionModel";
 import type { PendingInstall } from "../services/extensionService";
 
 /** The confirmation before a `.vsix` is installed: what it is, what it contributes, and the trust warning. */
@@ -40,10 +46,15 @@ export function ExtensionInstallDialog({ pending }: { pending: PendingInstall })
         <p className="ext-install__warning" role="note">
           {TRUST_WARNING}
         </p>
-        <p>
-          {extension.id}
-          {extension.manifest.description ? ` — ${extension.manifest.description}` : ""}
-        </p>
+        <dl className="ext-install__facts">
+          <dt>Name</dt>
+          <dd>{displayName(extension)}</dd>
+          <dt>Publisher</dt>
+          <dd>{extension.manifest.publisher}</dd>
+          <dt>Version</dt>
+          <dd>{extension.manifest.version}</dd>
+        </dl>
+        <p>{extension.manifest.description ?? ""}</p>
         {replaces ? (
           <p>
             Version {replaces.manifest.version} is installed; installing replaces it
@@ -51,10 +62,29 @@ export function ExtensionInstallDialog({ pending }: { pending: PendingInstall })
           </p>
         ) : null}
         <p>{extension.runtimeRequirement ?? "It has no code: it only contributes data."}</p>
-        <ul className="ext-plain-list">
+        <h3 className="ext-install__heading">Permissions</h3>
+        <ul className="ext-plain-list" aria-label="Permissions">
+          {permissionLines(extension).map((line) => (
+            <li key={line.name} data-risk={line.highRisk}>
+              <strong>{line.label}</strong>
+              {line.highRisk ? <span className="ext-risk"> High risk</span> : null}
+              <span className="ext-note">
+                {" "}
+                {line.description} ({line.origin === "inferred" ? "implied by what it contributes" : "requested"})
+              </span>
+            </li>
+          ))}
+          {permissionLines(extension).length === 0 ? <li>None: it needs no permission.</li> : null}
+        </ul>
+        <p className="ext-note">{PERMISSION_LIMITS_NOTE}</p>
+        <h3 className="ext-install__heading">Contribution points</h3>
+        <ul className="ext-plain-list" aria-label="Contribution points">
           {pointLines(extension).map((line) => (
             <li key={line.point}>
               {line.point} ({String(line.count)}) — {line.status}
+              {line.status === "Not supported" ? (
+                <span className="ext-note"> This contribution point is not supported yet.</span>
+              ) : null}
             </li>
           ))}
         </ul>

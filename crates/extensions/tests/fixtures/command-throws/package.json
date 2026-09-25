@@ -1,0 +1,25 @@
+{
+  "name": "sample-throws",
+  "displayName": "Sample Command Throws",
+  "description": "A command that throws when it runs.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sampleThrows.run",
+        "title": "Sample: Throw From Command"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "sampleThrows.run",
+        "key": "ctrl+alt+f9"
+      }
+    ]
+  }
+}

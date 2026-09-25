@@ -7,6 +7,7 @@ import { HostBridge } from "../services/extensionHostBridge";
 import type { HostDocumentSync } from "../services/extensionHostSync";
 import { ExtensionHostService } from "../services/extensionHostService";
 import { ExtensionContributionService } from "../services/extensionContributionService";
+import { createFakeMarketplaceApi } from "./fakeMarketplaceApi";
 import { ExtensionMarketplaceService } from "../services/extensionMarketplaceService";
 import { ExtensionPromptService } from "../services/extensionPromptService";
 import { ExtensionRegistryService } from "../services/extensionRegistryService";
@@ -47,6 +48,7 @@ export interface Rig {
   output: OutputService;
   bridge: HostBridge;
   errors: string[];
+  logs: string[];
   editorActions: unknown[];
   snapshot: { current: ExtensionsSnapshot };
 }
@@ -59,6 +61,7 @@ export function rig(extensions: InstalledExtension[] = [], overrides: Partial<Ex
   });
   const events = new EventBus<AppEvents>();
   const errors: string[] = [];
+  const logs: string[] = [];
   events.on("appError", ({ message }) => errors.push(message));
   const registry = new ExtensionRegistryService(ipc, events);
   const prompts = new ExtensionPromptService();
@@ -93,10 +96,12 @@ export function rig(extensions: InstalledExtension[] = [], overrides: Partial<Ex
     sync,
     settingsValues: () => ({ "sampleConfig.greeting": "Hello" }),
     workspaceFolders: () => [{ path: "C:/My Site", name: "My Site" }],
+    log: (line) => logs.push(line),
+    restartDelayMs: 0,
   });
   const settings = new SettingsService(ipc, events);
   vi.spyOn(settings, "reload").mockResolvedValue(undefined);
-  const service = new ExtensionService(ipc, events, registry, host, settings);
+  const service = new ExtensionService(ipc, events, registry, host, settings, (line) => logs.push(line));
   const editorActions: unknown[] = [];
   const contributions = new ExtensionContributionService({
     ipc,
@@ -111,7 +116,7 @@ export function rig(extensions: InstalledExtension[] = [], overrides: Partial<Ex
     },
     languageOf: () => "plaintext",
   });
-  return { ipc, events, registry, host, service, marketplace: new ExtensionMarketplaceService(), contributions, commands, prompts, output, bridge, errors, editorActions, snapshot };
+  return { ipc, events, registry, host, service, marketplace: new ExtensionMarketplaceService(createFakeMarketplaceApi(), { install: (path) => service.inspect(path), onError: (message) => errors.push(message) }), contributions, commands, prompts, output, bridge, errors, logs, editorActions, snapshot };
 }
 
 export async function started(extensions: InstalledExtension[], overrides: Partial<ExtensionsSnapshot> = {}) {

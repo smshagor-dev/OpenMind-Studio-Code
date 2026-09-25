@@ -31,6 +31,9 @@ pub(crate) const ACTIVATE_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct Activity {
     pub active: bool,
     pub last_error: Option<String>,
+    /// How many times it was activated since the app started (a host restart activates it again).
+    pub activation_count: u32,
+    pub last_activation: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -92,6 +95,13 @@ impl ExtensionsRuntime {
         *lock(&self.status) = status;
     }
 
+    /// The host is gone or restarted: nothing is active any more (counts and last errors stay).
+    pub(crate) fn reset_active(&self) {
+        for entry in lock(&self.activity).values_mut() {
+            entry.active = false;
+        }
+    }
+
     pub(crate) fn record_activation(&self, id: &str, result: &Result<(), String>) {
         let mut activity = lock(&self.activity);
         let entry = activity.entry(id.to_string()).or_default();
@@ -99,6 +109,8 @@ impl ExtensionsRuntime {
             Ok(()) => {
                 entry.active = true;
                 entry.last_error = None;
+                entry.activation_count += 1;
+                entry.last_activation = Some(openmind_extensions::hostlog::timestamp());
             }
             Err(message) => {
                 entry.active = false;
@@ -151,7 +163,7 @@ impl HostEvents for Sink {
             return;
         };
         *lock(&runtime.host) = None;
-        lock(&runtime.activity).clear();
+        runtime.reset_active();
         let status = HostStatus {
             state: "crashed",
             pid: None,

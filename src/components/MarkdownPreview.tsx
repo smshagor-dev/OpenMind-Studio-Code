@@ -62,6 +62,19 @@ interface LinkProps {
   onLink: (href: string) => void;
 }
 
+/**
+ * Renders a Markdown string (e.g. an extension's README) the same safe way:
+ * React elements only, raw HTML shown as text, images as their alt text.
+ */
+export function MarkdownText({ text, onLink }: { text: string } & LinkProps) {
+  const blocks = useMemo(() => parseMarkdown(text), [text]);
+  return (
+    <div className="markdown-preview markdown-preview--embedded">
+      <BlockList blocks={blocks} onLink={onLink} />
+    </div>
+  );
+}
+
 function BlockList({ blocks, onLink }: { blocks: Block[] } & LinkProps) {
   return (
     <>

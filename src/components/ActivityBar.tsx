@@ -1,5 +1,7 @@
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 
+import "../styles/extensionViews.css";
+
 import { container } from "../services/container";
 import type { SideView } from "../services/layoutService";
 import { MANAGE_MENU } from "../services/menus";
@@ -30,9 +32,19 @@ interface ViewItem {
 const VIEW_ITEMS: readonly ViewItem[] = [
   { view: "explorer", label: "Explorer", command: "view.showExplorer", icon: <FilesIcon /> },
   { view: "search", label: "Search", command: "search.findInFiles", icon: <SearchIcon /> },
-  { view: "scm", label: "Source Control", command: "view.showSourceControl", icon: <SourceControlIcon /> },
+  {
+    view: "scm",
+    label: "Source Control",
+    command: "view.showSourceControl",
+    icon: <SourceControlIcon />,
+  },
   { view: "debug", label: "Run and Debug", command: "view.showRun", icon: <DebugIcon /> },
-  { view: "extensions", label: "Extensions", command: "view.showExtensions", icon: <ExtensionsIcon /> },
+  {
+    view: "extensions",
+    label: "Extensions",
+    command: "view.showExtensions",
+    icon: <ExtensionsIcon />,
+  },
 ];
 
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
@@ -60,6 +72,11 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
     setManageAnchor(null);
   }, []);
   useDismissOnOutside(manageAnchor !== null, closeManage);
+  const views = container.extensions.views;
+  useSyncExternalStore(
+    (listener) => views.subscribe(listener),
+    () => views.getVersion(),
+  );
 
   return (
     <nav className="activity-bar" aria-label="Activity bar">
@@ -81,6 +98,39 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
               }}
             >
               {item.icon}
+            </button>
+          );
+        })}
+        {views.containers().map((entry) => {
+          const active = sidebarVisible && layout.activeView === entry.key;
+          const icon = views.iconOf(entry);
+          return (
+            <button
+              key={entry.key}
+              type="button"
+              className={
+                active ? "activity-bar__item activity-bar__item--active" : "activity-bar__item"
+              }
+              title={entry.container.title}
+              aria-label={entry.container.title}
+              aria-pressed={active}
+              onClick={() => {
+                void container.layout.toggleView(entry.key);
+              }}
+            >
+              {icon === null ? (
+                <ExtensionsIcon />
+              ) : icon.startsWith("data:image/svg") ? (
+                <span
+                  className="activity-bar__ext-icon"
+                  style={{ maskImage: `url("${icon}")`, WebkitMaskImage: `url("${icon}")` }}
+                />
+              ) : (
+                <span
+                  className="activity-bar__ext-icon activity-bar__ext-icon--image"
+                  style={{ backgroundImage: `url("${icon}")` }}
+                />
+              )}
             </button>
           );
         })}

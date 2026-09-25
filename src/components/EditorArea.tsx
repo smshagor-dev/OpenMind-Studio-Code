@@ -5,6 +5,7 @@ import { container } from "../services/container";
 import type { WorkspaceState } from "../services/workspaceService";
 import { DebugToolbar } from "./DebugToolbar";
 import { EditorGroupView } from "./EditorGroupView";
+import { ExtensionEditor } from "./ExtensionEditor";
 import { ExternalCompareViewer } from "./ExternalCompareViewer";
 import { GitBlameViewer } from "./GitBlameViewer";
 import { GitDiffViewer } from "./GitDiffViewer";
@@ -28,6 +29,7 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
     <div className="editor-area" ref={rowRef}>
       <GitDiffViewer themeKind={rest.themeKind} />
       <GitBlameViewer />
+      <ExtensionEditor />
       <ExternalCompareViewer themeKind={rest.themeKind} />
       <DebugToolbar />
       <PreferencesPage />

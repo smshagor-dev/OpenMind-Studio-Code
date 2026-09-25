@@ -12,6 +12,11 @@ import type { IpcClient } from "./ipc";
 
 const STOPPED: ExtensionHostStatus = { state: "stopped", pid: null, node: null, error: null };
 
+/** After a crash the host is started again this many times in a row, then the user has to do it. */
+export const MAX_AUTO_RESTARTS = 2;
+/** A host that ran this long before crashing counts as a fresh start (the attempts begin again). */
+export const STABLE_MS = 5 * 60 * 1000;
+
 export interface HostServiceDeps {
   ipc: IpcClient;
   events: EventBus<AppEvents>;
@@ -20,6 +25,10 @@ export interface HostServiceDeps {
   sync: HostDocumentSync;
   settingsValues: () => Record<string, unknown>;
   workspaceFolders: () => { path: string; name: string }[];
+  /** The "Extensions" Output channel. */
+  log?: (line: string) => void;
+  /** Wait before an automatic restart (tests make it short). */
+  restartDelayMs?: number;
 }
 
 /**
@@ -32,6 +41,9 @@ export class ExtensionHostService {
   private offs: (() => void)[] = [];
   private starting: Promise<boolean> | null = null;
   private localStatus: ExtensionHostStatus | null = null;
+  private startedAt = 0;
+  private autoRestarts = 0;
+  private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly deps: HostServiceDeps) {}
 
@@ -89,7 +101,12 @@ export class ExtensionHostService {
     void this.deps.ipc.extHostNotify(method, params).catch(() => undefined);
   }
 
+  private log(line: string): void {
+    this.deps.log?.(line);
+  }
+
   private setStatus(status: ExtensionHostStatus): void {
+    const wasRunning = this.status().state === "running";
     this.localStatus = status;
     if (status.state !== "running") {
       this.deps.sync.stop();
@@ -97,6 +114,30 @@ export class ExtensionHostService {
       this.starting = null;
     }
     this.deps.events.emit("extensionsChanged", undefined);
+    if (wasRunning && status.state === "crashed") this.crashed(status);
+  }
+
+  /** The host died by itself: say so, and start it again a limited number of times. */
+  private crashed(status: ExtensionHostStatus): void {
+    const reason = status.error ?? "The extension host stopped unexpectedly.";
+    this.log(`Extension host crashed: ${reason}`);
+    this.deps.events.emit("appError", { message: `Extension host: ${reason}` });
+    if (Date.now() - this.startedAt > STABLE_MS) this.autoRestarts = 0;
+    if (!this.needsHost()) return;
+    if (this.autoRestarts >= MAX_AUTO_RESTARTS) {
+      this.log(
+        `Not restarting the extension host again automatically (${String(MAX_AUTO_RESTARTS)} attempts). Use Restart Extension Host.`,
+      );
+      return;
+    }
+    this.autoRestarts += 1;
+    this.log(`Restarting the extension host (attempt ${String(this.autoRestarts)} of ${String(MAX_AUTO_RESTARTS)})…`);
+    this.localStatus = { ...status, state: "restarting" };
+    this.deps.events.emit("extensionsChanged", undefined);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      void this.start();
+    }, this.deps.restartDelayMs ?? 1000);
   }
 
   /** Starts the host if it isn't running. Resolves `false` (after telling the user why) when it can't. */
@@ -118,7 +159,9 @@ export class ExtensionHostService {
         documents: initial.documents,
         activeEditor: initial.activeEditor,
       });
+      this.startedAt = Date.now();
       this.setStatus(status);
+      this.log(`Extension host started: ${status.node ?? "Node.js"} (pid ${String(status.pid ?? 0)}).`);
       sync.start();
       return true;
     } catch (error) {
@@ -130,6 +173,10 @@ export class ExtensionHostService {
   }
 
   async stop(): Promise<void> {
+    if (this.restartTimer !== null) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     this.deps.sync.stop();
     await this.deps.ipc.extHostStop().catch(() => undefined);
     this.setStatus(STOPPED);
@@ -138,6 +185,8 @@ export class ExtensionHostService {
 
   /** Restarts the host: extensions deactivate, and activate again the next time something wakes them. */
   async reload(): Promise<void> {
+    this.autoRestarts = 0;
+    this.log("Reloading the extension host…");
     await this.stop();
     this.localStatus = null;
     if (this.needsHost()) await this.start();
@@ -154,6 +203,11 @@ export class ExtensionHostService {
       return [];
     }
     for (const result of results) {
+      this.log(
+        result.ok
+          ? `Activated ${result.id}.`
+          : `Activation failed for ${result.id}: ${result.error ?? "unknown error"}`,
+      );
       if (!result.ok && report) {
         this.deps.events.emit("appError", {
           message: result.error ?? `Activating ${result.id} failed.`,
@@ -171,7 +225,12 @@ export class ExtensionHostService {
     if (failed) throw new Error(failed.error ?? `Activating ${failed.id} failed.`);
     if (!this.isRunning()) throw new Error(this.status().error ?? "The extension host isn't running.");
     this.deps.sync.flush();
-    return this.deps.ipc.extHostRequest("host/executeCommand", { command, args });
+    try {
+      return await this.deps.ipc.extHostRequest("host/executeCommand", { command, args });
+    } catch (error) {
+      this.log(`Command ${command} failed: ${String(error)}`);
+      throw error;
+    }
   }
 
   private async answer(id: unknown, method: string, params: unknown): Promise<void> {

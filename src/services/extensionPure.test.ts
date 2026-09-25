@@ -89,7 +89,7 @@ describe("colour themes", () => {
 describe("language feature conversions", () => {
   it("maps VS Code completion kinds and severities to Monaco's", () => {
     expect(monacoCompletionKind(2)).toBe(1); // Function
-    expect(monacoCompletionKind(14)).toBe(27); // Snippet
+    expect(monacoCompletionKind(14)).toBe(28); // Snippet (Monaco inserted Tool at 27)
     expect(monacoCompletionKind(undefined)).toBe(18);
     expect(markerSeverity(0)).toBe(8);
     expect(markerSeverity(1)).toBe(4);

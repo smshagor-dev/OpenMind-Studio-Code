@@ -18,7 +18,7 @@ import type { ExtensionSnippet } from "../services/extensionSnippets";
 import type { EditorService } from "../services/editorService";
 
 /** Monaco's snippet completion kind. */
-const SNIPPET_KIND = 27;
+const SNIPPET_KIND = monaco.languages.CompletionItemKind.Snippet;
 
 function languagesOf(registration: ProviderRegistration): string[] {
   const languages = registration.selector.map((entry) => entry.language ?? "*");

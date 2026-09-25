@@ -25,6 +25,10 @@
   --frame-inactive-bg: #121314;
   /* The line between the activity bar and the side bar inside their card. */
   --activitybar-divider: #252526;
+  /* Extensions view: count badges and rating stars. */
+  --badge-bg: #3c3d3e;
+  --badge-fg: #ededed;
+  --rating-fg: #ff8e00;
   --card-border: #2a2b2c;
   --editor-card-border: #2a2b2c;
   --card-radius: 8px;
@@ -147,6 +151,9 @@
   --frame-bg: #f3f3f3;
   --frame-inactive-bg: #f3f3f3;
   --activitybar-divider: #e5e5e5;
+  --badge-bg: #c4c4c4;
+  --badge-fg: #333333;
+  --rating-fg: #df6100;
   --panel-bg: #f8f8f8;
   --card-border: #e5e5e5;
   --editor-card-border: #e0e0e0;

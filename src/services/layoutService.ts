@@ -1,9 +1,19 @@
 import type { IpcClient } from "./ipc";
 
 /** The views the primary side bar can show, one per activity-bar icon. */
-export type SideView = "explorer" | "search" | "scm" | "debug" | "extensions";
+/** A built-in side bar view. */
+export type BuiltInView = "explorer" | "search" | "scm" | "debug" | "extensions";
 
-export const SIDE_VIEWS: readonly SideView[] = ["explorer", "search", "scm", "debug", "extensions"];
+/** A built-in view, or an extension's activity bar container (`ext:<extension id>/<container id>`). */
+export type SideView = BuiltInView | `ext:${string}`;
+
+export const SIDE_VIEWS: readonly BuiltInView[] = [
+  "explorer",
+  "search",
+  "scm",
+  "debug",
+  "extensions",
+];
 
 export interface LayoutState {
   sidebarVisible: boolean;
@@ -159,7 +169,9 @@ function parseLayout(raw: string): LayoutState {
   if (record.sidebarPosition !== "left" && record.sidebarPosition !== "right") {
     state.sidebarPosition = "left";
   }
-  if (!SIDE_VIEWS.includes(record.activeView as SideView)) {
+  const view = record.activeView;
+  const extensionView = typeof view === "string" && /^ext:[^/]+\/.+/.test(view);
+  if (!extensionView && !SIDE_VIEWS.includes(view as BuiltInView)) {
     state.activeView = "explorer";
   }
   state.sidebarWidth = clampWidth(state.sidebarWidth);

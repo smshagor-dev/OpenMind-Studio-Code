@@ -1,0 +1,10 @@
+{
+  "name": "sample-star",
+  "displayName": "Sample Startup Activation",
+  "description": "Activates with the app (\"*\"), which is startup-costly.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "activationEvents": ["*"]
+}

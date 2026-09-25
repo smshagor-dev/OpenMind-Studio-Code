@@ -434,6 +434,36 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   synchronous infinite loop in one extension blocks the host (calls time out and "Reload Extension Host" restarts it); Node has no per-extension
   isolation. Tests: unit tests plus integration tests against a real Node with the five sample extensions in `tests/fixtures` (command,
   configuration, language, theme, bad-activate — skipped when the machine has no Node).
+  **Hardening (Milestone 10.1).** `permissions` — 11 categories (`workspaceRead`, `workspaceWrite`, `commands`, `settings`, `languages`,
+  `themes`, `snippets`, `network`, `processExecution`, `terminal`, `filesystemOutsideWorkspace`). A manifest may *request* them with the OpenMind
+  field `"openmindPermissions": [...]` (an unknown name is refused, listing the valid ones); the contributions *imply* the harmless ones (commands,
+  settings, languages, themes, snippets). The install dialog shows both (dangerous ones marked "High risk"), installing accepts them, and the accepted
+  list is stored in `.openmind-permissions.json` inside the extension folder (so it moves with enable/disable and dies with uninstall; a file can't grant
+  more than the manifest asks for; an extension installed before this milestone only gets the implied ones). The host descriptor carries the accepted
+  list and `host/guard.js` enforces it — **a guard, not a sandbox** (the host is an ordinary Node process; native addons, `process.binding` or a
+  hand-made loader can get around it, and a symlink inside the workspace can point outside it). Exactly: `require('child_process'|'cluster')` needs
+  `processExecution`; `require('net'|'http'|'https'|'http2'|'tls'|'dgram'|'dns')`, the globals `fetch`/`WebSocket` (attributed with `AsyncLocalStorage`, so it
+  works across `await`) and `vscode.env.openExternal` need `network`; `require('fs')`/`fs/promises` are wrapped: paths in the extension's own storage/log
+  folders are free, a path in an open workspace folder needs `workspaceRead` (reading) or `workspaceWrite` (changing), its own install folder is read-only,
+  anything else needs `filesystemOutsideWorkspace`; `vscode.window.createTerminal` needs `terminal` (and is then still "not supported yet");
+  `commands.*` need `commands`, `getConfiguration`/`onDidChangeConfiguration` need `settings`, language providers/diagnostics need `languages`,
+  `workspace.openTextDocument`/`textDocuments`/document events need `workspaceRead` (`filesystemOutsideWorkspace` for a path outside the folder). Not gated:
+  what the app itself hands a language provider (the document being edited), `Uri` helpers, messages/quick picks/output channels. A denied call throws
+  "Permission '<permission>' is required for this extension API." `process.exit()` throws for extensions. Install limits (`vsix::Limits`, checked before
+  anything is written): package file 256 MB, extracted size 512 MB, 20 000 files, `package.json` 1 MB; entry names go through `safe_relative`;
+  the manifest must have name/version, ids/publishers can't contain path characters, every command needs an id and a title (unique in the manifest),
+  every setting's default must validate, and every theme/snippets file and the entry point must exist in the package. Two extensions contributing one
+  command id: the first keeps it and the second gets a warning in its details; an extension can never re-register another extension's command (the shim
+  says who owns it). Host resilience: the API shim tracks every listener, provider, command, diagnostic collection and output channel an extension
+  creates and disposes them all on deactivate or a failed activation (a disposed output channel goes silent); a throwing command is logged against its
+  extension and the error returned; unsupported-API calls are logged against the extension too. Host states: `stopped`, `starting`, `running`,
+  `crashed`, `restarting`, `unavailable`; a crash is announced (toast + Extensions log) and the host is restarted at most twice in a row
+  (`MAX_AUTO_RESTARTS`, attempts start again after 5 stable minutes, "Reload Extension Host" always works and resets them). Per extension the backend
+  keeps activation count, last activation time and last error. Output channels: **Extensions** (install/enable/disable/uninstall, activation results,
+  host start/crash/restart, failed commands), **Extension Host** (what extensions print, unsupported-API and permission errors, `[extension.id]`
+  prefixed) and one channel per `createOutputChannel` name. Disabling/uninstalling the extension of the active colour theme resets the setting to the
+  default theme. Extensions with `"*"`/`onStartupFinished` run only after startup finished (`finishStartup` at the end of the startup sequence, after the
+  window is up and the session restored); the host is never started before an extension needs it.
 
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
@@ -777,7 +807,7 @@ with submenus, check marks, shortcut labels and full keyboard navigation; Alt+<l
 `ActivityBar` (Explorer + Manage gear — still no placeholder icons for views that don't exist),
 `SideBar` (EXPLORER title, `OpenEditorsSection`, then `ExplorerPanel` or "No Folder Opened", with
 a resizable `Sash`), `FileTree` (flat rows from `visibleTreeRows`, 8px indent + hover indent
-guides, Seti-style `FileTypeIcon`s and no folder icons, VS Code list keyboard model, HTML5
+guides, `FileTypeIcon`s (real per-language SVGs from the MIT Material Icon Theme — `fileIconSpec.ts` maps names/extensions, `fileIconUrls.ts` bundles only the ~100 used icons, license in `THIRD_PARTY_NOTICES.md`) and no folder icons, VS Code list keyboard model, HTML5
 drag-and-drop move — requires `dragDropEnabled: false` in `tauri.conf.json`, otherwise WebView2's
 native file-drop handling swallows HTML5 drag events), `EditorGroup` (`TabBar`, `Breadcrumbs`,
 Monaco or `StartPage`), `StatusBar` (problems, Ln/Col, indentation, encoding, EOL, language;
@@ -789,6 +819,35 @@ Every service is unit-tested independent of React (`*.test.ts` next to each file
 is a thin smoke test on top (with `@tauri-apps/api/core`, `/window`, `/webview` and
 `@tauri-apps/plugin-dialog` mocked at the module level), and `FileTree.test.tsx` covers the tree's
 keyboard model.
+
+## VS Code API compatibility matrix (extensions)
+
+**OpenMind Studio supports a VS Code API subset.** It does not claim full VS Code compatibility, and no VS Code source is used. `S` = supported,
+`P` = partially supported, `U` = unsupported (any use throws "VS Code API '<name>' is not supported by OpenMind Studio yet." and is logged
+against the extension). The permission column is what the extension must have been granted (see `openmind-extensions`, Milestone 10.1).
+
+| API group | Level | What works | Differences from VS Code | Permission |
+| --- | --- | --- | --- | --- |
+| `vscode.commands` | P | `registerCommand`, `executeCommand` (extension commands and the app's own), `getCommands` | No `registerTextEditorCommand`; a command id another extension owns is refused (VS Code: last wins); arguments from the Explorer menu arrive as a `Uri` | `commands` |
+| `vscode.window` | P | `showInformation/Warning/ErrorMessage` (with buttons), `createOutputChannel` (+ log channels), `showQuickPick` (single/many), `showInputBox`, `activeTextEditor`, `visibleTextEditors` (the active one only), `onDidChangeActiveTextEditor` | `TextEditor` has `document`, `selection` (from the app's last report), no edit/decoration APIs; message options/modal ignored; no status bar items, tree views, webviews, progress, terminals (`createTerminal` is permission-gated, then unsupported) | none (`terminal` for `createTerminal`) |
+| `vscode.workspace` | P | `workspaceFolders`, `name`, `rootPath`, `getWorkspaceFolder`, `asRelativePath`, `getConfiguration` (`get/has/inspect/update`), `onDidChangeConfiguration`, `openTextDocument`, `textDocuments`, `onDidOpen/Close/Change/SaveTextDocument`, `onDidChangeWorkspaceFolders` | One folder only; `update` writes the user or workspace settings file; no `fs`, `findFiles`, `applyEdit`, file watchers, `registerTextDocumentContentProvider`; change events carry no `contentChanges` (the whole text is current) | `settings`, `workspaceRead` |
+| `vscode.languages` | P | `registerCompletionItemProvider`, `registerHoverProvider`, `registerDefinitionProvider`, `createDiagnosticCollection`, `getLanguages` | Selectors: `language` only (patterns/schemes ignored); completion items map label/kind/detail/documentation/insertText (`SnippetString` too); no code actions, formatting, rename, semantic tokens, inlay hints | `languages` |
+| `vscode.debug` | U | nothing — `vscode.debug.*` and `vscode.tasks.*` throw the unsupported message | Debug adapters run only through OpenMind's own debugger (Milestone 8); `debuggers`/`problemMatchers` contributions are stored as metadata | — |
+| `vscode.extensions` | P | `getExtension(id)`, `all` (id, path, `packageJSON`, `isActive`) | `exports` is always `undefined`; no `onDidChange` | none |
+| `vscode.env` | P | `appName`, `appHost`, `language`, `uriScheme`, `machineId`, `sessionId`, `shell`, `openExternal` | Fixed values (`appName` is "OpenMind Studio", `vscode.version` is `1.85.0` as a compatibility level); no clipboard, telemetry, `isTelemetryEnabled` | `network` for `openExternal` |
+| `vscode.Uri` | P | `file`, `parse`, `joinPath`, `with`, `fsPath`, `path`, `scheme`, `toString` | No `Uri.from`, query encoding subtleties | none |
+| `vscode.Range` / `Position` / `Selection` | P | constructors, `isEmpty`, `isSingleLine`, `contains`, `isEqual`, `isBefore/isAfter`, `translate`, `with`, `anchor/active` | No `intersection`/`union`, `Selection.isReversed` | none |
+| `vscode.Diagnostic` | S | `range`, `message`, `severity`, `source`, `code` | No `relatedInformation`, `tags` | `languages` |
+| `vscode.CompletionItem` | P | `label`, `kind` (all `CompletionItemKind` values), `detail`, `documentation`, `insertText` (string or `SnippetString`), `sortText`, `filterText`, `CompletionList` | No `range`, `additionalTextEdits`, `commitCharacters`, resolve | `languages` |
+| `vscode.Hover` | S | `contents` (strings/`MarkdownString`), `range` | Only markdown text | `languages` |
+| `vscode.Disposable` | S | `dispose` (once), `Disposable.from`, `EventEmitter` | Everything an extension registers is also disposed by the host on deactivate | none |
+| `ExtensionContext` | P | `subscriptions`, `extensionPath`, `extensionUri`, `globalStorageUri/Path`, `storageUri`, `logUri/Path`, `globalState`, `workspaceState` (JSON mementos), `asAbsolutePath`, `extension` | No `secrets`, `environmentVariableCollection`, `extensionMode`, `globalState.setKeysForSync` (no-op) | none |
+
+Activation events: `*`, `onStartupFinished`, `onCommand:`, `onLanguage:`, `workspaceContains:` work; `onView:` is recorded and never triggers; every other event is
+listed as unsupported. Contribution points: commands, menus (`commandPalette`, `editor/context`, `explorer/context`), keybindings, configuration (boolean,
+integer, whole-number `number`, string, string enums), configurationDefaults (metadata), languages, snippets and themes are used; grammars and icon themes,
+debuggers and problemMatchers are stored and shown ("This contribution point is not supported yet." / metadata only); every other point is counted and shown as
+unsupported.
 
 ## Persistence
 
@@ -894,6 +953,14 @@ console host): no language server, debug adapter, Git, PHP/MariaDB/phpMyAdmin se
 each starts only on an explicit action (open a file with a supported language *and* an installed server, Start Debugging, Start in the
 PHP control panel, a Git action, Ctrl+` / New Terminal). Closing the app with a terminal open left 0 processes of the copy behind.
 Memory is dominated by WebView2; no reduction was attempted in this milestone.
+
+Extension startup baseline (Milestone 10.1; this machine, Windows 11, a fresh portable copy `E:\omext`, a *debug* build without debug info, folder open, launched from a
+cold-ish start, window visible = `MainWindowTitle` set; each row twice): **no extensions** 0.64 s / 0.63 s to a visible window, no node process, ~178 MB
+(app + WebView2 helpers, 9 s after launch); **5 extensions installed and enabled, 1 disabled, none activated** 0.67 s / 0.62 s, no node process (nothing
+starts a host until an extension is needed), ~179 MB; **the same plus one `"*"` extension** 0.66 s / 0.62 s to a visible window (one cold launch took
+1.2 s), then the host starts after startup finished: one `node` process, the extension activates ("sample-star activated at startup" in the log), ~224 MB
+(+45 MB for the Node host). So installed-but-idle extensions cost nothing measurable at launch, and a `"*"` extension costs one Node process and ~45 MB
+right after start-up (the extension list marks it "Activates at every start-up (\"*\"), which can slow the app down.").
 
 ## Coding rules 
 
@@ -1388,6 +1455,41 @@ Memory is dominated by WebView2; no reduction was attempted in this milestone.
   error (toast + "Error" badge) and the app kept running; closing the app left no OpenMindStudio/node/WebView2 process of the copy; relaunch
   showed the enabled extensions still enabled (none active, no node started) and the disabled one still in `disabled/`; Registry User/Machine
   PATH were identical before and after. Left on disk: `E:\omext`, `E:\omset9`, `E:\wt7-target`, `C:\omrel`.
+- [x] **Milestone 10.1** — Extension security, stability and VS Code API compatibility hardening (`fix: harden extension security and api compatibility`).
+  What landed is described under "Hardening (Milestone 10.1)" in `openmind-extensions` and in "VS Code API compatibility matrix (extensions)":
+  the permission model (request/infer/accept/store/enforce in the host, honestly *not* a sandbox), stricter install validation and limits, host states with
+  a bounded automatic restart, activation count/last activation/last error, the Extensions and Extension Host Output channels, shim cleanup and duplicate-command
+  protection, theme fallback on disable/uninstall, startup deferral for `"*"` extensions, and the regression pack of ten sample extensions
+  (`crates/extensions/tests/fixtures`: command-basic, command-throws, configuration-basic, language-basic, snippets-basic, theme-basic, bad-activation,
+  unsupported-api, duplicate-command, permission-denied, plus startup-star for the startup measurement). Verified by hand in the built app (fresh portable copy
+  `E:\omext\OpenMind Studio`, workspace `My Site` with a space): the trust dialog listed name/publisher/version, the permissions and the contribution points; the
+  contributed command ran (lazy activation, message, host log), Disable removed it (no message, folder in `disabled/`) and Enable restored it; the
+  unsupported-api extension's error was shown and logged and the app stayed up; the bad-activation extension showed its error with an "Error" badge, Reload
+  Extension Host restarted the host and the good extension still worked; the duplicate-command extension's attempt to take `sampleCommand.hello` was refused with
+  "already registered by openmind-samples.sample-command; an extension can't replace another extension's command" and the owner still worked; the permission-denied
+  extension got "Permission 'processExecution'/'network'/'filesystemOutsideWorkspace'/'terminal'/'settings' is required for this extension API." for
+  child_process, http, fetch, fs, createTerminal, openExternal and getConfiguration; a theme was applied and disabling its extension fell back to Dark; closing the
+  app left no node/WebView2 process of the copy; relaunch kept enabled extensions enabled and the disabled one in `disabled/` and started no node; Registry
+  User/Machine PATH identical. Known limitations: the permission guard is bypassable by code that goes around Node's module loader (native addons,
+  `process.binding`), symlinks inside the workspace can point outside it, `workspaceRead` does not stop a language provider from seeing the document it is
+  asked about, `onView` never triggers, permissions can't be changed after install (reinstall to re-accept), and the F1 palette was not re-checked by hand (the extension
+  commands were run with Ctrl+Alt+<key> shortcuts because the test script's lone Alt tap had armed the menu bar and swallowed F1 and Ctrl+,; fixed in the script).
+  Left on disk: `E:\omext`, `E:\omset9`, `E:\wt7-target`, `C:\omrel`.
+- [x] **Extension views and editor integration (after 10.1)** — extensions' `viewsContainers.activitybar` become activity bar icons
+  (after Extensions; the icon rail scrolls when full, the Manage gear stays) and open a side bar view (`ext:<extension>/<container>` in
+  `LayoutService`, falls back to the Explorer when the extension is gone): `crates/extensions/src/views.rs` parses containers, views and
+  `viewsWelcome` (with `when`) and reads icons (`ext_read_icon`, .svg/.png inside the extension); opening a view implies `onView:<id>`;
+  `host/treeviews.js` gives extensions `window.registerTreeDataProvider`/`createTreeView`, `TreeItem`, `TreeItemCollapsibleState`,
+  `ThemeIcon` (the app asks `host/tree` for children/click/expand; elements stay in the host behind handles; `views/*` notifications);
+  `ExtensionViewsService` + `ExtensionContainerView` draw trees, welcome text/buttons (`whenClause.ts`: `==`, `!=`, `!`, `&&`, `||` on
+  `workbenchState`/`workspaceFolderCount`), a failed activation's reason, and webview views as unsupported. Manifests now read
+  `package.nls.json` (`nls.rs`: `%key%` strings) and the host offers `vscode.l10n.t`. Fixed: extension completion kinds were off by one
+  since Monaco added `Tool` (27) — Snippet is 28; `extensionProviderKinds.test.ts` checks the table against Monaco by name. Verified in the
+  built app: the tree-view sample (icon, welcome + Add Task, tree, expand, click runs its command), a snippet extension (completion and
+  expansion in the editor), the command extension from the editor's context menu, and Open VSX's Project Manager (icon, localized titles,
+  `when`-picked welcome; its activation stops at the permission guard because it reads VS Code's own `projects.json` under `%APPDATA%`,
+  outside the workspace, without `filesystemOutsideWorkspace`). Not done: webview views, views in built-in containers (Explorer, SCM,
+  panel), `TreeView.reveal`, checkboxes, drag and drop, item context menus, complex `when` clauses.
 - [ ] Milestone 11 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 12 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).

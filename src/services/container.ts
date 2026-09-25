@@ -598,4 +598,5 @@ export const container = {
   ipc: tauriIpcClient,
   extensions,
   startExtensions: extensions.start,
+  finishExtensionsStartup: extensions.finishStartup,
 };

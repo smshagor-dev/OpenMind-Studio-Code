@@ -16,7 +16,12 @@ export interface ExtensionRegistryState {
   error: string | null;
 }
 
-const NO_ACTIVITY: ExtensionActivity = { active: false, lastError: null };
+const NO_ACTIVITY: ExtensionActivity = {
+  active: false,
+  lastError: null,
+  activationCount: 0,
+  lastActivation: null,
+};
 
 /**
  * What is installed: the backend's list of extensions (the folders under `extensions/`), with what each

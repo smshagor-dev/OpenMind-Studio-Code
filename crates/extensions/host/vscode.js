@@ -4,6 +4,14 @@
 // pretending to work: "VS Code API '<name>' is not supported by OpenMind Studio yet."
 
 const path = require('path');
+const { permissionError, within } = require('./guard.js');
+const { createTreeApi, TreeItem, TreeItemCollapsibleState, ThemeIcon } = require('./treeviews.js');
+
+// Called with the message whenever an unsupported API is used (the host logs it, attributed to the extension).
+let unsupportedReporter = null;
+function setUnsupportedReporter(fn) {
+  unsupportedReporter = fn;
+}
 
 const IGNORED = new Set(['__esModule', 'then', 'toJSON', 'inspect', 'constructor', 'prototype', 'valueOf', 'toString']);
 
@@ -15,9 +23,11 @@ function unsupported(name) {
       return unsupported(name ? `${name}.${prop}` : String(prop));
     },
     apply() {
+      if (unsupportedReporter) unsupportedReporter(message);
       throw new Error(message);
     },
     construct() {
+      if (unsupportedReporter) unsupportedReporter(message);
       throw new Error(message);
     },
   });
@@ -286,6 +296,18 @@ function createApi(host, ext) {
   const { state, request, notify } = host;
   const documentObjects = new Map();
   let handleCounter = 0;
+  const granted = new Set(ext.permissions || []);
+  const need = (permission) => {
+    if (!granted.has(permission)) throw permissionError(permission);
+  };
+  // Everything this extension registered through the API, so deactivating (or a failed activation) can undo it.
+  const tracked = new Set();
+  const track = (disposable) => {
+    tracked.add(disposable);
+    return disposable;
+  };
+  // Listeners run as this extension, so what they log or do is attributed to it.
+  const asExtension = (fn) => (host.als ? (...args) => host.als.run(ext.id, () => fn(...args)) : fn);
 
   function document(data) {
     if (!data) return undefined;
@@ -366,29 +388,54 @@ function createApi(host, ext) {
     return { document: document(state.documents.get(data.path) || data), selection, selections: [selection], viewColumn: 1, options: {} };
   }
 
-  const event = (name) => (listener, thisArg, disposables) => host.events.on(name)(listener, thisArg, disposables);
-  const documentEvent = (name) => (listener, thisArg, disposables) =>
-    host.events.on(name)((data) => listener(name === 'documentChanged' ? { document: document(state.documents.get(data.path) || data), contentChanges: [] } : document(state.documents.get(data.path) || data)), thisArg, disposables);
+  const event = (name) => (listener, thisArg, disposables) =>
+    track(host.events.on(name)(asExtension(listener), thisArg, disposables));
+  const documentEvent = (name) => (listener, thisArg, disposables) => {
+    need('workspaceRead');
+    return track(
+      host.events.on(name)(
+        asExtension((data) =>
+          listener(
+            name === 'documentChanged'
+              ? { document: document(state.documents.get(data.path) || data), contentChanges: [] }
+              : document(state.documents.get(data.path) || data),
+          ),
+        ),
+        thisArg,
+        disposables,
+      ),
+    );
+  };
 
   // -- commands
   const commands = namespace('commands', {
     registerCommand(command, callback) {
-      if (state.commands.has(command)) throw new Error(`command '${command}' already exists`);
+      need('commands');
+      const existing = state.commands.get(command);
+      if (existing) {
+        throw new Error(
+          existing.id === ext.id
+            ? `Command '${command}' is already registered by this extension.`
+            : `Command '${command}' is already registered by ${existing.id}; an extension can't replace another extension's command.`,
+        );
+      }
       state.commands.set(command, { id: ext.id, callback });
       notify('commands/registered', { command, extension: ext.id });
-      return new Disposable(() => {
+      return track(new Disposable(() => {
         if (state.commands.get(command) && state.commands.get(command).callback === callback) {
           state.commands.delete(command);
           notify('commands/unregistered', { command });
         }
-      });
+      }));
     },
     async executeCommand(command, ...args) {
+      need('commands');
       const local = state.commands.get(command);
       if (local) return local.callback(...args);
       return request('commands/execute', { command, args });
     },
     async getCommands(filterInternal) {
+      need('commands');
       return request('commands/getCommands', { filterInternal: !!filterInternal });
     },
   });
@@ -411,16 +458,21 @@ function createApi(host, ext) {
 
   function outputChannel(name, options) {
     let pendingLine = '';
-    const write = (text) => notify('log/output', { extension: ext.id, channel: name, text });
+    let closed = false;
+    const write = (text) => {
+      if (!closed) notify('log/output', { extension: ext.id, channel: name, text });
+    };
     const channel = {
       name,
       append(value) {
+        if (closed) return;
         pendingLine += String(value);
         const parts = pendingLine.split('\n');
         pendingLine = parts.pop();
         for (const part of parts) write(part.replace(/\r$/, ''));
       },
       appendLine(value) {
+        if (closed) return;
         write(pendingLine + String(value));
         pendingLine = '';
       },
@@ -435,8 +487,12 @@ function createApi(host, ext) {
         notify('ui/showOutput', { extension: ext.id, channel: name });
       },
       hide() {},
-      dispose() {},
+      dispose() {
+        closed = true;
+        pendingLine = '';
+      },
     };
+    track(channel);
     if (options && options.log) {
       for (const level of ['trace', 'debug', 'info', 'warn', 'error']) {
         channel[level] = (text, ...args) => channel.appendLine(`[${level}] ${[text, ...args].join(' ')}`);
@@ -445,11 +501,25 @@ function createApi(host, ext) {
     return channel;
   }
 
+  const trees = createTreeApi({
+    host,
+    ext,
+    track,
+    executeCommand: (command, ...args) => commands.executeCommand(command, ...args),
+    Disposable,
+    EventEmitter,
+  });
   const window = namespace('window', {
+    registerTreeDataProvider: trees.registerTreeDataProvider,
+    createTreeView: trees.createTreeView,
     showInformationMessage: message('info'),
     showWarningMessage: message('warning'),
     showErrorMessage: message('error'),
     createOutputChannel: outputChannel,
+    createTerminal() {
+      need('terminal');
+      throw new Error("VS Code API 'window.createTerminal' is not supported by OpenMind Studio yet.");
+    },
     async showQuickPick(items, options = {}) {
       const list = await Promise.resolve(items);
       const normalized = list.map((item) =>
@@ -537,23 +607,30 @@ function createApi(host, ext) {
       const folder = state.workspaceFolders.find((item) => target && target.startsWith(item.path + path.sep));
       return folder ? target.slice(folder.path.length + 1).replace(/\\/g, '/') : target;
     },
-    getConfiguration: configuration,
-    onDidChangeConfiguration: (listener, thisArg, disposables) =>
-      host.events.on('configuration')(
-        (data) =>
+    getConfiguration(section) {
+      need('settings');
+      return configuration(section);
+    },
+    onDidChangeConfiguration: (listener, thisArg, disposables) => {
+      need('settings');
+      return track(host.events.on('configuration')(
+        asExtension((data) =>
           listener({
             affectsConfiguration: (section) => data.changed.some((key) => key === section || key.startsWith(`${section}.`) || section.startsWith(`${key}.`)),
-          }),
+          })),
         thisArg,
         disposables,
-      ),
+      ));
+    },
     onDidChangeWorkspaceFolders: event('workspaceFolders'),
     get textDocuments() {
+      need('workspaceRead');
       return [...state.documents.values()].map(document);
     },
     async openTextDocument(target) {
       const file = toPath(target);
       if (!file) throw new Error('openTextDocument needs a file path or a file Uri.');
+      need(state.workspaceFolders.some((folder) => within(folder.path, file)) ? 'workspaceRead' : 'filesystemOutsideWorkspace');
       const known = state.documents.get(file);
       if (known) return document(known);
       const data = await request('workspace/openTextDocument', { path: file });
@@ -577,9 +654,9 @@ function createApi(host, ext) {
     const handle = `${ext.id}:${kind}:${handleCounter}`;
     state.providers.set(handle, { kind, extension: ext.id, invoke });
     notify('languages/registered', { handle, kind, extension: ext.id, selector: selectors(selector), ...extra });
-    return new Disposable(() => {
+    return track(new Disposable(() => {
       if (state.providers.delete(handle)) notify('languages/unregistered', { handle });
-    });
+    }));
   }
 
   const cancelled = new CancellationTokenSource().token;
@@ -589,6 +666,7 @@ function createApi(host, ext) {
   const languages = namespace('languages', {
     getLanguages: async () => request('workspace/getLanguages', {}),
     registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
+      need('languages');
       return register(
         'completion',
         selector,
@@ -609,6 +687,7 @@ function createApi(host, ext) {
       );
     },
     registerHoverProvider(selector, provider) {
+      need('languages');
       return register('hover', selector, async ({ path: file, position }) => {
         const result = await provider.provideHover(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
         if (!result) return null;
@@ -616,6 +695,7 @@ function createApi(host, ext) {
       });
     },
     registerDefinitionProvider(selector, provider) {
+      need('languages');
       return register('definition', selector, async ({ path: file, position }) => {
         const result = await provider.provideDefinition(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
         const list = Array.isArray(result) ? result : result ? [result] : [];
@@ -623,6 +703,7 @@ function createApi(host, ext) {
       });
     },
     createDiagnosticCollection(name = `collection-${(handleCounter += 1)}`) {
+      need('languages');
       const collection = `${ext.id}:${name}`;
       const stored = new Map();
       const push = (file, list) =>
@@ -631,7 +712,7 @@ function createApi(host, ext) {
           path: file,
           diagnostics: list.map((item) => ({ range: rangeOut(item.range), message: item.message, severity: item.severity, source: item.source, code: item.code === undefined ? undefined : String(item.code && item.code.value !== undefined ? item.code.value : item.code) })),
         });
-      return {
+      return track({
         name,
         set(target, diagnostics) {
           if (Array.isArray(target)) {
@@ -659,7 +740,7 @@ function createApi(host, ext) {
         dispose() {
           this.clear();
         },
-      };
+      });
     },
   });
 
@@ -682,11 +763,35 @@ function createApi(host, ext) {
     machineId: 'openmind-studio',
     sessionId: String(process.pid),
     shell: process.env.ComSpec || process.env.SHELL || '',
-    openExternal: async (uri) => request('ui/openExternal', { url: String(uri && uri.toString ? uri.toString() : uri) }),
+    openExternal: async (uri) => {
+      need('network');
+      return request('ui/openExternal', { url: String(uri && uri.toString ? uri.toString() : uri) });
+    },
+  });
+
+  // vscode.l10n: messages are shown as written (English), with {0} / {name} arguments filled in.
+  const l10n = namespace('l10n', {
+    t(message, ...args) {
+      let text = message;
+      let values = args;
+      if (message && typeof message === 'object') {
+        text = message.message;
+        values = message.args === undefined ? [] : [message.args];
+      }
+      const named = values.length === 1 && values[0] && typeof values[0] === 'object' && !Array.isArray(values[0]) ? values[0] : null;
+      const list = Array.isArray(values[0]) && values.length === 1 ? values[0] : values;
+      return String(text).replace(/\{([^}]+)\}/g, (whole, key) => {
+        const value = named ? named[key] : list[Number(key)];
+        return value === undefined ? whole : String(value);
+      });
+    },
+    bundle: undefined,
+    uri: undefined,
   });
 
   const api = {
     version: '1.85.0',
+    l10n,
     commands,
     window,
     workspace,
@@ -711,8 +816,30 @@ function createApi(host, ext) {
     CancellationTokenSource,
     ConfigurationTarget,
     ViewColumn,
+    TreeItem,
+    TreeItemCollapsibleState,
+    ThemeIcon,
   };
-  return namespace("", api);
+  const result = namespace('', api);
+  cleanups.set(result, () => {
+    for (const disposable of [...tracked].reverse()) {
+      try {
+        if (disposable && typeof disposable.dispose === 'function') disposable.dispose();
+      } catch (error) {
+        console.error(`dispose failed: ${error}`);
+      }
+    }
+    tracked.clear();
+  });
+  return result;
 }
 
-module.exports = { createApi, createEventHub, Uri, Disposable, EventEmitter, unsupported };
+const cleanups = new WeakMap();
+
+/** Undoes everything an extension registered through its `vscode` API (listeners, providers, channels...). */
+function disposeApi(api) {
+  const cleanup = cleanups.get(api);
+  if (cleanup) cleanup();
+}
+
+module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, unsupported };

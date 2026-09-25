@@ -1,0 +1,28 @@
+{
+  "name": "sample-tree-view",
+  "displayName": "Sample Tasks",
+  "description": "An activity bar icon with a tree view of tasks.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "sampleTasks.add", "title": "Sample Tasks: Add Task" },
+      { "command": "sampleTasks.open", "title": "Sample Tasks: Open Task" },
+      { "command": "sampleTasks.clear", "title": "Sample Tasks: Clear Tasks" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{ "id": "sampleTasks", "title": "Sample Tasks", "icon": "media/tasks.svg" }]
+    },
+    "views": {
+      "sampleTasks": [
+        { "id": "sampleTasks.list", "name": "Tasks" },
+        { "id": "sampleTasks.board", "name": "%sampleTasks.board%", "type": "webview" }
+      ]
+    },
+    "viewsWelcome": [
+      { "view": "sampleTasks.list", "contents": "No tasks yet.\n[Add Task](command:sampleTasks.add)" }
+    ]
+  }
+}

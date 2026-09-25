@@ -24,6 +24,8 @@ use crate::paths::ExtensionPaths;
 
 const HOST_JS: &str = include_str!("../host/host.js");
 const VSCODE_JS: &str = include_str!("../host/vscode.js");
+const GUARD_JS: &str = include_str!("../host/guard.js");
+const TREEVIEWS_JS: &str = include_str!("../host/treeviews.js");
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -305,7 +307,12 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
     std::fs::create_dir_all(&paths.host_dir).map_err(|err| {
         ExtensionError::io(format!("Couldn't create {}", paths.host_dir.display()), err)
     })?;
-    for (name, content) in [("host.js", HOST_JS), ("vscode.js", VSCODE_JS)] {
+    for (name, content) in [
+        ("host.js", HOST_JS),
+        ("vscode.js", VSCODE_JS),
+        ("guard.js", GUARD_JS),
+        ("treeviews.js", TREEVIEWS_JS),
+    ] {
         let file = paths.host_dir.join(name);
         if std::fs::read_to_string(&file).is_ok_and(|current| current == content) {
             continue;
@@ -330,6 +337,7 @@ pub fn host_descriptor(
         "globalStorage": paths.global_storage(&extension.id),
         "workspaceStorage": workspace_key.map(|key| paths.workspace_storage(&extension.id, key)),
         "logPath": paths.extension_logs(&extension.id),
+        "permissions": extension.permissions.accepted,
     })
 }
 

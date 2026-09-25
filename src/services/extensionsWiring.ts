@@ -11,15 +11,20 @@ import {
 } from "./extensionHostBridge";
 import { ExtensionHostService } from "./extensionHostService";
 import { HostDocumentSync } from "./extensionHostSync";
-import { ExtensionContributionService, type ContributionBinding } from "./extensionContributionService";
+import {
+  ExtensionContributionService,
+  type ContributionBinding,
+} from "./extensionContributionService";
 import { ExtensionMarketplaceService } from "./extensionMarketplaceService";
+import { ExtensionViewsService } from "./extensionViewsService";
+import { type MarketplaceApi, tauriMarketplaceApi } from "./marketplaceIpc";
 import { ExtensionPromptService } from "./extensionPromptService";
 import { toMarkers, type MarkerInput } from "./extensionProviderConvert";
 import { ExtensionRegistryService } from "./extensionRegistryService";
 import { ExtensionService } from "./extensionService";
 import type { IpcClient, SettingValue } from "./ipc";
 import type { KeybindingsManager } from "./keybindingsManager";
-import type { OutputService } from "./outputService";
+import { type OutputService, stamped } from "./outputService";
 import type { SettingsService } from "./settingsService";
 import type { ThemeService } from "./themeService";
 
@@ -39,6 +44,8 @@ export interface ExtensionsWiringDeps {
   workspacePath: () => string | null;
   /** Shows an Output channel to the user. */
   showOutput: (channel: string) => void;
+  /** Open VSX (tests pass their own). */
+  marketplaceApi?: MarketplaceApi;
   /** The Monaco parts (languages, snippets, editor actions, language features), injected. */
   binding: ContributionBinding;
   registerProvider: (
@@ -57,9 +64,21 @@ export interface ExtensionsWiringDeps {
  */
 export function wireExtensions(deps: ExtensionsWiringDeps) {
   const { ipc, events, commands, settings, documents, keybindingsManager } = deps;
+  // "Extensions" (install, enable, activation, host events) and "Extension Host" (what extensions print) always exist.
+  const log = (line: string) => {
+    deps.output.append("Extensions", stamped(line));
+  };
+  deps.output.ensureChannel("Extensions");
+  deps.output.ensureChannel("Extension Host");
   const prompts = new ExtensionPromptService();
   const registry = new ExtensionRegistryService(ipc, events);
-  const marketplace = new ExtensionMarketplaceService();
+  // Install from the marketplace = a verified download handed to the same trust dialog as a .vsix.
+  const marketplace = new ExtensionMarketplaceService(deps.marketplaceApi ?? tauriMarketplaceApi, {
+    install: (path) => service.inspect(path),
+    onError: (message) => {
+      events.emit("appError", { message });
+    },
+  });
   // Problems an extension reported for files that aren't open yet are kept until they are.
   const pendingDiagnostics = new Map<string, Map<string, MarkerInput[]>>();
 
@@ -137,6 +156,9 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     },
     knownCommands: () => [...new Set([...commands.list(), ...bridge.registeredCommands()])],
     onHostCommandsChanged: () => undefined,
+    onViewEvent: (method, params) => {
+      views.handleEvent(method, params);
+    },
   });
 
   const host: ExtensionHostService = new ExtensionHostService({
@@ -146,13 +168,34 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     bridge,
     sync,
     settingsValues: () => settings.values(),
+    log,
     workspaceFolders: () => {
       const path = deps.workspacePath();
       return path === null ? [] : [{ path, name: path.split(/[\\/]/).pop() ?? path }];
     },
   });
 
-  const service = new ExtensionService(ipc, events, registry, host, settings);
+  // Activity bar icons and tree views contributed by extensions.
+  const views: ExtensionViewsService = new ExtensionViewsService({
+    ipc,
+    registry,
+    host,
+    run: (command) => {
+      deps.run(command);
+    },
+    onError: (message) => {
+      events.emit("appError", { message });
+    },
+    context: () => {
+      const folder = deps.workspacePath();
+      return {
+        workbenchState: folder === null ? "empty" : "folder",
+        workspaceFolderCount: folder === null ? 0 : 1,
+      };
+    },
+  });
+
+  const service = new ExtensionService(ipc, events, registry, host, settings, log);
   const contributions = new ExtensionContributionService({
     ipc,
     events,
@@ -168,6 +211,8 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     deps.run(command);
   });
 
+  let startupFinished = false;
+
   /** Loads the installed extensions and starts following them. Nothing with code runs yet. */
   async function start(isMainWindow: boolean): Promise<void> {
     await registry.initialize();
@@ -179,12 +224,29 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       keybindingsManager.refresh();
     });
     keybindingsManager.refresh();
-    for (const id of documents.fileBackedIds()) contributions.languageOpened(documents.languageOf(id));
-    contributions.started(deps.workspacePath());
+    for (const id of documents.fileBackedIds())
+      contributions.languageOpened(documents.languageOf(id));
     events.on("workspaceFolderChanged", ({ workspace }) => {
-      if (workspace !== null) contributions.workspaceOpened(workspace.path);
+      if (startupFinished && workspace !== null) contributions.workspaceOpened(workspace.path);
     });
   }
 
-  return { prompts, registry, marketplace, host, bridge, service, contributions, start };
+  /** The window is up and the session restored: extensions that asked to start with the app ("*", onStartupFinished) may run now, not before. */
+  function finishStartup(): void {
+    startupFinished = true;
+    contributions.started(deps.workspacePath());
+  }
+
+  return {
+    prompts,
+    registry,
+    marketplace,
+    host,
+    bridge,
+    service,
+    contributions,
+    views,
+    start,
+    finishStartup,
+  };
 }

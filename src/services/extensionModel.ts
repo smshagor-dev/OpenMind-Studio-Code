@@ -2,6 +2,7 @@ import type {
   ExtensionHostStatus,
   ExtensionNodeInfo,
   InstalledExtension,
+  PermissionName,
 } from "./extensionsIpc";
 
 /** Shown before any `.vsix` is installed: extension code runs with the user's permissions. */
@@ -110,6 +111,76 @@ export function pointLines(extension: InstalledExtension): {
         : point.support === "metadata"
           ? "Metadata only"
           : "Not supported",
-    note: point.support === "unsupported" ? (point.note ?? NOT_SUPPORTED_POINT) : point.note,
+    note:
+      point.support === "unsupported"
+        ? (point.note ?? NOT_SUPPORTED_POINT)
+        : point.point === "languages"
+          ? "Disabling or uninstalling takes effect for languages after OpenMind Studio restarts."
+          : point.note,
   }));
+}
+
+// ---- permissions -------------------------------------------------------------------------------------------------
+
+export const PERMISSION_INFO: Record<PermissionName, { label: string; description: string }> = {
+  workspaceRead: { label: "Read the open folder", description: "Read files and open documents of the open folder." },
+  workspaceWrite: { label: "Change the open folder", description: "Create, change or delete files in the open folder." },
+  commands: { label: "Commands", description: "Register and run commands." },
+  settings: { label: "Settings", description: "Read settings and hear about changes." },
+  languages: { label: "Language features", description: "Add completion, hover, definitions and problems." },
+  themes: { label: "Colour themes", description: "Offer colour themes." },
+  snippets: { label: "Snippets", description: "Offer snippets." },
+  network: { label: "Network", description: "Use the network (HTTP, sockets, fetch, open links)." },
+  processExecution: { label: "Run programs", description: "Start other programs on this computer." },
+  terminal: { label: "Terminal", description: "Control terminals." },
+  filesystemOutsideWorkspace: {
+    label: "Files outside the open folder",
+    description: "Read or change any file on this computer.",
+  },
+};
+
+export interface PermissionLine {
+  name: PermissionName;
+  label: string;
+  description: string;
+  /** Asked for by the extension, implied by what it contributes, or both. */
+  origin: "requested" | "inferred" | "both";
+  highRisk: boolean;
+  accepted: boolean;
+}
+
+/** Every permission an extension asks for or implies, requested ones first. */
+export function permissionLines(extension: InstalledExtension): PermissionLine[] {
+  const { requested, inferred, accepted, highRisk } = extension.permissions;
+  const names = [...new Set([...requested, ...inferred])];
+  return names
+    .map((name): PermissionLine => ({
+      name,
+      ...PERMISSION_INFO[name],
+      origin: requested.includes(name) ? (inferred.includes(name) ? "both" : "requested") : "inferred",
+      highRisk: highRisk.includes(name),
+      accepted: accepted.includes(name),
+    }))
+    .sort((a, b) => Number(b.highRisk) - Number(a.highRisk) || a.label.localeCompare(b.label));
+}
+
+export const PERMISSION_LIMITS_NOTE =
+  "Permissions guard the extension host's APIs and Node modules (child_process, network, fs paths). They are not a sandbox: extension code runs as you.";
+
+/** The words for a host state. */
+export function hostStateText(host: ExtensionHostStatus): string {
+  switch (host.state) {
+    case "running":
+      return `Running${host.node ? ` (${host.node})` : ""}`;
+    case "starting":
+      return "Starting…";
+    case "restarting":
+      return "Restarting after a crash…";
+    case "crashed":
+      return `Stopped unexpectedly${host.error ? `: ${host.error}` : ""}`;
+    case "unavailable":
+      return host.error ?? NODE_REQUIRED;
+    default:
+      return "Not running (it starts when an extension needs it)";
+  }
 }

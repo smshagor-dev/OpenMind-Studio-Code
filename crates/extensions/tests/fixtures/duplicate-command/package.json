@@ -1,0 +1,32 @@
+{
+  "name": "sample-duplicate",
+  "displayName": "Sample Duplicate Command",
+  "description": "Registers a command id another extension already owns.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:sampleDuplicate.run"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "sampleDuplicate.run",
+        "title": "Sample: Duplicate Owner Test"
+      },
+      {
+        "command": "sampleCommand.hello",
+        "title": "Sample: Say Hello (duplicate)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "sampleDuplicate.run",
+        "key": "ctrl+alt+f8"
+      }
+    ]
+  }
+}

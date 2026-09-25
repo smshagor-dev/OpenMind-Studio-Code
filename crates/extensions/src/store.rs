@@ -11,7 +11,8 @@ use crate::contributions::{PointReport, Support};
 use crate::error::ExtensionError;
 use crate::manifest::{ActivationEvent, Manifest};
 use crate::paths::{is_plain_folder_name, ExtensionPaths};
-use crate::vsix;
+use crate::permissions::{self, PermissionSet};
+use crate::vsix::{self, Limits};
 
 /// One installed extension, everything the UI and the host need.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -28,6 +29,7 @@ pub struct InstalledExtension {
     pub runtime_requirement: Option<String>,
     pub warnings: Vec<String>,
     pub activation_events: Vec<String>,
+    pub permissions: PermissionSet,
 }
 
 /// A folder in `installed/` or `disabled/` that isn't a usable extension.
@@ -68,9 +70,24 @@ fn describe(
             ));
         }
     }
+    for event in &manifest.activation_events {
+        if let ActivationEvent::OnView(view) = event {
+            if !manifest.contributes.views.view_ids().any(|id| id == view) {
+                warnings.push(format!(
+                    "Activation event \"onView:{view}\" names a view that isn't shown, so it never triggers."
+                ));
+            }
+        }
+    }
     if manifest.browser.is_some() && manifest.main.is_none() {
         warnings.push("It only has a web (browser) entry, which isn't supported yet.".to_string());
     }
+    let inferred = permissions::infer(&manifest.contributes);
+    let permission_set = if path.as_os_str().is_empty() {
+        permissions::for_install(&manifest.requested_permissions, &inferred)
+    } else {
+        permissions::for_installed(&manifest.requested_permissions, &inferred, &path)
+    };
     InstalledExtension {
         id: manifest.id(),
         folder,
@@ -84,8 +101,34 @@ fn describe(
             .map(ActivationEvent::text)
             .collect(),
         warnings,
+        permissions: permission_set,
         manifest,
     }
+}
+
+/// The files a manifest points at must exist in the package (a theme, a snippets file, an icon, the entry
+/// point — for which VS Code allows leaving out `.js`).
+fn check_files(dir: &Path, manifest: &Manifest) -> Result<(), ExtensionError> {
+    let missing = |what: &str, path: &str| {
+        ExtensionError::Manifest(format!("{what} \"{path}\" is missing from the package"))
+    };
+    let exists = |path: &str| dir.join(path.trim_start_matches("./")).exists();
+    for theme in &manifest.contributes.themes {
+        if !exists(&theme.path) {
+            return Err(missing("the theme file", &theme.path));
+        }
+    }
+    for snippets in &manifest.contributes.snippets {
+        if !exists(&snippets.path) {
+            return Err(missing("the snippets file", &snippets.path));
+        }
+    }
+    if let Some(main) = &manifest.main {
+        if !exists(main) && !exists(&format!("{main}.js")) {
+            return Err(missing("the entry point", main));
+        }
+    }
+    Ok(())
 }
 
 /// What an extension would look like once installed, for the install confirmation (no path yet).
@@ -122,11 +165,21 @@ pub fn ensure_inside(base: &Path, target: &Path) -> Result<PathBuf, ExtensionErr
 #[derive(Debug, Clone)]
 pub struct ExtensionStore {
     paths: ExtensionPaths,
+    limits: Limits,
 }
 
 impl ExtensionStore {
     pub fn new(paths: ExtensionPaths) -> Self {
-        Self { paths }
+        Self {
+            paths,
+            limits: Limits::default(),
+        }
+    }
+
+    /// A store with other archive limits (tests use tiny ones).
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub fn paths(&self) -> &ExtensionPaths {
@@ -145,7 +198,10 @@ impl ExtensionStore {
             let folder = entry.file_name().to_string_lossy().into_owned();
             let manifest = fs::read_to_string(path.join("package.json"))
                 .map_err(|err| format!("package.json can't be read: {err}"))
-                .and_then(|text| Manifest::parse(&text).map_err(|err| err.to_string()));
+                .and_then(|text| {
+                    let nls = fs::read_to_string(path.join("package.nls.json")).ok();
+                    Manifest::parse_localized(&text, nls.as_deref()).map_err(|err| err.to_string())
+                });
             match manifest {
                 Ok(manifest) => into
                     .extensions
@@ -185,6 +241,23 @@ impl ExtensionStore {
             };
             name(a).cmp(&name(b)).then_with(|| a.id.cmp(&b.id))
         });
+        // Two enabled extensions contributing one command id: the first (in this order) keeps it.
+        let mut owners: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for extension in listing.extensions.iter_mut().filter(|e| e.enabled) {
+            for command in extension.manifest.contributes.commands.clone() {
+                match owners.get(&command.command) {
+                    Some(owner) if *owner != extension.id => extension.warnings.push(format!(
+                        "Its command \"{}\" is already contributed by {owner}, which keeps it.",
+                        command.command
+                    )),
+                    Some(_) => {}
+                    None => {
+                        owners.insert(command.command, extension.id.clone());
+                    }
+                }
+            }
+        }
         listing.broken.sort_by(|a, b| a.folder.cmp(&b.folder));
         listing
     }
@@ -207,7 +280,7 @@ impl ExtensionStore {
         replace: bool,
     ) -> Result<InstalledExtension, ExtensionError> {
         self.paths.ensure()?;
-        let inspected = vsix::inspect(vsix_path)?;
+        let inspected = vsix::inspect_with(vsix_path, &self.limits)?;
         let manifest = inspected.manifest;
         let folder = ExtensionPaths::folder_name(&manifest);
         if !is_plain_folder_name(&folder) {
@@ -235,15 +308,25 @@ impl ExtensionStore {
             .staging
             .join(format!("{folder}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&staging);
-        if let Err(error) = vsix::extract(vsix_path, &staging) {
+        if let Err(error) = vsix::extract_with(vsix_path, &staging, &self.limits) {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
         // The extracted manifest must be the one that was validated.
         let staged = fs::read_to_string(staging.join("package.json"))
             .map_err(|err| ExtensionError::io("Couldn't read the extracted package.json", err))
-            .and_then(|text| Manifest::parse(&text));
-        if let Err(error) = staged {
+            .and_then(|text| {
+                let nls = fs::read_to_string(staging.join("package.nls.json")).ok();
+                Manifest::parse_localized(&text, nls.as_deref())
+            });
+        let checked = staged
+            .and_then(|staged| check_files(&staging, &staged))
+            .and_then(|()| {
+                let inferred = permissions::infer(&manifest.contributes);
+                let accepted = permissions::for_install(&manifest.requested_permissions, &inferred);
+                permissions::store_accepted(&staging, &accepted.accepted)
+            });
+        if let Err(error) = checked {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
@@ -352,6 +435,7 @@ pub fn supported_points(extension: &InstalledExtension) -> Vec<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::permissions::Permission;
 
     struct Rig {
         _dir: tempfile::TempDir,
@@ -642,6 +726,242 @@ mod tests {
                 .expect("ok")
                 .runtime_requirement,
             None
+        );
+    }
+
+    fn listing_ids(r: &Rig) -> Vec<String> {
+        r.store
+            .list()
+            .extensions
+            .into_iter()
+            .map(|e| e.id)
+            .collect()
+    }
+
+    #[test]
+    fn permissions_are_shown_before_installing_and_stored_when_installed() {
+        let r = rig();
+        let vsix = make_vsix(
+            &r.root,
+            "perm",
+            "1.0.0",
+            r#","openmindPermissions":["network"],"contributes":{"commands":[{"command":"perm.run","title":"Run"}]}"#,
+        );
+        let preview = super::preview(vsix::inspect(&vsix).expect("inspected").manifest);
+        assert_eq!(preview.permissions.requested, vec![Permission::Network]);
+        assert_eq!(preview.permissions.inferred, vec![Permission::Commands]);
+        assert_eq!(preview.permissions.high_risk, vec![Permission::Network]);
+        let installed = r.store.install(&vsix, false).expect("installed");
+        assert_eq!(
+            installed.permissions.accepted,
+            vec![Permission::Commands, Permission::Network]
+        );
+        assert!(installed.path.join(permissions::ACCEPTED_FILE).is_file());
+    }
+
+    #[test]
+    fn an_unknown_permission_is_refused_and_nothing_is_installed() {
+        let r = rig();
+        // Not even a package can be built with one; a hand-made archive is refused when it is read.
+        let source = r.root.join("src-wild");
+        fs::create_dir_all(&source).expect("mkdir");
+        fs::write(
+            source.join("package.json"),
+            r#"{"name":"wild","version":"1.0.0","openmindPermissions":["root"]}"#,
+        )
+        .expect("manifest");
+        assert!(vsix::pack(&source, &r.root.join("wild.vsix")).is_err());
+        assert!(listing_ids(&r).is_empty());
+    }
+
+    #[test]
+    fn an_oversized_or_overfull_package_is_refused_before_anything_is_written() {
+        let r = rig();
+        let vsix = make_vsix(&r.root, "big", "1.0.0", "");
+        let tiny_archive = Limits {
+            max_archive_bytes: 10,
+            ..Limits::default()
+        };
+        let err = r
+            .store
+            .clone()
+            .with_limits(tiny_archive)
+            .install(&vsix, false)
+            .expect_err("archive limit");
+        assert!(err.to_string().contains("limit"), "{err}");
+        let tiny_total = Limits {
+            max_total_bytes: 10,
+            ..Limits::default()
+        };
+        let err = r
+            .store
+            .clone()
+            .with_limits(tiny_total)
+            .install(&vsix, false)
+            .expect_err("size limit");
+        assert!(err.to_string().contains("extract to more than"), "{err}");
+        let few_files = Limits {
+            max_entries: 1,
+            ..Limits::default()
+        };
+        let err = r
+            .store
+            .clone()
+            .with_limits(few_files)
+            .install(&vsix, false)
+            .expect_err("count limit");
+        assert!(err.to_string().contains("more than 1 files"), "{err}");
+        let small_manifest = Limits {
+            max_manifest_bytes: 5,
+            ..Limits::default()
+        };
+        let err = r
+            .store
+            .clone()
+            .with_limits(small_manifest)
+            .install(&vsix, false)
+            .expect_err("manifest limit");
+        assert!(err.to_string().contains("unreasonably large"), "{err}");
+        assert!(listing_ids(&r).is_empty());
+        assert!(!r.store.paths().installed.join("acme.big-1.0.0").exists());
+    }
+
+    #[test]
+    fn ids_with_path_characters_are_refused() {
+        for (name, publisher) in [
+            ("a/b", "acme"),
+            ("..", "acme"),
+            ("ok", "a\\b"),
+            ("a b", "acme"),
+            ("c:x", "acme"),
+        ] {
+            let text =
+                format!(r#"{{"name":"{name}","version":"1.0.0","publisher":"{publisher}"}}"#);
+            assert!(Manifest::parse(&text).is_err(), "{name} / {publisher}");
+        }
+    }
+
+    #[test]
+    fn a_manifest_missing_required_fields_is_refused() {
+        for text in [
+            r#"{"version":"1.0.0"}"#,
+            r#"{"name":"x"}"#,
+            r#"{"name":"x","version":"one"}"#,
+            "[]",
+            "not json",
+        ] {
+            assert!(Manifest::parse(text).is_err(), "{text}");
+        }
+    }
+
+    #[test]
+    fn contribution_mistakes_are_refused_with_a_clear_message() {
+        let base = |contributes: &str| {
+            format!(r#"{{"name":"x","version":"1.0.0","contributes":{contributes}}}"#)
+        };
+        let no_title =
+            Manifest::parse(&base(r#"{"commands":[{"command":"x.run"}]}"#)).expect_err("title");
+        assert!(no_title.to_string().contains("has no title"), "{no_title}");
+        let twice = Manifest::parse(&base(
+            r#"{"commands":[{"command":"x.run","title":"A"},{"command":"x.run","title":"B"}]}"#,
+        ))
+        .expect_err("duplicate");
+        assert!(twice.to_string().contains("twice"), "{twice}");
+        let default = Manifest::parse(&base(
+            r#"{"configuration":{"properties":{"x.n":{"type":"integer","default":"many"}}}}"#,
+        ))
+        .expect_err("default");
+        assert!(
+            default.to_string().contains("default of setting \"x.n\""),
+            "{default}"
+        );
+        let enum_default = Manifest::parse(&base(
+            r#"{"configuration":{"properties":{"x.m":{"type":"string","enum":["a","b"],"default":"c"}}}}"#,
+        ))
+        .expect_err("enum default");
+        assert!(
+            enum_default.to_string().contains("invalid"),
+            "{enum_default}"
+        );
+    }
+
+    #[test]
+    fn a_manifest_pointing_at_a_missing_file_is_refused_and_leaves_no_trace() {
+        let r = rig();
+        let vsix = make_vsix(
+            &r.root,
+            "gone",
+            "1.0.0",
+            r#","contributes":{"themes":[{"label":"T","uiTheme":"vs-dark","path":"./missing.json"}]}"#,
+        );
+        let err = r.store.install(&vsix, false).expect_err("missing theme");
+        assert!(err.to_string().contains("theme file"), "{err}");
+        let vsix = make_vsix(
+            &r.root,
+            "gone2",
+            "1.0.0",
+            r#","contributes":{"snippets":[{"language":"x","path":"./nope.json"}]}"#,
+        );
+        let err = r.store.install(&vsix, false).expect_err("missing snippets");
+        assert!(err.to_string().contains("snippets file"), "{err}");
+        assert!(listing_ids(&r).is_empty());
+        assert!(
+            fs::read_dir(&r.store.paths().staging)
+                .map(|d| d.count())
+                .unwrap_or(0)
+                == 0
+        );
+    }
+
+    #[test]
+    fn a_failed_install_leaves_the_other_extensions_intact() {
+        let r = rig();
+        let good = make_vsix(&r.root, "good", "1.0.0", "");
+        r.store.install(&good, false).expect("installed");
+        let bad = make_vsix(
+            &r.root,
+            "bad",
+            "1.0.0",
+            r#","contributes":{"themes":[{"label":"T","path":"./missing.json"}]}"#,
+        );
+        assert!(r.store.install(&bad, false).is_err());
+        assert!(r
+            .store
+            .install(&r.root.join("missing.vsix"), false)
+            .is_err());
+        assert_eq!(listing_ids(&r), vec!["acme.good".to_string()]);
+        assert!(r.store.list().broken.is_empty());
+    }
+
+    #[test]
+    fn two_extensions_contributing_one_command_are_reported() {
+        let r = rig();
+        let contributes = r#","contributes":{"commands":[{"command":"shared.run","title":"Run"}]}"#;
+        r.store
+            .install(&make_vsix(&r.root, "aaa", "1.0.0", contributes), false)
+            .expect("a");
+        r.store
+            .install(&make_vsix(&r.root, "bbb", "1.0.0", contributes), false)
+            .expect("b");
+        let listing = r.store.list();
+        let first = listing
+            .extensions
+            .iter()
+            .find(|e| e.id == "acme.aaa")
+            .expect("aaa");
+        let second = listing
+            .extensions
+            .iter()
+            .find(|e| e.id == "acme.bbb")
+            .expect("bbb");
+        assert!(first.warnings.iter().all(|w| !w.contains("shared.run")));
+        assert!(
+            second
+                .warnings
+                .iter()
+                .any(|w| w.contains("shared.run") && w.contains("acme.aaa")),
+            "{:?}",
+            second.warnings
         );
     }
 }

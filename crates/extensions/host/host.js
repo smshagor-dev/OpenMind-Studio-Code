@@ -3,17 +3,30 @@
 // Rust process. It talks to OpenMind Studio over JSON-RPC 2.0 on stdio (Content-Length framing, like LSP).
 //
 // Application -> host requests:  host/init, host/activate, host/deactivate, host/executeCommand,
-//                                host/provide, host/shutdown
+//                                host/provide, host/tree, host/shutdown
 // Application -> host notifications: host/configurationChanged, host/document*, host/activeEditorChanged,
 //                                host/workspaceFoldersChanged
 // Host -> application requests:  ui/*, workspace/*, commands/execute, commands/getCommands
 // Host -> application notifications: log/output, commands/registered, commands/unregistered,
-//                                languages/registered, languages/unregistered, diagnostics/set
+//                                languages/registered, languages/unregistered, diagnostics/set,
+//                                views/registered, views/unregistered, views/changed, views/message, views/title
 
 const Module = require('module');
 const path = require('path');
 const fs = require('fs');
-const { createApi } = require('./vscode.js');
+const { AsyncLocalStorage } = require('async_hooks');
+const { createApi, disposeApi, setUnsupportedReporter } = require('./vscode.js');
+const { createGuard, permissionError, modulePermission } = require('./guard.js');
+const { handleTreeRequest } = require('./treeviews.js');
+
+// Which extension is running the current code, across awaits: what it logs, and what it may do, is decided by it.
+const als = new AsyncLocalStorage();
+const who = () => als.getStore() || 'host';
+const realExit = process.exit.bind(process);
+// An extension can't stop the host (and with it every other extension).
+process.exit = () => {
+  throw new Error('process.exit() is not available to extensions.');
+};
 
 const realStdoutWrite = process.stdout.write.bind(process.stdout);
 
@@ -51,22 +64,21 @@ function formatArgs(args) {
     .join(' ');
 }
 
-let currentExtension = 'host';
 for (const level of ['log', 'info', 'warn', 'error', 'debug']) {
-  console[level] = (...args) => log(currentExtension, 'console', `[${level}] ${formatArgs(args)}`);
+  console[level] = (...args) => log(who(), 'console', `[${level}] ${formatArgs(args)}`);
 }
 process.stdout.write = (chunk) => {
-  log(currentExtension, 'console', String(chunk).replace(/\r?\n$/, ''));
+  log(who(), 'console', String(chunk).replace(/\r?\n$/, ''));
   return true;
 };
 process.stderr.write = (chunk) => {
-  log(currentExtension, 'console', String(chunk).replace(/\r?\n$/, ''));
+  log(who(), 'console', String(chunk).replace(/\r?\n$/, ''));
   return true;
 };
 
 // An extension's uncaught error is reported and attributed, never fatal for the host.
-process.on('uncaughtException', (error) => log(currentExtension, 'error', `Uncaught exception: ${error && error.stack ? error.stack : error}`));
-process.on('unhandledRejection', (error) => log(currentExtension, 'error', `Unhandled rejection: ${error && error.stack ? error.stack : error}`));
+process.on('uncaughtException', (error) => log(who(), 'error', `Uncaught exception: ${error && error.stack ? error.stack : error}`));
+process.on('unhandledRejection', (error) => log(who(), 'error', `Unhandled rejection: ${error && error.stack ? error.stack : error}`));
 
 // ---- state ---------------------------------------------------------------------------------------------------------
 
@@ -81,23 +93,61 @@ const state = {
   activeEditor: null,
 };
 
-const host = { state, request, notify, log };
+const host = { state, request, notify, log, als };
+setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
 
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
 const originalLoad = Module._load;
+const guards = new Map();
+function guardOf(id) {
+  if (!guards.has(id)) guards.set(id, createGuard(state.extensions.get(id), () => state.workspaceFolders));
+  return guards.get(id);
+}
+function ownerOf(parent) {
+  const file = parent && parent.filename ? path.resolve(parent.filename) : '';
+  for (const [id] of state.running) {
+    const root = path.resolve(state.extensions.get(id).path);
+    if (file === root || file.startsWith(root + path.sep)) return id;
+  }
+  return null;
+}
 Module._load = function (requested, parent, isMain) {
   if (requested === 'vscode') {
-    const file = parent && parent.filename ? path.resolve(parent.filename) : '';
-    for (const [id, run] of state.running) {
-      const root = path.resolve(state.extensions.get(id).path);
-      if (file === root || file.startsWith(root + path.sep)) return run.api;
-    }
+    const owner = ownerOf(parent);
+    if (owner) return state.running.get(owner).api;
     throw new Error("The 'vscode' module can only be used by an activated extension.");
+  }
+  const owner = ownerOf(parent);
+  if (owner) {
+    const args = arguments;
+    return guardOf(owner).moduleFor(requested, () => originalLoad.apply(Module, args));
   }
   return originalLoad.apply(this, arguments);
 };
+
+// fetch and WebSocket are globals: whoever is running (see `als`) needs the 'network' permission.
+function guardGlobals() {
+  const allowed = () => {
+    const id = als.getStore();
+    const descriptor = id && state.extensions.get(id);
+    return !descriptor || (descriptor.permissions || []).includes('network');
+  };
+  if (typeof globalThis.fetch === 'function') {
+    const realFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = (...args) => (allowed() ? realFetch(...args) : Promise.reject(permissionError('network')));
+  }
+  if (typeof globalThis.WebSocket === 'function') {
+    globalThis.WebSocket = new Proxy(globalThis.WebSocket, {
+      construct(target, args) {
+        if (!allowed()) throw permissionError('network');
+        return Reflect.construct(target, args);
+      },
+    });
+  }
+}
+guardGlobals();
 
 function insideExtension(descriptor, file) {
   const root = path.resolve(descriptor.path);
@@ -153,7 +203,43 @@ const handlers = {
     return { ok: true };
   },
 
-  'host/activate': async (params) => {
+  'host/activate': (params) => als.run(params.id, () => activate(params)),
+
+  'host/deactivate': async (params) => deactivate(params.id),
+
+  'host/executeCommand': async (params) => {
+    const entry = state.commands.get(params.command);
+    if (!entry) throw new Error(`Command '${params.command}' isn't registered by an activated extension.`);
+    return als.run(entry.id, async () => {
+      try {
+        return await entry.callback(...(params.args || []).map(reviveArgument));
+      } catch (error) {
+        log(entry.id, 'error', `Command '${params.command}' failed: ${error && error.stack ? error.stack : error}`);
+        throw error;
+      }
+    });
+  },
+
+  'host/provide': async (params) => {
+    const entry = state.providers.get(params.handle);
+    if (!entry) throw new Error('This language feature is no longer registered.');
+    return als.run(entry.extension, () => entry.invoke(params));
+  },
+
+  'host/tree': async (params) => {
+    const tree = state.trees && state.trees.get(params.view);
+    return als.run(tree ? tree.extension : 'host', () => handleTreeRequest(state, params));
+  },
+
+  'host/shutdown': async () => {
+    for (const id of [...state.running.keys()]) await deactivate(id);
+    setImmediate(() => realExit(0));
+    return { ok: true };
+  },
+};
+
+async function activate(params) {
+  {
     const descriptor = state.extensions.get(params.id);
     if (!descriptor) throw new Error(`Extension '${params.id}' is not known to the extension host.`);
     if (state.running.has(params.id)) return { activated: false };
@@ -161,7 +247,6 @@ const handlers = {
     const mainFile = path.resolve(descriptor.path, descriptor.main);
     const file = fs.existsSync(mainFile) || path.extname(mainFile) ? mainFile : `${mainFile}.js`;
     if (!insideExtension(descriptor, file)) throw new Error('The extension entry point is outside its folder.');
-    currentExtension = descriptor.id;
     const subscriptions = [];
     const context = {
       subscriptions,
@@ -194,39 +279,14 @@ const handlers = {
       const message = error && error.message ? error.message : String(error);
       log(descriptor.id, 'error', `Activation failed: ${error && error.stack ? error.stack : message}`);
       throw new Error(`Activating ${descriptor.id} failed: ${message}`);
-    } finally {
-      currentExtension = 'host';
     }
     return { activated: true };
-  },
+  }
 
-  'host/deactivate': async (params) => deactivate(params.id),
-
-  'host/executeCommand': async (params) => {
-    const entry = state.commands.get(params.command);
-    if (!entry) throw new Error(`Command '${params.command}' isn't registered by an activated extension.`);
-    currentExtension = entry.id;
-    try {
-      return await entry.callback(...(params.args || []).map(reviveArgument));
-    } finally {
-      currentExtension = 'host';
-    }
-  },
-
-  'host/provide': async (params) => {
-    const entry = state.providers.get(params.handle);
-    if (!entry) throw new Error('This language feature is no longer registered.');
-    return entry.invoke(params);
-  },
-
-  'host/shutdown': async () => {
-    for (const id of [...state.running.keys()]) await deactivate(id);
-    setImmediate(() => process.exit(0));
-    return { ok: true };
-  },
-};
+}
 
 function cleanup(run) {
+  disposeApi(run.api);
   for (const disposable of run.subscriptions.splice(0).reverse()) {
     try {
       if (disposable && typeof disposable.dispose === 'function') disposable.dispose();
@@ -239,13 +299,12 @@ function cleanup(run) {
 async function deactivate(id) {
   const run = state.running.get(id);
   if (!run) return { deactivated: false };
-  currentExtension = id;
   try {
-    if (run.module && typeof run.module.deactivate === 'function') await run.module.deactivate();
+    if (run.module && typeof run.module.deactivate === 'function') {
+      await als.run(id, () => run.module.deactivate());
+    }
   } catch (error) {
     log(id, 'error', `deactivate failed: ${error && error.message ? error.message : error}`);
-  } finally {
-    currentExtension = 'host';
   }
   cleanup(run);
   for (const [command, entry] of state.commands) {
@@ -353,5 +412,5 @@ process.stdin.on('data', (chunk) => {
     dispatch(message);
   }
 });
-process.stdin.on('end', () => process.exit(0));
+process.stdin.on('end', () => realExit(0));
 notify('host/ready', { node: process.version, pid: process.pid });

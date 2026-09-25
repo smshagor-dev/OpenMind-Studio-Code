@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandRegistry } from "../services/commandRegistry";
 import { EventBus } from "../services/eventBus";
+import { ExtensionViewsService } from "../services/extensionViewsService";
 import type { AppEvents } from "../services/events";
 import type { SearchOutcome } from "../services/ipc";
 import { LayoutService } from "../services/layoutService";
@@ -11,6 +12,11 @@ import { PanelService } from "../services/panelService";
 import { PortsService } from "../services/portsService";
 import { SearchService } from "../services/searchService";
 import { TerminalService } from "../services/terminalService";
+import {
+  createFakeExtensionsIpc,
+  emptyContributions,
+  testExtension,
+} from "../testUtils/fakeExtensionsIpc";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
@@ -66,6 +72,36 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
   const run = vi.fn((id: string, ...args: unknown[]) => {
     void commands.execute(id, ...args);
   });
+  const tasks = testExtension({
+    manifest: {
+      ...testExtension().manifest,
+      name: "sample-tree-view",
+      displayName: "Sample Tasks",
+      contributes: {
+        ...emptyContributions(),
+        views: {
+          containers: [
+            {
+              id: "sampleTasks",
+              title: "Sample Tasks",
+              icon: "media/tasks.svg",
+              views: [{ id: "sampleTasks.list", name: "Tasks", kind: "tree", welcome: [] }],
+            },
+          ],
+          elsewhere: 0,
+          otherContainers: 0,
+        },
+      },
+    },
+  });
+  const installed = [tasks];
+  const views = new ExtensionViewsService({
+    ipc: createFakeExtensionsIpc(),
+    registry: { all: () => installed, subscribe: () => () => undefined },
+    host: { activateFor: vi.fn().mockResolvedValue([]) },
+    run: vi.fn(),
+    onError: vi.fn(),
+  });
   const followLink = vi.fn().mockResolvedValue(undefined);
   const documents = {
     has: () => true,
@@ -94,6 +130,7 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
       getProblemFiles: () => FAKE_PROBLEMS.files,
     },
     workspace: { openProblemAt: vi.fn() },
+    extensions: { views },
   };
   return { ipc, layout, panel, output, ports, search, run, openPathAt, followLink };
 }
@@ -101,6 +138,22 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
 describe("ActivityBar", () => {
   beforeEach(() => {
     harness.current = null;
+  });
+
+  it("shows an extension's activity bar container as an icon that opens its view", async () => {
+    const { layout } = setup();
+    render(<ActivityBar sidebarVisible />);
+    const icon = screen.getByRole("button", { name: "Sample Tasks" });
+    // The SVG icon is read from the extension and drawn as a mask in the activity bar's colour.
+    await waitFor(() => {
+      expect(icon.querySelector(".activity-bar__ext-icon")).not.toBeNull();
+    });
+    fireEvent.click(icon);
+    await waitFor(() => {
+      expect(layout.getState().activeView).toBe(
+        "ext:openmind-samples.sample-tree-view/sampleTasks",
+      );
+    });
   });
 
   it("lists every view plus Runtime Manager, and the unavailable ones are disabled with a reason", () => {
