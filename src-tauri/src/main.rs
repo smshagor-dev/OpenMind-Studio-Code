@@ -87,6 +87,7 @@ fn main() {
             commands::php::php_window_open,
             commands::php::php_web_root,
             windows::window_new,
+            windows::window_take_pending_open,
             commands::database::mariadb_status,
             commands::database::mariadb_credentials,
             commands::database::mariadb_initialize,

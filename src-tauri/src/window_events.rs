@@ -50,29 +50,48 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             save_main_geometry(&window, &service).await;
 
             let app = window.app_handle().clone();
-            let hide_wanted = crate::commands::preferences::user_bool(
-                &app.state::<AppState>(),
-                "php.tray.hideOnClose",
-            );
-            if hide_wanted && crate::tray::servers_running(&app) {
-                match crate::tray::ensure(&app) {
-                    Ok(()) => {
-                        tracing::info!(
-                            "servers are running: hiding to the tray instead of quitting"
-                        );
-                        if let Err(err) = window.hide() {
-                            tracing::error!(?err, "failed to hide the main window");
-                        }
-                        return;
-                    }
-                    Err(err) => {
-                        tracing::error!(?err, "no tray icon; quitting and stopping the servers");
-                    }
+            let visible = crate::windows::visible_editor_windows(&app);
+            if !crate::windows::is_last_editor_window(&visible, MAIN_WINDOW_LABEL) {
+                // Other windows stay open (VS Code): this one goes away with its
+                // terminals and watcher. It is hidden, not destroyed, because it
+                // owns the saved session; the tray's Show brings it back.
+                crate::windows::release_window(&app, MAIN_WINDOW_LABEL);
+                if let Err(err) = window.hide() {
+                    tracing::error!(?err, "failed to hide the main window");
                 }
+                return;
             }
-            shutdown(app).await;
+            close_last_editor_window(app, window).await;
         });
     });
+}
+
+/// The last editor window on screen is closing: hide to the tray while a PHP
+/// stack server runs (if the user wants that), otherwise quit.
+pub async fn close_last_editor_window(app: AppHandle, window: WebviewWindow) {
+    let hide_wanted =
+        crate::commands::preferences::user_bool(&app.state::<AppState>(), "php.tray.hideOnClose");
+    if hide_wanted && crate::tray::servers_running(&app) {
+        match crate::tray::ensure(&app) {
+            Ok(()) => {
+                tracing::info!("servers are running: hiding to the tray instead of quitting");
+                // An extra window goes for good; the tray brings back the main one.
+                let result = if window.label() == MAIN_WINDOW_LABEL {
+                    window.hide()
+                } else {
+                    window.destroy()
+                };
+                if let Err(err) = result {
+                    tracing::error!(?err, "failed to close the window for the tray");
+                }
+                return;
+            }
+            Err(err) => {
+                tracing::error!(?err, "no tray icon; quitting and stopping the servers");
+            }
+        }
+    }
+    shutdown(app).await;
 }
 
 async fn save_main_geometry(window: &WebviewWindow, service: &WindowStateService) {

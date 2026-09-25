@@ -55,6 +55,7 @@ export function EditorGroupView(props: EditorGroupViewProps) {
           onKeepOpen={(id) => {
             container.workspace.pinTab(group.id, id);
           }}
+          onDetach={(id, at) => void container.editorWindows.moveToNewWindow(group.id, id, at)}
         />
         <EditorHeaderActions
           groupId={group.id}

@@ -1,3 +1,4 @@
+import { droppedOutside } from "../services/editorWindowService";
 import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseIcon } from "./icons";
@@ -9,7 +10,12 @@ interface TabBarProps {
   onClose: (id: string) => void;
   /** Double-click: keep a provisional tab open. */
   onKeepOpen: (id: string) => void;
+  /** A tab dragged out of the window (VS Code opens it in a new window); `at` = drop point on screen. */
+  onDetach?: (id: string, at: { x: number; y: number }) => void;
 }
+
+/** The drag type of a tab, so other drop targets (the explorer) ignore it. */
+const TAB_DRAG_TYPE = "application/x-openmind-tab";
 
 function tabTitle(tab: EditorTabView): string {
   const base = tab.path ?? tab.title;
@@ -24,7 +30,7 @@ function tabTitle(tab: EditorTabView): string {
  * into × on hover. A provisional ("preview") tab is italic until it is edited
  * or double-clicked. Middle-click closes; the wheel scrolls horizontally.
  */
-export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach }: TabBarProps) {
   if (tabs.length === 0) {
     return <div className="tab-bar" />;
   }
@@ -56,6 +62,21 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen }: TabBar
             aria-selected={active}
             className={className}
             title={tabTitle(tab)}
+            draggable={onDetach !== undefined}
+            onDragStart={(event) => {
+              event.dataTransfer.setData(TAB_DRAG_TYPE, tab.id);
+              event.dataTransfer.effectAllowed = "move";
+            }}
+            onDragEnd={(event) => {
+              // Nothing inside the window took it, and it was let go outside the window.
+              const outside = droppedOutside(
+                { x: event.clientX, y: event.clientY },
+                { width: window.innerWidth, height: window.innerHeight },
+              );
+              if (event.dataTransfer.dropEffect === "none" && outside) {
+                onDetach?.(tab.id, { x: event.screenX, y: event.screenY });
+              }
+            }}
             onMouseDown={(event) => {
               if (event.button === 0) onSelect(tab.id);
             }}

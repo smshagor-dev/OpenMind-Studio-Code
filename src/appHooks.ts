@@ -44,6 +44,8 @@ export function useAppStartup(): boolean {
       );
       await container.workspace.restoreActiveWorkspace();
       await container.workspace.restoreSession();
+      // A window opened for a tab dragged out of another window opens that file.
+      await container.editorWindows.openPending();
       await container.runCode.initialize();
       await container.php.initialize();
       // The main window mirrors the database services' output and ports too.

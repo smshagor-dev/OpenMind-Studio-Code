@@ -339,8 +339,16 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   (`WorkspaceFolderService::remember_folder`) but is not restored; its session and the workbench keys
   `editor.layout`/`panel.state` (`commands::settings` `MAIN_WINDOW_ONLY_KEYS`) are neither read nor written, so it
   never overwrites the main window's. Watchers are per window and `fs:changed` goes only to that window; a terminal
-  belongs to the window that opened it (output/exit via `emit_to`) and dies with it. Closing an extra window ends its
-  terminals and watcher; closing `main` quits the app (all windows) — or hides it to the tray while a server runs.
+  belongs to the window that opened it (output/exit via `emit_to`) and dies with it. **Closing a window closes only
+  that window** (VS Code): its terminals and watcher end (`windows::release_window`); `main` is *hidden* rather than
+  destroyed while another editor window is on screen, because it owns the saved session (the tray's Show brings it
+  back). The last editor window on screen (`is_last_editor_window`) quits the app — or hides to the tray while a
+  server runs (`window_events::close_last_editor_window`). **Tab drag-out**: a saved text tab dragged out of the tab
+  bar and let go outside the window (`dragend` with `dropEffect` "none" beyond the viewport) opens in a new window at
+  the drop point (`EditorWindowService.moveToNewWindow` -> `window_new(path, x, y)`, kept inside the monitor's work
+  area by `keep_inside`; the new window takes its file with `window_take_pending_open`) and leaves this window; an
+  untitled or unsaved tab stays with a notice. Command `workbench.moveEditorToNewWindow` does the same for the
+  active tab.
   Not per window yet: Run Code / Output channels (`run:event`, `git:log` still reach every window), LSP
   (`commands/lsp.rs` still asks `active_workspace()`, i.e. the main window's folder), and extra windows are not
   restored on relaunch.

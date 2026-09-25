@@ -28,6 +28,16 @@
   flex-direction: row-reverse;
 }
 
+/* With the side bar open, a 1px line separates it from the activity bar (VS Code). */
+.workbench__side > .activity-bar:not(:only-child) {
+  border-right: 1px solid var(--activitybar-divider);
+}
+
+.workbench__body--sidebar-right .workbench__side > .activity-bar:not(:only-child) {
+  border-right: none;
+  border-left: 1px solid var(--activitybar-divider);
+}
+
 .workbench__main {
   gap: 4px;
   background: transparent;

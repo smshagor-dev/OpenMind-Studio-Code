@@ -63,6 +63,7 @@ import { PhpRuntimeService } from "./phpRuntimeService";
 import { registerTerminalCommands } from "./terminalCommands";
 import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
+import { EditorWindowService } from "./editorWindowService";
 import { SecondarySideBarService } from "./secondarySideBarService";
 import { WelcomeService } from "./welcomeService";
 import { WorkspaceService } from "./workspaceService";
@@ -450,6 +451,14 @@ commands.register("help.welcome", () => {
 commands.register("workbench.newWindow", async () => {
   await tauriIpcClient.windowNew();
 });
+const editorWindows = new EditorWindowService(tauriIpcClient, workspace, events);
+commands.register(
+  "workbench.moveEditorToNewWindow",
+  async () => {
+    await editorWindows.moveActiveToNewWindow();
+  },
+  { enabled: hasActiveTab },
+);
 commands.register("view.toggleSecondarySidebar", () => secondarySideBar.toggle(), {
   checked: () => secondarySideBar.getState().visible,
 });
@@ -533,6 +542,7 @@ export const container = {
   lsp,
   welcome,
   secondarySideBar,
+  editorWindows,
   startLanguageTools,
   breakpoints,
   debug,

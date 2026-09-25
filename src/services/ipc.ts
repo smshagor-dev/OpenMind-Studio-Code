@@ -513,7 +513,9 @@ export interface IpcClient {
   /** The default web root (`<app>/htdocs`), created with a start page if needed. */
   phpWebRoot: () => Promise<string>;
   /** Opens a new, empty editor window (File > New Window); resolves to its label. */
-  windowNew: () => Promise<string>;
+  windowNew: (options?: { path?: string; x?: number; y?: number }) => Promise<string>;
+  /** The file this window was opened for (a tab dragged out of another window), or `null`. */
+  windowTakePendingOpen: () => Promise<string | null>;
   // Control-panel buttons of the PHP Server window
   /** A module's config file, or `null` while it doesn't exist. */
   panelConfigPath: (module: PanelModule) => Promise<string | null>;
@@ -1051,7 +1053,13 @@ export const tauriIpcClient: IpcClient = {
   phpWindowOpen: () => invoke("php_window_open"),
   phpPortFree: (port) => invoke<boolean>("php_port_free", { port }),
   phpWebRoot: () => invoke<string>("php_web_root"),
-  windowNew: () => invoke<string>("window_new"),
+  windowNew: (options) =>
+    invoke<string>("window_new", {
+      path: options?.path ?? null,
+      x: options?.x ?? null,
+      y: options?.y ?? null,
+    }),
+  windowTakePendingOpen: () => invoke<string | null>("window_take_pending_open"),
   panelConfigPath: (module) => invoke<string | null>("panel_config_path", { kind: module }),
   panelOpenFile: (path) => invoke("panel_open_file", { path }),
   panelOpenFolder: (path) => invoke("panel_open_folder", { path }),

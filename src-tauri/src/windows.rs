@@ -3,8 +3,12 @@
 //! other editor window (`window-2`, `window-3`, ...) starts empty and keeps its
 //! folder in memory only. Commands that act on "the open folder" ask for the
 //! folder of the window that called them, so two windows can work on two
-//! projects at once. Closing an extra window ends its terminals and its file
-//! watcher; closing `main` closes OpenMind Studio (see `window_events.rs`).
+//! projects at once. Like VS Code, closing a window closes only that window
+//! (its terminals and file watcher end with it); OpenMind Studio quits when the
+//! last editor window closes. `main` is hidden rather than destroyed while other
+//! windows remain, because it owns the saved session (see `window_events.rs`).
+//! A tab dragged out of the tab bar opens its file in a new window
+//! (`window_new` with a path, picked up by `window_take_pending_open`).
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -25,6 +29,8 @@ pub struct EditorWindows {
     folders: Mutex<HashMap<String, WorkspaceInfo>>,
     /// Which window created each terminal, so closing a window ends its terminals.
     terminals: Mutex<HashMap<String, String>>,
+    /// A file a new window opens once it has started (a tab dragged out of another window).
+    pending_open: Mutex<HashMap<String, String>>,
 }
 
 impl EditorWindows {
@@ -53,9 +59,21 @@ impl EditorWindows {
         }
     }
 
+    fn set_pending_open(&self, label: &str, path: String) {
+        if let Ok(mut pending) = self.pending_open.lock() {
+            pending.insert(label.to_string(), path);
+        }
+    }
+
+    /// The file the window `label` was opened for, handed out once.
+    pub fn take_pending_open(&self, label: &str) -> Option<String> {
+        self.pending_open.lock().ok()?.remove(label)
+    }
+
     /// Forgets `label` and returns the terminals it owned.
     fn remove_window(&self, label: &str) -> Vec<String> {
         self.set_folder(label, None);
+        let _ = self.take_pending_open(label);
         let Ok(mut terminals) = self.terminals.lock() else {
             return Vec::new();
         };
@@ -80,6 +98,35 @@ pub fn is_editor_window_extra(label: &str) -> bool {
     label.starts_with(EDITOR_WINDOW_PREFIX)
 }
 
+/// Whether closing `closing` leaves no editor window on screen, i.e. the app
+/// should quit (or hide to the tray). `visible` = the editor windows now shown.
+pub fn is_last_editor_window(visible: &[String], closing: &str) -> bool {
+    !visible.iter().any(|label| label != closing)
+}
+
+/// Labels of the editor windows (main and `window-*`) currently shown.
+pub fn visible_editor_windows(app: &AppHandle) -> Vec<String> {
+    app.webview_windows()
+        .into_iter()
+        .filter(|(label, window)| {
+            (is_main(label) || is_editor_window_extra(label))
+                && window.is_visible().unwrap_or(false)
+        })
+        .map(|(label, _)| label)
+        .collect()
+}
+
+/// Ends what belongs to one window (its terminals and file watcher), as its close does.
+pub fn release_window(app: &AppHandle, label: &str) {
+    let state = app.state::<AppState>();
+    for id in state.editor_windows.remove_window(label) {
+        if let Err(err) = state.terminal.close(&id) {
+            tracing::warn!(?err, %id, "could not end a closed window's terminal");
+        }
+    }
+    crate::commands::watch::stop_watching_window(&state, label);
+}
+
 /// The folder open in the window `label`: the saved one for `main`, the
 /// in-memory one for an extra window.
 pub async fn window_workspace(
@@ -96,6 +143,47 @@ pub async fn window_workspace(
     Ok(state.editor_windows.folder(label))
 }
 
+/// A rectangle in logical screen pixels: x, y, width, height.
+type Rect = (f64, f64, f64, f64);
+
+/// Moves a window of `size` placed at `at` so it lies inside `area` (a window
+/// dropped near a screen edge stays fully on that screen, title bar included).
+fn keep_inside(at: (f64, f64), size: (f64, f64), area: Rect) -> (f64, f64) {
+    let (ax, ay, aw, ah) = area;
+    let x = at.0.min(ax + aw - size.0).max(ax);
+    let y = at.1.min(ay + ah - size.1).max(ay);
+    (x, y)
+}
+
+/// The work area (screen minus taskbar), in logical pixels, of the monitor
+/// that contains the logical point (its taskbar included), else the primary one.
+fn work_area_at(app: &AppHandle, x: f64, y: f64) -> Option<Rect> {
+    let logical = |position: (i32, i32), size: (u32, u32), scale: f64| -> Rect {
+        (
+            f64::from(position.0) / scale,
+            f64::from(position.1) / scale,
+            f64::from(size.0) / scale,
+            f64::from(size.1) / scale,
+        )
+    };
+    let contains = |(ax, ay, aw, ah): Rect| x >= ax && y >= ay && x < ax + aw && y < ay + ah;
+    let monitors = app.available_monitors().ok()?;
+    let monitor = monitors
+        .iter()
+        .find(|m| {
+            let (p, s) = (m.position(), m.size());
+            contains(logical((p.x, p.y), (s.width, s.height), m.scale_factor()))
+        })
+        .cloned()
+        .or_else(|| app.primary_monitor().ok().flatten())?;
+    let area = monitor.work_area();
+    Some(logical(
+        (area.position.x, area.position.y),
+        (area.size.width, area.size.height),
+        monitor.scale_factor(),
+    ))
+}
+
 /// The first free `window-N` label (N from 2, as the main window is the first).
 fn next_label(app: &AppHandle) -> String {
     (2..)
@@ -104,10 +192,22 @@ fn next_label(app: &AppHandle) -> String {
         .unwrap_or_else(|| format!("{EDITOR_WINDOW_PREFIX}new"))
 }
 
-/// Opens a new, empty editor window (File > New Window, Ctrl+Shift+N).
+/// Opens a new editor window (File > New Window, Ctrl+Shift+N): empty, or, for
+/// a tab dragged out of the tab bar, opening `path`, placed at the drop point
+/// (`x`/`y`, logical screen pixels) when one is given.
 #[tauri::command]
-pub async fn window_new(app: AppHandle) -> Result<String, String> {
+pub async fn window_new(
+    app: AppHandle,
+    path: Option<String>,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<String, String> {
     let label = next_label(&app);
+    if let Some(path) = path {
+        app.state::<AppState>()
+            .editor_windows
+            .set_pending_open(&label, path);
+    }
     let (width, height) = app
         .get_webview_window(MAIN_WINDOW_LABEL)
         .and_then(|main| {
@@ -117,34 +217,57 @@ pub async fn window_new(app: AppHandle) -> Result<String, String> {
         })
         .unwrap_or((1280.0, 800.0));
     let webview_dir = app.state::<AppState>().webview_dir.clone();
-    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
         .data_directory(webview_dir)
         .title("OpenMind Studio")
         .inner_size(width.min(1600.0), height.min(1000.0))
         .min_inner_size(640.0, 480.0)
         .decorations(false)
-        .disable_drag_drop_handler()
-        .build()
-        .map_err(|err| err.to_string())?;
-    let closed_app = app.clone();
-    let closed_label = label.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, WindowEvent::Destroyed) {
-            close_window_resources(&closed_app, &closed_label);
+        .disable_drag_drop_handler();
+    if let (Some(x), Some(y)) = (x, y) {
+        let (width, height) = (width.min(1600.0), height.min(1000.0));
+        let (x, y) = match work_area_at(&app, x, y) {
+            Some(area) => keep_inside((x, y), (width, height), area),
+            None => (x, y),
+        };
+        builder = builder.position(x, y);
+    }
+    let window = builder.build().map_err(|err| {
+        let _ = app
+            .state::<AppState>()
+            .editor_windows
+            .take_pending_open(&label);
+        err.to_string()
+    })?;
+    let event_app = app.clone();
+    let event_label = label.clone();
+    let closing = window.clone();
+    window.on_window_event(move |event| match event {
+        WindowEvent::CloseRequested { api, .. } => {
+            // The last window on screen closes the app (or hides it to the tray).
+            let visible = visible_editor_windows(&event_app);
+            if is_last_editor_window(&visible, &event_label) {
+                api.prevent_close();
+                let app = event_app.clone();
+                let window = closing.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::window_events::close_last_editor_window(app, window).await;
+                });
+            }
         }
+        WindowEvent::Destroyed => release_window(&event_app, &event_label),
+        _ => {}
     });
     Ok(label)
 }
 
-/// An extra window is gone: end its terminals and its file watcher, forget its folder.
-fn close_window_resources(app: &AppHandle, label: &str) {
-    let state = app.state::<AppState>();
-    for id in state.editor_windows.remove_window(label) {
-        if let Err(err) = state.terminal.close(&id) {
-            tracing::warn!(?err, %id, "could not end a closed window's terminal");
-        }
-    }
-    crate::commands::watch::stop_watching_window(&state, label);
+/// The file this window was opened for (a tab dragged out of another window), once.
+#[tauri::command]
+pub fn window_take_pending_open(
+    window: tauri::Window,
+    state: tauri::State<'_, AppState>,
+) -> Option<String> {
+    state.editor_windows.take_pending_open(window.label())
 }
 
 #[cfg(test)]
@@ -188,6 +311,56 @@ mod tests {
         assert_eq!(windows.remove_window("window-2"), vec!["t1".to_string()]);
         assert!(windows.folder("window-2").is_none());
         assert!(windows.remove_window("main").contains(&"t2".to_string()));
+    }
+
+    #[test]
+    fn a_pending_file_is_handed_out_once_and_dropped_with_its_window() {
+        let windows = EditorWindows::default();
+        windows.set_pending_open("window-2", "C:/site/index.php".into());
+        assert_eq!(
+            windows.take_pending_open("window-2"),
+            Some("C:/site/index.php".into())
+        );
+        assert_eq!(windows.take_pending_open("window-2"), None);
+        windows.set_pending_open("window-3", "C:/a.py".into());
+        let _ = windows.remove_window("window-3");
+        assert_eq!(windows.take_pending_open("window-3"), None);
+    }
+
+    #[test]
+    fn a_window_dropped_near_an_edge_stays_on_the_screen() {
+        let area = (0.0, 0.0, 1920.0, 1032.0);
+        // Dropped on the taskbar: pulled up so the whole window shows.
+        assert_eq!(
+            keep_inside((188.0, 1049.0), (1100.0, 700.0), area),
+            (188.0, 332.0)
+        );
+        // Dropped past the right edge / above the top.
+        assert_eq!(
+            keep_inside((1800.0, -40.0), (1100.0, 700.0), area),
+            (820.0, 0.0)
+        );
+        // Already inside: unchanged.
+        assert_eq!(
+            keep_inside((300.0, 200.0), (1100.0, 700.0), area),
+            (300.0, 200.0)
+        );
+        // A second monitor to the left.
+        let left = (-1600.0, 0.0, 1600.0, 900.0);
+        assert_eq!(
+            keep_inside((-100.0, 100.0), (1100.0, 700.0), left),
+            (-1100.0, 100.0)
+        );
+    }
+
+    #[test]
+    fn only_the_last_editor_window_on_screen_closes_the_app() {
+        let both = vec!["main".to_string(), "window-2".to_string()];
+        assert!(!is_last_editor_window(&both, "main"));
+        assert!(!is_last_editor_window(&both, "window-2"));
+        assert!(is_last_editor_window(&["window-2".to_string()], "window-2"));
+        assert!(is_last_editor_window(&["main".to_string()], "main"));
+        assert!(is_last_editor_window(&[], "window-3"));
     }
 
     #[test]
