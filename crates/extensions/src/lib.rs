@@ -14,6 +14,7 @@ pub mod settings;
 pub mod store;
 pub mod views;
 pub mod vsix;
+pub mod webview;
 
 pub use activation::{extensions_for, Trigger};
 pub use error::ExtensionError;

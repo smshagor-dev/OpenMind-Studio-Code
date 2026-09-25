@@ -1,0 +1,12 @@
+{
+  "name": "sample-webview-basic",
+  "displayName": "Sample Webview Basic",
+  "description": "Opens a webview panel with static HTML (scripts off).",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleWebview.basic", "title": "Sample: Open Basic Webview" }]
+  }
+}

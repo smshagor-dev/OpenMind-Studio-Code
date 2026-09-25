@@ -122,6 +122,46 @@ pub fn ext_read_icon(
     ))
 }
 
+/// A local file for an extension's webview (`asWebviewUri`), as a `data:` URL. Checked here again whatever the
+/// host said: the roots must be allowed for the extension and the file must lie inside one of them
+/// (see `openmind_extensions::webview`). The webview itself never reads the disk.
+#[tauri::command]
+pub async fn ext_webview_read_resource(
+    id: String,
+    path: String,
+    roots: Vec<String>,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    use openmind_extensions::webview::{allowed_roots, read_resource, RootPolicy};
+    let extension = state
+        .extensions
+        .store
+        .find(&id)
+        .map_err(|err| err.to_string())?;
+    if !extension.enabled {
+        return Err(format!("{id} is disabled."));
+    }
+    let workspace = crate::windows::window_workspace(&state, window.label())
+        .await?
+        .map(|info| std::path::PathBuf::from(info.path));
+    let policy = RootPolicy {
+        extension_dir: &extension.path,
+        workspace: workspace.as_deref(),
+        accepted: &extension.permissions.accepted,
+    };
+    let roots: Vec<std::path::PathBuf> = roots.into_iter().map(std::path::PathBuf::from).collect();
+    let allowed = allowed_roots(&policy, &roots).map_err(|err| err.to_string())?;
+    let resource =
+        read_resource(&allowed, std::path::Path::new(&path)).map_err(|err| err.to_string())?;
+    Ok(format!(
+        "data:{};base64,{}",
+        resource.content_type,
+        base64::engine::general_purpose::STANDARD.encode(resource.bytes)
+    ))
+}
+
 /// The end of `logs/extension-host.log`.
 #[tauri::command]
 pub fn ext_host_log(state: State<'_, AppState>) -> String {

@@ -89,6 +89,7 @@ export function createFakeExtensionsIpc(): ExtensionsIpc {
     extSetEnabled: vi.fn().mockResolvedValue(testExtension()),
     extUninstall: vi.fn().mockResolvedValue(undefined),
     extGrantPermission: vi.fn().mockResolvedValue(testExtension()),
+    extWebviewReadResource: vi.fn().mockResolvedValue("data:image/png;base64,AAAA"),
     extReadFile: vi.fn().mockResolvedValue("{}"),
     extReadIcon: vi.fn().mockResolvedValue("data:image/svg+xml;base64,PHN2Zy8+"),
     extHostLog: vi.fn().mockResolvedValue(""),

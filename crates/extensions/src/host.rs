@@ -28,6 +28,7 @@ const GUARD_JS: &str = include_str!("../host/guard.js");
 const TREEVIEWS_JS: &str = include_str!("../host/treeviews.js");
 const EDITORS_JS: &str = include_str!("../host/editors.js");
 const STATUSBAR_JS: &str = include_str!("../host/statusbar.js");
+const WEBVIEWS_JS: &str = include_str!("../host/webviews.js");
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -316,6 +317,7 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
         ("treeviews.js", TREEVIEWS_JS),
         ("editors.js", EDITORS_JS),
         ("statusbar.js", STATUSBAR_JS),
+        ("webviews.js", WEBVIEWS_JS),
     ] {
         let file = paths.host_dir.join(name);
         if std::fs::read_to_string(&file).is_ok_and(|current| current == content) {

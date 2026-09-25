@@ -235,6 +235,8 @@ export interface ExtensionsIpc {
   extUninstall: (id: string) => Promise<void>;
   /** The user's own grant of a permission the extension doesn't request (outside-workspace files). */
   extGrantPermission: (id: string, permission: PermissionName) => Promise<InstalledExtension>;
+  /** A local file for an extension's webview as a `data:` URL; the backend re-checks roots, type and size. */
+  extWebviewReadResource: (id: string, path: string, roots: string[]) => Promise<string>;
   extReadFile: (id: string, path: string) => Promise<string>;
   /** An `.svg`/`.png` inside the extension as a `data:` URL. */
   extReadIcon: (id: string, path: string) => Promise<string>;
@@ -258,6 +260,8 @@ export const tauriExtensionsIpc: ExtensionsIpc = {
   extInstall: (path, replace) => invoke<InstalledExtension>("ext_install", { path, replace }),
   extSetEnabled: (id, enabled) => invoke<InstalledExtension>("ext_set_enabled", { id, enabled }),
   extUninstall: (id) => invoke("ext_uninstall", { id }),
+  extWebviewReadResource: (id, path, roots) =>
+    invoke<string>("ext_webview_read_resource", { id, path, roots }),
   extGrantPermission: (id, permission) =>
     invoke<InstalledExtension>("ext_grant_permission", { id, permission }),
   extReadFile: (id, path) => invoke<string>("ext_read_file", { id, path }),

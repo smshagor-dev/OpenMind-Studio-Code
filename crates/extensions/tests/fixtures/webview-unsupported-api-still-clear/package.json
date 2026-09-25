@@ -1,0 +1,12 @@
+{
+  "name": "sample-webview-unsupported",
+  "displayName": "Sample Webview Unsupported",
+  "description": "Webview features that stay unsupported must fail clearly.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleWebviewUnsupported.run", "title": "Sample: Call Unsupported Webview APIs" }]
+  }
+}

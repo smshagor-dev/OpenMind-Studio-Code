@@ -13,7 +13,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sampleStillUnsupported.run', () => {
       const results = [
-        attempt('webview', () => vscode.window.createWebviewPanel('x', 'X', 1, {})),
+        attempt('inputBox', () => vscode.window.createInputBox()),
         attempt('decorations', () => vscode.window.createTextEditorDecorationType({})),
         attempt('debug', () => vscode.debug.startDebugging(undefined, 'x')),
         attempt('notebook', () => vscode.notebooks.createNotebookController('a', 'b', 'c')),

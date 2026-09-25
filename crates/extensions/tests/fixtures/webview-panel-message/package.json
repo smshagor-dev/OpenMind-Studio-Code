@@ -1,0 +1,12 @@
+{
+  "name": "sample-webview-message",
+  "displayName": "Sample Webview Message",
+  "description": "A page with a button that talks to the extension.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleWebviewMessage.open", "title": "Sample: Open Message Webview" }]
+  }
+}

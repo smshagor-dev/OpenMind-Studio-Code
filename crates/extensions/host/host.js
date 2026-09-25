@@ -356,6 +356,9 @@ const notifications = {
     }
     events.fire('selectionChanged', params);
   },
+  'host/webviewMessage': (params) => events.fire('webviewMessage', params),
+  'host/webviewDisposed': (params) => events.fire('webviewDisposed', params),
+  'host/webviewViewState': (params) => events.fire('webviewViewState', params),
   'host/activeEditorChanged': (params) => {
     state.activeEditor = params.editor || null;
     events.fire('activeEditor', { editor: state.activeEditor });

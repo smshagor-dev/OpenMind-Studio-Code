@@ -28,6 +28,7 @@ import type { KeybindingsManager } from "./keybindingsManager";
 import { type OutputService, stamped } from "./outputService";
 import type { SettingsService } from "./settingsService";
 import { StatusBarItemsService } from "./statusBarItemsService";
+import { WebviewService } from "./webviewService";
 import type { ThemeService } from "./themeService";
 
 export interface ExtensionsWiringDeps {
@@ -133,6 +134,19 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     if (bridge.registeredCommands().has(command)) return host.executeCommand(command, args);
     throw new Error(`command '${command}' not found`);
   }
+  // Webview panels of extensions (sandboxed frames; see webviewHtml.ts).
+  const webviews = new WebviewService({
+    notifyHost: (method, params) => {
+      if (host.isRunning()) void ipc.extHostNotify(method, params).catch(() => undefined);
+    },
+    readResource: (extension, path, roots) => ipc.extWebviewReadResource(extension, path, roots),
+    log: (line) => {
+      deps.output.append("Extension Host", stamped(line));
+    },
+    onError: (message) => {
+      events.emit("appError", { message });
+    },
+  });
   const editorApi = new ExtensionEditorService({
     documents,
     editor: deps.editor,
@@ -192,17 +206,20 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     onStatusBarEvent: (method, params) => {
       statusBar.handleEvent(method, params);
     },
+    onWebviewEvent: (method, params) => {
+      webviews.handleEvent(method, params);
+    },
   });
   registry.subscribe(() => {
     if (registry.getState().snapshot === null) return;
-    statusBar.keepOnly(
-      new Set(
-        registry
-          .all()
-          .filter((e) => e.enabled)
-          .map((e) => e.id),
-      ),
+    const enabled = new Set(
+      registry
+        .all()
+        .filter((e) => e.enabled)
+        .map((e) => e.id),
     );
+    statusBar.keepOnly(enabled);
+    webviews.keepOnly(enabled);
   });
 
   const host: ExtensionHostService = new ExtensionHostService({
@@ -294,6 +311,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     contributions,
     views,
     statusBar,
+    webviews,
     start,
     finishStartup,
   };

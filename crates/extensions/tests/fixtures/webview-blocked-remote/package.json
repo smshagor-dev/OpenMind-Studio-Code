@@ -1,0 +1,12 @@
+{
+  "name": "sample-webview-remote",
+  "displayName": "Sample Webview Remote",
+  "description": "Tries to load remote content and files it may not read.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleWebviewRemote.open", "title": "Sample: Open Webview With Remote Content" }]
+  }
+}

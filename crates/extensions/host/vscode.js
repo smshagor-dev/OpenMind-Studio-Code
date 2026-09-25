@@ -8,6 +8,7 @@ const { permissionError, within } = require('./guard.js');
 const { createTreeApi, TreeItem, TreeItemCollapsibleState, ThemeIcon } = require('./treeviews.js');
 const { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind } = require('./editors.js');
 const { createStatusBarApi, StatusBarAlignment, ThemeColor } = require('./statusbar.js');
+const { createWebviewApi } = require('./webviews.js');
 
 // Called with the message whenever an unsupported API is used (the host logs it, attributed to the extension).
 let unsupportedReporter = null;
@@ -471,6 +472,7 @@ function createApi(host, ext) {
     EventEmitter,
   });
   const statusBar = createStatusBarApi({ host, ext, track, Disposable });
+  const webviews = createWebviewApi({ host, ext, need, track, Disposable, EventEmitter, Uri, namespace, asExtension });
   const window = namespace('window', {
     registerTreeDataProvider: trees.registerTreeDataProvider,
     createTreeView: trees.createTreeView,
@@ -519,6 +521,7 @@ function createApi(host, ext) {
     onDidChangeTextEditorSelection: (listener, thisArg, disposables) =>
       track(editors.selectionEvent(listener, thisArg, disposables)),
     createStatusBarItem: statusBar.createStatusBarItem,
+    createWebviewPanel: webviews.createWebviewPanel,
   });
 
   // -- workspace

@@ -57,6 +57,8 @@ export interface BridgeDeps {
   editorApi?: ExtensionEditorService;
   /** `statusBar/*` notifications, and `statusBar/reset` when the host went away. */
   onStatusBarEvent?: (method: string, params: Record<string, unknown>) => void;
+  /** `webview/*` notifications (panels), and `webview/reset` when the host went away. */
+  onWebviewEvent?: (method: string, params: Record<string, unknown>) => void;
 }
 
 /** Every channel an extension creates shows up under this suffix when it would clash with a built-in one. */
@@ -205,6 +207,7 @@ export class HostBridge {
       default:
         if (method.startsWith("views/")) this.deps.onViewEvent?.(method, p);
         else if (method.startsWith("statusBar/")) this.deps.onStatusBarEvent?.(method, p);
+        else if (method.startsWith("webview/")) this.deps.onWebviewEvent?.(method, p);
     }
   }
 
@@ -222,6 +225,7 @@ export class HostBridge {
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});
+    this.deps.onWebviewEvent?.("webview/reset", {});
   }
 
   private log(extension: string, channel: string, line: string): void {

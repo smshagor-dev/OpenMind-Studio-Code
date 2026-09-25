@@ -445,7 +445,7 @@ fn apis_that_stay_unsupported_still_fail_with_the_clear_message() {
         .map(|v| v.as_str().unwrap_or_default().to_string())
         .collect();
     for (label, api) in [
-        ("webview", "window.createWebviewPanel"),
+        ("inputBox", "window.createInputBox"),
         ("decorations", "window.createTextEditorDecorationType"),
         ("debug", "debug.startDebugging"),
         ("notebook", "notebooks.createNotebookController"),

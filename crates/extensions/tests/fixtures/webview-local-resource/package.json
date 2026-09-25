@@ -1,0 +1,12 @@
+{
+  "name": "sample-webview-resource",
+  "displayName": "Sample Webview Resource",
+  "description": "Loads an image and a stylesheet from its own folder.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleWebviewResource.open", "title": "Sample: Open Webview With Local Files" }]
+  }
+}

@@ -768,6 +768,12 @@ fn every_sample_installs_disables_enables_and_uninstalls_cleanly() {
         "statusbar-basic",
         "statusbar-dispose",
         "unsupported-api-still-clear",
+        "webview-panel-basic",
+        "webview-panel-message",
+        "webview-local-resource",
+        "webview-blocked-remote",
+        "webview-dispose",
+        "webview-unsupported-api-still-clear",
     ] {
         let extension = install(&fixture, name);
         let id = extension.id.clone();
