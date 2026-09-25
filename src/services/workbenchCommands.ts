@@ -5,7 +5,6 @@ import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient } from "./ipc";
 import type { LayoutService } from "./layoutService";
-import type { ThemeService } from "./themeService";
 import type { WindowService } from "./windowService";
 import type { WorkspaceService } from "./workspaceService";
 
@@ -18,7 +17,6 @@ export interface WorkbenchDeps {
   editor: EditorService;
   layout: LayoutService;
   window: WindowService;
-  theme: ThemeService;
 }
 
 /**
@@ -152,7 +150,7 @@ function registerEditorCommands(deps: WorkbenchDeps): void {
 }
 
 function registerViewCommands(deps: WorkbenchDeps): void {
-  const { commands, layout, theme } = deps;
+  const { commands, layout } = deps;
   const win = deps.window;
   commands.register("view.toggleFullScreen", () => win.toggleFullscreen(), {
     checked: () => win.getState().fullscreen,
@@ -175,11 +173,5 @@ function registerViewCommands(deps: WorkbenchDeps): void {
   });
   commands.register("explorer.toggleOpenEditors", () => layout.toggle("openEditorsVisible"), {
     checked: () => layout.getState().openEditorsVisible,
-  });
-  commands.register("theme.setDark", () => theme.setTheme("dark"), {
-    checked: () => theme.getTheme() === "dark",
-  });
-  commands.register("theme.setLight", () => theme.setTheme("light"), {
-    checked: () => theme.getTheme() === "light",
   });
 }

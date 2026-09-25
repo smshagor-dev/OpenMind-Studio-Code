@@ -133,11 +133,13 @@ pub async fn php_window_open(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|err| err.to_string())?;
     // Built hidden, sized and placed from the saved geometry, then shown, so it never flashes at the wrong size.
+    let webview_dir = app.state::<AppState>().webview_dir.clone();
     let window =
         WebviewWindowBuilder::new(&app, PHP_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
             .title("PHP Server — OpenMind Studio")
             .min_inner_size(560.0, 400.0)
             .visible(false)
+            .data_directory(webview_dir)
             .build()
             .map_err(|err| err.to_string())?;
     crate::window_events::apply_window_state(&window, &saved).map_err(|err| err.to_string())?;

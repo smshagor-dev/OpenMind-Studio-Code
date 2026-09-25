@@ -76,7 +76,10 @@ interface Rig {
 
 const POWERSHELL: ShellInfo = { kind: "powerShell", label: "PowerShell", available: true };
 
-async function rig(overrides: Partial<IpcClient> = {}): Promise<Rig> {
+async function rig(
+  overrides: Partial<IpcClient> = {},
+  prefs?: { saveBeforeRun: () => boolean; clearOutputBeforeRun: () => boolean },
+): Promise<Rig> {
   let handler: (event: RunEvent) => void = () => undefined;
   const ipc = createFakeIpc({
     runResolve: vi.fn().mockResolvedValue(RUNNABLE),
@@ -136,6 +139,7 @@ async function rig(overrides: Partial<IpcClient> = {}): Promise<Rig> {
     terminal,
     panel,
     showBeside,
+    prefs,
   );
   await service.initialize();
   return {
@@ -383,6 +387,52 @@ describe("RunCodeService", () => {
     await vi.waitFor(() => {
       expect(r.service.buttonView().state).toBe("ready");
     });
+  });
+
+  it("with Save Before Run off, a file with unsaved changes is not run and not saved", async () => {
+    const off = await rig({}, { saveBeforeRun: () => false, clearOutputBeforeRun: () => true });
+    off.open(tab("C:/p/hello.py", true));
+    await off.service.refresh();
+
+    expect(await off.service.run()).toBe(false);
+
+    expect(off.workspace.save).not.toHaveBeenCalled();
+    expect(off.ipc.runStart).not.toHaveBeenCalled();
+    expect(off.service.getState().error).toContain("Save Before Run");
+  });
+
+  it("with Save Before Run on (the default), the file is saved first", async () => {
+    r.open(tab("C:/p/hello.py", true));
+    await r.service.refresh();
+
+    expect(await r.service.run()).toBe(true);
+    expect(r.workspace.save).toHaveBeenCalledWith("doc-1");
+  });
+
+  it("Clear Output Before Run decides whether the previous run's output is kept", async () => {
+    const started = {
+      runId: "run-1",
+      type: "started" as const,
+      file: "C:/p/hello.py",
+      commandLine: "python hello.py",
+      resolved: "C:/rt/python.exe",
+      cwd: "C:/p",
+      runtime: "OpenMind portable Python 3.14.7",
+      language: "Python",
+      pid: 7,
+    };
+    const keep = await rig({}, { saveBeforeRun: () => true, clearOutputBeforeRun: () => false });
+    keep.output.append("Python", "old line");
+    await keep.service.refresh();
+    await keep.service.run();
+    keep.emit(started);
+    expect(keep.output.getLines("Python")[0]).toBe("old line");
+
+    r.output.append("Python", "old line");
+    await r.service.refresh();
+    await r.service.run();
+    r.emit(started);
+    expect(r.output.getLines("Python")).not.toContain("old line");
   });
 
   it("runs the file, streams stdout and stderr into the language channel and shows the Output panel", async () => {

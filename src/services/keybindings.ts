@@ -101,6 +101,8 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "Ctrl+Shift+`", command: "terminal.new", owner: "app" },
   { key: "Ctrl+Shift+5", command: "terminal.split", owner: "app" },
   { key: "Ctrl+Shift+B", command: "tasks.runBuild", owner: "app" },
+  // Preferences
+  { key: "Ctrl+,", command: "preferences.openSettings", owner: "app" },
 ];
 
 const CODE_TO_KEY: Record<string, string> = {
@@ -173,10 +175,32 @@ export function normalizeKeyEvent(event: KeyEventLike): string | null {
  * "Step Into" once a debug session exists to enable it, and to "Full Screen" otherwise.
  */
 export class KeybindingService {
+  private bindings: Keybinding[];
+  private readonly listeners = new Set<() => void>();
+
   constructor(
     private readonly commands: CommandRegistry,
-    private readonly bindings: Keybinding[] = DEFAULT_KEYBINDINGS,
-  ) {}
+    bindings: Keybinding[] = DEFAULT_KEYBINDINGS,
+  ) {
+    this.bindings = bindings;
+  }
+
+  /** Replaces the bindings in force (the defaults with the user's changes applied). Menus and the Welcome page re-read their labels. */
+  setBindings(bindings: Keybinding[]): void {
+    this.bindings = bindings;
+    for (const listener of this.listeners) listener();
+  }
+
+  getBindings(): readonly Keybinding[] {
+    return this.bindings;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 
   /** Returns the command id that was dispatched, or `null` if the event wasn't ours to handle. */
   resolve(event: KeyEventLike): string | null {

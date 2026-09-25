@@ -19,7 +19,7 @@ import type {
 } from "./ipc";
 import { actionAvailability, fileProblem, restartAvailability } from "./lspAvailability";
 import { registerLspCommands } from "./lspCommands";
-import { LspService, SYNC_DELAY_MS } from "./lspService";
+import { LSP_DISABLED_REASON, LspService, SYNC_DELAY_MS } from "./lspService";
 import { OutputService } from "./outputService";
 
 const PY = "C:/My Site/app.py";
@@ -91,9 +91,11 @@ interface Rig {
   };
   outcome: { current: LspSyncOutcome };
   active: { current: string | null };
+  enabled: { current: boolean };
 }
 
 async function rig(servers: LspServerInfo[] = [server()]): Promise<Rig> {
+  const enabled = { current: true };
   const status = { current: snapshot(servers) };
   const handlers: Rig["handlers"] = {};
   const outcome = { current: { state: "ready", server: "python" } as LspSyncOutcome };
@@ -129,10 +131,55 @@ async function rig(servers: LspServerInfo[] = [server()]): Promise<Rig> {
   const lsp = new LspService(ipc, events, documents, {
     log: (line) => log.push(line),
     activeDocId: () => active.current,
+    enabled: () => enabled.current,
   });
   await lsp.initialize();
-  return { ipc, events, documents, buffers, lsp, log, status, handlers, outcome, active };
+  return { ipc, events, documents, buffers, lsp, log, status, handlers, outcome, active, enabled };
 }
+
+describe("LspService: the lsp.enabled setting", () => {
+  it("with language servers off no file is told to a server and every action says why not", async () => {
+    const r = await rig();
+    r.enabled.current = false;
+
+    const id = await r.documents.openFromPath(PY);
+
+    expect(r.ipc.lspSyncDocument).not.toHaveBeenCalled();
+    expect(r.lsp.available("definition", id)).toEqual({ enabled: false, reason: LSP_DISABLED_REASON });
+    r.lsp.dispose();
+  });
+
+  it("turning them off stops the running servers and forgets the open files", async () => {
+    const r = await rig();
+    const id = await r.documents.openFromPath(PY);
+    await vi.waitFor(() => {
+      expect(r.ipc.lspSyncDocument).toHaveBeenCalledTimes(1);
+    });
+    r.enabled.current = false;
+
+    await r.lsp.applyEnabled();
+
+    expect(r.ipc.lspStopAll).toHaveBeenCalledTimes(1);
+    expect(r.ipc.lspCloseDocument).toHaveBeenCalledWith(PY);
+    expect(r.lsp.available("definition", id).enabled).toBe(false);
+    r.lsp.dispose();
+  });
+
+  it("turning them back on tells the servers about the files that are open", async () => {
+    const r = await rig();
+    r.enabled.current = false;
+    await r.documents.openFromPath(PY);
+    expect(r.ipc.lspSyncDocument).not.toHaveBeenCalled();
+
+    r.enabled.current = true;
+    await r.lsp.applyEnabled();
+
+    await vi.waitFor(() => {
+      expect(r.ipc.lspSyncDocument).toHaveBeenCalledWith(PY, "x = 1\n");
+    });
+    r.lsp.dispose();
+  });
+});
 
 describe("LspService: keeping servers told about documents", () => {
   let r: Rig;

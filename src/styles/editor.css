@@ -339,7 +339,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background-color: #3fb950;
+  background-color: var(--success-fg);
 }
 
 .terminal-tab__dot--exited {
@@ -771,20 +771,20 @@
 }
 
 .run-button--ready {
-  color: #3fb950;
+  color: var(--success-fg);
 }
 
 .run-button--running {
-  color: #f14c4c;
+  color: var(--error-fg);
 }
 
 .run-button--error {
-  color: #f14c4c;
-  outline: 1px solid #f14c4c;
+  color: var(--error-fg);
+  outline: 1px solid var(--error-fg);
 }
 
 .run-button--runtimeMissing {
-  color: #cca700;
+  color: var(--warning-fg);
 }
 
 .run-button:hover:not(:disabled),
@@ -805,15 +805,15 @@
 }
 
 .run-status--running {
-  color: #3794ff;
+  color: var(--info-fg);
 }
 
 .run-status--ok {
-  color: #3fb950;
+  color: var(--success-fg);
 }
 
 .run-status--failed {
-  color: #f14c4c;
+  color: var(--error-fg);
 }
 
 .modal--run-config {
@@ -844,6 +844,6 @@
 }
 
 .run-config__error {
-  color: #f14c4c;
+  color: var(--error-fg);
   font-size: 12px;
 }

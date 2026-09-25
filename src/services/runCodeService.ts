@@ -147,6 +147,16 @@ export function describeRunButton(input: {
  * the command into a terminal. Runs only start from an explicit user action —
  * never on open, never from project scripts.
  */
+export interface RunCodePrefs {
+  saveBeforeRun: () => boolean;
+  clearOutputBeforeRun: () => boolean;
+}
+
+const DEFAULT_RUN_PREFS: RunCodePrefs = {
+  saveBeforeRun: () => true,
+  clearOutputBeforeRun: () => true,
+};
+
 export class RunCodeService {
   private state: RunState = INITIAL;
   private readonly listeners = new Set<() => void>();
@@ -175,6 +185,8 @@ export class RunCodeService {
      * other hosts can leave it out.
      */
     private readonly showBeside: (channel: string) => void = () => undefined,
+    /** The Run Code settings (`run.saveBeforeRun`, `run.clearOutputBeforeRun`); the defaults match the settings' defaults. */
+    private readonly prefs: RunCodePrefs = DEFAULT_RUN_PREFS,
   ) {}
 
   getState(): RunState {
@@ -291,6 +303,11 @@ export class RunCodeService {
     if (editor.path in this.state.running || this.starting.has(editor.path)) return false;
     this.update({ error: null });
 
+    if (editor.dirty && !this.prefs.saveBeforeRun()) {
+      return this.fail(
+        "The file has unsaved changes. Save it first (or turn on Save Before Run in Settings).",
+      );
+    }
     if (editor.dirty) {
       // Run what is on screen: save first (a failed save stops the run).
       await this.workspace.save(editor.tabId);
@@ -390,7 +407,7 @@ export class RunCodeService {
       const channel = channelFor(event.language);
       this.processes.set(event.runId, { path: event.file, channel });
       this.output.ensureChannel(channel);
-      this.output.clear(channel);
+      if (this.prefs.clearOutputBeforeRun()) this.output.clear(channel);
       const header = `[Run Code] ${event.commandLine}`;
       this.output.append(RUN_CHANNEL, stamped(header));
       this.output.append(channel, header);

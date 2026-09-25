@@ -116,7 +116,9 @@ pub async fn window_new(app: AppHandle) -> Result<String, String> {
             Some((size.width, size.height))
         })
         .unwrap_or((1280.0, 800.0));
+    let webview_dir = app.state::<AppState>().webview_dir.clone();
     let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html".into()))
+        .data_directory(webview_dir)
         .title("OpenMind Studio")
         .inner_size(width.min(1600.0), height.min(1000.0))
         .min_inner_size(640.0, 480.0)

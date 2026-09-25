@@ -5,7 +5,7 @@
   gap: 6px 8px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
-  background: rgba(204, 167, 0, 0.15);
+  background: var(--warning-bg-soft);
   font-size: 12px;
 }
 
@@ -24,7 +24,7 @@
 }
 
 .ext-banner__button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--overlay-2);
 }
 
 .ext-compare {

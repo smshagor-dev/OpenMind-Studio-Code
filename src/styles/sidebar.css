@@ -362,7 +362,7 @@
 }
 
 .search-view__summary--error {
-  color: #f14c4c;
+  color: var(--error-fg);
 }
 
 .search-results,
@@ -430,7 +430,7 @@
 }
 
 .search-match mark {
-  background-color: rgba(234, 92, 0, 0.33);
+  background-color: var(--search-match-bg);
   color: inherit;
 }
 
@@ -676,18 +676,18 @@
 
 .ext-view__badge--active,
 .ext-view__badge--installed {
-  background-color: #2d6a3a;
-  color: #fff;
+  background-color: var(--success-bg);
+  color: var(--on-accent-fg);
 }
 
 .ext-view__badge--needs-repair {
-  background-color: #8a6d00;
-  color: #fff;
+  background-color: var(--warning-bg);
+  color: var(--on-accent-fg);
 }
 
 .ext-view__badge--recommended {
   background-color: var(--button-bg);
-  color: #fff;
+  color: var(--on-accent-fg);
 }
 
 .ext-view__button {

@@ -156,7 +156,12 @@ export class PhpServerService {
     private readonly runtime: RuntimeService,
     private readonly ports: PortsService,
     private readonly panel: PanelService,
+    /** The port used until the user picks one in the control panel (the `php.server.defaultPort` setting). */
+    private readonly defaultPort: () => number = () => DEFAULT_PHP_PORT,
   ) {}
+
+  /** A port the user chose (saved) beats the setting; only an unchosen port follows the setting. */
+  private portChosen = false;
 
   getState(): PhpServerState {
     return this.state;
@@ -173,6 +178,8 @@ export class PhpServerService {
     const saved = await this.ipc.settingsGet(SETTINGS_KEY).catch(() => null);
     const parsed = parseSaved(saved);
     if (parsed !== null) this.update(parsed);
+    this.portChosen = parsed?.port !== undefined;
+    if (!this.portChosen) this.update({ port: this.defaultPort() });
     if (this.state.root === null) await this.useDefaultRoot();
     try {
       this.off = await this.ipc.onPhpEvent((event) => {
@@ -340,10 +347,18 @@ export class PhpServerService {
   async setPort(text: string): Promise<string | null> {
     const result = validatePort(text);
     if ("error" in result) return result.error;
+    this.portChosen = true;
     this.update({ port: result.port, error: null });
     await this.persist();
     await this.refreshPort();
     return null;
+  }
+
+  /** The default-port setting changed: an unchosen port follows it (never while a server runs). */
+  applyDefaultPort(): void {
+    if (this.portChosen || this.state.server !== null) return;
+    this.update({ port: this.defaultPort() });
+    void this.refreshPort();
   }
 
   async refreshPort(): Promise<void> {

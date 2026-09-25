@@ -16,6 +16,7 @@ import {
   SearchIcon,
 } from "./icons";
 import { MenuBar } from "./MenuBar";
+import { withShortcut } from "./shortcutLabel";
 
 interface TitleBarProps {
   menus: TopLevelMenu[];
@@ -70,7 +71,11 @@ export function TitleBar({
       <button
         type="button"
         className="command-center"
-        title={paletteEnabled ? "Show All Commands (Ctrl+Shift+P)" : "Search Files (Ctrl+Shift+F)"}
+        title={
+          paletteEnabled
+            ? withShortcut("Show All Commands", "workbench.commandPalette")
+            : withShortcut("Search Files", "search.findInFiles")
+        }
         onClick={() => {
           container.run(paletteEnabled ? "workbench.commandPalette" : "view.showSearch");
         }}

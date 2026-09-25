@@ -37,6 +37,8 @@ export interface AppEvents extends Record<string, unknown> {
   appNotice: { message: string };
   tabsChanged: { tabs: DocumentSnapshot[]; activeId: string | null };
   themeChanged: { theme: ThemeKind };
+  /** The effective value of these settings changed (a file was saved, the folder changed, the page edited them). */
+  settingsChanged: { ids: string[] };
   workspaceFolderChanged: { workspace: WorkspaceInfo | null };
   explorerChanged: undefined;
   /** A folder was pinned or unpinned — StartPage and any explorer pin toggle should re-read the list. */

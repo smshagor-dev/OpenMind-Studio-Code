@@ -10,8 +10,72 @@ export type TextEncoding = "utf8" | "utf8-bom" | "utf16-le" | "utf16-be" | "wind
 // Mirrors openmind_fs::LineEnding (#[serde(rename_all = "kebab-case")]).
 export type LineEnding = "lf" | "crlf" | "cr" | "mixed";
 
-// Mirrors openmind_settings::ThemeKind (#[serde(rename_all = "kebab-case")]).
-export type ThemeKind = "dark" | "light";
+// The colors the workbench is actually drawn with; `system` resolves to one of the others (see ThemeService).
+export type ThemeKind = "dark" | "light" | "high-contrast";
+/** The `workbench.colorTheme` setting: a theme, or "follow Windows". */
+export type ThemeMode = ThemeKind | "system";
+
+// Mirrors openmind_settings::schema (camelCase / kebab-case as serialized).
+export type SettingKindInfo =
+  | { type: "bool" }
+  | { type: "int"; min: number; max: number }
+  | { type: "text"; maxLength: number }
+  | { type: "enum"; options: { value: string; label: string }[] };
+
+export interface SettingDefinition {
+  id: string;
+  category: string;
+  title: string;
+  description: string;
+  kind: SettingKindInfo;
+  default: SettingValue;
+  scope: "user" | "both";
+}
+
+export type SettingValue = boolean | number | string;
+export type SettingSource = "default" | "user" | "workspace";
+export type SettingsScope = "user" | "workspace";
+/** Which of the app's editable JSON files a path is. */
+export type SettingsFileKind = SettingsScope | "keybindings";
+
+export interface EffectiveSetting {
+  id: string;
+  value: SettingValue;
+  source: SettingSource;
+}
+
+export interface SettingsIssue {
+  key: string | null;
+  message: string;
+  severity: "error" | "warning";
+  line: number | null;
+}
+
+/** Mirrors src-tauri::commands::preferences::PreferencesSnapshot. */
+export interface PreferencesSnapshot {
+  definitions: SettingDefinition[];
+  categories: string[];
+  values: EffectiveSetting[];
+  workspace: string | null;
+  userFile: string;
+  workspaceFile: string | null;
+  userSet: string[];
+  workspaceSet: string[];
+  userError: string | null;
+  workspaceError: string | null;
+  userIssues: SettingsIssue[];
+  workspaceIssues: SettingsIssue[];
+}
+
+export interface KeybindingEntry {
+  key: string;
+  command: string;
+}
+
+export interface KeybindingsFile {
+  entries: KeybindingEntry[];
+  error: string | null;
+}
 
 // Mirrors src-tauri::commands::document::OpenedDocument (camelCase).
 export interface OpenedDocument {
@@ -351,8 +415,20 @@ export interface IpcClient {
   recentFilesClear: () => Promise<void>;
   sessionLoad: () => Promise<SessionSnapshot>;
   sessionSave: (snapshot: SessionSnapshot) => Promise<void>;
-  themeGet: () => Promise<ThemeKind>;
-  themeSet: (theme: ThemeKind) => Promise<void>;
+  // Settings (settings/settings.json, <workspace>/.openmind/settings.json) and keybindings (settings/keybindings.json).
+  preferencesLoad: () => Promise<PreferencesSnapshot>;
+  preferencesSet: (
+    scope: SettingsScope,
+    id: string,
+    value: SettingValue,
+  ) => Promise<PreferencesSnapshot>;
+  preferencesReset: (scope: SettingsScope, id: string) => Promise<PreferencesSnapshot>;
+  preferencesFile: (scope: SettingsScope) => Promise<string>;
+  preferencesValidate: (scope: SettingsScope, text: string) => Promise<SettingsIssue[]>;
+  preferencesScopeOf: (path: string) => Promise<SettingsFileKind | null>;
+  keybindingsLoad: () => Promise<KeybindingsFile>;
+  keybindingsSave: (entries: KeybindingEntry[]) => Promise<KeybindingEntry[]>;
+  keybindingsFile: () => Promise<string>;
 
   // Workspace folder
   workspaceOpenFolder: (path: string) => Promise<WorkspaceInfo>;
@@ -844,9 +920,17 @@ export const tauriIpcClient: IpcClient = {
 
   sessionSave: (snapshot) => invoke("session_save", { snapshot }),
 
-  themeGet: () => invoke<ThemeKind>("theme_get"),
-
-  themeSet: (theme) => invoke("theme_set", { theme }),
+  preferencesLoad: () => invoke<PreferencesSnapshot>("preferences_load"),
+  preferencesSet: (scope, id, value) =>
+    invoke<PreferencesSnapshot>("preferences_set", { scope, id, value }),
+  preferencesReset: (scope, id) => invoke<PreferencesSnapshot>("preferences_reset", { scope, id }),
+  preferencesFile: (scope) => invoke<string>("preferences_file", { scope }),
+  preferencesValidate: (scope, text) =>
+    invoke<SettingsIssue[]>("preferences_validate", { scope, text }),
+  preferencesScopeOf: (path) => invoke<SettingsFileKind | null>("preferences_scope_of", { path }),
+  keybindingsLoad: () => invoke<KeybindingsFile>("keybindings_load"),
+  keybindingsSave: (entries) => invoke<KeybindingEntry[]>("keybindings_save", { entries }),
+  keybindingsFile: () => invoke<string>("keybindings_file"),
 
   workspaceOpenFolder: (path) => invoke<WorkspaceInfo>("workspace_open_folder", { path }),
 

@@ -90,6 +90,52 @@
   --widget-shadow: rgba(0, 0, 0, 0.5);
   --danger-bg: #a1260d;
   --error-fg: #f14c4c;
+
+  /* Status colors (shared by badges, problems, the run/debug UI) and the text on top of them. */
+  --success-fg: #3fb950;
+  --success-bg: #1f6f3a;
+  --warning-fg: #cca700;
+  --warning-bg: #8a5a00;
+  --info-fg: #3794ff;
+  --on-accent-fg: #ffffff;
+  --error-bg-soft: rgba(190, 17, 0, 0.15);
+  --warning-bg-soft: rgba(204, 167, 0, 0.15);
+  --error-border: #be1100;
+  --search-match-bg: rgba(234, 92, 0, 0.33);
+  --close-hover-bg: #e81123;
+  --scrim-bg: rgba(0, 0, 0, 0.3);
+  --overlay-1: rgba(255, 255, 255, 0.06);
+  --overlay-2: rgba(255, 255, 255, 0.1);
+  --overlay-3: rgba(255, 255, 255, 0.15);
+
+  /* Aliases the component styles use */
+  --accent-fg: var(--info-fg);
+  --accent-bg: var(--button-bg);
+  --button-secondary-fg: #ffffff;
+  --danger-fg: var(--error-fg);
+  --list-active-bg: var(--list-active-selection-bg);
+  --badge-bg: #4d4d4d;
+  --badge-fg: #ffffff;
+
+  /* Debugger */
+  --debug-breakpoint: #e51400;
+  --debug-breakpoint-off: #848484;
+  --debug-current-arrow: #ffcc00;
+  --debug-current-line-bg: rgba(255, 238, 0, 0.18);
+  --debug-var-name-fg: #9cdcfe;
+  --debug-var-value-fg: #ce9178;
+  --debug-statusbar-bg: #cc6633;
+  --debug-toolbar-shadow: rgba(0, 0, 0, 0.4);
+
+  /* Terminal (read by xterm, see themeColors.ts) */
+  --terminal-bg: #191a1b;
+  --terminal-fg: #cccccc;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: rgba(38, 79, 120, 0.7);
+
+  /* Disabled and invalid controls */
+  --control-disabled-bg: rgba(255, 255, 255, 0.04);
+  --control-invalid-border: #f14c4c;
 }
 
 :root[data-theme="light"] {
@@ -166,4 +212,125 @@
   --input-bg: #ffffff;
   --link-fg: #006ab1;
   --widget-shadow: rgba(0, 0, 0, 0.16);
+  --success-fg: #1a7f37;
+  --success-bg: #2e7d32;
+  --warning-fg: #8f6d00;
+  --warning-bg: #a36b00;
+  --info-fg: #0064c8;
+  --error-fg: #c72e0f;
+  --error-bg-soft: rgba(190, 17, 0, 0.1);
+  --warning-bg-soft: rgba(204, 167, 0, 0.18);
+  --search-match-bg: rgba(234, 92, 0, 0.25);
+  --scrim-bg: rgba(0, 0, 0, 0.2);
+  --badge-bg: #c4c4c4;
+  --badge-fg: #333333;
+  --overlay-1: rgba(0, 0, 0, 0.05);
+  --overlay-2: rgba(0, 0, 0, 0.08);
+  --overlay-3: rgba(0, 0, 0, 0.12);
+  --debug-current-line-bg: rgba(255, 238, 0, 0.35);
+  --debug-var-name-fg: #001080;
+  --debug-var-value-fg: #a31515;
+  --debug-toolbar-shadow: rgba(0, 0, 0, 0.2);
+  --terminal-bg: #f8f8f8;
+  --terminal-fg: #333333;
+  --terminal-cursor: #000000;
+  --terminal-selection: rgba(173, 214, 255, 0.7);
+  --control-disabled-bg: rgba(0, 0, 0, 0.04);
+  --control-invalid-border: #c72e0f;
+}
+
+/*
+ * High contrast: pure black surfaces, white text, and bright 1px borders wherever the other
+ * themes rely on subtle shading, so every region is outlined. Accent is Monaco's HC orange.
+ */
+:root[data-theme="high-contrast"] {
+  color-scheme: dark;
+  --fg: #ffffff;
+  --fg-strong: #ffffff;
+  --fg-muted: #d4d4d4;
+  --fg-disabled: #9a9a9a;
+  --focus-border: #f38518;
+  --border: #6fc3df;
+  --icon-fg: #ffffff;
+  --toolbar-hover-bg: rgba(255, 255, 255, 0.2);
+
+  --frame-bg: #000000;
+  --frame-inactive-bg: #000000;
+  --card-border: #6fc3df;
+  --editor-card-border: #6fc3df;
+  --panel-bg: #000000;
+
+  --titlebar-bg: #000000;
+  --titlebar-fg: #ffffff;
+  --titlebar-inactive-fg: #d4d4d4;
+  --menubar-hover-bg: rgba(255, 255, 255, 0.2);
+  --command-center-bg: #000000;
+  --command-center-border: #6fc3df;
+  --command-center-hover-bg: #1a1a1a;
+  --command-center-fg: #ffffff;
+
+  --menu-bg: #000000;
+  --menu-fg: #ffffff;
+  --menu-border: #6fc3df;
+  --menu-selection-bg: #0f4a85;
+  --menu-selection-fg: #ffffff;
+  --menu-separator: #6fc3df;
+
+  --activitybar-bg: #000000;
+  --activitybar-fg: #ffffff;
+  --activitybar-inactive-fg: #d4d4d4;
+  --activitybar-active-bg: #000000;
+  --activitybar-active-border: #f38518;
+
+  --sidebar-bg: #000000;
+  --sidebar-fg: #ffffff;
+  --sidebar-title-fg: #ffffff;
+  --section-header-border: #6fc3df;
+
+  --list-hover-bg: #262626;
+  --list-active-selection-bg: #0f4a85;
+  --list-active-selection-fg: #ffffff;
+  --list-inactive-selection-bg: #262626;
+  --list-drop-bg: rgba(15, 74, 133, 0.6);
+  --tree-indent-guide: #6fc3df;
+
+  --editor-bg: #000000;
+  --tabs-bg: #000000;
+  --tab-inactive-bg: #000000;
+  --tab-active-bg: #000000;
+  --tab-active-fg: #ffffff;
+  --tab-inactive-fg: #d4d4d4;
+  --tab-border: #6fc3df;
+  --breadcrumb-fg: #d4d4d4;
+  --breadcrumb-hover-fg: #ffffff;
+
+  --statusbar-bg: #000000;
+  --statusbar-no-folder-bg: #000000;
+  --statusbar-fg: #ffffff;
+  --statusbar-hover-bg: rgba(255, 255, 255, 0.2);
+
+  --button-bg: #0f4a85;
+  --button-hover-bg: #1668bd;
+  --button-fg: #ffffff;
+  --button-secondary-bg: #1c1c1c;
+  --button-secondary-hover-bg: #333333;
+  --input-bg: #000000;
+  --link-fg: #21a6ff;
+  --welcome-card-bg: #000000;
+  --welcome-card-hover-bg: #1a1a1a;
+  --widget-shadow: rgba(0, 0, 0, 0);
+  --error-fg: #f48771;
+  --success-fg: #6ce26c;
+  --warning-fg: #ffd700;
+  --info-fg: #6fc3df;
+  --scrim-bg: rgba(0, 0, 0, 0.6);
+  --overlay-1: rgba(255, 255, 255, 0.12);
+  --overlay-2: rgba(255, 255, 255, 0.2);
+  --overlay-3: rgba(255, 255, 255, 0.3);
+  --debug-current-line-bg: rgba(255, 238, 0, 0.3);
+  --terminal-bg: #000000;
+  --terminal-fg: #ffffff;
+  --terminal-selection: rgba(15, 74, 133, 0.9);
+  --control-disabled-bg: #1a1a1a;
+  --control-invalid-border: #f48771;
 }

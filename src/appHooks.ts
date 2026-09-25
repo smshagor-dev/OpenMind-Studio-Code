@@ -15,6 +15,8 @@ export function useAppStartup(): boolean {
     const lifecycle = { cancelled: false };
     let stopWindowTracking: (() => void) | null = null;
     void (async () => {
+      // Settings and shortcuts first: everything below reads them.
+      await container.startSettings();
       await Promise.all([
         container.theme.initialize(),
         container.layout.initialize(),

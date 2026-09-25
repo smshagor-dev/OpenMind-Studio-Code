@@ -8,6 +8,7 @@ import { EditorGroupView } from "./EditorGroupView";
 import { ExternalCompareViewer } from "./ExternalCompareViewer";
 import { GitBlameViewer } from "./GitBlameViewer";
 import { GitDiffViewer } from "./GitDiffViewer";
+import { PreferencesPage } from "./PreferencesPage";
 
 interface EditorAreaProps {
   state: WorkspaceState;
@@ -29,6 +30,7 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
       <GitBlameViewer />
       <ExternalCompareViewer themeKind={rest.themeKind} />
       <DebugToolbar />
+      <PreferencesPage />
       {state.groups.map((group, index) => (
         <Fragment key={group.id}>
           {index > 0 ? (

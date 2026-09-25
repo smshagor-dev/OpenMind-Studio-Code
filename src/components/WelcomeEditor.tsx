@@ -50,8 +50,8 @@ function cards(): WelcomeCard[] {
     card(
       "runtimes",
       "runtime.manage",
-      "Portable Runtimes",
-      "Install Node.js, Python and Git into the app folder — no admin rights, no PATH changes.",
+      "Install Runtimes",
+      "Install Node.js, Python, Git and PHP into the app folder — no admin rights, no PATH changes.",
       "runtime",
     ),
     card(
@@ -67,6 +67,20 @@ function cards(): WelcomeCard[] {
       "Language Tools",
       "Language servers for code completion, errors and go to definition.",
       "language",
+    ),
+    card(
+      "keyboard",
+      "preferences.openKeybindings",
+      "Keyboard Shortcuts",
+      "See every shortcut, change it, and find conflicts.",
+      "keyboard",
+    ),
+    card(
+      "settings",
+      "preferences.openSettings",
+      "Settings",
+      "Editor, terminal, Git, debugger and theme settings, for you or for one folder.",
+      "settings",
     ),
   ];
 }

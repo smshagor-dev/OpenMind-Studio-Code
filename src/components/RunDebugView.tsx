@@ -5,6 +5,7 @@ import { runSummary } from "../services/debugModel";
 import "../styles/debug.css";
 import { BreakpointsPane, CallStackPane, VariablesPane, WatchPane } from "./DebugPanes";
 import { PaneSection } from "./PaneSection";
+import { withShortcut } from "./shortcutLabel";
 
 /** The Run and Debug side bar: start controls with the reason when they can't, then the debugger's panes. */
 export function RunDebugView() {
@@ -63,7 +64,11 @@ export function RunDebugView() {
                 type="button"
                 className="debug-start"
                 disabled={!availability.enabled}
-                title={availability.enabled ? "Start Debugging (F5)" : availability.reason}
+                title={
+                  availability.enabled
+                    ? withShortcut("Start Debugging", "debug.start")
+                    : availability.reason
+                }
                 onClick={() => {
                   void debug.start();
                 }}
@@ -75,7 +80,7 @@ export function RunDebugView() {
                 disabled={!container.commands.isEnabled("debug.runWithoutDebugging")}
                 title={
                   container.commands.isEnabled("debug.runWithoutDebugging")
-                    ? "Run Code without the debugger (Ctrl+F5)"
+                    ? withShortcut("Run Code without the debugger", "run.code")
                     : container.commands.reasonFor("debug.runWithoutDebugging")
                 }
                 onClick={() => {

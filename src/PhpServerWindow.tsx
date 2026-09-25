@@ -19,10 +19,8 @@ export function PhpServerWindow() {
   const [toasts, dismissToast] = useToasts();
 
   useEffect(() => {
-    let cancelled = false;
-    void container.ipc.themeGet().then((theme) => {
-      if (!cancelled) document.documentElement.dataset.theme = theme;
-    });
+    // The PHP window follows the same theme setting as the main window (it applies it to <html> itself).
+    void container.theme.initialize();
     void container.runtime.initialize().then(() => container.runtime.refresh());
     void container.php.initialize();
     void container.mariaDb.initialize();
@@ -30,6 +28,7 @@ export function PhpServerWindow() {
     void container.composer.initialize();
     void container.controlPanel.initialize();
     const refresh = () => {
+      void container.settings.reload();
       void container.runtime.refresh();
       void container.php.syncServer();
       void container.php.refreshPort();
@@ -40,7 +39,6 @@ export function PhpServerWindow() {
     };
     window.addEventListener("focus", refresh);
     return () => {
-      cancelled = true;
       window.removeEventListener("focus", refresh);
       container.php.dispose();
       container.mariaDb.dispose();

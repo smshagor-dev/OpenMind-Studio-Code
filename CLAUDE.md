@@ -77,8 +77,17 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   this; this depends on nothing else in the workspace.
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern.
-- `openmind-settings` — business logic over `openmind-db` (defaults, validation, persistence)
-  for user/workspace/window/theme settings.
+- `openmind-settings` — business logic over `openmind-db` (window state, the legacy `theme` row) and, since Milestone 9,
+  the user-facing settings and keyboard shortcuts. `schema` is the one list of settings as **data** (id, category, title,
+  description, kind bool/int-range/text/enum, default, scope `user` or `both`) plus `validate`, so the Settings page, the JSON
+  files and the backend all agree on what a value may be. `store` reads and writes the two JSON files with VS Code's model:
+  `settings/settings.json` (user) and `<workspace>/.openmind/settings.json` (workspace, only `both`-scope settings);
+  `effective` = workspace value > user value > default, an invalid value in a file is *ignored and reported* (never breaks the
+  app), a file with a syntax error is never rewritten, saves keep unknown keys and their order (serde_json `preserve_order`)
+  and are atomic (temp file + rename), `validate_text` gives per-key problems with line numbers for the JSON editor.
+  `keybindings` owns `settings/keybindings.json` — a list of `{key, command}`, a leading `-` on the command removes that
+  command's default for that key (VS Code's format); `normalize_chord` canonicalizes (`ctrl+shift+s` -> `Ctrl+Shift+S`) and
+  refuses chords that would break typing (a plain letter, `Shift+S`). `AppPaths` gained `settings_file`/`keybindings_file`.
 - `openmind-fs` — file I/O with encoding detection (BOM-sniffed UTF-8/UTF-16LE/UTF-16BE, else
   Windows-1252 fallback) and line-ending detection (LF/CRLF/CR/Mixed), plus (Milestone 3) explorer
   file-system primitives: `read_dir` (one level only — the explorer tree loads lazily, so nothing
@@ -614,8 +623,32 @@ internals.
   `DebugConsoleView` (Debug Console tab), `DebugStatusItem`. Testing note: a synthesised F10 (`keybd_event`) during a manual
   run highlighted the File menu and the session had ended in the resulting screenshot; Step Over was verified with its toolbar
   button instead, and F10 itself was not confirmed by hand.
-- `ThemeService` (`themeService.ts`) — foundation-level theme selection (`dark`/`light`, Monaco's
-  built-in `vs-dark`/`vs`), persisted via the `theme_get`/`theme_set` commands.
+- **Settings, shortcuts and themes (Milestone 9).** `commands::preferences` (`preferences_load/set/reset/file/validate/scope_of`,
+  `keybindings_load/save/file`; the folder is always the asking window's, found server-side) returns one `PreferencesSnapshot`
+  (definitions, effective values with their source, which ids each file sets, file errors and issues). `SettingsService`
+  (`settingsService.ts`) is the only reader: `bool/number/string(id, fallback)`, `set/reset/setEffective`, `search`, `onChange(ids)` and
+  `handleSaved` (saving `settings.json`, the workspace file or `keybindings.json` in an ordinary editor tab re-reads it, validates it
+  and toasts what is wrong — `preferenceFiles.ts`). Consumers follow settings, they never read files: `EditorService` (font, tab size,
+  line numbers, cursor, word wrap/minimap/sticky/whitespace — the View-menu toggles now write the setting; old toggles migrate once),
+  `XtermHost` (terminal font/cursor/scrollback), `SearchService.applyDefaults`, `RunCodePrefs`, `LspService.applyEnabled`/`verbose`,
+  `DebugService` (`stopOnEntry`, console on start), `PhpServerService.applyDefaultPort`, `WelcomeService`, git auto refresh/status-bar
+  branch, and Rust reads `php.tray.hideOnClose` for the tray. All of it is wired in `preferencesWiring.ts`, keeping `container.ts` small.
+  `KeybindingsManager` applies `effectiveBindings(defaults, userEntries)` (pure model in `keybindingsModel.ts`: user bindings first,
+  `-command` removals, `conflictsFor`, contextual pairs such as F11 Full Screen/Step Into that share a key on purpose) to
+  `KeybindingService.setBindings`, so the listener, the menus' labels and the tooltips (`shortcutLabel.ts`) follow at once. A
+  built-in Monaco shortcut can be freed only for the language features (Go to Definition/References, Rename, Format): the old
+  key is switched off with `addKeybindingRules([{ command: '-<action>' }])` (`editor/monacoKeys.ts`); every other editor-owned
+  shortcut is listed but its Change button is disabled with the reason, and a key that one of them uses is refused. The page is
+  `PreferencesPage` (an overlay over the editor area, `PreferencesPageService`): Settings tab (search, User/Workspace scope,
+  categories, boolean/number/text/dropdown controls, Modified + Reset, validation message under the control, the file's problems)
+  and Keyboard Shortcuts tab (search, Change with key recording, Replace on conflict, Remove, Reset). Commands: `preferences.openSettings`
+  (Ctrl+,), `openWorkspaceSettings`, `openSettingsJson`, `openWorkspaceSettingsJson`, `openKeybindings`, `openKeybindingsJson`,
+  `colorTheme`, `theme.setSystem/Dark/Light/HighContrast`. `ThemeService` resolves `workbench.colorTheme` (system/dark/light/
+  high-contrast; `system` follows `prefers-color-scheme` live) to `data-theme` on `<html>` and the Monaco theme (`openmind-dark`/
+  `-light`/`-hc`); every window builds its own, so the PHP window follows too, and terminals read `--terminal-*` tokens. **All colors
+  are tokens** in `styles/theme.css` (dark, light and a high-contrast palette, plus semantic tokens: success/warning/info/error,
+  overlays, debugger, terminal, disabled/invalid); `styles/themeTokens.test.ts` fails on a hard-coded color in any other stylesheet
+  and on a token nobody defines. The old `theme` table is only read once, as the default of the new setting.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
   (rendered as a toast by `App.tsx`) and returns a fallback instead of throwing. Used by
   `WorkspaceService` and `ExplorerService` everywhere a failure is plausible in normal use (a file
@@ -688,12 +721,13 @@ OpenMind Studio/
     extensions/               installed extension packages (future milestone)
     themes/                   on-disk theme/icon-theme assets (future milestone)
     language-servers/         npm-installed language servers, one folder per package revision (Milestone 7)
-    settings/                 user-editable JSON config export (future milestone)
+    settings/                 settings.json and keybindings.json (Milestone 9; edited by hand or from the Settings page)
 ```
 
-Only `data/` is read/written so far (`logs/`, `cache/`, `runtimes/`, `extensions/`, `themes/`,
-`settings/` are created up front but stay empty until the milestone that owns each one lands —
-don't write into them speculatively). Within `data/openmind-studio.db`, tables now live in:
+`data/`, `runtimes/`, `logs/`, `cache/`, `language-servers/` and (Milestone 9) `settings/` are in use; `extensions/` and
+`themes/` are created up front but stay empty until the milestone that owns them lands — don't write into them
+speculatively. A workspace's own settings live inside the project, in `.openmind/settings.json`, created only when the user
+sets a workspace setting or opens that file. Within `data/openmind-studio.db`, tables now live in:
 `window_state`, `recent_files` (global MRU list — no project scoping yet, every row has
 `project_id = NULL`; see `crates/db/src/recent_files.rs`), `session_restore` (one row, opaque
 JSON owned by `openmind_workspace::SessionSnapshot`, plus `active_project_id` — Milestone 3, the
@@ -730,7 +764,8 @@ migration file, check for stray running instances first, not just after somethin
 ## Branding
 
 - Product name: **OpenMind Studio** — this exact capitalization everywhere in UI text, docs, and
-  comments (`tauri.conf.json` `productName`/window title, `index.html` `<title>`, the app shell).
+  comments (`tauri.conf.json` `productName`/window title, `index.html` `<title>`, the app shell). The built executable is
+  **`OpenMindStudio.exe`** (`tauri.conf.json` `mainBinaryName`; Cargo's own binary stays `openmind-studio`).
   Technical identifiers stay lowercase-kebab per normal convention: npm package name
   (`package.json`), Cargo crate/package names (`openmind-core`, `openmind-db`,
   `openmind-settings`, and the `openmind-studio` binary/package name in `src-tauri`), and the
@@ -742,6 +777,38 @@ migration file, check for stray running instances first, not just after somethin
   (blue-to-magenta ribbon with a `</>` glyph); desktop targets only (32/128/128@2x/ico/icns plus
   the Windows Store square tiles) — iOS/Android output from the generator is deleted, this project
   doesn't target mobile.
+
+## Packaging and startup baseline (Milestone 9)
+
+Two Windows x64 editions, neither code-signed (no signing is configured):
+
+- **Portable ZIP** — `pnpm package:portable` (`scripts/package-portable.mjs`; `--no-build`, `--profile debug`, `--out` and `--exe`
+  exist for testing) runs `pnpm tauri build --no-bundle` and zips a folder `OpenMind Studio/` holding `OpenMindStudio.exe` and a
+  README.txt, named `OpenMindStudio-<version>-portable-win-x64.zip` with a `.sha256`. The pure helpers (names, README text, exe
+  path) are in `scripts/portablePackage.mjs` and are unit-tested (`src/services/packaging.test.ts` also checks that
+  `tauri.conf.json`, `package.json`, `Cargo.toml`, `index.html` and the icon list agree on name, identifier and version).
+  Unzipped anywhere (a path with spaces is fine) the app creates `data/`, `settings/`, `runtimes/`, `cache/`, `logs/`,
+  `extensions/`, `themes/` next to itself — nothing in `%APPDATA%`, the Registry, Program Files or PATH.
+- **Installer** — `pnpm package:installer` = `tauri build --bundles nsis`: a per-user NSIS installer (`installMode: currentUser`, no
+  administrator rights, `OpenMind Studio_<version>_x64-setup.exe`). The app is exe-relative either way, so an installed copy keeps
+  its data next to the installed executable (under `%LOCALAPPDATA%/Programs` by default). WiX/MSI is not built (`targets` is
+  `["nsis"]`). Both editions were built for real in Milestone 9 (release exe 16.6 MB, portable zip 8.8 MB, installer 7.5 MB) and the
+  portable one was run from a copied folder with a space in its path; the installer was built but **not installed** during
+  verification.
+- **WebView2 profile.** The webview's own profile (cache, local storage, cookies) used to live in
+  `%LOCALAPPDATA%\com.openmindstudio.app\EBWebView` (247 MB after a few weeks) — found in Milestone 9 by watching that folder while
+  running the portable copy. Every window is now built with `data_directory(<app>/data/webview)` (the main window is described in
+  `tauri.conf.json` with `create: false` and built in `setup`; the PHP and extra editor windows pass the same directory, which
+  WebView2 requires for windows of one process); verified: the AppData profile's newest file no longer changes and `data/webview`
+  fills instead. The old AppData folder is left alone (delete it by hand if you want the space back).
+
+Startup baseline (this machine, Windows 11, a fresh unzipped portable copy, nothing installed, a folder open, launched cold):
+release build — window visible after ~0.16 s; debug build ~0.9 s (plus a console window). Idle after 12 s: the app process 43 MB and
+6 WebView2 processes 414 MB, ~457 MB in total. The **only** child processes are those six WebView2 helpers (the debug build adds one
+console host): no language server, debug adapter, Git, PHP/MariaDB/phpMyAdmin server, Composer, shell or terminal starts by itself;
+each starts only on an explicit action (open a file with a supported language *and* an installed server, Start Debugging, Start in the
+PHP control panel, a Git action, Ctrl+` / New Terminal). Closing the app with a terminal open left 0 processes of the copy behind.
+Memory is dominated by WebView2; no reduction was attempted in this milestone.
 
 ## Coding rules 
 
@@ -1181,12 +1248,44 @@ migration file, check for stray running instances first, not just after somethin
   (js-debug), as each adapter reports it; a Node session that ends normally prints "The debug session ended." without an
   exit-code line; Pause shows runtime frames without a file for Node. Left on disk for manual deletion: `E:\omdbg81`,
   `E:\omdbg8`, `E:\omdbg`, `E:\omlsp`, `E:\omlsp2`, `E:\wt7-target`, and the worktree `E:\wt8` after the merge.
-- [ ] Milestone 9 — Indexed workspace/symbol/reference search.
-- [ ] Milestone 10 — Extension system (sandboxed, contributes commands/views/themes/...).
-- [ ] Milestone 11 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
+- [x] **Milestone 9** — Settings, keybindings, themes and packaging hardening (`feat: add settings keybindings themes and packaging hardening`).
+  What landed is described under "Settings, shortcuts and themes (Milestone 9)" (frontend) and `openmind-settings` (backend), and
+  "Packaging and startup baseline". Summary: 31 settings in 9 categories with a real consumer each (editor, search, terminal, Run
+  Code, Git, language servers, debugger, PHP server/tray, workbench), a Settings page (User/Workspace, search, reset, validation),
+  a JSON editor that is just the file in a normal tab (saving applies it and reports problems with line numbers), a Keyboard
+  Shortcuts page (list, search, change, remove, reset, conflicts) over `keybindings.json`, Dark/Light/High Contrast/System themes on
+  central tokens, a Welcome page with Install Runtimes, Keyboard Shortcuts and Settings cards, and the portable ZIP + per-user
+  installer. Validated: fmt, clippy `-D warnings`, `cargo test --workspace` (546 passed, 8 ignored), `pnpm lint`, `pnpm test` x3
+  (887), `pnpm build`. Verified by hand in the built app (fresh portable copies under `E:\omset9`, workspace `My Workspace`, every
+  path with spaces): Settings from the Welcome card and from Ctrl+,; Font Size saved to `settings/settings.json` and shown as
+  Modified/Reset; 500 refused with "Font Size must be between 8 and 40." and the file untouched; the workspace tab wrote
+  `.openmind/settings.json` (12) while the user file kept 20, the editor drew at 12 and the User tab said the folder overrides it;
+  resetting the workspace value fell back; relaunch kept the theme, tabs and folder; Keyboard Shortcuts: search, Change recorded
+  real key events, Ctrl+S was refused for Run Code with the conflict message (Replace/Save/Cancel), Ctrl+Alt+R was saved
+  (`-run.code` on Ctrl+F5 + the new key), the old Ctrl+F5 then did nothing, Ctrl+Alt+R ran the Python file, Reset wrote `[]` and brought
+  Ctrl+F5 back; themes: Light and High Contrast applied to the workbench, editor and terminal (the terminal reads its own tokens) and
+  survived a relaunch, the PHP window followed a change of the setting when it got focus; JSON: Open Settings (JSON) opened the file as
+  a tab, a broken edit gave "Settings saved with 1 problem: Not valid JSON (line 2, column 26)…" and undoing it gave "Settings applied.";
+  release build + NSIS installer + portable zip built; the copy left no process behind, and Registry User/Machine PATH were identical
+  before and after. Real problems found and fixed on the way: the WebView2 profile lived in AppData (above); a half-typed JSON file
+  flipped the theme back to the defaults (a file with a syntax error now keeps the last good values in force); the PHP control
+  panel's buttons were unreadable in Light (`color: inherit` on a dark button — now a token); several tooltips and hints hard-coded
+  shortcuts that stop being true after a remap (they read the live binding); undefined CSS tokens (`--accent-fg`, `--danger-fg`,
+  `--button-secondary-fg`...) silently fell back to dark-theme literals — now defined, and a test fails on any new one.
+  Known limitations: chord sequences (Ctrl+K Ctrl+S) are not supported, so Keyboard Shortcuts has no default key; only the language
+  features (Go to Definition/References, Rename, Format) can be re-bound among Monaco's built-in shortcuts — the Monaco key removal
+  for them is unit-tested but was not checked by hand (no language server was installed in the test copies); settings files are plain
+  JSON (no comments); a setting edited while the same value is overridden by the workspace shows the value in force, not the user's
+  own; a settings file changed on disk is re-read when a window gets focus or when it is saved in the editor, not by a watcher;
+  Runtime settings are the Run Code ones (no system-fallback switch yet); the installer was not run; icons/profile/sync are not
+  done. Left on disk for manual deletion: `E:\omset9`, `E:\omdbg81`, `E:\omdbg8`, `E:\omdbg`, `E:\omlsp`, `E:\omlsp2`,
+  `E:\wt7-target`, `C:\omrel` (release build cache), the empty `E:\wt8`, the worktree `E:\wt9` after the merge, and the old
+  `%LOCALAPPDATA%\com.openmindstudio.app`.
+- [ ] Milestone 10 — Indexed workspace/symbol/reference search.
+- [ ] Milestone 11 — Extension system (sandboxed, contributes commands/views/themes/...).
+- [ ] Milestone 12 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).
-- [ ] Milestone 12 — Settings UI, theming, icon themes, profiles, sync-readiness.
-- [ ] Milestone 13 — Packaging, installers, startup/memory performance hardening.
+- [ ] Milestone 13 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

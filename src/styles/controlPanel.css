@@ -94,18 +94,18 @@
 
 /* Running modules get XAMPP's green name cell. */
 .cp__module--running {
-  background: #2e7d32;
-  color: #ffffff;
+  background: var(--success-bg);
+  color: var(--on-accent-fg);
 }
 
 .cp__module--starting {
-  background: #b58900;
-  color: #ffffff;
+  background: var(--warning-bg);
+  color: var(--on-accent-fg);
 }
 
 .cp__module--error {
   background: var(--danger-bg, #a1260d);
-  color: #ffffff;
+  color: var(--on-accent-fg);
 }
 
 .cp__pid,
@@ -151,7 +151,7 @@
   border: 1px solid var(--menu-border, var(--border));
   border-radius: 3px;
   background: var(--button-secondary-bg, transparent);
-  color: inherit;
+  color: var(--button-secondary-fg);
   font: inherit;
   cursor: pointer;
   white-space: nowrap;
@@ -167,7 +167,9 @@
 }
 
 .cp__button:disabled {
-  opacity: 0.45;
+  border-color: var(--border);
+  background: var(--control-disabled-bg);
+  color: var(--fg-disabled);
   cursor: not-allowed;
 }
 

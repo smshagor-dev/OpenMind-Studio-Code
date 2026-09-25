@@ -8,7 +8,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 18vh;
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: var(--scrim-bg);
 }
 
 .modal {
@@ -67,7 +67,7 @@
   border: none;
   border-radius: 2px;
   background-color: var(--button-secondary-bg);
-  color: #ffffff;
+  color: var(--on-accent-fg);
   cursor: pointer;
 }
 
@@ -196,13 +196,13 @@
 
 .runtime-badge--installed,
 .runtime-badge--active {
-  background-color: #1f6f3a;
-  color: #ffffff;
+  background-color: var(--success-bg);
+  color: var(--on-accent-fg);
 }
 
 .runtime-badge--warn {
-  background-color: #8a5a00;
-  color: #ffffff;
+  background-color: var(--warning-bg);
+  color: var(--on-accent-fg);
 }
 
 .runtime-card__versions {
@@ -231,7 +231,7 @@
 
 .runtime-version__terminals--off,
 .runtime-feature--missing {
-  color: #cca700;
+  color: var(--warning-fg);
 }
 
 .runtime-version__spacer {
@@ -245,7 +245,7 @@
   border: 1px solid var(--menu-border);
   border-radius: 2px;
   background-color: var(--button-secondary-bg);
-  color: #ffffff;
+  color: var(--on-accent-fg);
   cursor: pointer;
 }
 
@@ -264,7 +264,7 @@
 }
 
 .runtime-version__delete:not(:disabled):hover {
-  background-color: #a1260d;
+  background-color: var(--danger-bg);
 }
 
 .runtime-card__install {
@@ -321,16 +321,16 @@
   gap: 8px;
   margin-top: 8px;
   padding: 6px 8px;
-  border: 1px solid #be1100;
+  border: 1px solid var(--error-border);
   border-radius: 3px;
-  background-color: rgba(190, 17, 0, 0.15);
+  background-color: var(--error-bg-soft);
   font-size: 12px;
 }
 
 /* --- Language Tools --- */
 
 .lsp-problem {
-  color: #cca700;
+  color: var(--warning-fg);
 }
 
 .lsp-footer {

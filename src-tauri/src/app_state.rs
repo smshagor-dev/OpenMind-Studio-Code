@@ -26,6 +26,11 @@ pub struct AppState {
     /// The portable app root (`AppPaths::root_dir`) — the always-valid fallback
     /// working directory for terminals whose requested cwd is missing.
     pub app_root: PathBuf,
+    /// Where every window keeps its WebView2 profile (`data/webview`), so nothing lands in AppData.
+    pub webview_dir: PathBuf,
+    /// `settings/settings.json` and `settings/keybindings.json` under the app root.
+    pub settings_file: PathBuf,
+    pub keybindings_file: PathBuf,
     pub recent_files: RecentFilesService,
     pub session: SessionService,
     pub theme: ThemeSettingService,

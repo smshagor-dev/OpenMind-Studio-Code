@@ -16,21 +16,23 @@ import {
 } from "./icons";
 import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
+import { withShortcut } from "./shortcutLabel";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 
 interface ViewItem {
   view: SideView;
   label: string;
-  shortcut?: string;
+  /** The command whose shortcut the tooltip shows. */
+  command?: string;
   icon: ReactNode;
 }
 
 const VIEW_ITEMS: readonly ViewItem[] = [
-  { view: "explorer", label: "Explorer", shortcut: "Ctrl+Shift+E", icon: <FilesIcon /> },
-  { view: "search", label: "Search", shortcut: "Ctrl+Shift+F", icon: <SearchIcon /> },
-  { view: "scm", label: "Source Control", shortcut: "Ctrl+Shift+G", icon: <SourceControlIcon /> },
-  { view: "debug", label: "Run and Debug", shortcut: "Ctrl+Shift+D", icon: <DebugIcon /> },
-  { view: "extensions", label: "Extensions", shortcut: "Ctrl+Shift+X", icon: <ExtensionsIcon /> },
+  { view: "explorer", label: "Explorer", command: "view.showExplorer", icon: <FilesIcon /> },
+  { view: "search", label: "Search", command: "search.findInFiles", icon: <SearchIcon /> },
+  { view: "scm", label: "Source Control", command: "view.showSourceControl", icon: <SourceControlIcon /> },
+  { view: "debug", label: "Run and Debug", command: "view.showRun", icon: <DebugIcon /> },
+  { view: "extensions", label: "Extensions", command: "view.showExtensions", icon: <ExtensionsIcon /> },
 ];
 
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
@@ -71,7 +73,7 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
               className={
                 active ? "activity-bar__item activity-bar__item--active" : "activity-bar__item"
               }
-              title={item.shortcut ? `${item.label} (${item.shortcut})` : item.label}
+              title={item.command ? withShortcut(item.label, item.command) : item.label}
               aria-label={item.label}
               aria-pressed={active}
               onClick={() => {

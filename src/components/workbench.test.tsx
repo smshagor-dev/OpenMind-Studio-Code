@@ -73,6 +73,7 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
     onDidChangeContent: () => () => undefined,
   };
   harness.current = {
+    keybindings: { labelFor: () => undefined },
     ipc,
     events,
     layout,

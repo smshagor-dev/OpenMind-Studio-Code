@@ -12,8 +12,36 @@ interface XtermHostProps {
   themeKind: string;
 }
 
+const TERMINAL_SETTINGS = [
+  "terminal.fontSize",
+  "terminal.fontFamily",
+  "terminal.cursorBlink",
+  "terminal.scrollback",
+];
+
 function cssVar(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+/** xterm options from the terminal settings. */
+function terminalOptions() {
+  const settings = container.settings;
+  return {
+    cursorBlink: settings.bool("terminal.cursorBlink", true),
+    fontFamily: settings.string("terminal.fontFamily", "Consolas, monospace"),
+    fontSize: settings.number("terminal.fontSize", 14),
+    scrollback: settings.number("terminal.scrollback", 5000),
+  };
+}
+
+/** The terminal colors are theme tokens (styles/theme.css), so every theme colors it. */
+function terminalTheme() {
+  return {
+    background: cssVar("--terminal-bg", "#191a1b"),
+    foreground: cssVar("--terminal-fg", "#cccccc"),
+    cursor: cssVar("--terminal-cursor", "#ffffff"),
+    selectionBackground: cssVar("--terminal-selection", "rgba(38, 79, 120, 0.7)"),
+  };
 }
 
 /**
@@ -30,12 +58,7 @@ export function XtermHost({ id, active, themeKind }: XtermHostProps) {
   useEffect(() => {
     const element = elementRef.current;
     if (!element) return;
-    const terminal = new Terminal({
-      cursorBlink: true,
-      fontFamily: 'Consolas, "Cascadia Mono", "Courier New", monospace',
-      fontSize: 14,
-      scrollback: 5000,
-    });
+    const terminal = new Terminal({ ...terminalOptions(), theme: terminalTheme() });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(element);
@@ -101,12 +124,20 @@ export function XtermHost({ id, active, themeKind }: XtermHostProps) {
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
-    terminal.options.theme = {
-      background: cssVar("--panel-bg", "#191a1b"),
-      foreground: cssVar("--fg", "#cccccc"),
-      cursor: cssVar("--fg", "#cccccc"),
-    };
+    terminal.options.theme = terminalTheme();
   }, [themeKind]);
+
+  // Terminal settings (font, cursor, scrollback) apply to the open terminals as soon as they change.
+  useEffect(
+    () =>
+      container.settings.onChange(TERMINAL_SETTINGS, () => {
+        const terminal = terminalRef.current;
+        if (!terminal) return;
+        Object.assign(terminal.options, terminalOptions());
+        if (elementRef.current && elementRef.current.offsetWidth > 0) fitRef.current?.fit();
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (active) {

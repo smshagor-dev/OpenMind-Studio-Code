@@ -27,6 +27,8 @@ export interface DebugDeps {
   workspacePath: () => string | null;
   /** Brings the Debug Console (and the Run and Debug view) up. */
   showConsole: () => void;
+  /** The `debug.stopOnEntry` setting: pause at the first line of every session. */
+  stopOnEntry?: () => boolean;
   /** Writes a line to the "Debug" output channel. */
   log: (line: string) => void;
 }
@@ -135,9 +137,10 @@ export class DebugService {
     const availability = this.startState();
     if (!availability.enabled) return false;
     const file = this.deps.activeFile();
-    const config = this.configs.current(file?.path ?? null, this.deps.workspacePath());
-    if (file === null || config === null) return false;
-    return this.startWith(config, file.docId);
+    const chosen = this.configs.current(file?.path ?? null, this.deps.workspacePath());
+    if (file === null || chosen === null) return false;
+    const stopOnEntry = chosen.stopOnEntry || (this.deps.stopOnEntry?.() ?? false);
+    return this.startWith({ ...chosen, stopOnEntry }, file.docId);
   }
 
   private async startWith(config: LaunchConfig, docId: string | null): Promise<boolean> {

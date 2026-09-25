@@ -24,7 +24,12 @@ export interface LspDeps {
   log: (line: string) => void;
   /** The document whose editor is in front, if any. */
   activeDocId: () => string | null;
+  /** The `lsp.enabled` setting; without it language servers are always on. */
+  enabled?: () => boolean;
 }
+
+export const LSP_DISABLED_REASON =
+  "Language servers are turned off. Turn them on in Settings > Language Servers.";
 
 /**
  * Language servers as the editor sees them. It never talks to a server itself:
@@ -163,6 +168,7 @@ export class LspService {
   }
 
   available(action: LspAction, docId: string | null): Availability {
+    if (!this.isEnabled()) return { enabled: false, reason: LSP_DISABLED_REASON };
     return actionAvailability(action, this.fileStatus(docId));
   }
 
@@ -176,8 +182,23 @@ export class LspService {
 
   // --- Keeping servers told about documents ---
 
+  private isEnabled(): boolean {
+    return this.deps.enabled?.() ?? true;
+  }
+
+  /** `lsp.enabled` changed: turning it off stops every server, turning it on tells them about the open files again. */
+  async applyEnabled(): Promise<void> {
+    if (this.isEnabled()) {
+      for (const id of this.documents.fileBackedIds()) this.track(id);
+      await this.refresh();
+      return;
+    }
+    for (const id of [...this.watchers.keys()]) this.untrack(id, null);
+    await this.stopAll();
+  }
+
   private isCandidate(id: string): string | null {
-    if (!this.documents.has(id)) return null;
+    if (!this.isEnabled() || !this.documents.has(id)) return null;
     const path = this.documents.snapshot(id).path;
     return path !== null && lspLanguageId(path) !== null ? path : null;
   }

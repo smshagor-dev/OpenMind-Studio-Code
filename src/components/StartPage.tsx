@@ -2,6 +2,8 @@ import { useState, type ReactNode } from "react";
 
 import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "../services/ipc";
 import {
+  GearIcon,
+  KeyboardIcon,
   NewFileIcon,
   NewFolderIcon,
   NewWindowIcon,
@@ -16,7 +18,7 @@ export interface WelcomeCard {
   id: string;
   title: string;
   description: string;
-  icon: "runtime" | "server" | "language";
+  icon: "runtime" | "server" | "language" | "keyboard" | "settings";
   enabled: boolean;
   onOpen: () => void;
 }
@@ -55,6 +57,8 @@ const CARD_ICONS = {
   runtime: <RuntimeIcon />,
   server: <ServerIcon />,
   language: <NewFileIcon />,
+  keyboard: <KeyboardIcon />,
+  settings: <GearIcon />,
 } as const;
 
 /** The Welcome tab's page, laid out like VS Code's: Start + Recent on the left, cards on the right. */

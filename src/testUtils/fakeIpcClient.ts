@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 import type { IpcClient } from "../services/ipc";
+import { emptyPreferences } from "./preferencesFixture";
 
 /**
  * A fully-stubbed `IpcClient` for tests, so each test file only needs to
@@ -18,8 +19,15 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     recentFilesClear: vi.fn().mockResolvedValue(undefined),
     sessionLoad: vi.fn().mockResolvedValue({ openPaths: [], activePath: null }),
     sessionSave: vi.fn().mockResolvedValue(undefined),
-    themeGet: vi.fn().mockResolvedValue("dark"),
-    themeSet: vi.fn().mockResolvedValue(undefined),
+    preferencesLoad: vi.fn().mockResolvedValue(emptyPreferences()),
+    preferencesSet: vi.fn().mockResolvedValue(emptyPreferences()),
+    preferencesReset: vi.fn().mockResolvedValue(emptyPreferences()),
+    preferencesFile: vi.fn().mockResolvedValue("C:/app/settings/settings.json"),
+    preferencesValidate: vi.fn().mockResolvedValue([]),
+    preferencesScopeOf: vi.fn().mockResolvedValue(null),
+    keybindingsLoad: vi.fn().mockResolvedValue({ entries: [], error: null }),
+    keybindingsSave: vi.fn().mockImplementation((entries: unknown) => Promise.resolve(entries)),
+    keybindingsFile: vi.fn().mockResolvedValue("C:/app/settings/keybindings.json"),
     workspaceOpenFolder: vi.fn(),
     workspaceCloseFolder: vi.fn().mockResolvedValue(undefined),
     workspaceRecentFolders: vi.fn().mockResolvedValue([]),

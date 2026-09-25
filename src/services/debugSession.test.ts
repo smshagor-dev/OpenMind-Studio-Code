@@ -90,38 +90,45 @@ async function rig(): Promise<Rig> {
       sent.event = handler;
       return Promise.resolve(() => undefined);
     }),
-    debugRequest: vi.fn().mockImplementation((command: string, args: { expression?: string; variablesReference?: number }) => {
-      switch (command) {
-        case "stackTrace":
-          return Promise.resolve({
-            stackFrames: [
-              { id: 11, name: "greet", line: 2, column: 1, source: { path: FILE } },
-              { id: 12, name: "<module>", line: 5, column: 1, source: { path: FILE } },
-            ],
-          });
-        case "scopes":
-          return Promise.resolve({
-            scopes: [
-              { name: "Locals", variablesReference: 100 },
-              { name: "Globals", variablesReference: 200, expensive: true },
-            ],
-          });
-        case "variables":
-          return Promise.resolve({
-            variables:
-              args.variablesReference !== 300
-                ? [
-                    { name: "name", value: "'x'", type: "str", variablesReference: 0 },
-                    { name: "items", value: "list", variablesReference: 300 },
-                  ]
-                : [],
-          });
-        case "evaluate":
-          return Promise.resolve({ result: `<${args.expression ?? ""}>`, variablesReference: 0 });
-        default:
-          return Promise.resolve(null);
-      }
-    }),
+    debugRequest: vi
+      .fn()
+      .mockImplementation(
+        (command: string, args: { expression?: string; variablesReference?: number }) => {
+          switch (command) {
+            case "stackTrace":
+              return Promise.resolve({
+                stackFrames: [
+                  { id: 11, name: "greet", line: 2, column: 1, source: { path: FILE } },
+                  { id: 12, name: "<module>", line: 5, column: 1, source: { path: FILE } },
+                ],
+              });
+            case "scopes":
+              return Promise.resolve({
+                scopes: [
+                  { name: "Locals", variablesReference: 100 },
+                  { name: "Globals", variablesReference: 200, expensive: true },
+                ],
+              });
+            case "variables":
+              return Promise.resolve({
+                variables:
+                  args.variablesReference !== 300
+                    ? [
+                        { name: "name", value: "'x'", type: "str", variablesReference: 0 },
+                        { name: "items", value: "list", variablesReference: 300 },
+                      ]
+                    : [],
+              });
+            case "evaluate":
+              return Promise.resolve({
+                result: `<${args.expression ?? ""}>`,
+                variablesReference: 0,
+              });
+            default:
+              return Promise.resolve(null);
+          }
+        },
+      ),
   });
   const events = new EventBus<AppEvents>();
   const errors: string[] = [];
@@ -434,7 +441,9 @@ describe("the controls and the commands", () => {
 
   it("F5 is Start Debugging (Continue once paused); Ctrl+F5 stays Run Code; the step keys are bound", async () => {
     const key = (chord: string) =>
-      DEFAULT_KEYBINDINGS.filter((binding) => binding.key === chord).map((binding) => binding.command);
+      DEFAULT_KEYBINDINGS.filter((binding) => binding.key === chord).map(
+        (binding) => binding.command,
+      );
     expect(key("F5")).toEqual(["debug.start"]);
     expect(key("Ctrl+F5")).toEqual(["run.code"]);
     expect(key("Shift+F5")).toEqual(["debug.stop"]);

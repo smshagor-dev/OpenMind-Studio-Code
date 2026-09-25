@@ -88,6 +88,7 @@ function setViewContainer(input: ViewRig) {
     start,
   };
   harness.current = {
+    keybindings: { labelFor: () => undefined },
     debug,
     debugConfigs: {
       configsFor: (path: string | null) =>
@@ -211,6 +212,7 @@ describe("debug toolbar", () => {
     const runCommand = vi.fn();
     const currentState = { run: current };
     harness.current = {
+    keybindings: { labelFor: () => undefined },
       run: runCommand,
       debug: {
         subscribe: noop,
@@ -451,6 +453,7 @@ describe("debug console", () => {
     const evaluate = vi.fn().mockResolvedValue(true);
     const clear = vi.fn();
     harness.current = {
+    keybindings: { labelFor: () => undefined },
       debugConsole: { ...store({ lines }), evaluate, clear },
       debug: {
         subscribe: noop,

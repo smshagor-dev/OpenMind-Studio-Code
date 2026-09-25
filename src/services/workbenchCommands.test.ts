@@ -9,7 +9,6 @@ import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient } from "./ipc";
 import { LayoutService } from "./layoutService";
-import { ThemeService } from "./themeService";
 import { type WindowApi, WindowService } from "./windowService";
 import { registerWorkbenchCommands } from "./workbenchCommands";
 import { WorkspaceService } from "./workspaceService";
@@ -59,7 +58,6 @@ describe("registerWorkbenchCommands", () => {
       editor: new EditorService(ipc),
       layout,
       window: new WindowService(fakeWindowApi, ipc),
-      theme: new ThemeService(ipc, events),
     });
   });
 

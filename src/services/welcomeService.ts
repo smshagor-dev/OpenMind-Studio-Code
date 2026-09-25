@@ -1,7 +1,14 @@
-import type { IpcClient } from "./ipc";
+import type { IpcClient, SettingValue } from "./ipc";
 
-/** Saved in `editor_settings`: whether the Welcome page opens when the app starts. */
+/** The setting (and, before settings existed, the `editor_settings` key): whether the Welcome page opens at start-up. */
 export const WELCOME_ON_STARTUP_KEY = "workbench.welcomeOnStartup";
+
+/** The slice of `SettingsService` the Welcome page needs. */
+export interface WelcomeSettings {
+  bool: (id: string, fallback: boolean) => boolean;
+  isSetIn: (scope: "user", id: string) => boolean;
+  set: (scope: "user", id: string, value: SettingValue) => Promise<unknown>;
+}
 
 export interface WelcomeState {
   /** The Welcome tab is shown (in the first group, while no file is open). */
@@ -19,7 +26,10 @@ export class WelcomeService {
   private state: WelcomeState = { open: true, showOnStartup: true };
   private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly ipc: IpcClient) {}
+  constructor(
+    private readonly ipc: IpcClient,
+    private readonly settings: WelcomeSettings | null = null,
+  ) {}
 
   getState(): WelcomeState {
     return this.state;
@@ -33,8 +43,15 @@ export class WelcomeService {
   }
 
   async initialize(): Promise<void> {
-    const saved = await this.ipc.settingsGet(WELCOME_ON_STARTUP_KEY).catch(() => null);
-    const showOnStartup = saved !== "false";
+    const legacy = await this.ipc.settingsGet(WELCOME_ON_STARTUP_KEY).catch(() => null);
+    let showOnStartup = legacy !== "false";
+    if (this.settings !== null) {
+      // A choice made before settings existed moves into the settings file once.
+      if (legacy === "false" && !this.settings.isSetIn("user", WELCOME_ON_STARTUP_KEY)) {
+        await this.settings.set("user", WELCOME_ON_STARTUP_KEY, false);
+      }
+      showOnStartup = this.settings.bool(WELCOME_ON_STARTUP_KEY, true);
+    }
     this.update({ showOnStartup, open: showOnStartup });
   }
 
@@ -48,6 +65,10 @@ export class WelcomeService {
 
   async setShowOnStartup(showOnStartup: boolean): Promise<void> {
     this.update({ showOnStartup });
+    if (this.settings !== null) {
+      await this.settings.set("user", WELCOME_ON_STARTUP_KEY, showOnStartup);
+      return;
+    }
     await this.ipc
       .settingsSet(WELCOME_ON_STARTUP_KEY, showOnStartup ? "true" : "false")
       .catch(() => undefined);

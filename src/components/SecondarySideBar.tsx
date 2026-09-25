@@ -2,6 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import { CloseIcon } from "./icons";
+import { shortcutFor } from "./shortcutLabel";
 
 /**
  * VS Code's Secondary Side Bar: a card on the far side of the editor showing
@@ -11,6 +12,7 @@ import { CloseIcon } from "./icons";
  * holds the state.
  */
 export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
+  const runKey = shortcutFor("run.code");
   const state = useSyncExternalStore(
     (listener) => container.secondarySideBar.subscribe(listener),
     () => container.secondarySideBar.getState(),
@@ -107,8 +109,8 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
       </header>
       {lines.length === 0 ? (
         <p className="secondary-sidebar__empty">
-          No output in “{state.channel}” yet. Run a file (Ctrl+F5) to see its output here and in the
-          panel below.
+          No output in “{state.channel}” yet. Run a file{runKey ? ` (${runKey})` : ""} to see its output
+          here and in the panel below.
         </p>
       ) : (
         <pre className="output-lines secondary-sidebar__lines" ref={bodyRef}>

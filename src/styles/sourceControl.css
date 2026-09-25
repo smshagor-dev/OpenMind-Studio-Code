@@ -38,7 +38,7 @@
 .git-button--primary {
   background: var(--accent-bg, #0e639c);
   border-color: transparent;
-  color: #fff;
+  color: var(--on-accent-fg);
 }
 
 .git-button:disabled,
@@ -133,7 +133,7 @@
 
 .git-tool:hover:not(:disabled),
 .git-branch:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--overlay-2);
 }
 
 .git-menu {
@@ -178,7 +178,7 @@
   margin-left: 6px;
   padding: 0 6px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--overlay-3);
 }
 
 .git-group__list {
@@ -195,7 +195,7 @@
 }
 
 .git-row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--overlay-1);
 }
 
 .git-row__main {
@@ -367,7 +367,7 @@
 }
 
 .git-tool--on {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--overlay-3);
 }
 
 .git-commit-row {
@@ -386,7 +386,7 @@
 
 .git-commit-row:hover,
 .git-commit-row--selected {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--overlay-2);
 }
 
 .git-commit-row__hash {

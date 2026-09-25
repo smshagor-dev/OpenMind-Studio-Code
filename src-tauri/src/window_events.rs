@@ -50,7 +50,11 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
             save_main_geometry(&window, &service).await;
 
             let app = window.app_handle().clone();
-            if crate::tray::servers_running(&app) {
+            let hide_wanted = crate::commands::preferences::user_bool(
+                &app.state::<AppState>(),
+                "php.tray.hideOnClose",
+            );
+            if hide_wanted && crate::tray::servers_running(&app) {
                 match crate::tray::ensure(&app) {
                     Ok(()) => {
                         tracing::info!(

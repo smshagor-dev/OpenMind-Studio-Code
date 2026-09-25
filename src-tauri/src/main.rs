@@ -47,8 +47,15 @@ fn main() {
             commands::workspace::workspace_active_folder,
             commands::workspace::explorer_state_load,
             commands::workspace::explorer_state_save,
-            commands::theme::theme_get,
-            commands::theme::theme_set,
+            commands::preferences::preferences_load,
+            commands::preferences::preferences_set,
+            commands::preferences::preferences_reset,
+            commands::preferences::preferences_file,
+            commands::preferences::preferences_validate,
+            commands::preferences::preferences_scope_of,
+            commands::preferences::keybindings_load,
+            commands::preferences::keybindings_save,
+            commands::preferences::keybindings_file,
             commands::filesystem::fs_read_dir,
             commands::filesystem::fs_metadata,
             commands::filesystem::fs_is_binary,
@@ -164,9 +171,18 @@ fn main() {
                 .expect("failed to connect to database");
             let window_state_service = WindowStateService::new(db.clone());
 
-            let window = app
-                .get_webview_window(MAIN_WINDOW_LABEL)
-                .expect("main window must exist");
+            // The main window is described in tauri.conf.json (`create: false`) but built here, so its WebView2
+            // profile can live next to the executable instead of in %LOCALAPPDATA%.
+            let window_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == MAIN_WINDOW_LABEL)
+                .expect("tauri.conf.json must describe the main window");
+            let window = tauri::WebviewWindowBuilder::from_config(app.handle(), window_config)?
+                .data_directory(app_paths.webview_dir.clone())
+                .build()?;
 
             let saved_state =
                 tauri::async_runtime::block_on(window_state_service.load(MAIN_WINDOW_LABEL))
@@ -207,6 +223,9 @@ fn main() {
                 editor_windows: crate::windows::EditorWindows::default(),
                 window_states: window_state_service.clone(),
                 app_root: app_paths.root_dir.clone(),
+                webview_dir: app_paths.webview_dir.clone(),
+                settings_file: app_paths.settings_file.clone(),
+                keybindings_file: app_paths.keybindings_file.clone(),
                 terminal: TerminalRegistry::new(),
                 recent_files: RecentFilesService::new(db.clone()),
                 session: SessionService::new(db.clone()),

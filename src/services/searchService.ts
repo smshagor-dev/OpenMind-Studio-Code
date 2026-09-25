@@ -90,6 +90,27 @@ export class SearchService {
     return this.state;
   }
 
+  /** What the fields start with (the search settings); a field the user has changed keeps their value. */
+  private defaults = {
+    options: { ...INITIAL.options },
+    include: INITIAL.include,
+    exclude: INITIAL.exclude,
+  };
+
+  applyDefaults(next: { options: SearchOptions; include: string; exclude: string }): void {
+    const previous = this.defaults;
+    const options = { ...this.state.options };
+    for (const key of Object.keys(next.options) as (keyof SearchOptions)[]) {
+      if (options[key] === previous.options[key]) options[key] = next.options[key];
+    }
+    this.defaults = { options: { ...next.options }, include: next.include, exclude: next.exclude };
+    this.update({
+      options,
+      include: this.state.include === previous.include ? next.include : this.state.include,
+      exclude: this.state.exclude === previous.exclude ? next.exclude : this.state.exclude,
+    });
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => {

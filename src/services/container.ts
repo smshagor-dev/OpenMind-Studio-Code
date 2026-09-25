@@ -26,6 +26,8 @@ import { RunCodeService } from "./runCodeService";
 import { registerRunCommands } from "./runCommands";
 import { RuntimeService } from "./runtimeService";
 import { SearchService } from "./searchService";
+import { SettingsService } from "./settingsService";
+import { wirePreferences } from "./preferencesWiring";
 import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
@@ -89,9 +91,10 @@ const markdown = new MarkdownPreviewService(workspace, editorGroups, tauriIpcCli
 const ports = new PortsService(tauriIpcClient, events);
 const fileSystem = new FileSystemService(tauriIpcClient);
 const explorer = new ExplorerService(fileSystem, tauriIpcClient, events);
-const theme = new ThemeService(tauriIpcClient, events);
+const settings = new SettingsService(tauriIpcClient, events);
+const theme = new ThemeService(settings, events);
 const commands = new CommandRegistry();
-const editor = new EditorService(tauriIpcClient);
+const editor = new EditorService(tauriIpcClient, settings);
 const layout = new LayoutService(tauriIpcClient);
 const windowService = new WindowService(tauriWindowApi, tauriIpcClient);
 const keybindings = new KeybindingService(commands);
@@ -112,7 +115,9 @@ const search = new SearchService(
   workspace,
 );
 
-const php = new PhpServerService(tauriIpcClient, events, output, runtime, ports, panel);
+const php = new PhpServerService(tauriIpcClient, events, output, runtime, ports, panel, () =>
+  settings.number("php.server.defaultPort", 8000),
+);
 const mariaDb = new MariaDbService(tauriIpcClient, events, output, runtime, ports, panel);
 const phpMyAdmin = new PhpMyAdminService(
   tauriIpcClient,
@@ -145,10 +150,12 @@ const sourceControl = new SourceControlService(
   },
   (listener) => runtime.subscribe(listener),
   (): Promise<unknown> => fileSync.afterGitOperation(),
+  () => settings.bool("git.autoRefresh", true),
 );
 const fileSync = new FileSyncService(tauriIpcClient, events, documents, explorer, {
   workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
-  workingTreeChanged: (): Promise<void> => sourceControl.refresh(),
+  workingTreeChanged: (): Promise<void> =>
+    settings.bool("git.autoRefresh", true) ? sourceControl.refresh() : Promise.resolve(),
   loadedFolders: () => explorer.loadedFolders(),
 });
 const gitClone = new GitCloneService(
@@ -197,6 +204,10 @@ const runCode = new RunCodeService(
   terminal,
   panel,
   (channel) => void secondarySideBar.showOutput(channel),
+  {
+    saveBeforeRun: () => settings.bool("run.saveBeforeRun", true),
+    clearOutputBeforeRun: () => settings.bool("run.clearOutputBeforeRun", true),
+  },
 );
 // An interpreter appearing or going (install / delete / switch) changes what can run.
 runtime.subscribe(() => {
@@ -217,9 +228,10 @@ const lsp = new LspService(tauriIpcClient, events, documents, {
     const id = workspace.getState().activeId;
     return id !== null && documents.has(id) ? id : null;
   },
+  enabled: () => settings.bool("lsp.enabled", true),
 });
 const diagnostics = new DiagnosticsService(events, documents);
-const welcome = new WelcomeService(tauriIpcClient);
+const welcome = new WelcomeService(tauriIpcClient, settings);
 
 // Debugging: breakpoints, the paused program's stack/variables/watches, the console and the session.
 const activeFile = (): { path: string; docId: string } | null => {
@@ -260,8 +272,9 @@ const debug: DebugService = new DebugService(
     workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
     showConsole: () => {
       void layout.showView("debug");
-      void panel.show("debugConsole");
+      if (settings.bool("debug.openConsoleOnStart", true)) void panel.show("debugConsole");
     },
+    stopOnEntry: () => settings.bool("debug.stopOnEntry", false),
     log: log("Debug"),
   },
 );
@@ -377,8 +390,8 @@ commands.register(
 );
 
 commands.register("view.toggleTheme", async () => {
-  const next = theme.getTheme() === "dark" ? "light" : "dark";
-  await theme.setTheme(next);
+  // Toggles between the dark and light themes (from High Contrast it goes to dark).
+  await theme.setMode(theme.getTheme() === "dark" ? "light" : "dark");
 });
 
 commands.register("explorer.newFile", async () => {
@@ -450,7 +463,25 @@ registerWorkbenchCommands({
   editor,
   layout,
   window: windowService,
+});
+
+const {
+  page: preferencesPage,
+  keybindingsManager,
+  startSettings,
+} = wirePreferences({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  settings,
   theme,
+  keybindings,
+  documents,
+  editor,
+  search,
+  lsp,
+  php,
+  openFile: (path) => workspace.openPath(path),
 });
 
 /**
@@ -472,6 +503,10 @@ export const container = {
   fileSystem,
   explorer,
   theme,
+  settings,
+  preferencesPage,
+  keybindingsManager,
+  startSettings,
   commands,
   keybindings,
   run,

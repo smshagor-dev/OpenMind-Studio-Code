@@ -26,7 +26,7 @@
   border: 1px solid var(--menu-border);
   border-radius: 2px;
   background-color: var(--button-secondary-bg);
-  color: #ffffff;
+  color: var(--on-accent-fg);
   font-size: 12px;
   cursor: pointer;
 }
@@ -38,7 +38,7 @@
 }
 
 .debug-view .debug-start {
-  background-color: #1f6f3a;
+  background-color: var(--success-bg);
 }
 
 .debug-config {
@@ -88,7 +88,7 @@
 }
 
 .debug-var__name {
-  color: #9cdcfe;
+  color: var(--debug-var-name-fg);
   white-space: nowrap;
 }
 
@@ -98,11 +98,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #ce9178;
+  color: var(--debug-var-value-fg);
 }
 
 .debug-var__value--error {
-  color: #f48771;
+  color: var(--error-fg);
 }
 
 .debug-scope__header {
@@ -195,7 +195,7 @@
   border: 1px solid var(--menu-border);
   border-radius: 4px;
   background-color: var(--menu-bg, #252526);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px var(--debug-toolbar-shadow);
 }
 
 .debug-toolbar__button {
@@ -219,11 +219,11 @@
 }
 
 .debug-toolbar__button--continue {
-  color: #75beff;
+  color: var(--info-fg);
 }
 
 .debug-toolbar__button--stop {
-  color: #f48771;
+  color: var(--error-fg);
 }
 
 /* --- Editor gutter and current line --- */
@@ -237,22 +237,22 @@
 }
 
 .debug-bp--on {
-  background-color: #e51400;
+  background-color: var(--debug-breakpoint);
 }
 
 .debug-bp--off {
-  border: 1px solid #848484;
+  border: 1px solid var(--debug-breakpoint-off);
   background-color: transparent;
 }
 
 .debug-bp--stale {
-  border: 1px dashed #848484;
+  border: 1px dashed var(--debug-breakpoint-off);
   background-color: transparent;
 }
 
 .debug-current-glyph {
   margin-left: 2px;
-  border-left: 8px solid #ffcc00;
+  border-left: 8px solid var(--debug-current-arrow);
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
   width: 0 !important;
@@ -261,7 +261,7 @@
 }
 
 .debug-current-line {
-  background-color: rgba(255, 238, 0, 0.18);
+  background-color: var(--debug-current-line-bg);
 }
 
 /* --- Debug Console --- */
@@ -288,11 +288,11 @@
 
 .debug-console__line--stderr,
 .debug-console__line--error {
-  color: #f48771;
+  color: var(--error-fg);
 }
 
 .debug-console__line--input {
-  color: #9cdcfe;
+  color: var(--debug-var-name-fg);
 }
 
 .debug-console__line--system,
@@ -306,6 +306,6 @@
 }
 
 .statusbar__item--debug {
-  background-color: #cc6633;
-  color: #ffffff;
+  background-color: var(--debug-statusbar-bg);
+  color: var(--on-accent-fg);
 }

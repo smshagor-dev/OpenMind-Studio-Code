@@ -105,6 +105,8 @@ export class SourceControlService {
     private readonly onRuntimeChange: (listener: () => void) => () => void = () => () => undefined,
     /** Called after an operation that can change files on disk (discard, switch, pull, delete): open editors and the Explorer catch up. */
     private readonly filesChanged: () => Promise<unknown> = () => Promise.resolve(),
+    /** The `git.autoRefresh` setting: look again on window focus and after a save. */
+    private readonly autoRefresh: () => boolean = () => true,
   ) {}
 
   getState(): SourceControlState {
@@ -127,7 +129,7 @@ export class SourceControlService {
         void this.refresh();
       }),
       this.events.on("documentSaved", () => {
-        void this.refresh();
+        if (this.autoRefresh()) void this.refresh();
       }),
       this.onRuntimeChange(() => {
         if (this.runtime()?.ready === false) void this.refresh();
@@ -136,7 +138,7 @@ export class SourceControlService {
     // Files change outside the app (a terminal, another tool): look again when the window gets focus back.
     if (typeof window !== "undefined") {
       const onFocus = () => {
-        if (this.state.busy === null) void this.refresh();
+        if (this.state.busy === null && this.autoRefresh()) void this.refresh();
       };
       window.addEventListener("focus", onFocus);
       this.offs.push(() => {

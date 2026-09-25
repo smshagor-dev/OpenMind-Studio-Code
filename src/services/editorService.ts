@@ -55,6 +55,42 @@ export interface EditorStatus {
 
 const SETTINGS_KEY = "editor.viewOptions";
 
+/** The view toggles that are real settings (`editor.*`) rather than a private saved blob. */
+export const OPTION_SETTINGS: Partial<Record<keyof EditorViewOptions, string>> = {
+  wordWrap: "editor.wordWrap",
+  minimap: "editor.minimap",
+  stickyScroll: "editor.stickyScroll",
+  renderWhitespace: "editor.renderWhitespace",
+};
+
+/** The editor settings an open editor follows live (see `SettingsService.onChange`). */
+export const EDITOR_SETTING_IDS = [
+  ...Object.values(OPTION_SETTINGS),
+  "editor.fontSize",
+  "editor.fontFamily",
+  "editor.tabSize",
+  "editor.insertSpaces",
+  "editor.lineNumbers",
+  "editor.cursorBlinking",
+];
+
+/** The slice of `SettingsService` the editor reads and writes. */
+export interface EditorSettingsSource {
+  bool: (id: string, fallback: boolean) => boolean;
+  number: (id: string, fallback: number) => number;
+  string: (id: string, fallback: string) => string;
+  isSetIn: (scope: "user", id: string) => boolean;
+  set: (scope: "user", id: string, value: boolean) => Promise<unknown>;
+  setEffective: (id: string, value: boolean) => Promise<unknown>;
+}
+
+const LINE_NUMBERS = ["on", "off", "relative"] as const;
+const CURSOR_BLINKING = ["blink", "smooth", "phase", "expand", "solid"] as const;
+
+function oneOf<T extends string>(value: string, allowed: readonly T[], fallback: T): T {
+  return allowed.find((candidate) => candidate === value) ?? fallback;
+}
+
 /** A reveal request older than this is dropped: the file it was for never showed up. */
 const REVEAL_TTL_MS = 5000;
 
@@ -82,21 +118,48 @@ export class EditorService {
   private options: EditorViewOptions = DEFAULT_VIEW_OPTIONS;
   private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly ipc: IpcClient) {}
+  constructor(
+    private readonly ipc: IpcClient,
+    private readonly settings: EditorSettingsSource | null = null,
+  ) {}
 
   async initialize(): Promise<void> {
     const saved = await this.ipc.settingsGet(SETTINGS_KEY).catch(() => null);
-    if (saved === null) {
-      return;
+    if (saved !== null) {
+      try {
+        const parsed = JSON.parse(saved) as Partial<EditorViewOptions>;
+        this.options = { ...DEFAULT_VIEW_OPTIONS, ...pickBooleans(parsed) };
+        await this.migrateLegacyToggles();
+      } catch {
+        // A corrupt stored value just means defaults — nothing to surface to the user.
+      }
     }
-    try {
-      const parsed = JSON.parse(saved) as Partial<EditorViewOptions>;
-      this.options = { ...DEFAULT_VIEW_OPTIONS, ...pickBooleans(parsed) };
-      this.applyOptions();
-      this.notify();
-    } catch {
-      // A corrupt stored value just means defaults — nothing to surface to the user.
+    this.applyOptions();
+    this.notify();
+  }
+
+  /** The toggles that used to live in the private blob move into the settings file once (only where the user changed them). */
+  private async migrateLegacyToggles(): Promise<void> {
+    if (this.settings === null) return;
+    for (const [name, id] of Object.entries(OPTION_SETTINGS) as [
+      keyof EditorViewOptions,
+      string,
+    ][]) {
+      const legacy = this.options[name];
+      if (legacy !== DEFAULT_VIEW_OPTIONS[name] && !this.settings.isSetIn("user", id)) {
+        await this.settings.set("user", id, legacy);
+      }
     }
+    const rest = Object.fromEntries(
+      Object.entries(this.options).filter(([name]) => !(name in OPTION_SETTINGS)),
+    );
+    await this.ipc.settingsSet(SETTINGS_KEY, JSON.stringify(rest)).catch(() => undefined);
+  }
+
+  /** The settings changed: the open editors follow them. */
+  refreshFromSettings(): void {
+    this.applyOptions();
+    this.notify();
   }
 
   /** Registers `editor` (and makes it current); returns the matching detach function. */
@@ -186,11 +249,26 @@ export class EditorService {
     return this.status;
   }
 
+  /** The view options as they are now: the settings-backed toggles come from the settings, the rest are kept here. */
   getOptions(): EditorViewOptions {
-    return this.options;
+    const settings = this.settings;
+    if (settings === null) return this.options;
+    const resolved = { ...this.options };
+    for (const [name, id] of Object.entries(OPTION_SETTINGS) as [
+      keyof EditorViewOptions,
+      string,
+    ][]) {
+      resolved[name] = settings.bool(id, DEFAULT_VIEW_OPTIONS[name]);
+    }
+    return resolved;
   }
 
   async toggleOption(name: keyof EditorViewOptions): Promise<void> {
+    const id = OPTION_SETTINGS[name];
+    if (id !== undefined && this.settings !== null) {
+      await this.settings.setEffective(id, !this.getOptions()[name]);
+      return;
+    }
     this.options = { ...this.options, [name]: !this.options[name] };
     this.applyOptions();
     this.notify();
@@ -205,8 +283,29 @@ export class EditorService {
   }
 
   private applyOptions(): void {
-    const o = this.options;
-    this.editor?.updateOptions({
+    const o = this.getOptions();
+    const s = this.settings;
+    const prefs: monaco.editor.IEditorOptions & monaco.editor.IGlobalEditorOptions =
+      s === null
+        ? {}
+        : {
+            fontSize: s.number("editor.fontSize", 14),
+            fontFamily: s.string("editor.fontFamily", "Consolas, monospace"),
+            tabSize: s.number("editor.tabSize", 4),
+            insertSpaces: s.bool("editor.insertSpaces", true),
+            lineNumbers: oneOf(s.string("editor.lineNumbers", "on"), LINE_NUMBERS, "on"),
+            cursorBlinking: oneOf(
+              s.string("editor.cursorBlinking", "blink"),
+              CURSOR_BLINKING,
+              "blink",
+            ),
+          };
+    const all = { ...prefs, ...this.viewOptionsFor(o) };
+    for (const editor of this.editors) editor.updateOptions(all);
+  }
+
+  private viewOptionsFor(o: EditorViewOptions): monaco.editor.IEditorOptions {
+    return {
       wordWrap: o.wordWrap ? "on" : "off",
       minimap: { enabled: o.minimap },
       stickyScroll: { enabled: o.stickyScroll },
@@ -214,7 +313,7 @@ export class EditorService {
       renderControlCharacters: o.renderControlCharacters,
       columnSelection: o.columnSelection,
       multiCursorModifier: o.ctrlClickMultiCursor ? "ctrlCmd" : "alt",
-    });
+    };
   }
 
   private refreshStatus(): void {

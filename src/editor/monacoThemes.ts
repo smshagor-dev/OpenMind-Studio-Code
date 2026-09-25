@@ -44,10 +44,26 @@ export function defineMonacoThemes(): void {
     rules: [],
     colors: {},
   });
+
+  // Monaco's own high-contrast base: black surfaces, bright borders, no soft highlights.
+  monaco.editor.defineTheme("openmind-hc", {
+    base: "hc-black",
+    inherit: true,
+    rules: [],
+    colors: {
+      "editor.background": "#000000",
+      "editorGutter.background": "#000000",
+      "minimap.background": "#000000",
+      "editorWidget.background": "#000000",
+      "editorWidget.border": "#6fc3df",
+      focusBorder: "#f38518",
+    },
+  });
 }
 
 /** The Monaco theme for each app theme kind. */
 export const MONACO_THEME_MAP: Record<string, string> = {
   dark: "openmind-dark",
   light: "openmind-light",
+  "high-contrast": "openmind-hc",
 };

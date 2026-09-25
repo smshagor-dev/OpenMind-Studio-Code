@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import "../styles/debug.css";
+import { shortcutFor } from "./shortcutLabel";
 
 /** The Debug Console tab: the program's output, adapter messages, and an evaluate prompt. */
 export function DebugConsoleView() {
@@ -37,7 +38,7 @@ export function DebugConsoleView() {
       <div className="debug-console__lines" ref={bodyRef} aria-label="Debug Console output">
         {state.lines.length === 0 ? (
           <p className="panel-view__empty">
-            The program&apos;s output and debugger messages appear here. Start debugging with F5.
+            The program&apos;s output and debugger messages appear here. Start debugging with {shortcutFor("debug.start") ?? "the Run menu"}.
           </p>
         ) : (
           state.lines.map((line) => (

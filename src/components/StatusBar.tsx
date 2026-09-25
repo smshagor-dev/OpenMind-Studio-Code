@@ -48,6 +48,11 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
     (listener) => container.sourceControl.subscribe(listener),
     () => container.sourceControl.getState(),
   );
+  useSyncExternalStore(
+    (listener) => container.settings.subscribe(listener),
+    () => container.settings.getState(),
+  );
+  const showBranch = container.settings.bool("git.showBranchInStatusBar", true);
   const problems = useSyncExternalStore(
     (listener) => container.markers.subscribe(listener),
     () => container.markers.getCounts(),
@@ -73,12 +78,14 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
           <span>{problems.warnings}</span>
         </button>
         <DebugStatusItem />
-        <GitBranchIndicator
-          className="statusbar__item"
-          onClick={() => {
-            container.run("view.showSourceControl");
-          }}
-        />
+        {showBranch ? (
+          <GitBranchIndicator
+            className="statusbar__item"
+            onClick={() => {
+              container.run("view.showSourceControl");
+            }}
+          />
+        ) : null}
       </div>
       {status && activeDocument ? (
         <div className="statusbar__right">

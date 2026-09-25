@@ -164,6 +164,15 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+export function KeyboardIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="1.5" y="4" width="13" height="8" rx="1" />
+      <path d="M4 6.5h1M7.5 6.5h1M11 6.5h1M4 9.5h8" />
+    </Svg>
+  );
+}
+
 export function SearchIcon(props: IconProps) {
   return (
     <Svg {...props}>
