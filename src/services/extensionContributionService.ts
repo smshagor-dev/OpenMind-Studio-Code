@@ -188,6 +188,8 @@ export class ExtensionContributionService implements ExtensionThemeSource {
 
   private editorActions(): ExtensionEditorAction[] {
     const actions: ExtensionEditorAction[] = [];
+    // A command id contributed twice belongs to the first extension (the one that owns it in the registry).
+    const seen = new Set<string>();
     for (const extension of this.enabled()) {
       const hidden = this.hiddenFromPalette(extension);
       const inContext = new Set(
@@ -195,7 +197,8 @@ export class ExtensionContributionService implements ExtensionThemeSource {
       );
       for (const contribution of extension.manifest.contributes.commands) {
         const label = this.label(extension, contribution.command);
-        if (label === null) continue;
+        if (label === null || seen.has(contribution.command)) continue;
+        seen.add(contribution.command);
         const inContextMenu = inContext.has(contribution.command);
         if (hidden.has(contribution.command) && !inContextMenu) continue;
         actions.push({ command: contribution.command, label, inContextMenu });

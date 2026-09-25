@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ExtensionEditorAction } from "./extensionContributionService";
 
 import { command, rig, started } from "../testUtils/extensionRig";
 import { emptyExtensionsSnapshot, testExtension } from "../testUtils/fakeExtensionsIpc";
@@ -184,6 +185,9 @@ describe("contribution hardening", () => {
     const r = await started([command, duplicate], { node: NODE });
     expect(r.commands.list().filter((id) => id === "sampleCommand.hello")).toHaveLength(1);
     expect(r.contributions.commandInfos().filter((info) => info.id === "sampleCommand.hello")).toHaveLength(2);
+    const actions = (r.editorActions as ExtensionEditorAction[]).filter((a) => a.command === "sampleCommand.hello");
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.label).not.toContain("(duplicate)");
   });
 
   it("disabling an extension removes its keybindings, commands and editor actions at once", async () => {

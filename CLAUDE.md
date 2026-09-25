@@ -1455,7 +1455,14 @@ right after start-up (the extension list marks it "Activates at every start-up (
   error (toast + "Error" badge) and the app kept running; closing the app left no OpenMindStudio/node/WebView2 process of the copy; relaunch
   showed the enabled extensions still enabled (none active, no node started) and the disabled one still in `disabled/`; Registry User/Machine
   PATH were identical before and after. Left on disk: `E:\omext`, `E:\omset9`, `E:\wt7-target`, `C:\omrel`.
-- [x] **Milestone 10.1** — Extension security, stability and VS Code API compatibility hardening (`fix: harden extension security and api compatibility`).
+- [x] **Milestone 10.1 (combined)** — Extension marketplace, activity bar views, and API hardening (`e276ef0` `feat: extension marketplace, activity bar views and api hardening`,
+  then `fix: finalize extension marketplace and api hardening`). Two sessions worked on the same tree and the work was committed together on purpose (not split). Three parts:
+  (1) the security/API hardening described next; (2) the **Open VSX marketplace foundation** — `commands/marketplace.rs`, `extensionMarketplaceService.ts`: search, Popular/Installed
+  lists with counts, filter/sort, an extension page, install (the download is checked against Open VSX's published SHA256, then the same trust dialog as a local VSIX) and
+  uninstall. **It is a foundation, not a complete marketplace**: Open VSX (open-vsx.org) is the only source, there is no account/API key, no ratings/reviews/publishing,
+  no update checks or auto-update, no recommendations, and many VS Code-only extensions will not run (unsupported API). The only network calls are to open-vsx.org:
+  the Popular list loads when the Extensions view is first shown (also at launch if it was the active view), then search, page and download on the user's action; nothing
+  is installed without the trust dialog; (3) the activity bar/tree views described in the next entry.
   What landed is described under "Hardening (Milestone 10.1)" in `openmind-extensions` and in "VS Code API compatibility matrix (extensions)":
   the permission model (request/infer/accept/store/enforce in the host, honestly *not* a sandbox), stricter install validation and limits, host states with
   a bounded automatic restart, activation count/last activation/last error, the Extensions and Extension Host Output channels, shim cleanup and duplicate-command
@@ -1472,9 +1479,11 @@ right after start-up (the extension list marks it "Activates at every start-up (
   app left no node/WebView2 process of the copy; relaunch kept enabled extensions enabled and the disabled one in `disabled/` and started no node; Registry
   User/Machine PATH identical. Known limitations: the permission guard is bypassable by code that goes around Node's module loader (native addons,
   `process.binding`), symlinks inside the workspace can point outside it, `workspaceRead` does not stop a language provider from seeing the document it is
-  asked about, `onView` never triggers, permissions can't be changed after install (reinstall to re-accept), and the F1 palette was not re-checked by hand (the extension
-  commands were run with Ctrl+Alt+<key> shortcuts because the test script's lone Alt tap had armed the menu bar and swallowed F1 and Ctrl+,; fixed in the script).
+  asked about, `onView` never triggers, permissions can't be changed after install (reinstall to re-accept), and the F1 palette was re-checked in the marketplace/views pass below (an earlier script bug had swallowed F1).
   Left on disk: `E:\omext`, `E:\omset9`, `E:\wt7-target`, `C:\omrel`.
+  Marketplace/views pass before merge (built app from e276ef0): Popular loaded from Open VSX, local VSIX install/enable/disable/uninstall, tree-view sample (welcome button,
+  items, command click, refresh), a webview view shown as unsupported, a broken view contribution reported without crashing, F1 palette listing and running a contributed
+  command. Found and fixed: with two extensions contributing one command id the palette showed the second one's title; the owner (first) now wins (test added).
 - [x] **Extension views and editor integration (after 10.1)** — extensions' `viewsContainers.activitybar` become activity bar icons
   (after Extensions; the icon rail scrolls when full, the Manage gear stays) and open a side bar view (`ext:<extension>/<container>` in
   `LayoutService`, falls back to the Explorer when the extension is gone): `crates/extensions/src/views.rs` parses containers, views and
