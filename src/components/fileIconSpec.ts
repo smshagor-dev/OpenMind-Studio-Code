@@ -1,107 +1,208 @@
 /**
- * File-type icons in the spirit of VS Code's default "Seti" icon theme: a
- * short colored glyph per file type (Seti shows no folder icons — folders are
- * identified by their twistie alone, which the explorer mirrors).
+ * File-type icons: a real icon per language and well-known file, from the MIT-licensed Material Icon
+ * Theme (`material-icon-theme`, the SVGs are bundled with the app — nothing is fetched). Folders have
+ * no icon (VS Code's default look: the twistie identifies them).
  */
-interface FileIconSpec {
-  glyph: string;
-  color: string;
-}
 
-const BLUE = "#519aba";
-const YELLOW = "#cbcb41";
-const ORANGE = "#e37933";
-const RED = "#cc3e44";
-const GREEN = "#8dc149";
-const PURPLE = "#a074c4";
-const PINK = "#f55385";
-const GREY = "#6d8086";
-
-const BY_FILENAME: Record<string, FileIconSpec> = {
-  "package.json": { glyph: "npm", color: RED },
-  "package-lock.json": { glyph: "npm", color: RED },
-  "pnpm-lock.yaml": { glyph: "pn", color: YELLOW },
-  "cargo.toml": { glyph: "R", color: ORANGE },
-  "cargo.lock": { glyph: "R", color: ORANGE },
-  "tsconfig.json": { glyph: "TS", color: BLUE },
-  ".gitignore": { glyph: "git", color: ORANGE },
-  ".gitattributes": { glyph: "git", color: ORANGE },
-  "readme.md": { glyph: "i", color: BLUE },
-  license: { glyph: "©", color: YELLOW },
-  dockerfile: { glyph: "D", color: BLUE },
-  ".env": { glyph: "⚙", color: GREY },
-  ".editorconfig": { glyph: "⚙", color: GREY },
-  "claude.md": { glyph: "i", color: BLUE },
+/** Icons by exact file name (lower case). */
+const BY_FILENAME: Record<string, string> = {
+  "package.json": "nodejs",
+  "package-lock.json": "nodejs",
+  ".npmrc": "npm",
+  "pnpm-lock.yaml": "pnpm",
+  "pnpm-workspace.yaml": "pnpm",
+  "yarn.lock": "yarn",
+  "bun.lockb": "bun",
+  "deno.json": "deno",
+  "cargo.toml": "rust",
+  "cargo.lock": "rust",
+  "go.mod": "go-mod",
+  "go.sum": "go-mod",
+  "tsconfig.json": "tsconfig",
+  "jsconfig.json": "tsconfig",
+  ".gitignore": "git",
+  ".gitattributes": "git",
+  ".gitmodules": "git",
+  "readme.md": "readme",
+  "readme": "readme",
+  "license": "license",
+  "license.md": "license",
+  "license.txt": "license",
+  "dockerfile": "docker",
+  "docker-compose.yml": "docker",
+  "docker-compose.yaml": "docker",
+  ".dockerignore": "docker",
+  ".env": "tune",
+  ".env.local": "tune",
+  ".editorconfig": "editorconfig",
+  "vite.config.ts": "vite",
+  "vite.config.js": "vite",
+  "vitest.config.ts": "vitest",
+  "jest.config.js": "jest",
+  "jest.config.ts": "jest",
+  "webpack.config.js": "webpack",
+  ".babelrc": "babel",
+  "babel.config.js": "babel",
+  "eslint.config.js": "eslint",
+  "eslint.config.mjs": "eslint",
+  ".eslintrc": "eslint",
+  ".eslintrc.json": "eslint",
+  ".eslintrc.js": "eslint",
+  ".prettierrc": "prettier",
+  ".prettierrc.json": "prettier",
+  "prettier.config.js": "prettier",
+  "composer.json": "php",
+  "composer.lock": "php",
+  "requirements.txt": "python-misc",
+  "pyproject.toml": "python-misc",
+  "makefile": "makefile",
+  "cmakelists.txt": "cmake",
+  "gemfile": "gemfile",
+  "tauri.conf.json": "tauri",
+  "claude.md": "claude",
+  "nginx.conf": "nginx",
 };
 
-const BY_EXTENSION: Record<string, FileIconSpec> = {
-  ts: { glyph: "TS", color: BLUE },
-  mts: { glyph: "TS", color: BLUE },
-  cts: { glyph: "TS", color: BLUE },
-  tsx: { glyph: "⚛", color: BLUE },
-  jsx: { glyph: "⚛", color: YELLOW },
-  js: { glyph: "JS", color: YELLOW },
-  mjs: { glyph: "JS", color: YELLOW },
-  cjs: { glyph: "JS", color: YELLOW },
-  json: { glyph: "{}", color: YELLOW },
-  md: { glyph: "M↓", color: BLUE },
-  rs: { glyph: "R", color: ORANGE },
-  py: { glyph: "py", color: BLUE },
-  go: { glyph: "go", color: BLUE },
-  java: { glyph: "J", color: RED },
-  c: { glyph: "C", color: BLUE },
-  h: { glyph: "h", color: PURPLE },
-  cpp: { glyph: "C+", color: BLUE },
-  hpp: { glyph: "h", color: PURPLE },
-  cs: { glyph: "C#", color: GREEN },
-  css: { glyph: "#", color: BLUE },
-  scss: { glyph: "S", color: PINK },
-  less: { glyph: "L", color: BLUE },
-  html: { glyph: "<>", color: ORANGE },
-  xml: { glyph: "<>", color: ORANGE },
-  svg: { glyph: "◇", color: PURPLE },
-  png: { glyph: "▣", color: PURPLE },
-  jpg: { glyph: "▣", color: PURPLE },
-  jpeg: { glyph: "▣", color: PURPLE },
-  gif: { glyph: "▣", color: PURPLE },
-  ico: { glyph: "▣", color: PURPLE },
-  icns: { glyph: "▣", color: PURPLE },
-  webp: { glyph: "▣", color: PURPLE },
-  yaml: { glyph: "!", color: PURPLE },
-  yml: { glyph: "!", color: PURPLE },
-  toml: { glyph: "⚙", color: GREY },
-  ini: { glyph: "⚙", color: GREY },
-  lock: { glyph: "🔒", color: GREY },
-  sql: { glyph: "DB", color: PINK },
-  db: { glyph: "DB", color: PINK },
-  sh: { glyph: ">_", color: GREEN },
-  bash: { glyph: ">_", color: GREEN },
-  ps1: { glyph: ">_", color: BLUE },
-  bat: { glyph: ">_", color: GREEN },
-  cmd: { glyph: ">_", color: GREEN },
-  txt: { glyph: "≡", color: GREY },
-  log: { glyph: "≡", color: GREY },
-  vue: { glyph: "V", color: GREEN },
-  svelte: { glyph: "S", color: ORANGE },
-  php: { glyph: "php", color: PURPLE },
-  rb: { glyph: "rb", color: RED },
-  kt: { glyph: "K", color: ORANGE },
-  swift: { glyph: "S", color: ORANGE },
-  dart: { glyph: "D", color: BLUE },
-  lua: { glyph: "L", color: BLUE },
+/** Icons by extension (lower case, without the dot). */
+const BY_EXTENSION: Record<string, string> = {
+  ts: "typescript",
+  mts: "typescript",
+  cts: "typescript",
+  tsx: "react_ts",
+  jsx: "react",
+  js: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  json: "json",
+  jsonc: "json",
+  md: "markdown",
+  mdx: "mdx",
+  rs: "rust",
+  py: "python",
+  pyw: "python",
+  ipynb: "jupyter",
+  go: "go",
+  java: "java",
+  c: "c",
+  h: "h",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  hpp: "hpp",
+  cs: "csharp",
+  fs: "fsharp",
+  css: "css",
+  scss: "sass",
+  sass: "sass",
+  less: "less",
+  html: "html",
+  htm: "html",
+  xml: "xml",
+  svg: "svg",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  ico: "image",
+  icns: "image",
+  webp: "image",
+  bmp: "image",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  ini: "settings",
+  cfg: "settings",
+  conf: "settings",
+  lock: "lock",
+  sql: "database",
+  db: "database",
+  sqlite: "database",
+  sh: "console",
+  bash: "console",
+  zsh: "console",
+  bat: "console",
+  cmd: "console",
+  ps1: "powershell",
+  psm1: "powershell",
+  txt: "document",
+  log: "log",
+  vue: "vue",
+  svelte: "svelte",
+  astro: "astro",
+  php: "php",
+  rb: "ruby",
+  kt: "kotlin",
+  kts: "kotlin",
+  swift: "swift",
+  dart: "dart",
+  lua: "lua",
+  r: "r",
+  pl: "perl",
+  scala: "scala",
+  hs: "haskell",
+  ex: "elixir",
+  exs: "elixir",
+  erl: "erlang",
+  zig: "zig",
+  tex: "tex",
+  graphql: "graphql",
+  gql: "graphql",
+  prisma: "prisma",
+  proto: "proto",
+  tf: "terraform",
+  vim: "vim",
+  wasm: "webassembly",
+  pdf: "pdf",
+  zip: "zip",
+  gz: "zip",
+  "7z": "zip",
+  rar: "zip",
+  tar: "zip",
+  csv: "table",
+  tsv: "table",
+  xlsx: "table",
+  env: "tune",
+  exe: "exe",
+  dll: "dll",
+  url: "url",
+  mp4: "video",
+  mov: "video",
+  webm: "video",
+  mp3: "audio",
+  wav: "audio",
+  ogg: "audio",
+  ttf: "font",
+  otf: "font",
+  woff: "font",
+  woff2: "font",
+  pem: "certificate",
+  crt: "certificate",
+  cer: "certificate",
+  key: "key",
 };
 
-const DEFAULT_SPEC: FileIconSpec = { glyph: "≡", color: "#a0a0a0" };
+/** Used for anything the tables don't know. */
+export const DEFAULT_ICON = "file";
 
-export function fileIconFor(name: string): FileIconSpec {
+/** The Material icon name for a file name (by exact name, then `.d.ts`, then extension). */
+export function fileIconName(name: string): string {
   const lower = name.toLowerCase();
   const byName = BY_FILENAME[lower];
-  if (byName) {
-    return byName;
-  }
+  if (byName) return byName;
+  if (lower.endsWith(".d.ts")) return "typescript-def";
   const dotIndex = lower.lastIndexOf(".");
-  if (dotIndex < 0) {
-    return DEFAULT_SPEC;
-  }
-  return BY_EXTENSION[lower.slice(dotIndex + 1)] ?? DEFAULT_SPEC;
+  if (dotIndex < 0) return DEFAULT_ICON;
+  return BY_EXTENSION[lower.slice(dotIndex + 1)] ?? DEFAULT_ICON;
+}
+
+/** Every icon name the tables use (for the icon loader and its test). */
+export function usedIconNames(): string[] {
+  return [
+    ...new Set([
+      ...Object.values(BY_FILENAME),
+      ...Object.values(BY_EXTENSION),
+      "typescript-def",
+      DEFAULT_ICON,
+    ]),
+  ].sort();
 }
