@@ -63,6 +63,8 @@ pub struct AppState {
     pub dap: openmind_dap::DapManager,
     /// Language servers (started on first use, stopped on app close).
     pub lsp: openmind_lsp::LspManager,
+    /// Installed extensions and the extension host (started on demand, stopped on app close).
+    pub extensions: crate::commands::extensions::ExtensionsRuntime,
     /// Geometry of secondary windows (the PHP Server window).
     pub window_states: openmind_settings::WindowStateService,
 }

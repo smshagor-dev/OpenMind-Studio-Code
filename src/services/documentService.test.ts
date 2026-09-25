@@ -23,6 +23,24 @@ describe("DocumentService", () => {
     events = new EventBus<AppEvents>();
   });
 
+  it("asks the language resolver (extension languages) only for files the built-in table doesn't know", async () => {
+    const resolver = vi.fn().mockImplementation((path: string) => (path.endsWith(".omsample") ? "markdown" : null));
+    const ipc = createFakeIpc({
+      documentOpen: vi
+        .fn()
+        .mockImplementation((path: string) =>
+          Promise.resolve({ ...OPENED, path, content: "x" }),
+        ),
+    });
+    const service = new DocumentService(ipc, buffers, events);
+    service.setLanguageResolver(resolver);
+    const custom = await service.openFromPath("C:/My Site/a.omsample");
+    expect(service.languageOf(custom)).toBe("markdown");
+    const rust = await service.openFromPath("C:/My Site/b.rs");
+    expect(service.languageOf(rust)).toBe("rust");
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
   it("createUntitled starts a clean, unnamed document", () => {
     const service = new DocumentService(createFakeIpc(), buffers, events);
 

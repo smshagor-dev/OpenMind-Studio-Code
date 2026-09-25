@@ -19,6 +19,8 @@ export interface AppEvents extends Record<string, unknown> {
   lspDiagnostics: LspDiagnosticsEvent;
   /** A language server is no longer running (stopped, crashed or restarted): what it reported is stale. */
   lspServerStopped: { server: string };
+  /** The installed extensions, their state or the extension host changed. */
+  extensionsChanged: undefined;
   /** Language server status changed (started, stopped, installed, ...). */
   lspChanged: undefined;
   /** The debug run changed (started, paused, resumed, ended); null once there is none. */

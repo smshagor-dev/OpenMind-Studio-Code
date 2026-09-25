@@ -4,7 +4,7 @@ import type { MenuEntry, TopLevelMenu } from "./menus";
 
 /** A keybinding as the app uses it, and where it comes from. */
 export interface EffectiveBinding extends Keybinding {
-  source: "default" | "user";
+  source: "default" | "user" | "extension";
 }
 
 export interface CommandInfo {
@@ -35,7 +35,10 @@ export function effectiveBindings(
   defaults: readonly Keybinding[],
   user: readonly KeybindingEntry[],
 ): EffectiveBinding[] {
-  let base: EffectiveBinding[] = defaults.map((binding) => ({ ...binding, source: "default" }));
+  let base: EffectiveBinding[] = defaults.map((binding) => ({
+    ...binding,
+    source: binding.extension === undefined ? "default" : "extension",
+  }));
   const added: EffectiveBinding[] = [];
   for (const entry of user) {
     if (entry.command.startsWith("-")) {

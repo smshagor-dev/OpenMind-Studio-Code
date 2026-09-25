@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 import type { IpcClient } from "../services/ipc";
+import { createFakeExtensionsIpc } from "./fakeExtensionsIpc";
 import { emptyPreferences } from "./preferencesFixture";
 
 /**
@@ -10,6 +11,7 @@ import { emptyPreferences } from "./preferencesFixture";
  */
 export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
   return {
+    ...createFakeExtensionsIpc(),
     openDocumentDialog: vi.fn().mockResolvedValue(null),
     saveDocumentDialog: vi.fn().mockResolvedValue(null),
     openFolderDialog: vi.fn().mockResolvedValue(null),

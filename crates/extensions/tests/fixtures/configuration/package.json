@@ -1,0 +1,20 @@
+{
+  "name": "sample-configuration",
+  "displayName": "Sample Configuration",
+  "description": "Contributes settings and reads them.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "activationEvents": ["onCommand:sampleConfig.show"],
+  "contributes": {
+    "commands": [{ "command": "sampleConfig.show", "title": "Sample: Show Greeting Setting" }],
+    "configuration": {
+      "title": "Sample Configuration",
+      "properties": {
+        "sampleConfig.greeting": { "type": "string", "default": "Hello", "description": "The greeting the sample shows." },
+        "sampleConfig.count": { "type": "number", "default": 3, "description": "How many times." }
+      }
+    }
+  }
+}

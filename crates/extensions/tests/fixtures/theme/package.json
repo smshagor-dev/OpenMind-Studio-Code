@@ -1,0 +1,13 @@
+{
+  "name": "sample-theme",
+  "displayName": "Sample Theme",
+  "description": "Contributes a colour theme.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "contributes": {
+    "themes": [
+      { "label": "OpenMind Sample Dark", "uiTheme": "vs-dark", "path": "./themes/sample-dark.json" }
+    ]
+  }
+}

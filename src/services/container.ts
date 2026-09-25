@@ -67,6 +67,11 @@ import { EditorWindowService } from "./editorWindowService";
 import { SecondarySideBarService } from "./secondarySideBarService";
 import { WelcomeService } from "./welcomeService";
 import { WorkspaceService } from "./workspaceService";
+import type { ExtensionContributionService } from "./extensionContributionService";
+import { wireExtensions } from "./extensionsWiring";
+import { languageForPath } from "../editor/languageForPath";
+import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
+import * as monaco from "monaco-editor";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
@@ -474,6 +479,9 @@ registerWorkbenchCommands({
   window: windowService,
 });
 
+// Set once the extension services exist (they need the keybinding manager built just below).
+let contributionsRef: ExtensionContributionService | null = null;
+
 const {
   page: preferencesPage,
   keybindingsManager,
@@ -491,7 +499,32 @@ const {
   lsp,
   php,
   openFile: (path) => workspace.openPath(path),
+  extraKeybindings: () => contributionsRef?.keybindings() ?? [],
+  extraCommands: () => contributionsRef?.commandInfos() ?? [],
 });
+
+const extensions = wireExtensions({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  settings,
+  theme,
+  keybindingsManager,
+  documents,
+  editor,
+  output,
+  run: (id, ...args) => {
+    run(id, ...args);
+  },
+  workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
+  showOutput: (channel) => void secondarySideBar.showOutput(channel),
+  binding: createContributionBinding(editor),
+  registerProvider: (registration, invoke, pathOfModel) =>
+    registerHostProvider(registration, invoke, (model) => pathOfModel(model.uri.toString())),
+  languageIds: () => monaco.languages.getLanguages().map((language) => language.id),
+  languageForPath,
+});
+contributionsRef = extensions.contributions;
 
 /**
  * Fire-and-forget command execution for UI event handlers: a failing command
@@ -563,4 +596,6 @@ export const container = {
   associations,
   markdown,
   ipc: tauriIpcClient,
+  extensions,
+  startExtensions: extensions.start,
 };

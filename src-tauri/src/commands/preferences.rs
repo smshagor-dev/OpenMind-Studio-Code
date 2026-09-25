@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use openmind_settings::{
-    keybindings, schema, store, EffectiveSetting, Issue, KeybindingEntry, KeybindingsFile, Layer,
-    SettingDef, Source,
+    keybindings, schema, store, EffectiveSetting, Extras, Issue, KeybindingEntry, KeybindingsFile,
+    Layer, SettingDef, Source,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -24,7 +24,7 @@ pub fn workspace_settings_path(folder: &Path) -> PathBuf {
 #[serde(rename_all = "camelCase")]
 pub struct PreferencesSnapshot {
     definitions: Vec<SettingDef>,
-    categories: Vec<&'static str>,
+    categories: Vec<String>,
     values: Vec<EffectiveSetting>,
     /// The open folder of the asking window; `None` means there are no workspace settings to edit.
     workspace: Option<String>,
@@ -96,17 +96,17 @@ async fn with_legacy_theme(
 }
 
 /// The ids a file sets to a value that is accepted for that file.
-fn accepted_ids(layer: &Layer, workspace: bool) -> Vec<String> {
-    schema::definitions()
+fn accepted_ids(layer: &Layer, workspace: bool, extras: &Extras) -> Vec<String> {
+    schema::definitions(extras)
         .into_iter()
         .filter(|def| !workspace || def.scope == openmind_settings::SettingScope::Both)
         .filter(|def| {
             layer
                 .values
-                .get(def.id)
+                .get(&def.id)
                 .is_some_and(|value| schema::validate(def, value).is_ok())
         })
-        .map(|def| def.id.to_string())
+        .map(|def| def.id)
         .collect()
 }
 
@@ -115,25 +115,31 @@ async fn snapshot(state: &AppState, window: &tauri::Window) -> Result<Preference
     let folder = open_folder(state, window).await?;
     let workspace_file = folder.as_deref().map(workspace_settings_path);
     let workspace = workspace_file.as_deref().map(store::read_layer);
-    let values = with_legacy_theme(state, &user, store::effective(&user, workspace.as_ref())).await;
-    let user_set = accepted_ids(&user, false);
+    let extras = crate::commands::extensions::extras(state);
+    let values = with_legacy_theme(
+        state,
+        &user,
+        store::effective(&user, workspace.as_ref(), &extras),
+    )
+    .await;
+    let user_set = accepted_ids(&user, false, &extras);
     let workspace_set = workspace
         .as_ref()
-        .map(|layer| accepted_ids(layer, true))
+        .map(|layer| accepted_ids(layer, true, &extras))
         .unwrap_or_default();
     Ok(PreferencesSnapshot {
-        definitions: schema::definitions(),
-        categories: schema::CATEGORIES.to_vec(),
+        definitions: schema::definitions(&extras),
+        categories: extras.categories(),
         values,
         workspace: folder.map(|folder| folder.to_string_lossy().into_owned()),
         user_file: state.settings_file.to_string_lossy().into_owned(),
         workspace_file: workspace_file.map(|path| path.to_string_lossy().into_owned()),
         user_set,
         workspace_set,
-        user_issues: store::issues(&user.values, false),
+        user_issues: store::issues(&user.values, false, &extras),
         workspace_issues: workspace
             .as_ref()
-            .map(|layer| store::issues(&layer.values, true))
+            .map(|layer| store::issues(&layer.values, true, &extras))
             .unwrap_or_default(),
         user_error: user.error,
         workspace_error: workspace.and_then(|layer| layer.error),
@@ -158,7 +164,8 @@ pub async fn preferences_set(
 ) -> Result<PreferencesSnapshot, String> {
     let scope = parse_scope(&scope)?;
     let path = scope_path(&state, &window, scope).await?;
-    store::set_value(&path, &id, &value, scope == Scope::Workspace)
+    let extras = crate::commands::extensions::extras(&state);
+    store::set_value(&path, &id, &value, scope == Scope::Workspace, &extras)
         .map_err(|err| err.to_string())?;
     snapshot(&state, &window).await
 }
@@ -172,7 +179,8 @@ pub async fn preferences_reset(
 ) -> Result<PreferencesSnapshot, String> {
     let scope = parse_scope(&scope)?;
     let path = scope_path(&state, &window, scope).await?;
-    store::reset_value(&path, &id).map_err(|err| err.to_string())?;
+    let extras = crate::commands::extensions::extras(&state);
+    store::reset_value(&path, &id, &extras).map_err(|err| err.to_string())?;
     snapshot(&state, &window).await
 }
 
@@ -189,10 +197,16 @@ pub async fn preferences_file(
 }
 
 #[tauri::command]
-pub fn preferences_validate(scope: String, text: String) -> Result<Vec<Issue>, String> {
+pub fn preferences_validate(
+    scope: String,
+    text: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<Issue>, String> {
+    let extras = crate::commands::extensions::extras(&state);
     Ok(store::validate_text(
         &text,
         parse_scope(&scope)? == Scope::Workspace,
+        &extras,
     ))
 }
 
@@ -245,7 +259,7 @@ pub fn keybindings_file(state: State<'_, AppState>) -> Result<String, String> {
 /// whether closing the window hides it to the tray.
 pub fn user_bool(state: &AppState, id: &str) -> bool {
     let layer = store::read_layer(&state.settings_file);
-    store::effective(&layer, None)
+    store::effective(&layer, None, &Extras::default())
         .into_iter()
         .find(|entry| entry.id == id)
         .and_then(|entry| entry.value.as_bool())

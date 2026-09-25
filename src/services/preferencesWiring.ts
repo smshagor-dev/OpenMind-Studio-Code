@@ -5,7 +5,7 @@ import { EDITOR_SETTING_IDS, type EditorService } from "./editorService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient } from "./ipc";
-import { DEFAULT_KEYBINDINGS, type KeybindingService } from "./keybindings";
+import { DEFAULT_KEYBINDINGS, type Keybinding, type KeybindingService } from "./keybindings";
 import { KeybindingsManager } from "./keybindingsManager";
 import { commandCatalog, type CommandInfo } from "./keybindingsModel";
 import type { LspService } from "./lspService";
@@ -31,6 +31,9 @@ export interface PreferencesWiringDeps {
   lsp: LspService;
   php: PhpServerService;
   openFile: (path: string) => Promise<unknown>;
+  /** Shortcuts and commands extensions contribute (looked up each time: extensions come and go). */
+  extraKeybindings?: () => readonly Keybinding[];
+  extraCommands?: () => CommandInfo[];
 }
 
 const SEARCH_SETTINGS = [
@@ -54,13 +57,14 @@ export function wirePreferences(deps: PreferencesWiringDeps) {
   let monacoRules: { dispose: () => void } | null = null;
   const keybindingsManager = new KeybindingsManager(ipc, keybindings, {
     defaults: DEFAULT_KEYBINDINGS,
+    extra: deps.extraKeybindings,
     catalog: () => {
       catalog ??= commandCatalog(
         buildMenuBar({ folders: [], files: [] }),
         DEFAULT_KEYBINDINGS,
         (id) => commands.has(id),
       );
-      return catalog;
+      return [...catalog, ...(deps.extraCommands?.() ?? [])];
     },
     remappable: (command) => REMAPPABLE_EDITOR_COMMANDS.has(command),
     syncEditor: (removed) => {

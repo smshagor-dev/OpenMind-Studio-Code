@@ -31,16 +31,16 @@ pub enum SettingKind {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EnumOption {
-    pub value: &'static str,
-    pub label: &'static str,
+    pub value: String,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SettingDef {
-    pub id: &'static str,
-    pub category: &'static str,
-    pub title: &'static str,
-    pub description: &'static str,
+    pub id: String,
+    pub category: String,
+    pub title: String,
+    pub description: String,
     pub kind: SettingKind,
     pub default: Value,
     pub scope: SettingScope,
@@ -54,35 +54,39 @@ pub const CATEGORIES: &[&str] = &[
     "Runtime & Run Code",
     "Git",
     "Language Servers",
+    "Extensions",
     "Debugger",
     "PHP Server",
     "Workbench",
 ];
 
-fn opts(pairs: &[(&'static str, &'static str)]) -> SettingKind {
+fn opts(pairs: &[(&str, &str)]) -> SettingKind {
     SettingKind::Enum {
         options: pairs
             .iter()
-            .map(|(value, label)| EnumOption { value, label })
+            .map(|(value, label)| EnumOption {
+                value: (*value).to_string(),
+                label: (*label).to_string(),
+            })
             .collect(),
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 fn def(
-    id: &'static str,
-    category: &'static str,
-    title: &'static str,
-    description: &'static str,
+    id: &str,
+    category: &str,
+    title: &str,
+    description: &str,
     kind: SettingKind,
     default: Value,
     scope: SettingScope,
 ) -> SettingDef {
     SettingDef {
-        id,
-        category,
-        title,
-        description,
+        id: id.to_string(),
+        category: category.to_string(),
+        title: title.to_string(),
+        description: description.to_string(),
         kind,
         default,
         scope,
@@ -222,6 +226,7 @@ fn tools_definitions() -> Vec<SettingDef> {
 fn app_definitions() -> Vec<SettingDef> {
     use SettingScope::User;
     vec![
+        def("extensions.allowSystemNode", "Extensions", "Allow System Node.js for Extensions", "Run the extension host with a Node.js found on this computer when OpenMind's portable Node.js is not installed. It is always labelled as the system Node.js.", SettingKind::Bool, json!(false), User),
         def("php.server.defaultPort", "PHP Server", "Default Port", "Port the PHP server uses until you choose another one in the PHP control panel.", SettingKind::Int { min: 1024, max: 65_535 }, json!(8000), User),
         def("php.tray.hideOnClose", "PHP Server", "Keep Servers Running in the Tray", "Closing the main window while a PHP, MariaDB or phpMyAdmin server runs hides the app to the system tray instead of quitting.", SettingKind::Bool, json!(true), User),
         def("workbench.colorTheme", "Workbench", "Color Theme", "Colors of the workbench, the editor and the terminal. System follows Windows.", opts(&[("system", "System"), ("dark", "Dark"), ("light", "Light"), ("high-contrast", "High Contrast")]), json!("dark"), User),
@@ -229,16 +234,49 @@ fn app_definitions() -> Vec<SettingDef> {
     ]
 }
 
+/// What extensions add to the built-in settings: settings of their own and colour themes (extra
+/// choices of `workbench.colorTheme`). An extension can't replace a built-in setting.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Extras {
+    pub settings: Vec<SettingDef>,
+    pub themes: Vec<EnumOption>,
+}
+
+impl Extras {
+    /// The Settings page's categories: the built-in ones, then each extension's own.
+    pub fn categories(&self) -> Vec<String> {
+        let mut all: Vec<String> = CATEGORIES.iter().map(|name| (*name).to_string()).collect();
+        for def in &self.settings {
+            if !all.contains(&def.category) {
+                all.push(def.category.clone());
+            }
+        }
+        all
+    }
+}
+
 /// Every setting, in the order the Settings page shows them.
-pub fn definitions() -> Vec<SettingDef> {
+pub fn definitions(extras: &Extras) -> Vec<SettingDef> {
     let mut all = editor_definitions();
     all.extend(tools_definitions());
     all.extend(app_definitions());
+    for def in &mut all {
+        if def.id == "workbench.colorTheme" {
+            if let SettingKind::Enum { options } = &mut def.kind {
+                options.extend(extras.themes.iter().cloned());
+            }
+        }
+    }
+    for def in &extras.settings {
+        if !all.iter().any(|known| known.id == def.id) {
+            all.push(def.clone());
+        }
+    }
     all
 }
 
-pub fn find(id: &str) -> Option<SettingDef> {
-    definitions().into_iter().find(|def| def.id == id)
+pub fn find(id: &str, extras: &Extras) -> Option<SettingDef> {
+    definitions(extras).into_iter().find(|def| def.id == id)
 }
 
 /// Why `value` isn't acceptable for `def`, in words a user can act on; `Ok` carries the value
@@ -281,7 +319,8 @@ pub fn validate(def: &SettingDef, value: &Value) -> Result<Value, String> {
             if options.iter().any(|option| option.value == text) {
                 Ok(json!(text))
             } else {
-                let allowed: Vec<&str> = options.iter().map(|option| option.value).collect();
+                let allowed: Vec<&str> =
+                    options.iter().map(|option| option.value.as_str()).collect();
                 Err(format!(
                     "{} must be one of: {}.",
                     def.title,
@@ -298,12 +337,12 @@ mod tests {
 
     #[test]
     fn ids_are_unique_and_every_default_is_valid() {
-        let all = definitions();
+        let all = definitions(&Extras::default());
         let mut seen = std::collections::HashSet::new();
         for def in &all {
-            assert!(seen.insert(def.id), "duplicate id {}", def.id);
+            assert!(seen.insert(def.id.clone()), "duplicate id {}", def.id);
             assert!(
-                CATEGORIES.contains(&def.category),
+                CATEGORIES.contains(&def.category.as_str()),
                 "{} has an unlisted category",
                 def.id
             );
@@ -318,7 +357,7 @@ mod tests {
 
     #[test]
     fn numbers_are_range_checked_and_must_be_whole() {
-        let def = find("editor.fontSize").expect("defined");
+        let def = find("editor.fontSize", &Extras::default()).expect("defined");
         assert_eq!(validate(&def, &json!(18)), Ok(json!(18)));
         assert!(validate(&def, &json!(7)).is_err());
         assert!(validate(&def, &json!(41)).is_err());
@@ -328,16 +367,16 @@ mod tests {
 
     #[test]
     fn enums_booleans_and_text_are_checked() {
-        let theme = find("workbench.colorTheme").expect("defined");
+        let theme = find("workbench.colorTheme", &Extras::default()).expect("defined");
         assert_eq!(
             validate(&theme, &json!("high-contrast")),
             Ok(json!("high-contrast"))
         );
         let message = validate(&theme, &json!("neon")).expect_err("neon is not a theme");
         assert!(message.contains("system, dark, light, high-contrast"));
-        let wrap = find("editor.wordWrap").expect("defined");
+        let wrap = find("editor.wordWrap", &Extras::default()).expect("defined");
         assert!(validate(&wrap, &json!("yes")).is_err());
-        let family = find("editor.fontFamily").expect("defined");
+        let family = find("editor.fontFamily", &Extras::default()).expect("defined");
         assert!(validate(&family, &json!("a\nb")).is_err());
         assert!(validate(&family, &json!("x".repeat(201))).is_err());
     }
@@ -349,11 +388,89 @@ mod tests {
             "terminal.fontSize",
             "php.server.defaultPort",
         ] {
-            assert_eq!(find(id).expect("defined").scope, SettingScope::User);
+            assert_eq!(
+                find(id, &Extras::default()).expect("defined").scope,
+                SettingScope::User
+            );
         }
         assert_eq!(
-            find("editor.fontSize").expect("defined").scope,
+            find("editor.fontSize", &Extras::default())
+                .expect("defined")
+                .scope,
             SettingScope::Both
         );
+    }
+}
+
+#[cfg(test)]
+mod extras_tests {
+    use super::*;
+
+    fn extension_setting() -> SettingDef {
+        def(
+            "sampleConfig.greeting",
+            "Sample Configuration",
+            "Greeting",
+            "The greeting the sample shows.",
+            SettingKind::Text { max_length: 50 },
+            json!("Hello"),
+            SettingScope::Both,
+        )
+    }
+
+    #[test]
+    fn extension_settings_are_added_after_the_built_in_ones_with_their_own_category() {
+        let extras = Extras {
+            settings: vec![extension_setting()],
+            themes: Vec::new(),
+        };
+        let all = definitions(&extras);
+        assert_eq!(
+            all.last().map(|def| def.id.as_str()),
+            Some("sampleConfig.greeting")
+        );
+        assert!(find("sampleConfig.greeting", &extras).is_some());
+        assert!(find("sampleConfig.greeting", &Extras::default()).is_none());
+        let categories = extras.categories();
+        assert_eq!(
+            categories.last().map(String::as_str),
+            Some("Sample Configuration")
+        );
+        assert_eq!(categories.len(), CATEGORIES.len() + 1);
+    }
+
+    #[test]
+    fn an_extension_cannot_replace_a_built_in_setting() {
+        let mut hijack = extension_setting();
+        hijack.id = "editor.fontSize".to_string();
+        hijack.default = json!("huge");
+        let extras = Extras {
+            settings: vec![hijack],
+            themes: Vec::new(),
+        };
+        let def = find("editor.fontSize", &extras).expect("built in");
+        assert_eq!(def.default, json!(14));
+        assert_eq!(
+            definitions(&extras).len(),
+            definitions(&Extras::default()).len()
+        );
+    }
+
+    #[test]
+    fn extension_themes_become_choices_of_the_color_theme_setting() {
+        let extras = Extras {
+            settings: Vec::new(),
+            themes: vec![EnumOption {
+                value: "extension:acme.pack/Night".to_string(),
+                label: "Night".to_string(),
+            }],
+        };
+        let theme = find("workbench.colorTheme", &extras).expect("defined");
+        assert_eq!(
+            validate(&theme, &json!("extension:acme.pack/Night")),
+            Ok(json!("extension:acme.pack/Night"))
+        );
+        let plain = find("workbench.colorTheme", &Extras::default()).expect("defined");
+        assert!(validate(&plain, &json!("extension:acme.pack/Night")).is_err());
     }
 }

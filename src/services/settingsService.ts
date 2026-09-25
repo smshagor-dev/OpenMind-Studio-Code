@@ -107,6 +107,13 @@ export class SettingsService {
     return this.state.snapshot?.definitions.find((def) => def.id === id);
   }
 
+  /** Every setting's effective value by id (what extensions read with `getConfiguration`). */
+  values(): Record<string, SettingValue> {
+    const all: Record<string, SettingValue> = {};
+    for (const entry of this.state.snapshot?.values ?? []) all[entry.id] = entry.value;
+    return all;
+  }
+
   /** The effective value, or `fallback` while settings aren't loaded yet. */
   private raw(id: string): SettingValue | undefined {
     return this.state.snapshot?.values.find((entry) => entry.id === id)?.value;

@@ -14,6 +14,8 @@ export interface Keybinding {
   key: string;
   command: string;
   owner: KeybindingOwner;
+  /** The extension that contributed this shortcut (built-in ones have none). */
+  extension?: string;
 }
 
 /** VS Code's Windows default keybindings for every command OpenMind Studio's menus expose. */

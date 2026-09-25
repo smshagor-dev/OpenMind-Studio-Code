@@ -14,7 +14,7 @@ import { RunDebugView } from "./RunDebugView";
 import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
 import { SourceControlView } from "./SourceControlView";
-import { SideViewPlaceholder } from "./SideViewPlaceholder";
+import { ExtensionsView } from "./ExtensionsView";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 
 interface SideBarProps {
@@ -100,13 +100,7 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
     case "debug":
       return <RunDebugView />;
     case "extensions":
-      return (
-        <SideViewPlaceholder
-          heading="Extensions"
-          message="Extensions are not available yet."
-          hint="There is no extension system or marketplace in this version."
-        />
-      );
+      return <ExtensionsView />;
   }
 }
 

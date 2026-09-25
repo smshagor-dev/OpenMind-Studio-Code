@@ -11,8 +11,8 @@ OpenMind Studio is the desktop IDE in the broader OpenMind ecosystem:
 - **OpenMind AI** — AI Assistant (future; see the planned `openmind-ai` crate below)
 - **OpenMind Runtime** — Portable Runtime Manager (foundation landed in Milestone 5 as the
   `openmind-runtime-manager` crate)
-- **OpenMind Extensions** — extension ecosystem (future; see the planned `openmind-extensions`
-  crate below)
+- **OpenMind Extensions** — extension ecosystem (VS Code-compatible foundation landed in Milestone 10 as the
+  `openmind-extensions` crate; local `.vsix` only, no marketplace)
 - **OpenMind Sync** — settings/session sync (future, not yet scoped into a milestone)
 - **OpenMind Cloud** — cloud services (future, not yet scoped into a milestone)
 
@@ -88,6 +88,11 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   `keybindings` owns `settings/keybindings.json` — a list of `{key, command}`, a leading `-` on the command removes that
   command's default for that key (VS Code's format); `normalize_chord` canonicalizes (`ctrl+shift+s` -> `Ctrl+Shift+S`) and
   refuses chords that would break typing (a plain letter, `Shift+S`). `AppPaths` gained `settings_file`/`keybindings_file`.
+  **Extras (Milestone 10)**: `SettingDef`/`EnumOption` own their strings so `schema::Extras` (`settings`, `themes`) can add what enabled
+  extensions contribute — every schema/store function takes `&Extras` (`definitions`, `find`, `effective`, `issues`, `set_value`,
+  `reset_value`, `validate_text`); an extension can't replace a built-in id, its themes become extra options of
+  `workbench.colorTheme` (`extension:<id>/<label>`), its category is added after the built-in ones. New built-in setting
+  `extensions.allowSystemNode` (user, default off).
 - `openmind-fs` — file I/O with encoding detection (BOM-sniffed UTF-8/UTF-16LE/UTF-16BE, else
   Windows-1252 fallback) and line-ending detection (LF/CRLF/CR/Mixed), plus (Milestone 3) explorer
   file-system primitives: `read_dir` (one level only — the explorer tree loads lazily, so nothing
@@ -385,12 +390,56 @@ Only depend on a workspace crate you actually call into — an unused `[dependen
 lint away from a compile warning and dead weight either way; two path deps were caught and removed
 during the Milestone 1 → rebrand pass for exactly this reason.
 
+- `openmind-extensions` (Milestone 10) — the VS Code-compatible extension system foundation. **OpenMind Studio supports a VS Code
+  API subset**; nothing here is VS Code's source. Layout (portable, never AppData): `extensions/installed/<publisher>.<name>-<version>/`,
+  `extensions/disabled/…` (enabling/disabling *moves the folder*, so the state persists by location and there is no registry file that
+  could disagree with the disk), `extensions/cache/{staging,host}`, `extensions/storage/<id>/{global,workspace/<key>}`,
+  `extensions/logs/extension-host.log` (rotated at 2 MB). `vsix` inspects and extracts a `.vsix` (zip): every entry name goes through
+  `safe_relative` (no `..`, absolute, drive/stream `:`, NUL, backslash tricks), symlinks/oversize/too many entries are refused *before* anything is
+  written, extraction goes to `cache/staging` and is renamed into `installed/`; `pack` (used by tests and `examples/pack.rs`) builds a `.vsix`.
+  `manifest` parses/validates `package.json` (name, publisher — `local` when absent —, version, `engines.vscode`, main/browser, activationEvents,
+  extensionDependencies/Pack, contributes) with the field named in every error; `contributions` types the initial subset (commands, menus,
+  keybindings, configuration, configurationDefaults, languages, grammars, snippets, themes, iconThemes, debuggers/problemMatchers as metadata)
+  and `report()` classifies every point as `supported`, `metadata` or `unsupported` ("This contribution point is not supported yet."), unknown
+  points are counted, never dropped. Supported menu locations: `commandPalette`, `editor/context`, `explorer/context` (others are listed
+  as unsupported); keybindings are normalized to the app's chords (key *sequences* are not supported). `store::ExtensionStore` installs (refuses an
+  existing id unless `replace`, a replaced disabled extension stays disabled), lists (broken folders are reported, not hidden), enables/disables,
+  uninstalls (canonical-path check; storage is kept, like VS Code) and reads files inside an extension only. `activation` maps a `Trigger`
+  (startup, command, language, view, workspace) to the enabled extensions with code whose events match (`onCommand` and `onLanguage` are also
+  implied by `contributes.commands/languages`; `*` is allowed but warned about; `onView` is recorded but never triggers — no extension views;
+  `workspaceContains` uses a bounded glob walk that skips node_modules/.git/build folders). `settings::extras_for` turns enabled extensions'
+  configuration and themes into `openmind_settings::Extras`.
+  **The host** (`host.rs`, `host/host.js`, `host/vscode.js`, embedded with `include_str!` and written to `cache/host/`): a separate Node.js process,
+  never in the WebView and never in this process, on OpenMind's portable Node first (`resolve_host_node`; a system Node only when the user set
+  `extensions.allowSystemNode`, labelled "System Node.js at …"; none: "Node.js runtime is required for extension host."), spawned through
+  `openmind_lsp::process` so the Windows Job Object kills the whole tree when the app closes or crashes. JSON-RPC 2.0 with the LSP framing
+  (`openmind_lsp::jsonrpc`); requests app→host (`host/init|register|activate|deactivate|executeCommand|provide|shutdown`) have timeouts, host→app
+  requests (`ui/showMessage|showQuickPick|showInputBox|openExternal`, `workspace/openTextDocument|getLanguages|updateConfiguration`,
+  `commands/execute|getCommands`) are forwarded to the window and answered with `respond`. The host's `console.*`/stdout are captured (a
+  stray `console.log` can't corrupt the protocol), an uncaught error is logged and attributed, an extension that throws in `activate` is
+  cleaned up, reported and can be retried — the host and the other extensions keep running. `activate(context)` runs once per host session
+  (`context`: subscriptions, extensionPath/Uri, globalStorageUri, storageUri, logUri, globalState/workspaceState as JSON mementos),
+  `deactivate` on disable/uninstall/shutdown. The `vscode` shim (a Proxy: anything not implemented throws "VS Code API '<name>' is not supported
+  by OpenMind Studio yet.") offers commands (registerCommand, executeCommand, getCommands), window (show*Message with buttons, createOutputChannel,
+  showQuickPick, showInputBox, activeTextEditor, visibleTextEditors, onDidChangeActiveTextEditor), workspace (workspaceFolders, getConfiguration
+  with get/has/inspect/update, onDidChangeConfiguration, openTextDocument, textDocuments, onDidOpen/Close/Change/SaveTextDocument, asRelativePath,
+  getWorkspaceFolder), languages (registerCompletionItemProvider, registerHoverProvider, registerDefinitionProvider, createDiagnosticCollection),
+  extensions, env, plus Disposable, EventEmitter, Uri, Position, Range, Selection, Location, Diagnostic, MarkdownString, Hover, CompletionItem(Kind/List),
+  SnippetString, CancellationTokenSource, ConfigurationTarget, ViewColumn. Not supported: TextEditor edit APIs, tree views/webviews, status bar
+  items, debug/tasks/terminal/SCM APIs, authentication, notebooks, proposed APIs. **Permissions/sandbox — honest limits**: the host is an ordinary
+  Node process with the user's rights; extension code *can* use `fs`, `child_process` and the network. What is enforced is isolation (a separate
+  process, a fixed request list through the bridge, no privileged app API exposed, a crash or hang can't take the app down, the host is killed with
+  the app, nothing is auto-installed or auto-run: a `.vsix` is installed only after the user accepts "Extensions can run code on your computer. Install only
+  from trusted sources." and code runs lazily on an activation event). A permission model for filesystem/terminal/network is *not* built. A
+  synchronous infinite loop in one extension blocks the host (calls time out and "Reload Extension Host" restarts it); Node has no per-extension
+  isolation. Tests: unit tests plus integration tests against a real Node with the five sample extensions in `tests/fixtures` (command,
+  configuration, language, theme, bad-activate — skipped when the machine has no Node).
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
 `openmind-git` (Git client), `openmind-search`
-(indexed workspace/symbol search), `openmind-extensions` (extension host + sandboxing, backing the
-OpenMind Extensions ecosystem), `openmind-ai` (AI provider plugin architecture, including the
+(indexed workspace/symbol search), `openmind-ai` (AI provider plugin architecture, including the
 future OpenMind AI provider), `openmind-plugin-host`.
 
 ## Frontend architecture
@@ -670,6 +719,31 @@ internals.
   `src/testUtils/fakeIpcClient.ts` holds the one shared fully-stubbed fake every test file
   overrides from, instead of each redeclaring all ~30 methods.
 
+- **Extensions (Milestone 10).** `commands::extensions`/`extension_manage`/`extension_host` (`ext_list`, `ext_inspect_vsix`, `ext_install`,
+  `ext_set_enabled`, `ext_uninstall`, `ext_read_file`, `ext_host_log`, `ext_host_start|stop`, the allow-listed `ext_host_request|notify`, `ext_host_respond`,
+  `ext_activate_for`; events `ext:changed`, `ext:host-state`, `ext:host-request`, `ext:host-notification` go to the main window only) with
+  `ExtensionsRuntime` in `AppState` (store, host handle, per-extension activity/last error, a generation counter so a late exit report of an old
+  host is ignored); the host stops in `window_events::shutdown`; the backend refuses to activate a disabled extension. Frontend services (all
+  UI-free, wired in `extensionsWiring.ts`): `ExtensionRegistryService` (the installed list + search-installed, follows `ext:changed`),
+  `ExtensionService` (choose a `.vsix` → read it → **trust dialog** → install; enable/disable; uninstall behind a confirm; details, logs, reload host,
+  "Use System Node.js"; every button has an `*Availability` reason), `ExtensionHostService` (starts the host lazily — never at launch —, `activateFor`,
+  `executeCommand`, answers the host through `HostBridge`, keeps it told about settings/folders/open files via `HostDocumentSync`),
+  `HostBridge` (the API bridge: a fixed list of what the host may ask; output channels named by the extension, host lines in "Extension Host";
+  language providers registered in Monaco via `editor/extensionMonaco.ts`; diagnostics become markers owned `ext:<collection>`),
+  `ExtensionPromptService` (messages with buttons, quick pick, input box as data; `ExtensionPrompts.tsx` draws them),
+  `ExtensionContributionService` (commands into `CommandRegistry` — disabled with the reason when the extension is disabled or Node is missing, running one wakes
+  its extension first —, editor actions for the F1 palette and right-click menu via `EditorService.setExtensionActions`, Explorer context items, keybindings merged
+  into `KeybindingsManager` after the built-ins with source "extension" — a user's entry wins, conflicts are flagged —, languages registered in Monaco (Monaco can't
+  unregister one: disabling an extension's language takes effect after a restart), snippets as a completion provider, colour themes) and
+  `ExtensionMarketplaceService` (a disabled placeholder: "Online extension marketplace is not available yet."). Contributed settings reach the Settings page
+  because the backend adds them to the definitions; `SettingsService.values()` is what `getConfiguration` reads and `update` writes back through
+  `SettingsService.set`. Extension colour themes: `extensionTheme.ts` translates a theme file (JSON with comments, `jsonc.ts`) — editor/workbench colours to Monaco
+  colours and the `--*` tokens (`WORKBENCH_TOKENS`), TextMate token colours to Monaco token names (approximate — Monaco is not TextMate; `include` is not
+  followed); `ThemeService` applies it on top of the built-in palette matching `uiTheme` and falls back to Dark (with a notice) when it is gone. TextMate
+  grammars and icon themes are stored and shown as unsupported. `ExtensionsView` (side bar) replaces the old "not available yet" placeholder.
+  Not done: custom views (`onView`), webviews, source control/view-title menus, a permission model, updates (a replace-install of the same id is the only
+  update path), the online marketplace, extension dependencies are only reported.
+
 **Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
 (frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
 doesn't — `workbench--inactive`, from window focus/blur; editor `#121314`; side bar, panel and secondary side bar
@@ -729,14 +803,14 @@ OpenMind Studio/
     logs/                     structured log output (populated in a future milestone)
     cache/                    download_cache contents on disk (future milestone)
     runtimes/                 installed portable runtimes (future milestone)
-    extensions/               installed extension packages (future milestone)
+    extensions/               installed/, disabled/, cache/, storage/, logs/extension-host.log (Milestone 10)
     themes/                   on-disk theme/icon-theme assets (future milestone)
     language-servers/         npm-installed language servers, one folder per package revision (Milestone 7)
     settings/                 settings.json and keybindings.json (Milestone 9; edited by hand or from the Settings page)
 ```
 
-`data/`, `runtimes/`, `logs/`, `cache/`, `language-servers/` and (Milestone 9) `settings/` are in use; `extensions/` and
-`themes/` are created up front but stay empty until the milestone that owns them lands — don't write into them
+`data/`, `runtimes/`, `logs/`, `cache/`, `language-servers/`, `extensions/` (Milestone 10) and `settings/` (Milestone 9) are in use; `themes/`
+is created up front but stays empty until the milestone that owns it lands — don't write into them
 speculatively. A workspace's own settings live inside the project, in `.openmind/settings.json`, created only when the user
 sets a workspace setting or opens that file. Within `data/openmind-studio.db`, tables now live in:
 `window_state`, `recent_files` (global MRU list — no project scoping yet, every row has
@@ -1292,8 +1366,29 @@ Memory is dominated by WebView2; no reduction was attempted in this milestone.
   done. Left on disk for manual deletion: `E:\omset9`, `E:\omdbg81`, `E:\omdbg8`, `E:\omdbg`, `E:\omlsp`, `E:\omlsp2`,
   `E:\wt7-target`, `C:\omrel` (release build cache), the empty `E:\wt8`, the worktree `E:\wt9` after the merge, and the old
   `%LOCALAPPDATA%\com.openmindstudio.app`.
-- [ ] Milestone 10 — Indexed workspace/symbol/reference search.
-- [ ] Milestone 11 — Extension system (sandboxed, contributes commands/views/themes/...).
+- [x] **Milestone 10** — VS Code-compatible extension system foundation (`feat: add vscode-compatible extension system foundation`). New
+  `openmind-extensions` crate, `commands::extensions*`, the extension services and the Extensions view (see `openmind-extensions` and "Extensions
+  (Milestone 10)" above). Local `.vsix` install (trust warning first, archive traversal refused), enable/disable/uninstall, lazy activation, a Node
+  extension host with a `vscode` API subset, contributed commands/menus/keybindings/settings/languages/snippets/colour themes, unsupported points shown
+  as unsupported. Known limitations: no marketplace, webviews, custom views, grammars/icon themes (stored as unsupported), no permission model (the host
+  has the user's rights), key sequences are not bindable, a disabled extension's language stays registered until restart, `include` in theme files is
+  ignored, an extension's `uninstall` keeps its storage folder.
+  Verified by hand in the built app (fresh portable copy `E:\omext\OpenMind Studio`, workspace `My Site` with a space, the five sample
+  extensions packed with `cargo run -p openmind-extensions --example pack`): the Extensions view had no marketplace (only "Online extension
+  marketplace is not available yet."); Install from VSIX (native file dialog) showed the trust warning and the contribution points before
+  installing; with no portable Node the view said "Node.js runtime is required for extension host." and offered the machine's Node only as an
+  explicit "Use System Node.js" (the log then said "System Node.js at …"); no node process existed until then, and the extension stayed "Enabled"
+  (not "Active") until its command ran — Ctrl+Alt+H (contributed keybinding) activated it lazily, showed the message and wrote to its Output
+  channel and the host log; Disable moved the folder to `extensions/disabled`, called `deactivate` and the shortcut did nothing; Enable brought
+  it back; the configuration extension's setting appeared under its own Settings category, the new value ("Howdy") was written to
+  `settings/settings.json` and read by the extension through the F1 palette command; a `.omsample` file got the contributed language (status bar
+  "OpenMind Sample" — found and fixed on the way: `DocumentService` only knew a built-in extension table, and files the session restores were
+  opened before extensions loaded, so `startExtensions` now runs before `restoreSession`); the theme extension's theme was chosen in the Color
+  Theme setting and recoloured the editor, uninstalling it deleted its folder and fell back to Dark; the bad extension showed its activation
+  error (toast + "Error" badge) and the app kept running; closing the app left no OpenMindStudio/node/WebView2 process of the copy; relaunch
+  showed the enabled extensions still enabled (none active, no node started) and the disabled one still in `disabled/`; Registry User/Machine
+  PATH were identical before and after. Left on disk: `E:\omext`, `E:\omset9`, `E:\wt7-target`, `C:\omrel`.
+- [ ] Milestone 11 — Indexed workspace/symbol/reference search.
 - [ ] Milestone 12 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).
 - [ ] Milestone 13 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.

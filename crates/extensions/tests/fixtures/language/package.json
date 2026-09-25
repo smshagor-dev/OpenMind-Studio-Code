@@ -1,0 +1,14 @@
+{
+  "name": "sample-language",
+  "displayName": "Sample Language",
+  "description": "Contributes a language and a snippet.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "contributes": {
+    "languages": [
+      { "id": "openmind-sample", "aliases": ["OpenMind Sample"], "extensions": [".omsample"] }
+    ],
+    "snippets": [{ "language": "openmind-sample", "path": "./snippets.json" }]
+  }
+}

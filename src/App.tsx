@@ -17,6 +17,7 @@ import { ActivityBar } from "./components/ActivityBar";
 import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
+import { ExtensionPrompts } from "./components/ExtensionPrompts";
 import { RunConfigurationDialog } from "./components/RunConfigurationDialog";
 import { LanguageToolsDialog } from "./components/LanguageToolsDialog";
 import { RuntimeManagerDialog } from "./components/RuntimeManagerDialog";
@@ -124,6 +125,7 @@ export function App() {
         <StatusBar activeDocument={activeTab} hasWorkspace={activeWorkspace !== null} />
       ) : null}
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
+      <ExtensionPrompts />
       {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}
       {runtimesOpen ? <RuntimeManagerDialog onClose={closeRuntimes} /> : null}
       {languageToolsOpen ? <LanguageToolsDialog onClose={closeLanguageTools} /> : null}

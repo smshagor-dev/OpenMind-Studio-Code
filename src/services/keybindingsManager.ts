@@ -17,7 +17,9 @@ export interface KeybindingRow {
   category: string;
   /** The keys in force, most important first (none: the command has no shortcut). */
   keys: string[];
-  source: "default" | "user" | "none";
+  source: "default" | "user" | "extension" | "none";
+  /** The extension that contributed the shortcut in force, if it came from one. */
+  extension?: string;
   /** True when the user changed this command's shortcuts (so "Reset" has something to do). */
   customized: boolean;
   /** Titles of the other commands that share one of the keys. */
@@ -53,6 +55,8 @@ export interface KeybindingsDeps {
   /** Tells Monaco which of its built-in shortcuts are no longer wanted. */
   syncEditor: (removedDefaults: { command: string; key: string }[]) => void;
   defaults: readonly Keybinding[];
+  /** Shortcuts contributed by extensions (after the built-in ones; a user's shortcut wins over both). */
+  extra?: () => readonly Keybinding[];
 }
 
 /**
@@ -97,10 +101,20 @@ export class KeybindingsManager {
     this.apply();
   }
 
+  /** The built-in shortcuts followed by the ones extensions contribute. */
+  private allDefaults(): readonly Keybinding[] {
+    return [...this.deps.defaults, ...(this.deps.extra?.() ?? [])];
+  }
+
+  /** The extensions' shortcuts changed: applies them. */
+  refresh(): void {
+    this.apply();
+  }
+
   private apply(): void {
-    const effective = effectiveBindings(this.deps.defaults, this.state.entries);
+    const effective = effectiveBindings(this.allDefaults(), this.state.entries);
     this.keybindings.setBindings(effective);
-    const removed = this.deps.defaults.filter(
+    const removed = this.allDefaults().filter(
       (binding) =>
         binding.owner === "editor" &&
         this.deps.remappable(binding.command) &&
@@ -118,7 +132,7 @@ export class KeybindingsManager {
 
   /** Whether the command's shortcut can be changed, and why not. */
   canChange(command: string): { enabled: boolean; reason?: string } {
-    const builtIn = this.deps.defaults.some(
+    const builtIn = this.allDefaults().some(
       (binding) => binding.command === command && binding.owner === "editor",
     );
     if (builtIn && !this.deps.remappable(command))
@@ -131,7 +145,7 @@ export class KeybindingsManager {
 
   /** The list the page shows, filtered by \`query\` (title, id, category or key). */
   rows(query = ""): KeybindingRow[] {
-    const effective = effectiveBindings(this.deps.defaults, this.state.entries);
+    const effective = effectiveBindings(this.allDefaults(), this.state.entries);
     const clashes = conflictingKeys(effective);
     const rows = this.deps.catalog().map((info): KeybindingRow => {
       const own = effective.filter((binding) => binding.command === info.id);
@@ -146,7 +160,8 @@ export class KeybindingsManager {
         title: info.title,
         category: info.category,
         keys: own.map((binding) => binding.key),
-        source: own.length === 0 ? "none" : own[0]?.source === "user" ? "user" : "default",
+        source: own[0]?.source ?? "none",
+        extension: own[0]?.extension,
         customized,
         conflicts: [...new Set(conflicts)].map((command) => this.titleOf(command)),
         change: this.canChange(info.id),
@@ -165,7 +180,7 @@ export class KeybindingsManager {
     if (!allowed.enabled) {
       return { ok: false, blocked: true, reason: allowed.reason ?? NOT_CHANGEABLE, conflicts: [] };
     }
-    const effective = effectiveBindings(this.deps.defaults, this.state.entries);
+    const effective = effectiveBindings(this.allDefaults(), this.state.entries);
     const others = conflictsFor(effective, key, command);
     if (others.length === 0) return { ok: true, conflicts: [] };
     const unfreeable = others.find(
@@ -197,14 +212,14 @@ export class KeybindingsManager {
     if (!check.ok && (check.blocked || !replace)) return { ok: false, error: check.reason };
     const replaced = check.ok ? [] : check.conflicts.map((conflict) => conflict.command);
     return this.save(
-      entriesForAssign(this.state.entries, this.deps.defaults, command, key, replaced),
+      entriesForAssign(this.state.entries, this.allDefaults(), command, key, replaced),
     );
   }
 
   async remove(command: string): Promise<ChangeResult> {
     const allowed = this.canChange(command);
     if (!allowed.enabled) return { ok: false, error: allowed.reason ?? NOT_CHANGEABLE };
-    return this.save(entriesForRemove(this.state.entries, this.deps.defaults, command));
+    return this.save(entriesForRemove(this.state.entries, this.allDefaults(), command));
   }
 
   async reset(command: string): Promise<ChangeResult> {

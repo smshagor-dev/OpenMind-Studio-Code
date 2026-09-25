@@ -1,0 +1,16 @@
+{
+  "name": "OpenMind Sample Dark",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#1b2430",
+    "editor.foreground": "#d6e2f0",
+    "editorLineNumber.foreground": "#5c7590",
+    "editor.selectionBackground": "#2f4b6b"
+  },
+  "tokenColors": [
+    { "scope": ["comment"], "settings": { "foreground": "#6c8aa6", "fontStyle": "italic" } },
+    { "scope": ["string"], "settings": { "foreground": "#9ed8a0" } },
+    { "scope": ["keyword", "storage"], "settings": { "foreground": "#ff9d5c" } },
+    { "scope": ["constant.numeric"], "settings": { "foreground": "#f2d16b" } }
+  ]
+}

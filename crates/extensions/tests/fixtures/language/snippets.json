@@ -1,0 +1,7 @@
+{
+  "Sample block": {
+    "prefix": "omblock",
+    "body": ["block ${1:name} {", "\t$0", "}"],
+    "description": "A sample block"
+  }
+}

@@ -1,0 +1,331 @@
+/* The Extensions side bar view, its install confirmation and the questions extensions ask. Tokens only. */
+
+.ext-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 16px;
+  color: var(--fg);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.ext-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ext-button {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ext-button:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+}
+
+.ext-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ext-button--primary {
+  border-color: transparent;
+  background: var(--button-bg);
+  color: var(--button-fg);
+}
+
+.ext-button--primary:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+}
+
+.ext-button--danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--on-accent-fg);
+}
+
+.ext-link {
+  border: 0;
+  background: transparent;
+  color: var(--link-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ext-search {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.ext-search:focus {
+  outline: 1px solid var(--focus-border);
+}
+
+.ext-marketplace,
+.ext-note,
+.ext-empty__hint,
+.ext-banner__hint {
+  color: var(--fg-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.ext-empty {
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+
+.ext-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.ext-banner p {
+  margin: 0;
+}
+
+.ext-banner--problem {
+  border-color: var(--error-border);
+  background: var(--error-bg-soft);
+}
+
+.ext-list,
+.ext-plain-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ext-plain-list li {
+  padding: 1px 0;
+  font-size: 12px;
+}
+
+.ext-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ext-row:hover {
+  background: var(--list-hover-bg);
+}
+
+.ext-row--selected {
+  background: var(--list-active-selection-bg);
+}
+
+.ext-row[data-enabled="false"] .ext-row__name {
+  color: var(--fg-muted);
+}
+
+.ext-row__main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ext-row__name {
+  color: var(--fg-strong);
+  font-weight: 600;
+}
+
+.ext-row__meta,
+.ext-row__desc {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.ext-row__problem {
+  color: var(--warning-fg);
+  font-size: 12px;
+}
+
+.ext-row__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+}
+
+.ext-status {
+  align-self: start;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 11px;
+}
+
+.ext-status--active {
+  background: var(--success-bg);
+}
+
+.ext-status--error {
+  background: var(--danger-bg);
+}
+
+.ext-details,
+.ext-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--input-bg);
+}
+
+.ext-details header,
+.ext-logs header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ext-details h3,
+.ext-logs h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+}
+
+.ext-details h4 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+}
+
+.ext-details dl {
+  margin: 0;
+}
+
+.ext-field {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 6px;
+  padding: 1px 0;
+  font-size: 12px;
+}
+
+.ext-field dt {
+  color: var(--fg-muted);
+}
+
+.ext-field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ext-field__sub {
+  color: var(--fg-muted);
+}
+
+.ext-path {
+  font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+.ext-details__actions {
+  margin-top: 6px;
+}
+
+.ext-logs pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+
+.ext-install {
+  max-width: 480px;
+}
+
+.ext-install__warning {
+  padding: 6px 8px;
+  border: 1px solid var(--warning-fg);
+  border-radius: 3px;
+  background: var(--warning-bg-soft);
+}
+
+.ext-quickpick .ext-pick,
+.ext-input input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+}
+
+.ext-quickpick .ext-pick:hover,
+.ext-pick--on {
+  background: var(--list-active-selection-bg);
+}
+
+.ext-toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+}
+
+.ext-toast {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--menu-bg);
+  color: var(--menu-fg);
+  box-shadow: 0 2px 8px var(--widget-shadow);
+}
+
+.ext-toast p {
+  margin: 0 0 6px;
+}
+
+.ext-toast--error {
+  border-color: var(--error-border);
+}
+
+.ext-toast--warning {
+  border-color: var(--warning-fg);
+}
+
+.ext-toast__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

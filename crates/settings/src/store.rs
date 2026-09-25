@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::schema::{self, SettingDef, SettingScope};
+use crate::schema::{self, Extras, SettingDef, SettingScope};
 
 /// Which file a value comes from (or `Default` when no file sets it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -100,7 +100,7 @@ pub fn read_layer(path: &Path) -> Layer {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EffectiveSetting {
-    pub id: &'static str,
+    pub id: String,
     pub value: Value,
     pub source: Source,
 }
@@ -108,8 +108,12 @@ pub struct EffectiveSetting {
 /// The value each setting has right now: a workspace value beats a user value beats the default.
 /// A value that doesn't validate, or a workspace value for a user-only setting, is ignored here
 /// (and reported by [`issues`]) — a broken file never breaks the app.
-pub fn effective(user: &Layer, workspace: Option<&Layer>) -> Vec<EffectiveSetting> {
-    schema::definitions()
+pub fn effective(
+    user: &Layer,
+    workspace: Option<&Layer>,
+    extras: &Extras,
+) -> Vec<EffectiveSetting> {
+    schema::definitions(extras)
         .into_iter()
         .map(|def| {
             let from_workspace = workspace
@@ -132,16 +136,16 @@ pub fn effective(user: &Layer, workspace: Option<&Layer>) -> Vec<EffectiveSettin
 
 fn accepted(def: &SettingDef, values: &Map<String, Value>) -> Option<Value> {
     values
-        .get(def.id)
+        .get(&def.id)
         .and_then(|value| schema::validate(def, value).ok())
 }
 
 /// Everything wrong with the contents of one settings file. `workspace` says which file it is,
 /// because a user-only setting in a workspace file does nothing.
-pub fn issues(values: &Map<String, Value>, workspace: bool) -> Vec<Issue> {
+pub fn issues(values: &Map<String, Value>, workspace: bool, extras: &Extras) -> Vec<Issue> {
     values
         .iter()
-        .filter_map(|(key, value)| match schema::find(key) {
+        .filter_map(|(key, value)| match schema::find(key, extras) {
             None => Some(Issue {
                 key: Some(key.clone()),
                 message: format!("Unknown setting \"{key}\"."),
@@ -168,7 +172,7 @@ pub fn issues(values: &Map<String, Value>, workspace: bool) -> Vec<Issue> {
 
 /// The problems of a settings file's text, for the notice after saving it in the JSON editor.
 /// Syntax errors carry a line number; per-setting problems point at the line of their key.
-pub fn validate_text(text: &str, workspace: bool) -> Vec<Issue> {
+pub fn validate_text(text: &str, workspace: bool, extras: &Extras) -> Vec<Issue> {
     match parse_object(text) {
         Err(message) => vec![Issue {
             key: None,
@@ -180,7 +184,7 @@ pub fn validate_text(text: &str, workspace: bool) -> Vec<Issue> {
             message,
             severity: Severity::Error,
         }],
-        Ok(values) => issues(&values, workspace)
+        Ok(values) => issues(&values, workspace, extras)
             .into_iter()
             .map(|mut issue| {
                 issue.line = issue.key.as_deref().and_then(|key| line_of(text, key));
@@ -241,8 +245,9 @@ pub fn set_value(
     id: &str,
     value: &Value,
     workspace: bool,
+    extras: &Extras,
 ) -> Result<Value, StoreError> {
-    let def = schema::find(id).ok_or_else(|| StoreError::Unknown(id.to_string()))?;
+    let def = schema::find(id, extras).ok_or_else(|| StoreError::Unknown(id.to_string()))?;
     if workspace && def.scope == SettingScope::User {
         return Err(StoreError::Invalid(format!(
             "{} can only be set in User settings.",
@@ -257,8 +262,8 @@ pub fn set_value(
 }
 
 /// Removes one setting from the file at `path`, so the next layer (or the default) applies again.
-pub fn reset_value(path: &Path, id: &str) -> Result<(), StoreError> {
-    if schema::find(id).is_none() {
+pub fn reset_value(path: &Path, id: &str, extras: &Extras) -> Result<(), StoreError> {
+    if schema::find(id, extras).is_none() {
         return Err(StoreError::Unknown(id.to_string()));
     }
     let mut values = editable(path)?;
@@ -291,12 +296,26 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("settings").join("settings.json");
 
-        set_value(&path, "editor.fontSize", &json!(18), false).expect("saved");
-        set_value(&path, "workbench.colorTheme", &json!("light"), false).expect("saved");
+        set_value(
+            &path,
+            "editor.fontSize",
+            &json!(18),
+            false,
+            &Extras::default(),
+        )
+        .expect("saved");
+        set_value(
+            &path,
+            "workbench.colorTheme",
+            &json!("light"),
+            false,
+            &Extras::default(),
+        )
+        .expect("saved");
 
         let layer = read_layer(&path);
         assert!(layer.error.is_none());
-        let list = effective(&layer, None);
+        let list = effective(&layer, None, &Extras::default());
         assert_eq!(
             value_of(&list, "editor.fontSize"),
             (json!(18), Source::User)
@@ -323,7 +342,7 @@ mod tests {
                 .expect("json"),
             error: None,
         };
-        let list = effective(&user, Some(&workspace));
+        let list = effective(&user, Some(&workspace), &Extras::default());
         assert_eq!(
             value_of(&list, "editor.fontSize"),
             (json!(20), Source::Workspace)
@@ -334,7 +353,7 @@ mod tests {
             (json!(12), Source::User)
         );
         // Without a workspace the user value stands.
-        let alone = effective(&user, None);
+        let alone = effective(&user, None, &Extras::default());
         assert_eq!(
             value_of(&alone, "editor.fontSize"),
             (json!(16), Source::User)
@@ -348,13 +367,13 @@ mod tests {
                 .expect("json"),
             error: None,
         };
-        let list = effective(&user, None);
+        let list = effective(&user, None, &Extras::default());
         assert_eq!(
             value_of(&list, "editor.fontSize"),
             (json!(14), Source::Default)
         );
         assert_eq!(value_of(&list, "editor.tabSize"), (json!(2), Source::User));
-        let found = issues(&user.values, false);
+        let found = issues(&user.values, false, &Extras::default());
         assert!(found.iter().any(|i| i.severity == Severity::Error
             && i.key.as_deref() == Some("editor.fontSize")
             && i.message.contains("between 8 and 40")));
@@ -368,15 +387,27 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("s.json");
         assert!(matches!(
-            set_value(&path, "editor.fontSize", &json!(3), false),
+            set_value(
+                &path,
+                "editor.fontSize",
+                &json!(3),
+                false,
+                &Extras::default()
+            ),
             Err(StoreError::Invalid(_))
         ));
         assert!(matches!(
-            set_value(&path, "no.such", &json!(1), false),
+            set_value(&path, "no.such", &json!(1), false, &Extras::default()),
             Err(StoreError::Unknown(_))
         ));
         assert!(matches!(
-            set_value(&path, "workbench.colorTheme", &json!("dark"), true),
+            set_value(
+                &path,
+                "workbench.colorTheme",
+                &json!("dark"),
+                true,
+                &Extras::default()
+            ),
             Err(StoreError::Invalid(_))
         ));
         assert!(!path.exists(), "a refused change must not create the file");
@@ -392,7 +423,14 @@ mod tests {
         )
         .expect("write");
 
-        set_value(&path, "editor.fontSize", &json!(20), false).expect("saved");
+        set_value(
+            &path,
+            "editor.fontSize",
+            &json!(20),
+            false,
+            &Extras::default(),
+        )
+        .expect("saved");
         let text = std::fs::read_to_string(&path).expect("read");
         let keys: Vec<&str> = text
             .lines()
@@ -409,7 +447,7 @@ mod tests {
             ]
         );
 
-        reset_value(&path, "editor.tabSize").expect("reset");
+        reset_value(&path, "editor.tabSize", &Extras::default()).expect("reset");
         let layer = read_layer(&path);
         assert!(!layer.values.contains_key("editor.tabSize"));
         assert!(layer.values.contains_key("zeta.custom"));
@@ -429,7 +467,13 @@ mod tests {
             .unwrap_or_default()
             .contains("line 2"));
         assert!(layer.values.is_empty());
-        let result = set_value(&path, "editor.tabSize", &json!(2), false);
+        let result = set_value(
+            &path,
+            "editor.tabSize",
+            &json!(2),
+            false,
+            &Extras::default(),
+        );
         assert!(matches!(result, Err(StoreError::Refused(_))));
         assert!(std::fs::read_to_string(&path)
             .expect("read")
@@ -441,23 +485,24 @@ mod tests {
         let found = validate_text(
             "{\n  \"editor.fontSize\": 99,\n  \"editor.wordWrap\": true\n}",
             false,
+            &Extras::default(),
         );
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].line, Some(2));
         assert_eq!(found[0].severity, Severity::Error);
 
-        let syntax = validate_text("{ \"a\": }", false);
+        let syntax = validate_text("{ \"a\": }", false, &Extras::default());
         assert_eq!(syntax.len(), 1);
         assert_eq!(syntax[0].line, Some(1));
 
         assert!(
-            validate_text("  ", false).is_empty(),
+            validate_text("  ", false, &Extras::default()).is_empty(),
             "an empty file is fine"
         );
-        assert!(validate_text("[1]", false)[0]
+        assert!(validate_text("[1]", false, &Extras::default())[0]
             .message
             .contains("one JSON object"));
-        let warn = validate_text("{\"terminal.fontSize\": 12}", true);
+        let warn = validate_text("{\"terminal.fontSize\": 12}", true, &Extras::default());
         assert_eq!(warn[0].severity, Severity::Warning);
     }
 
@@ -467,7 +512,7 @@ mod tests {
         let path = dir.path().join(".openmind").join("settings.json");
         ensure_file(&path).expect("created");
         assert_eq!(std::fs::read_to_string(&path).expect("read").trim(), "{}");
-        set_value(&path, "editor.tabSize", &json!(2), true).expect("saved");
+        set_value(&path, "editor.tabSize", &json!(2), true, &Extras::default()).expect("saved");
         ensure_file(&path).expect("second call keeps the file");
         assert!(read_layer(&path).values.contains_key("editor.tabSize"));
     }

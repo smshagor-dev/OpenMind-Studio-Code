@@ -1,9 +1,11 @@
 import type * as monaco from "monaco-editor";
 
+import type { ExtensionEditorAction } from "./extensionContributionService";
 import type { IpcClient } from "./ipc";
 
 /** The slice of Monaco's editor API this service uses — structural, so tests can pass a fake. */
-export type CodeEditorLike = Pick<
+export type CodeEditorLike = Partial<Pick<monaco.editor.IStandaloneCodeEditor, "addAction">> &
+  Pick<
   monaco.editor.IStandaloneCodeEditor,
   | "focus"
   | "trigger"
@@ -113,6 +115,9 @@ export interface RevealRequest {
 export class EditorService {
   private editor: CodeEditorLike | null = null;
   private readonly editors = new Set<CodeEditorLike>();
+  private extensionActions: ExtensionEditorAction[] = [];
+  private runExtensionCommand: ((command: string) => void) | null = null;
+  private readonly actionDisposables = new Map<CodeEditorLike, { dispose: () => void }[]>();
   private pendingReveal: (RevealRequest & { at: number }) | null = null;
   private status: EditorStatus | null = null;
   private options: EditorViewOptions = DEFAULT_VIEW_OPTIONS;
@@ -162,11 +167,46 @@ export class EditorService {
     this.notify();
   }
 
+  /** How an extension action in the palette or the context menu runs its command. */
+  setActionRunner(run: (command: string) => void): void {
+    this.runExtensionCommand = run;
+  }
+
+  /** The commands extensions offer in the editor's command palette (F1) and right-click menu. */
+  setExtensionActions(actions: ExtensionEditorAction[]): void {
+    this.extensionActions = actions;
+    for (const editor of this.editors) this.applyActions(editor);
+  }
+
+  private disposeActions(editor: CodeEditorLike): void {
+    for (const disposable of this.actionDisposables.get(editor) ?? []) disposable.dispose();
+    this.actionDisposables.delete(editor);
+  }
+
+  private applyActions(editor: CodeEditorLike): void {
+    this.disposeActions(editor);
+    const add = editor.addAction;
+    if (add === undefined) return;
+    const disposables = this.extensionActions.map((action, index) =>
+      add.call(editor, {
+        id: `extension.${action.command}`,
+        label: action.label,
+        contextMenuGroupId: action.inContextMenu ? "9_extensions" : undefined,
+        contextMenuOrder: index,
+        run: () => {
+          this.runExtensionCommand?.(action.command);
+        },
+      }),
+    );
+    this.actionDisposables.set(editor, disposables);
+  }
+
   /** Registers `editor` (and makes it current); returns the matching detach function. */
   attach(editor: CodeEditorLike): () => void {
     this.editors.add(editor);
     this.editor = editor;
     this.applyOptions();
+    this.applyActions(editor);
     const refresh = () => {
       if (this.editor === editor) this.refreshStatus();
     };
@@ -190,6 +230,7 @@ export class EditorService {
         disposable.dispose();
       }
       this.editors.delete(editor);
+      this.disposeActions(editor);
       if (this.editor === editor) {
         this.editor = [...this.editors].pop() ?? null;
         this.refreshStatus();

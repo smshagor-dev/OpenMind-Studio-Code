@@ -42,12 +42,18 @@ interface DocumentRecord {
 export class DocumentService {
   private readonly documents = new Map<string, DocumentRecord>();
   private nextId = 0;
+  private languageResolver: ((path: string) => string | null) | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
     private readonly buffers: BufferManager,
     private readonly events: EventBus<AppEvents>,
   ) {}
+
+  /** Languages the app doesn't know by itself (contributed by extensions), asked when the built-in table has none. */
+  setLanguageResolver(resolver: (path: string) => string | null): void {
+    this.languageResolver = resolver;
+  }
 
   createUntitled(): string {
     const id = `untitled-${++this.nextId}`;
@@ -81,7 +87,10 @@ export class DocumentService {
       external: "none",
       diskContent: null,
     });
-    const model = this.buffers.create(id, opened.content, languageIdForPath(opened.path));
+    const builtIn = languageIdForPath(opened.path);
+    const language =
+      builtIn === "plaintext" ? (this.languageResolver?.(opened.path) ?? builtIn) : builtIn;
+    const model = this.buffers.create(id, opened.content, language);
     // Monaco holds one line ending per model, so a mixed (or lone-CR) file reads back
     // slightly different from the file. The baseline is what the model holds right
     // after loading; otherwise such a file would look edited the moment it opens.

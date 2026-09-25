@@ -1,0 +1,14 @@
+{
+  "name": "sample-command",
+  "displayName": "Sample Command",
+  "description": "Contributes one command that shows a message.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleCommand.hello", "title": "Sample: Say Hello" }],
+    "keybindings": [{ "command": "sampleCommand.hello", "key": "ctrl+alt+h" }],
+    "menus": { "editor/context": [{ "command": "sampleCommand.hello" }] }
+  }
+}

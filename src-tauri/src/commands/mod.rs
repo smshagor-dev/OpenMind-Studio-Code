@@ -1,6 +1,9 @@
 pub mod database;
 pub mod debug;
 pub mod document;
+pub mod extension_host;
+pub mod extension_manage;
+pub mod extensions;
 pub mod filesystem;
 pub mod git;
 pub mod lsp;

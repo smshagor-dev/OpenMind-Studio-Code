@@ -1,0 +1,12 @@
+{
+  "name": "sample-bad",
+  "displayName": "Sample Bad",
+  "description": "Throws while activating, to check the app survives.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [{ "command": "sampleBad.run", "title": "Sample: Run Bad Extension" }]
+  }
+}

@@ -32,6 +32,25 @@ function relativePath(path: string, rootPath: string): string {
   return path.startsWith(rootPath) ? path.slice(rootPath.length).replace(/^[\\/]/, "") : path;
 }
 
+/** Commands extensions put in the Explorer's context menu; each gets the clicked path as its argument. */
+function extensionItems(node: ExplorerNode): PopupItem[] {
+  const contributed = container.extensions.contributions.explorerItems();
+  if (contributed.length === 0) return [];
+  return [
+    SEPARATOR,
+    ...contributed.map((entry) => {
+      const reason = container.commands.reasonFor(entry.command);
+      return item(
+        entry.label,
+        () => {
+          container.run(entry.command, { __uri: node.path });
+        },
+        { enabled: container.commands.isEnabled(entry.command), reason },
+      );
+    }),
+  ];
+}
+
 /**
  * The explorer's right-click menu, in VS Code's order. `node` is null for a
  * click on empty space (acts on the workspace root). Only operations the
@@ -95,6 +114,7 @@ export function explorerContextMenu(
     item("Copy Relative Path", () => {
       copyText(relativePath(node.path, rootPath));
     }),
+    ...extensionItems(node),
     SEPARATOR,
     item(
       "Rename...",

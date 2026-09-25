@@ -2795,6 +2795,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-extensions"
+version = "0.1.0"
+dependencies = [
+ "openmind-lsp",
+ "openmind-settings",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "zip",
+]
+
+[[package]]
 name = "openmind-file-watch"
 version = "0.1.0"
 dependencies = [
@@ -2914,6 +2928,7 @@ dependencies = [
  "openmind-core",
  "openmind-dap",
  "openmind-db",
+ "openmind-extensions",
  "openmind-file-watch",
  "openmind-fs",
  "openmind-git",

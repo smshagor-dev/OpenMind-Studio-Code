@@ -218,7 +218,13 @@ export function KeybindingsTab() {
                   ) : null}
                 </td>
                 <td>
-                  {row.source === "user" ? "User" : row.source === "default" ? "Default" : "—"}
+                  {row.source === "user"
+                    ? "User"
+                    : row.source === "default"
+                      ? "Default"
+                      : row.source === "extension"
+                        ? (row.extension ?? "Extension")
+                        : "—"}
                 </td>
                 <td className="prefs-table__actions">
                   <button

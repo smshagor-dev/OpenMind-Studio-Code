@@ -1,10 +1,21 @@
 import { useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
 
 import type { ToastMessage } from "./components/ErrorToast";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
 import { container } from "./services/container";
 import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./services/ipc";
 
 const TOAST_LIFETIME_MS = 6000;
+
+/** The extension host and its questions live in the main window; other editor windows only list extensions. */
+function isMainWindow(): boolean {
+  try {
+    return getCurrentWindow().label === "main";
+  } catch {
+    return false;
+  }
+}
 
 /** Restores persisted state (theme, layout, editor options, window zoom, workspace, session) once, then reports ready. */
 export function useAppStartup(): boolean {
@@ -43,6 +54,8 @@ export function useAppStartup(): boolean {
         },
       );
       await container.workspace.restoreActiveWorkspace();
+      // Before the session: files it reopens must already know the languages extensions contribute.
+      await container.startExtensions(isMainWindow());
       await container.workspace.restoreSession();
       // A window opened for a tab dragged out of another window opens that file.
       await container.editorWindows.openPending();
