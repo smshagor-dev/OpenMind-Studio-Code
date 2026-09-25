@@ -60,6 +60,8 @@ export interface ExtensionsWiringDeps {
   languageForPath: (path: string) => string;
   /** Whether a text editor (not only a preview) shows this document. */
   hasTextTab: (docId: string) => boolean;
+  /** The id of the active tab of the active editor group. */
+  activeTabId: () => string | null;
 }
 
 /**
@@ -124,6 +126,11 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       return selections === null || options === null ? null : { selections, ...options };
     },
     onSelectionChange: (listener) => deps.editor.subscribe(listener),
+    currentActiveId: () => deps.activeTabId(),
+    editorsCovered: () => {
+      const state = webviews.getState();
+      return state.overlay && state.panels.length > 0;
+    },
   });
   /** An app command, or one an extension registered in the host. */
   async function runAnyCommand(command: string, args: unknown[]): Promise<unknown> {
@@ -146,6 +153,10 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     onError: (message) => {
       events.emit("appError", { message });
     },
+  });
+  // A webview panel covering the editors means there is no active text editor; the host is told when that changes.
+  webviews.subscribe(() => {
+    sync.refreshActive();
   });
   const editorApi = new ExtensionEditorService({
     documents,

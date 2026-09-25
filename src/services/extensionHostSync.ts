@@ -27,6 +27,10 @@ export interface HostSyncDeps {
   ) => { selections: HostSelection[]; tabSize: number; insertSpaces: boolean } | null;
   /** Subscribes to cursor/selection movement in the editors; returns the unsubscribe function. */
   onSelectionChange?: (listener: () => void) => () => void;
+  /** The tab that is active right now (a text tab's id is its document id), so a host that starts later still knows it. */
+  currentActiveId?: () => string | null;
+  /** True while something that isn't a text editor (an extension webview panel) covers the editors. */
+  editorsCovered?: () => boolean;
 }
 
 /**
@@ -41,11 +45,13 @@ export class HostDocumentSync {
   private activeId: string | null = null;
   private selectionTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSelectionSent = "";
+  private lastActiveSent = "";
 
   constructor(private readonly deps: HostSyncDeps) {}
 
   /** What `host/init` starts from. */
   initial(): { documents: HostDocument[]; activeEditor: HostEditorInfo | null } {
+    this.hydrate();
     const documents = this.deps.documents
       .fileBackedIds()
       .map((id) => this.describe(id))
@@ -69,9 +75,7 @@ export class HostDocumentSync {
       }),
       events.on("tabsChanged", ({ activeId }) => {
         this.activeId = activeId;
-        const editor = this.activeEditor();
-        this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
-        this.deps.notify("host/activeEditorChanged", { editor });
+        this.announceActive(true);
       }),
     );
     const offSelection = this.deps.onSelectionChange?.(() => {
@@ -79,6 +83,30 @@ export class HostDocumentSync {
     });
     if (offSelection) this.offs.push(offSelection);
     for (const id of documents.fileBackedIds()) this.watch(id);
+    // The tab that is active now is known to the host from the start, without waiting for a tab change.
+    this.hydrate();
+    const editor = this.activeEditor();
+    this.lastActiveSent = JSON.stringify(editor);
+    this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
+  }
+
+  /** Reads the active tab from the workbench (used at start and after a restart, when no event announces it). */
+  private hydrate(): void {
+    if (this.deps.currentActiveId) this.activeId = this.deps.currentActiveId();
+  }
+
+  /** Something that covers or uncovers the editors changed (a webview panel): tell the host if its editor view changed. */
+  refreshActive(): void {
+    this.announceActive(false);
+  }
+
+  private announceActive(force: boolean): void {
+    const editor = this.activeEditor();
+    const serialized = JSON.stringify(editor);
+    if (!force && serialized === this.lastActiveSent) return;
+    this.lastActiveSent = serialized;
+    this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
+    this.deps.notify("host/activeEditorChanged", { editor });
   }
 
   stop(): void {
@@ -119,6 +147,7 @@ export class HostDocumentSync {
   }
 
   private activeEditor(): HostEditorInfo | null {
+    if (this.deps.editorsCovered?.() === true) return null;
     if (this.activeId === null || !this.deps.documents.has(this.activeId)) return null;
     const path = this.deps.documents.snapshot(this.activeId).path;
     if (path === null) return null;

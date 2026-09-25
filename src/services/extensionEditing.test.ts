@@ -13,6 +13,7 @@ import { StatusBarItemsService, displayText } from "./statusBarItemsService";
 import type { HostSelection } from "./hostEdits";
 import { ExtensionPromptService } from "./extensionPromptService";
 import { OutputService } from "./outputService";
+import { HOST_DIR, loadHostModule } from "../testUtils/hostModules";
 
 const FILE = "C:/My Site/a.txt";
 
@@ -72,6 +73,7 @@ function documentsRig(hasTextTab = true) {
     { anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 5 },
   ];
   const listeners = new Set<() => void>();
+  const current: { id: string | null; covered: boolean } = { id: null, covered: false };
   const sync = new HostDocumentSync({
     documents,
     events,
@@ -81,6 +83,8 @@ function documentsRig(hasTextTab = true) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    currentActiveId: () => current.id,
+    editorsCovered: () => current.covered,
   });
   const tab = { value: hasTextTab };
   const service = new ExtensionEditorService({
@@ -89,7 +93,7 @@ function documentsRig(hasTextTab = true) {
     sync,
     hasTextTab: () => tab.value,
   });
-  return { buffers, events, documents, sent, sync, service, tab, selections, listeners };
+  return { buffers, events, documents, sent, sync, service, tab, selections, listeners, current };
 }
 
 describe("ExtensionEditorService", () => {
@@ -218,6 +222,123 @@ describe("HostDocumentSync: the active editor and its selection", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("HostDocumentSync: the active editor is known from the start, not only after a tab change", () => {
+  const editorOf = (path: string) => ({
+    path,
+    selections: [{ anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 5 }],
+    tabSize: 2,
+    insertSpaces: false,
+  });
+
+  it("a host that starts after the tab became active gets that editor in its initial state", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.current.id = id;
+    expect(r.sync.initial().activeEditor).toEqual(editorOf(FILE));
+    r.sync.start();
+    // Nothing to announce again: the host was handed it at start.
+    expect(r.sent.filter(([m]) => m === "host/activeEditorChanged")).toEqual([]);
+    r.sync.stop();
+  });
+
+  it("a restart hydrates again, keeps one set of listeners, and forgets nothing about versions", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.current.id = id;
+    r.sync.start();
+    r.sync.stop();
+    r.sync.start();
+    r.sync.start();
+    expect(r.sync.initial().activeEditor).toEqual(editorOf(FILE));
+    r.events.emit("documentSaved", { id, path: FILE });
+    expect(r.sent.filter(([m]) => m === "host/documentSaved")).toHaveLength(1);
+    r.sync.stop();
+    // While the host was gone the user changed tabs: the restart sees the new one, not a stale one.
+    r.current.id = null;
+    expect(r.sync.initial().activeEditor).toBeNull();
+  });
+
+  it("a preview, webview or any non-text tab is not an editor; a webview covering the editors hides it and uncovering brings it back", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.current.id = `${id}#preview`;
+    expect(r.sync.initial().activeEditor).toBeNull();
+    r.current.id = id;
+    r.sync.start();
+    r.current.covered = true;
+    r.sync.refreshActive();
+    expect(r.sent.at(-1)).toEqual(["host/activeEditorChanged", { editor: null }]);
+    const count = r.sent.length;
+    r.sync.refreshActive();
+    expect(r.sent).toHaveLength(count);
+    r.current.covered = false;
+    r.sync.refreshActive();
+    expect(r.sent.at(-1)).toEqual(["host/activeEditorChanged", { editor: editorOf(FILE) }]);
+    r.sync.stop();
+  });
+
+  it("switching tabs updates the editor and closing the active tab clears it", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.current.id = id;
+    r.sync.start();
+    r.events.emit("tabsChanged", { tabs: [], activeId: `${id}#preview` });
+    expect(r.sent.at(-1)).toEqual(["host/activeEditorChanged", { editor: null }]);
+    r.events.emit("tabsChanged", { tabs: [], activeId: id });
+    expect(r.sent.at(-1)).toEqual(["host/activeEditorChanged", { editor: editorOf(FILE) }]);
+    r.events.emit("tabsChanged", { tabs: [], activeId: null });
+    expect(r.sent.at(-1)).toEqual(["host/activeEditorChanged", { editor: null }]);
+    r.sync.stop();
+  });
+
+  it("TextEditor.edit works in a freshly started host without any tab change", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.current.id = id;
+    const initial = r.sync.initial();
+    const vscode = loadHostModule(`${HOST_DIR}/vscode.js`) as {
+      createApi: (
+        host: unknown,
+        ext: unknown,
+      ) => {
+        window: {
+          activeTextEditor?: {
+            edit: (
+              cb: (b: { insert: (p: unknown, t: string) => void }) => void,
+            ) => Promise<boolean>;
+          };
+        };
+        Position: new (l: number, c: number) => unknown;
+      };
+      createEventHub: () => unknown;
+    };
+    const state = {
+      commands: new Map(),
+      providers: new Map(),
+      configuration: {},
+      workspaceFolders: [{ path: "C:/My Site", name: "My Site" }],
+      documents: new Map(initial.documents.map((d) => [d.path, d])),
+      activeEditor: initial.activeEditor,
+    };
+    const requests: [string, unknown][] = [];
+    const host = {
+      state,
+      events: vscode.createEventHub(),
+      als: null,
+      request: (method: string, params: unknown) => {
+        requests.push([method, params]);
+        return Promise.resolve({ applied: true });
+      },
+      notify: () => undefined,
+    };
+    const api = vscode.createApi(host, { id: "t.sample", permissions: ["workspaceWrite"] });
+    const editor = api.window.activeTextEditor;
+    expect(editor).toBeDefined();
+    await expect(editor?.edit((b) => { b.insert(new api.Position(0, 0), ">"); })).resolves.toBe(true);
+    expect(requests[0]?.[0]).toBe("editor/applyEdits");
   });
 });
 
