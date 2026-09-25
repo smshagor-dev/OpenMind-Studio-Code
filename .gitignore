@@ -37,3 +37,6 @@ pnpm-debug.log*
 # Env
 .env
 .env.local
+
+# Claude Code session lock (per machine, changes while a session runs)
+.claude/scheduled_tasks.lock
