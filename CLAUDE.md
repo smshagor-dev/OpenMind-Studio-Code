@@ -465,6 +465,20 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   default theme. Extensions with `"*"`/`onStartupFinished` run only after startup finished (`finishStartup` at the end of the startup sequence, after the
   window is up and the session restored); the host is never started before an extension needs it.
 
+- `openmind-preview` (Milestone 11) — the backend of the **read-only file previews**, Tauri-agnostic and in-process only: no external program, no network,
+  nothing written, no macro or script ever run. `kind::detect` maps an extension to `PreviewKind` (image: png/jpg/jpeg/webp/gif/bmp/svg, pdf, docx, xlsx, csv, markdown,
+  html, latex, else `unsupported`) and holds the size limits (image 15 MB, PDF 30 MB, DOCX/XLSX 25 MB, Markdown/HTML/LaTeX 5 MB, a CSV is read only up to its first 8 MB, "Open as
+  Text" and other files 10 MB). `path::validate` runs on every command: absolute, no `..`, no NUL, no network (UNC `\\server`, `//server`) path, an existing regular file, canonicalized.
+  `inspect` gives kind, size, `binary` (a NUL in the first 8000 bytes; images/PDF/Office are binary by nature), `too_large` and `text_safe` (safe for "Open as Text");
+  `read_bytes` (image/PDF, limit enforced), `read_text` (text formats, decoded by `openmind_fs`, refused when binary or over the limit, a big CSV cut at whole lines with
+  `truncated`). `zipsafe` reads Office packages (ZIP) **in memory only** — only the few known parts are read, each capped at 40 MB *while reading* (a zip bomb can't inflate past it),
+  at most 20 000 entries, never extracted to disk (so nothing app-relative to clean up), XML parsed with `roxmltree` with DTDs refused (no entity tricks) and a node cap.
+  `docx` returns paragraphs, headings (`Heading1-6`, Title/Subtitle), list items, tables (flattened text), core metadata, the number of embedded pictures (not shown) and
+  `has_macros` (a `vbaProject.bin` part exists: reported, never run); tracked deletions (`w:delText`) aren't shown; capped at 20 000 blocks / 2 M characters. `xlsx` returns the
+  sheet list and one sheet's values (first 1 000 rows × 100 columns, the real totals reported): shared strings, inline strings, booleans, cached values, and a formula
+  *without* a cached value shown as its `=text` — **no formula engine**, dates stay serial numbers, charts/pivots/macros ignored. Commands in `src-tauri/src/commands/preview.rs`
+  (`preview_inspect/read_bytes/read_text/docx/xlsx`, all on `spawn_blocking`).
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
@@ -774,6 +788,23 @@ internals.
   Not done: custom views (`onView`), webviews, source control/view-title menus, a permission model, updates (a replace-install of the same id is the only
   update path), the online marketplace, extension dependencies are only reported.
 
+- **Read-only file previews (Milestone 11).** `FilePreviewService` (`filePreviewService.ts`) owns the preview documents (`pv:<n>`, one per path, never a text
+  document): load through the backend, the model per kind (image data address, PDF bytes, DOCX/XLSX models, CSV table, Markdown/HTML text, LaTeX outline, or a message), status
+  loading/ready/error, zoom (fit / actual / steps 10%-800%), PDF page, XLSX sheet, image dimensions, reload with a sequence number so a stale load never overwrites a newer one.
+  A preview is an editor tab of kind `filePreview` (`EditorKind`, id = its `pv:` id): no dirty state, no Save/Save As/Revert (all no-ops), never seen by Save All, released when
+  its last tab closes (Reopen Closed Editor brings it back), restored with the layout and the flat session (a preview whose file is gone is skipped). `WorkspaceService.openPath`
+  routes: images, PDF, DOCX and XLSX always open as a preview; **text and code open in the editor** (Markdown, HTML, LaTeX and CSV too — Open Preview is one click away); any file that
+  is binary or too big for the editor becomes a preview tab with a message (a 40 MB `.log` no longer freezes Monaco). `openFilePreviewOf`/`preview.open` (Markdown keeps its live
+  preview; HTML/LaTeX/CSV show the *saved* file), `openAsText` (preview -> editor in place, only when `textSafe`), explorer context menu "Open Preview"/"Open as Text", the
+  editor ⋯ menu ("Open File Preview", and "Open as Text"/"Reload Preview" on a preview), and `previewCommands.ts` (`preview.open|openAsText|reload|zoomIn|zoomOut|fit|actualSize`,
+  each disabled with a reason; no keyboard shortcuts, Ctrl+Plus/Minus already zoom the window). `FilePreviewView` = toolbar (name, tooltip with the path, kind, size, pixel size,
+  "Read-only preview", zoom, page controls, Open as Text, Reload) over `components/filePreview/*`: `ImagePreview` (`<img>` from a `data:` address — an SVG shown that way runs no script and loads
+  nothing external; `describeSvg` tells the reader what it contained), `PdfPreview` (pdf.js, one page at a time, Fit Width, encrypted/damaged PDFs named as such), `DocxPreview`,
+  `SheetPreview` (XLSX and CSV grids, row/column counts, truncation notices), `HtmlPreview` (the extension-webview sanitizer with scripts off + `<iframe sandbox="">`, a notice for every
+  blocked script, handler, link and remote address), `LatexPreview` (`outlineLatex`: title, author, sections, equations, bibliography commands, paragraphs — never compiled) and
+  Markdown through the existing safe renderer. Preview tabs are not documents: `activeTextEditor` is undefined while one is active, an extension edit for a file that is only previewed is
+  refused ("isn't open"), the status bar shows no line/encoding info for them. pdf.js lives in `public/pdf` (worker, character maps, fonts, wasm; copied by `scripts/copy-pdf-assets.mjs` in
+  `predev`/`prebuild`, git-ignored) and is loaded lazily (a separate chunk) — the same Rolldown-worker workaround as Monaco's.
 **Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
 (frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
 doesn't — `workbench--inactive`, from window focus/blur; editor `#121314`; side bar, panel and secondary side bar
@@ -1601,10 +1632,40 @@ right after start-up (the extension list marks it "Activates at every start-up (
   (`as_webview_uri_refuses_every_way_out…`, `retain_context_is_reported_per_panel…`) and the new sample extensions `webview-state-counter` and `webview-path-tricks`. **Limitations**: the Webview API remains a subset
   (webview views, serializers, command URIs, port mapping and remote content are not implemented), the app has no Tauri CSP (see above), page state is lost on app restart, and a hostile extension still runs with the user's
   rights in its Node host (the permission guard is not a sandbox). Left on disk for manual deletion: `E:\omext`, `E:\wt10-target`.
-- [ ] Milestone 11 — Indexed workspace/symbol/reference search.
-- [ ] Milestone 12 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
+- [x] **Milestone 11** — Universal read-only preview system (`feat: add universal read-only file previews`). New `openmind-preview` crate (see above; 14 tests, malformed/encrypted/oversized
+  inputs included), `commands::preview`, `FilePreviewService` + the preview tab kind + `FilePreviewView` (see "Read-only file previews"), pdf.js (`pdfjs-dist`) for PDF. **Preview only — nothing here edits,
+  converts, uploads or runs anything**: no OCR, no online converter or upload, no Office macro execution, no PDF editing/annotation/forms/signing, no LaTeX compilation (no pdflatex, no TeX Live),
+  no browser execution of HTML, no full Word/Excel rendering. **Formats**: PNG/JPG/JPEG/WebP/GIF/BMP/SVG (zoom, fit, actual size, pan by dragging, pixel size); PDF (page navigation, zoom, fit width,
+  reload, encrypted and damaged files reported); DOCX (text, headings, list items, tables, metadata — "This DOCX preview is read-only and may not exactly match Microsoft Word layout."; pictures are only counted;
+  a macro project is reported, never run); XLSX (sheet list, one sheet at a time, first 1 000 rows × 100 columns with the real totals, cached values or unevaluated formula text — "This spreadsheet preview
+  is read-only and does not evaluate formulas or macros."); CSV (delimiter detection for , ; tab |, quotes, first 1 000 rows, partial read of files over 8 MB); Markdown (the existing safe renderer: raw HTML and
+  scripts stay text, images show their alt text only — **local images are not loaded**); HTML (sanitized, sandboxed, scripts/handlers/frames/remote content blocked with a notice); LaTeX (structured source
+  view: "LaTeX compilation preview is not available yet. This is a read-only source preview."); unsupported types ("Preview not available for this file type."), binary files ("This file appears to be
+  binary and cannot be previewed safely.") and files over their limit (a message with both sizes, bytes never read). **Security model**: every path is validated in Rust; limits are enforced while reading;
+  Office files are read in memory with capped parts and DTDs refused; SVG/HTML/Markdown are never injected as markup into the app (SVG as `<img>`, HTML through `prepareWebviewHtml` with scripts off inside an
+  empty-`sandbox` frame, Markdown/DOCX/LaTeX/sheets as React elements); no network request is made by any preview (pdf.js loads its worker, fonts and cmaps from the app itself); no temp or cache file is written
+  at all (verified: `cache/` stayed empty), so there is nothing to clean up. **Setting**: `preview.allowRemoteContent` was **not** added — remote content is always blocked and a switch nothing
+  implements would be a fake control (the safe default the spec asks for is the only behaviour). **Limitations**: DOCX/XLSX are partial (no layout, images, comments, styles beyond headings, charts, date formats,
+  hidden rows/columns); a PDF is shown one page at a time (no continuous scroll, text selection, search or thumbnails); pdf.js needs a WebView2 that supports its features; previews of HTML/LaTeX/CSV show the
+  *saved* file, not the unsaved buffer; text formats open in the editor by default (Open Preview to render); "Open Externally" is **not** offered (the app has no such command; adding one would launch
+  Word/Excel, which can run macros); previews are not added to Recent Files; session restore reopens preview tabs (verified) but not their zoom/page/sheet; a file that changes on disk is only re-read by Reload
+  Preview (the file watcher doesn't refresh previews yet). **Extensions**: preview tabs are never `activeTextEditor`, `TextEditor.edit` finds no editor while one is active and works again on switching back
+  (verified by hand and by tests); auto-load, F1 before the host starts, status bar items, webview samples and "Load Popular only after a click" were re-checked by hand. **Verified by hand in the built app**
+  (fresh portable copy `E:\omprev\OpenMind Studio`, workspace `My Files` with a space, generated samples incl. a 40 MB log): PNG zoom in/out/fit/actual and dimensions, evil SVG (script and external image
+  did nothing; the notice named them), a 3-page PDF (next page to 3/3, zoom 125%, canvas label), encrypted / truncated / fake PDFs (clear messages), DOCX (headings, list, table, metadata, limitation, `<script>`
+  text kept as text), a DOCX with a macro part (reported), a broken DOCX, XLSX with formulas and a second sheet (tab click loaded it), an XLSX with a macro part, a 3 001-row CSV (counts, delimiter `;`, 1 000 of 3 001
+  rows message, 1 000 table rows drawn), Markdown with raw `<script>`/`onerror`/`javascript:` (0 script/img/javascript links in the DOM, page title unchanged), HTML (sandbox="", 0 script/handler/iframe/remote in
+  the frame, notice list), TEX, a binary file, the 40 MB log (message, no freeze), Open as Text (tex preview replaced by the editor), context-menu Open Preview, preview tabs restored after a relaunch, the three
+  extension samples installed through Install from VSIX (trust dialog each), `activeTextEditor` absent on a preview tab ("no active text editor") and `edit applied (version 1 -> 2, dirty=true)` on a text tab, the
+  Sample Status status bar items, the webview sample, Load Popular not fetched until clicked; a normal close left no OpenMindStudio/node/conhost/WebView2 process of the copy and User/Machine PATH were identical.
+  Real bugs found and fixed on the way: CSV opened every row one column too wide after a delimiter (quote handling), an SVG `<foreignObject/>` self-closing tag slipped past the notice, the preview toolbar/pane
+  grew wider than the editor group (flex sizing), and a stalled test harness (not the app). Tests: 14 Rust (`kind`, `path`, `inspect`, `docx`, `xlsx` incl. macros, DTD, limits, malformed), TypeScript for the
+  parsers (CSV, LaTeX, SVG and HTML notices), the service (routing, models, limits, errors, stale loads, zoom, pages), the workspace (tabs, no dirty/save, Open as Text, restore, extensions' active editor and edit
+  refusal), the commands and the view (every format, controls, messages, sanitizing). Roadmap renumbered: indexed search is now Milestone 12, AI providers 13, icon themes/profiles/signing 14.
+- [ ] Milestone 12 — Indexed workspace/symbol/reference search.
+- [ ] Milestone 13 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).
-- [ ] Milestone 13 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
+- [ ] Milestone 14 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

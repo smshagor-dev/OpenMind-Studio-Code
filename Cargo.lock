@@ -2856,6 +2856,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-preview"
+version = "0.1.0"
+dependencies = [
+ "openmind-fs",
+ "roxmltree",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.20",
+ "zip",
+]
+
+[[package]]
 name = "openmind-process"
 version = "0.1.0"
 dependencies = [
@@ -2933,6 +2945,7 @@ dependencies = [
  "openmind-fs",
  "openmind-git",
  "openmind-lsp",
+ "openmind-preview",
  "openmind-runner",
  "openmind-runtime-manager",
  "openmind-search",
@@ -3566,6 +3579,15 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

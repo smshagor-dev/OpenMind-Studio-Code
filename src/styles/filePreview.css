@@ -1,0 +1,315 @@
+/* --- Read-only file previews (image, PDF, DOCX, XLSX, CSV, Markdown, HTML, LaTeX) in an editor tab --- */
+
+.file-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  background-color: var(--editor-bg);
+  color: var(--fg);
+}
+
+.file-preview__toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--panel-bg);
+}
+
+.file-preview__name {
+  font-weight: 600;
+  max-width: 40ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview__meta,
+.file-preview__page span {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.file-preview__badge {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background-color: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 11px;
+}
+
+.file-preview__spacer {
+  flex: 1 1 auto;
+}
+
+.file-preview__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-preview__zoom {
+  min-width: 42px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.file-preview__page {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-preview__page input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  background-color: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.file-preview__button {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.file-preview__button:hover:not(:disabled) {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.file-preview__button:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.file-preview__button:disabled {
+  color: var(--fg-disabled);
+  cursor: not-allowed;
+}
+
+.file-preview__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.file-preview__notice {
+  margin: 8px 12px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning-fg);
+  border-radius: 4px;
+  background-color: var(--warning-bg-soft);
+  font-size: 12px;
+}
+
+.file-preview__notice-list {
+  list-style: none;
+}
+
+.file-preview__error,
+.file-preview__empty,
+.file-preview__message {
+  margin: 24px;
+  color: var(--fg-muted);
+}
+
+.file-preview__error {
+  color: var(--error-fg);
+}
+
+.file-preview__image-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-preview__image {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px;
+}
+
+.file-preview__image--pan {
+  align-items: flex-start;
+  justify-content: flex-start;
+  cursor: grab;
+}
+
+.file-preview__pdf {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 16px;
+  overflow: auto;
+}
+
+.file-preview__pdf canvas {
+  box-shadow: 0 1px 6px var(--widget-shadow);
+  background-color: var(--editor-bg);
+}
+
+.file-preview__doc,
+.file-preview__markdown {
+  max-width: 860px;
+  padding: 8px 24px 32px;
+  line-height: 1.55;
+  user-select: text;
+}
+
+.file-preview__list-item {
+  margin-left: 16px;
+}
+
+.file-preview__meta-block {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.file-preview__table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.file-preview__table td,
+.file-preview__table th {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+  max-width: 420px;
+  overflow-wrap: anywhere;
+}
+
+.file-preview__table--doc {
+  margin: 8px 0 16px;
+}
+
+.file-preview__table--grid thead th,
+.file-preview__table--grid tbody th {
+  position: sticky;
+  background-color: var(--section-header-bg);
+  color: var(--fg-muted);
+  font-weight: 500;
+  text-align: center;
+}
+
+.file-preview__table--grid thead th {
+  top: 0;
+}
+
+.file-preview__table--grid tbody th {
+  left: 0;
+}
+
+.file-preview__sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-preview__sheet-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.file-preview__sheet-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.file-preview__sheet-tab {
+  padding: 3px 10px;
+  border: 1px solid var(--tab-border);
+  background-color: var(--tab-inactive-bg);
+  color: var(--tab-inactive-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.file-preview__sheet-tab.is-active {
+  background-color: var(--tab-active-bg);
+  color: var(--tab-active-fg);
+}
+
+.file-preview__sheet-tab:focus-visible {
+  outline: 1px solid var(--focus-border);
+}
+
+.file-preview__grid-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+.file-preview__html {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-preview__html-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 300px;
+  margin-top: 8px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background-color: var(--editor-bg);
+}
+
+.file-preview__equation,
+.file-preview__bibliography {
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent-bg);
+  background-color: var(--panel-bg);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.file-preview__bibliography {
+  border-left-color: var(--fg-muted);
+}
+
+.file-preview__latex-title {
+  margin-bottom: 4px;
+}
+
+.file-preview__latex-author {
+  color: var(--fg-muted);
+}

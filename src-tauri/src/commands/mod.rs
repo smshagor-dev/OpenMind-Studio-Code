@@ -11,6 +11,7 @@ pub mod marketplace;
 pub mod panel;
 pub mod php;
 pub mod preferences;
+pub mod preview;
 pub mod run;
 pub mod runtime;
 pub mod search;

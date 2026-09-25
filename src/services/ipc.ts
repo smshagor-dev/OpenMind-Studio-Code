@@ -5,6 +5,7 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 
 import { type ExtensionsIpc, tauriExtensionsIpc } from "./extensionsIpc";
+import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
 
 // Mirrors openmind_fs::TextEncoding (#[serde(rename_all = "kebab-case")]).
 export type TextEncoding = "utf8" | "utf8-bom" | "utf16-le" | "utf16-be" | "windows1252";
@@ -400,7 +401,7 @@ export interface RuntimeStatus {
 // clients in tests) that never rely on `this`, and method-shorthand syntax
 // makes eslint's `unbound-method` rule flag every bare `ipc.someMethod`
 // reference (e.g. `expect(ipc.documentSave).toHaveBeenCalledWith(...)`).
-export interface IpcClient extends ExtensionsIpc {
+export interface IpcClient extends ExtensionsIpc, PreviewIpc {
   // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
@@ -897,6 +898,7 @@ function decodeBase64(encoded: string): Uint8Array {
 
 export const tauriIpcClient: IpcClient = {
   ...tauriExtensionsIpc,
+  ...tauriPreviewIpc,
   async openDocumentDialog() {
     const selected = await openDialog({ multiple: false, directory: false });
     return typeof selected === "string" ? selected : null;

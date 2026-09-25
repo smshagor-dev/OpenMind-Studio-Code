@@ -8,6 +8,7 @@ import { EditorService } from "./editorService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import { ExplorerService } from "./explorerService";
+import { FilePreviewService } from "./filePreviewService";
 import { FileSystemService } from "./fileSystemService";
 import { tauriIpcClient } from "./ipc";
 import { KeybindingService } from "./keybindings";
@@ -20,6 +21,7 @@ import { PanelService } from "./panelService";
 import { PhpServerService } from "./phpServerService";
 import { registerPhpCommands } from "./phpCommands";
 import { PortsService } from "./portsService";
+import { registerPreviewCommands } from "./previewCommands";
 import { PreviewEditorService } from "./previewEditorService";
 import { RunConfigurationService } from "./runConfigurationService";
 import { RunCodeService } from "./runCodeService";
@@ -87,10 +89,12 @@ const panel = new PanelService(tauriIpcClient);
 const editorGroups = new EditorGroupService();
 const associations = new EditorAssociationService(tauriIpcClient);
 const previews = new PreviewEditorService(tauriIpcClient);
+const filePreviews = new FilePreviewService(tauriIpcClient);
 const workspace = new WorkspaceService(documents, tauriIpcClient, events, {
   groups: editorGroups,
   associations,
   previews,
+  filePreviews,
 });
 const openEditors = new OpenEditorsService(workspace);
 const markdown = new MarkdownPreviewService(workspace, editorGroups, tauriIpcClient, events);
@@ -445,6 +449,13 @@ registerEditorCommands({
   associations,
   markdown,
 });
+registerPreviewCommands({
+  commands,
+  workspace,
+  groups: editorGroups,
+  markdown,
+  filePreviews,
+});
 registerRuntimeCommands(commands, events);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerDebugCommands({ commands, debug, breakpoints, editor, events, activeFile });
@@ -600,6 +611,7 @@ export const container = {
   previews,
   associations,
   markdown,
+  filePreviews,
   ipc: tauriIpcClient,
   extensions,
   startExtensions: extensions.start,

@@ -11,6 +11,7 @@ Cargo.lock.bak
 node_modules/
 dist/
 public/monaco-workers/
+public/pdf/
 dist-ssr/
 .vite/
 *.tsbuildinfo

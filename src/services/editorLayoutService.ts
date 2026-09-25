@@ -112,7 +112,7 @@ function serializeGroup(group: EditorGroup, pathOf: (docId: string) => string | 
 }
 
 function isKind(value: unknown): value is EditorKind {
-  return value === "text" || value === "markdownPreview";
+  return value === "text" || value === "markdownPreview" || value === "filePreview";
 }
 
 /** Validates untrusted stored JSON; anything malformed is dropped rather than trusted. */

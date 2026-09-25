@@ -123,7 +123,7 @@ export function App() {
         ) : null}
       </div>
       {layout.statusBarVisible ? (
-        <StatusBar activeDocument={activeTab} hasWorkspace={activeWorkspace !== null} />
+        <StatusBar activeDocument={activeTab?.kind === "text" ? activeTab : null} hasWorkspace={activeWorkspace !== null} />
       ) : null}
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
       <ExtensionDialogs />

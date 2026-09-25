@@ -185,6 +185,11 @@ fn main() {
             commands::search::search_run,
             commands::search::search_cancel,
             commands::system::open_external_url,
+            commands::preview::preview_inspect,
+            commands::preview::preview_read_bytes,
+            commands::preview::preview_read_text,
+            commands::preview::preview_docx,
+            commands::preview::preview_xlsx,
         ])
         .setup(move |app| {
             let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))

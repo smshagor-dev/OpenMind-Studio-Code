@@ -8,6 +8,7 @@ import {
   type EditorTab,
 } from "./editorGroupService";
 import { EditorLayoutService, type SavedLayout } from "./editorLayoutService";
+import { FilePreviewService, isPreviewableText } from "./filePreviewService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./ipc";
@@ -62,6 +63,7 @@ export interface WorkspaceDeps {
   groups: EditorGroupService;
   associations: EditorAssociationService;
   previews: PreviewEditorService;
+  filePreviews: FilePreviewService;
 }
 
 const EMPTY_STATE: WorkspaceState = {
@@ -85,6 +87,7 @@ export class WorkspaceService {
   private readonly groups: EditorGroupService;
   private readonly associations: EditorAssociationService;
   private readonly previews: PreviewEditorService;
+  readonly filePreviews: FilePreviewService;
   private readonly layout: EditorLayoutService;
   private cachedState: WorkspaceState = EMPTY_STATE;
   private activeWorkspace: WorkspaceInfo | null = null;
@@ -102,6 +105,7 @@ export class WorkspaceService {
     this.groups = deps.groups ?? new EditorGroupService();
     this.associations = deps.associations ?? new EditorAssociationService(ipc);
     this.previews = deps.previews ?? new PreviewEditorService(ipc);
+    this.filePreviews = deps.filePreviews ?? new FilePreviewService(ipc);
     this.layout = new EditorLayoutService(ipc, this.groups, (docId) => this.docPath(docId));
     this.unsubscribers.push(
       this.groups.subscribe(() => {
@@ -151,6 +155,9 @@ export class WorkspaceService {
 
   /** Opens `path` in a tab; failures (e.g. a binary file, or one deleted outside the app) surface as `appError` rather than throwing. */
   async openPath(path: string, options: OpenPathOptions = {}): Promise<string | null> {
+    if (options.kind !== "text" && (await this.filePreviews.shouldPreview(path))) {
+      return this.openFilePreview(path, options);
+    }
     const docId = await safely(
       this.events,
       () => this.documents.openFromPath(path),
@@ -163,6 +170,66 @@ export class WorkspaceService {
     const tab = this.showDocument(docId, options.kind ?? this.associations.kindFor(path), options);
     await this.persistSession();
     return tab.id;
+  }
+
+  /** The preview document behind a preview tab's `docId`, if it is one. */
+  filePreviewState(docId: string) {
+    return this.filePreviews.get(docId);
+  }
+
+  /** Whether `docId` is a read-only file preview (not a text document). */
+  isFilePreview(docId: string): boolean {
+    return this.filePreviews.has(docId);
+  }
+
+  /** Opens a read-only preview tab for a file (image, PDF, Office file, or any text format shown rendered). */
+  async openFilePreview(path: string, options: OpenPathOptions = {}): Promise<string> {
+    const docId = this.filePreviews.open(path);
+    const tab = this.showDocument(docId, "filePreview", options);
+    await this.persistSession();
+    return tab.id;
+  }
+
+  /** Why the text document `docId` has no file preview (or Markdown preview), or null when it has one. */
+  filePreviewUnavailableReason(docId: string | null): string | null {
+    if (docId === null) return "There is no editor open.";
+    const path = this.docPath(docId);
+    if (path === null) return "Save the file first to preview it.";
+    if (this.filePreviews.has(docId)) return "This is already a preview.";
+    return isPreviewableText(path)
+      ? null
+      : "Preview is available for Markdown, HTML, LaTeX and CSV files.";
+  }
+
+  /** Opens the read-only preview of a text document's saved file in the active group. */
+  async openFilePreviewOf(docId: string): Promise<boolean> {
+    if (this.filePreviewUnavailableReason(docId) !== null) return false;
+    const path = this.docPath(docId);
+    if (path === null) return false;
+    await this.openFilePreview(path);
+    return true;
+  }
+
+  /** "Open as Text": replaces a preview tab by the text editor on the same file, when that is safe. */
+  async openAsText(id: string): Promise<boolean> {
+    const found = this.findTab(id);
+    if (!found || found.tab.kind !== "filePreview") return false;
+    const doc = this.filePreviews.get(found.tab.docId);
+    if (!doc) return false;
+    if (doc.info?.textSafe !== true) {
+      this.events.emit("appError", { message: `${doc.name} can't be opened as text safely.` });
+      return false;
+    }
+    const docId = await safely(
+      this.events,
+      () => this.documents.openFromPath(doc.path),
+      `open "${doc.path}" as text`,
+      null,
+    );
+    if (docId === null) return false;
+    this.tracking(() => this.groups.replaceTab(found.group.id, found.tab.id, docId, "text"));
+    await this.persistSession();
+    return true;
   }
 
   /** Opens `path` in the text editor and reveals a position in it (search results, problems). */
@@ -314,6 +381,7 @@ export class WorkspaceService {
   // --- Documents ---
 
   docPath(docId: string): string | null {
+    if (this.filePreviews.has(docId)) return this.filePreviews.path(docId);
     return this.documents.has(docId) ? this.documents.snapshot(docId).path : null;
   }
 
@@ -331,7 +399,7 @@ export class WorkspaceService {
   async saveAll(): Promise<void> {
     const seen = new Set<string>();
     for (const { tab } of this.groups.allTabs()) {
-      if (seen.has(tab.docId)) continue;
+      if (seen.has(tab.docId) || this.filePreviews.has(tab.docId)) continue;
       seen.add(tab.docId);
       if (this.documents.isDirty(tab.docId)) {
         await this.save(tab.docId);
@@ -342,7 +410,7 @@ export class WorkspaceService {
   /** Discards unsaved changes in the tab's document, restoring its last-saved content. */
   revert(id: string): void {
     const docId = this.docIdOfTab(id);
-    if (docId === null) {
+    if (docId === null || this.filePreviews.has(docId)) {
       return;
     }
     this.documents.revert(docId);
@@ -351,14 +419,14 @@ export class WorkspaceService {
 
   async save(id: string): Promise<void> {
     const docId = this.docIdOfTab(id) ?? (this.documents.has(id) ? id : null);
-    if (docId === null) return;
+    if (docId === null || this.filePreviews.has(docId)) return;
     await safely(this.events, () => this.documents.save(docId), "save that file", undefined);
     this.recompute();
   }
 
   async saveAs(id: string): Promise<void> {
     const docId = this.docIdOfTab(id) ?? (this.documents.has(id) ? id : null);
-    if (docId === null) return;
+    if (docId === null || this.filePreviews.has(docId)) return;
     await safely(this.events, () => this.documents.saveAs(docId), "save that file", undefined);
     this.recompute();
     await this.persistSession();
@@ -397,7 +465,10 @@ export class WorkspaceService {
       const tabs: EditorTab[] = [];
       let activeTabId: string | null = null;
       for (const [tabIndex, savedTab] of savedGroup.tabs.entries()) {
-        const docId = await this.openForRestore(savedTab.path);
+        const docId =
+          savedTab.kind === "filePreview"
+            ? await this.openPreviewForRestore(savedTab.path)
+            : await this.openForRestore(savedTab.path);
         if (docId === null) continue;
         const id = tabIdFor(docId, savedTab.kind);
         if (tabs.some((tab) => tab.id === id)) continue;
@@ -430,9 +501,13 @@ export class WorkspaceService {
     const tabs: EditorTab[] = [];
     let activeTabId: string | null = null;
     for (const path of snapshot.openPaths) {
-      const docId = await this.openForRestore(path);
+      const docId = (await this.filePreviews.shouldPreview(path))
+        ? await this.openPreviewForRestore(path)
+        : await this.openForRestore(path);
       if (docId === null) continue;
-      const kind = this.associations.kindFor(path);
+      const kind: EditorKind = this.filePreviews.has(docId)
+        ? "filePreview"
+        : this.associations.kindFor(path);
       const id = tabIdFor(docId, kind);
       if (!tabs.some((tab) => tab.id === id)) tabs.push({ id, docId, kind, preview: false });
       if (path === snapshot.activePath) activeTabId = id;
@@ -448,6 +523,10 @@ export class WorkspaceService {
       ],
       0,
     );
+  }
+
+  private async openPreviewForRestore(path: string): Promise<string | null> {
+    return (await this.filePreviews.exists(path)) ? this.filePreviews.open(path) : null;
   }
 
   private openForRestore(path: string): Promise<string | null> {
@@ -528,7 +607,11 @@ export class WorkspaceService {
     const result = change();
     const after = new Set(this.groups.allTabs().map(({ tab }) => tab.docId));
     for (const docId of before) {
-      if (!after.has(docId) && this.documents.has(docId)) {
+      if (!after.has(docId) && this.filePreviews.has(docId)) {
+        const path = this.filePreviews.path(docId);
+        if (path !== null) this.closedPaths.push(path);
+        this.filePreviews.release(docId);
+      } else if (!after.has(docId) && this.documents.has(docId)) {
         const path = this.documents.snapshot(docId).path;
         if (path !== null) this.closedPaths.push(path);
         this.documents.close(docId);
@@ -561,6 +644,25 @@ export class WorkspaceService {
       activeTabId: group.activeTabId,
       locked: group.locked,
       tabs: group.tabs.flatMap((tab) => {
+        const preview = tab.kind === "filePreview" ? this.filePreviews.get(tab.docId) : undefined;
+        if (preview) {
+          return [
+            {
+              id: tab.id,
+              docId: tab.docId,
+              kind: tab.kind,
+              preview: tab.preview,
+              groupId: group.id,
+              path: preview.path,
+              // A text format (CSV, Markdown, HTML, LaTeX) can also be open as text: tell the two tabs apart.
+              title: isPreviewableText(preview.path) ? `Preview ${preview.name}` : preview.name,
+              dirty: false,
+              encoding: "utf8" as const,
+              lineEnding: "lf" as const,
+              external: "none" as const,
+            },
+          ];
+        }
         if (!this.documents.has(tab.docId)) return [];
         const snapshot = this.documents.snapshot(tab.docId);
         return [

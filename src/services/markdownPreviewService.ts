@@ -46,6 +46,7 @@ export class MarkdownPreviewService {
   /** Why a preview isn't available for this document, or `null` if it is. */
   unavailableReason(docId: string | null): string | null {
     if (docId === null) return "There is no editor open.";
+    if (this.workspace.isFilePreview(docId)) return "This is already a preview.";
     const path = this.workspace.docPath(docId);
     if (path === null) return "Save the file as a Markdown (.md) file to preview it.";
     return isMarkdownPath(path) ? null : "Preview is available for Markdown (.md) files.";

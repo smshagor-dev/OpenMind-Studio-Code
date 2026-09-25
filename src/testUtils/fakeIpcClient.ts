@@ -12,6 +12,11 @@ import { emptyPreferences } from "./preferencesFixture";
 export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
   return {
     ...createFakeExtensionsIpc(),
+    previewInspect: vi.fn(),
+    previewReadBytes: vi.fn(),
+    previewReadText: vi.fn(),
+    previewDocx: vi.fn(),
+    previewXlsx: vi.fn(),
     openDocumentDialog: vi.fn().mockResolvedValue(null),
     saveDocumentDialog: vi.fn().mockResolvedValue(null),
     openFolderDialog: vi.fn().mockResolvedValue(null),

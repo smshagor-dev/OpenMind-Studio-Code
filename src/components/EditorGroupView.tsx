@@ -1,10 +1,12 @@
 import type { Recents } from "../appHooks";
 import { MonacoHost } from "../editor/MonacoHost";
 import { container } from "../services/container";
+import type { EditorKind } from "../services/editorGroupService";
 import type { EditorGroupView as GroupView } from "../services/workspaceService";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { ExternalChangeBanner } from "./ExternalChangeBanner";
 import { EditorHeaderActions } from "./EditorHeaderActions";
+import { FilePreviewView } from "./FilePreviewView";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { TabBar } from "./TabBar";
 import { useWelcome } from "./useWelcome";
@@ -81,7 +83,7 @@ function GroupContent({
   recents,
   docId,
   kind,
-}: EditorGroupViewProps & { docId: string | null; kind: "text" | "markdownPreview" | null }) {
+}: EditorGroupViewProps & { docId: string | null; kind: EditorKind | null }) {
   if (!ready) {
     return <div className="editor-group__content" />;
   }
@@ -93,6 +95,13 @@ function GroupContent({
         ) : (
           <p className="editor-group__empty">Open a file to show it in this group.</p>
         )}
+      </div>
+    );
+  }
+  if (kind === "filePreview") {
+    return (
+      <div className="editor-group__content">
+        <FilePreviewView key={`${group.id}:${docId}`} docId={docId} />
       </div>
     );
   }

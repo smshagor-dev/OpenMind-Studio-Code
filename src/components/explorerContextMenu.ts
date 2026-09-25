@@ -1,4 +1,5 @@
 import { container } from "../services/container";
+import { extensionOf, isPreviewableText } from "../services/filePreviewService";
 import type { ExplorerNode } from "../services/explorerService";
 import type { PopupItem } from "./MenuPopup";
 
@@ -30,6 +31,28 @@ function copyText(text: string): void {
 
 function relativePath(path: string, rootPath: string): string {
   return path.startsWith(rootPath) ? path.slice(rootPath.length).replace(/^[\\/]/, "") : path;
+}
+
+/** "Open Preview" (rendered, read-only) and "Open as Text" for the formats that have both. */
+function previewItems(node: ExplorerNode): PopupItem[] {
+  if (node.isDir) return [];
+  const asText = extensionOf(node.path) === "svg" || isPreviewableText(node.path);
+  const items: PopupItem[] = [];
+  if (isPreviewableText(node.path) || extensionOf(node.path) === "svg") {
+    items.push(
+      item("Open Preview", () => {
+        void container.workspace.openFilePreview(node.path);
+      }),
+    );
+  }
+  if (asText) {
+    items.push(
+      item("Open as Text", () => {
+        void container.workspace.openPath(node.path, { kind: "text" });
+      }),
+    );
+  }
+  return items.length > 0 ? [...items, SEPARATOR] : [];
 }
 
 /** Commands extensions put in the Explorer's context menu; each gets the clicked path as its argument. */
@@ -85,6 +108,7 @@ export function explorerContextMenu(
   }
   return [
     ...(node.isDir ? [...creation, SEPARATOR] : []),
+    ...previewItems(node),
     item(
       "Cut",
       () => {

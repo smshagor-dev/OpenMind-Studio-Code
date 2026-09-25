@@ -55,6 +55,28 @@ function item(
   };
 }
 
+/** Rows that only make sense while a file preview is the active editor: Open as Text and Reload Preview. */
+function previewToolRows(
+  ctx: HeaderMenuContext,
+  activeTab: { kind: string; docId: string } | null,
+): HeaderMenuRow[] {
+  if (activeTab?.kind !== "filePreview") return [];
+  const textSafe = ctx.workspace.filePreviewState(activeTab.docId)?.info?.textSafe === true;
+  return [
+    item(
+      "Open as Text",
+      textSafe,
+      () => {
+        ctx.run("preview.openAsText");
+      },
+      { reason: "This file can't be opened as text safely." },
+    ),
+    item("Reload Preview", true, () => {
+      ctx.run("preview.reload");
+    }),
+  ];
+}
+
 /**
  * The ⋯ (More Actions) menu of one editor group. Every row either works or
  * is disabled with the reason why; nothing that can't work for this group's
@@ -66,6 +88,7 @@ export function buildEditorActionsMenu(ctx: HeaderMenuContext, groupId: string):
   const docId = activeTab?.docId ?? null;
   const path = docId === null ? null : ctx.workspace.docPath(docId);
   const previewReason = ctx.markdown.unavailableReason(docId);
+  const filePreviewReason = ctx.workspace.filePreviewUnavailableReason(docId);
   const noEditor = "There is no editor open in this group.";
 
   return [
@@ -122,6 +145,15 @@ export function buildEditorActionsMenu(ctx: HeaderMenuContext, groupId: string):
         reason: previewReason ?? undefined,
       },
     ),
+    item(
+      "Open File Preview",
+      filePreviewReason === null,
+      () => {
+        ctx.run("preview.open");
+      },
+      { reason: filePreviewReason ?? undefined },
+    ),
+    ...previewToolRows(ctx, activeTab),
     SEPARATOR,
     item(
       "Enable Preview Editors",
@@ -209,6 +241,11 @@ function reopenWith(
   if (!hasEditor || !tab) {
     return item("Reopen Editor With", false, () => undefined, {
       reason: "There is no editor open in this group.",
+    });
+  }
+  if (tab.kind === "filePreview") {
+    return item("Reopen Editor With", false, () => undefined, {
+      reason: "Use Open as Text in the preview toolbar.",
     });
   }
   const markdown = isMarkdownPath(path);

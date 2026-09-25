@@ -1,9 +1,11 @@
 /**
  * How a document is shown in a tab: the text editor, or the rendered
  * Markdown preview. The same document can be open in several tabs at once
- * (in different groups, or as text and preview side by side).
+ * (in different groups, or as text and preview side by side). `filePreview` is a
+ * read-only preview of a file that is not a text document (image, PDF, Office file,
+ * or a text format shown rendered); its `docId` belongs to `FilePreviewService`.
  */
-export type EditorKind = "text" | "markdownPreview";
+export type EditorKind = "text" | "markdownPreview" | "filePreview";
 
 export interface EditorTab {
   /** Unique within a group. A text tab's id is its document id; a preview tab's is `<docId>#preview`. */
@@ -38,7 +40,7 @@ export interface OpenTabOptions {
 }
 
 export function tabIdFor(docId: string, kind: EditorKind): string {
-  return kind === "text" ? docId : `${docId}#preview`;
+  return kind === "markdownPreview" ? `${docId}#preview` : docId;
 }
 
 const MIN_WEIGHT = 0.1;

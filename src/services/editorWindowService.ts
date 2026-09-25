@@ -78,7 +78,7 @@ export class EditorWindowService {
   /** In a window opened for a dragged-out tab: opens that file. */
   async openPending(): Promise<void> {
     const path = await this.ipc.windowTakePendingOpen().catch(() => null);
-    if (path !== null) await this.workspace.openPath(path);
+    if (typeof path === "string") await this.workspace.openPath(path);
   }
 
   private notice(message: string | null): void {
