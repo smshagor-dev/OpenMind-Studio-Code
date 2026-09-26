@@ -14,11 +14,8 @@ fn first_line(program: &str, args: &[&str], fallback: &str) -> String {
 }
 
 fn main() {
-    // The build's commit and compiler, for Help > About and "Copy system info". Only read at build time.
-    let commit = first_line("git", &["rev-parse", "--short", "HEAD"], "unknown");
+    // The compiler version, for Help > About and "Copy system info". Only read at build time.
     let rustc = first_line("rustc", &["--version"], "unknown");
-    println!("cargo:rustc-env=OPENMIND_COMMIT={commit}");
     println!("cargo:rustc-env=OPENMIND_RUSTC={rustc}");
-    println!("cargo:rerun-if-changed=../.git/HEAD");
     tauri_build::build()
 }

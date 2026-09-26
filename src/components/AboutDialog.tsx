@@ -40,6 +40,59 @@ export function AuthorAvatar({ src, name }: { src: string | null; name: string }
   );
 }
 
+/** The Telegram address for a handle such as `@smshagor1`. */
+function telegramUrl(handle: string): string {
+  return `https://t.me/${handle.replace(/^@/, "")}`;
+}
+
+/** The GitHub user name in `https://github.com/<name>`. */
+function githubName(url: string): string {
+  return url.replace(/^https?:\/\/github\.com\//, "").replace(/\/$/, "");
+}
+
+/**
+ * The author's contact details. Every link opens only after a click (nothing is fetched or opened by showing them);
+ * WhatsApp has no link, only the name to look for. A portfolio entry exists only when an address is configured.
+ */
+function AuthorContacts({ author }: { author: AboutInfo["author"] }) {
+  const open = (url: string) => {
+    container.ipc.openExternalUrl(url).catch((error: unknown) => {
+      container.events.emit("appError", { message: `Could not open the link: ${String(error)}` });
+    });
+  };
+  const links: { label: string; text: string; url: string }[] = [
+    { label: "Email", text: author.supportEmail, url: `mailto:${author.supportEmail}` },
+    { label: "Telegram", text: author.telegram, url: telegramUrl(author.telegram) },
+    { label: "GitHub", text: githubName(author.github), url: author.github },
+  ];
+  if (author.portfolio !== null) {
+    links.push({ label: "Portfolio", text: "Open portfolio", url: author.portfolio });
+  }
+  return (
+    <ul className="about__contacts" aria-label="Contact">
+      {links.map((link) => (
+        <li key={link.label}>
+          <span className="about__contact-label">{link.label}</span>
+          <button
+            type="button"
+            className="about__link"
+            title={link.url}
+            onClick={() => {
+              open(link.url);
+            }}
+          >
+            {link.text}
+          </button>
+        </li>
+      ))}
+      <li>
+        <span className="about__contact-label">WhatsApp</span>
+        <span className="about__contact-text">{author.whatsapp}</span>
+      </li>
+    </ul>
+  );
+}
+
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="about__row">
@@ -113,7 +166,6 @@ export function AboutDialog({
             <h2 id="about-title">OpenMind Studio</h2>
             <div className="about__chips">
               <span className="about__chip">{info ? `v${info.version}` : "…"}</span>
-              {info ? <span className="about__chip about__chip--muted">{info.commit}</span> : null}
             </div>
             <p className="about__desc">
               {info?.description ??
@@ -136,29 +188,13 @@ export function AboutDialog({
             <p className="about__author-line">
               {info?.author.line ?? "Independent Researcher and Software Engineer"}
             </p>
-            {info ? (
-              <button
-                type="button"
-                className="about__link"
-                title={info.author.github}
-                onClick={() => {
-                  container.ipc.openExternalUrl(info.author.github).catch((error: unknown) => {
-                    container.events.emit("appError", {
-                      message: `Could not open the link: ${String(error)}`,
-                    });
-                  });
-                }}
-              >
-                GitHub · smshagor-dev
-              </button>
-            ) : null}
+            {info ? <AuthorContacts author={info.author} /> : null}
           </section>
         </div>
         <section className="about__system" aria-label="System">
           <h3>System</h3>
           <dl className="about__rows">
             <Row label="Version" value={info?.version ?? "…"} />
-            <Row label="Build" value={info?.commit ?? "…"} />
             <Row label="Platform" value={info ? `${info.os} (${info.arch})` : "…"} />
             <Row label="WebView" value={info?.webview ?? "…"} />
             <Row label="Tauri" value={info?.tauriVersion ?? "…"} />

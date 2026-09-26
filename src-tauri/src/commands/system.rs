@@ -5,8 +5,31 @@ use std::process::Command;
 /// without going through a shell, so it can't be used to run anything.
 #[tauri::command]
 pub fn open_external_url(url: String) -> Result<(), String> {
-    let url = validate_web_url(&url)?;
+    let url = validate_external_url(&url)?;
     spawn_browser(&url).map_err(|err| format!("couldn't open the browser: {err}"))
+}
+
+/// What may be opened from the app: a web address, or a plain `mailto:` address (no query, no extra headers).
+pub fn validate_external_url(url: &str) -> Result<String, String> {
+    let trimmed = url.trim();
+    if trimmed.to_ascii_lowercase().starts_with("mailto:") {
+        let address = &trimmed["mailto:".len()..];
+        let ok_char = |c: char| c.is_ascii_alphanumeric() || "._%+-".contains(c);
+        let valid = address.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty()
+                && local.chars().all(ok_char)
+                && domain.contains('.')
+                && domain
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-.".contains(c))
+        }) && address.len() <= 254;
+        return if valid {
+            Ok(trimmed.to_string())
+        } else {
+            Err("That email address can't be opened safely.".into())
+        };
+    }
+    validate_web_url(trimmed)
 }
 
 /// Accepts only plain `http://` / `https://` URLs made of URL-safe characters.
@@ -74,5 +97,23 @@ mod tests {
         ] {
             assert!(validate_web_url(url).is_err(), "{url:?}");
         }
+    }
+
+    #[test]
+    fn a_plain_mailto_address_is_accepted_and_anything_else_with_mailto_is_not() {
+        assert!(validate_external_url("mailto:smshagor.dev@gmail.com").is_ok());
+        for bad in [
+            "mailto:",
+            "mailto:a@b",
+            "mailto:a@b.com?subject=x",
+            "mailto:a b@c.com",
+            "mailto:a@b.com&calc",
+            "mailto:a@b.com
+malware",
+        ] {
+            assert!(validate_external_url(bad).is_err(), "{bad:?}");
+        }
+        assert!(validate_external_url("https://t.me/smshagor1").is_ok());
+        assert!(validate_external_url("file:///C:/x").is_err());
     }
 }

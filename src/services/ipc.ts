@@ -900,12 +900,16 @@ export interface AboutAuthor {
   role: string;
   line: string;
   github: string;
+  supportEmail: string;
+  telegram: string;
+  whatsapp: string;
+  /** `null` until a portfolio address is configured. */
+  portfolio: string | null;
 }
 
 export interface AboutInfo {
   name: string;
   version: string;
-  commit: string;
   tauriVersion: string;
   rustc: string;
   webview: string;

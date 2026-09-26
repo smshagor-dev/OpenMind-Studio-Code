@@ -39,25 +39,62 @@ describe("About window", () => {
     const dialog = screen.getByRole("dialog", { name: "OpenMind Studio" });
     expect(await within(dialog).findByText("v0.1.0")).toBeInTheDocument();
     const system = within(screen.getByRole("region", { name: "System" }));
-    expect(system.getByText("abc1234")).toBeInTheDocument();
     expect(system.getByText("windows (x86_64)")).toBeInTheDocument();
     expect(system.getByText("153.0.1")).toBeInTheDocument();
     expect(system.getByText("2.11.6")).toBeInTheDocument();
-    expect(system.getByText("Proprietary — all rights reserved")).toBeInTheDocument();
+    expect(system.getByText("Apache-2.0")).toBeInTheDocument();
+    // Only the version is shown: no commit or build hash anywhere in the window.
+    expect(within(dialog).queryByText("Build")).toBeNull();
+    expect(dialog.textContent).not.toMatch(/abc1234|[0-9a-f]{7,40}/);
+    expect(dialog.textContent).not.toMatch(/Proprietary|all rights reserved/i);
     expect(within(dialog).getByText("Rust")).toBeInTheDocument();
   });
 
-  it("shows the author with their role and a GitHub link that opens only on a click", async () => {
-    const { ipc } = setup({ openExternalUrl: vi.fn().mockResolvedValue(undefined) });
+  it("shows the author card with support email, Telegram, WhatsApp and GitHub — and no portfolio while none is set", async () => {
+    setup();
     render(<AboutDialog onClose={vi.fn()} authorImage={null} />);
     const author = within(screen.getByRole("region", { name: "Author" }));
     expect(author.getByText("Md Shahanur Islam Shagor")).toBeInTheDocument();
     expect(author.getByText("Founder & Developer, OpenMind Studio")).toBeInTheDocument();
     expect(author.getByText("Independent Researcher and Software Engineer")).toBeInTheDocument();
-    const link = await author.findByRole("button", { name: /GitHub/ });
+    const contact = within(await author.findByRole("list", { name: "Contact" }));
+    expect(contact.getByText("smshagor.dev@gmail.com")).toBeInTheDocument();
+    expect(contact.getByText("@smshagor1")).toBeInTheDocument();
+    expect(contact.getByText("smshagor1")).toBeInTheDocument();
+    expect(contact.getByText("smshagor-dev")).toBeInTheDocument();
+    expect(contact.queryByText(/portfolio/i)).toBeNull();
+    // WhatsApp is only a name to look for: no button, nothing that could open.
+    expect(contact.queryByRole("button", { name: "smshagor1" })).toBeNull();
+  });
+
+  it("every link opens only after a click, with a mailto address for the email", async () => {
+    const { ipc } = setup({ openExternalUrl: vi.fn().mockResolvedValue(undefined) });
+    render(<AboutDialog onClose={vi.fn()} authorImage={null} />);
+    const contact = within(await screen.findByRole("list", { name: "Contact" }));
     expect(ipc.openExternalUrl).not.toHaveBeenCalled();
-    fireEvent.click(link);
-    expect(ipc.openExternalUrl).toHaveBeenCalledWith("https://github.com/smshagor-dev");
+    fireEvent.click(contact.getByRole("button", { name: "smshagor.dev@gmail.com" }));
+    expect(ipc.openExternalUrl).toHaveBeenLastCalledWith("mailto:smshagor.dev@gmail.com");
+    fireEvent.click(contact.getByRole("button", { name: "@smshagor1" }));
+    expect(ipc.openExternalUrl).toHaveBeenLastCalledWith("https://t.me/smshagor1");
+    fireEvent.click(contact.getByRole("button", { name: "smshagor-dev" }));
+    expect(ipc.openExternalUrl).toHaveBeenLastCalledWith("https://github.com/smshagor-dev");
+    expect(ipc.openExternalUrl).toHaveBeenCalledTimes(3);
+  });
+
+  it("shows a Portfolio button only when an address is configured", async () => {
+    const base = await createFakeIpc().aboutInfo();
+    setup({
+      aboutInfo: vi.fn().mockResolvedValue({
+        ...base,
+        author: { ...base.author, portfolio: "https://portfolio.example" },
+      }),
+    });
+    render(<AboutDialog onClose={vi.fn()} authorImage={null} />);
+    const contact = within(await screen.findByRole("list", { name: "Contact" }));
+    expect(contact.getByRole("button", { name: "Open portfolio" })).toHaveAttribute(
+      "title",
+      "https://portfolio.example",
+    );
   });
 
   it("shows the author's initials when no picture is bundled", () => {
@@ -85,10 +122,15 @@ describe("About window", () => {
     });
     fireEvent.click(copy);
     await waitFor(() => {
-      expect(ipc.clipboardWriteText).toHaveBeenCalledWith("OpenMind Studio 0.1.0\nCommit: abc1234");
+      expect(ipc.clipboardWriteText).toHaveBeenCalledWith(
+        expect.stringContaining("OpenMind Studio 0.1.0"),
+      );
     });
     const copied = vi.mocked(ipc.clipboardWriteText).mock.calls[0]?.[0] ?? "";
-    expect(copied.toLowerCase()).not.toMatch(/password|api key|token|secret/);
+    expect(copied.toLowerCase()).not.toMatch(/password|api key|token|secret|commit|build/);
+    expect(copied).not.toMatch(/[0-9a-f]{7,40}/);
+    expect(copied).toContain("License: Apache-2.0");
+    expect(copied).toContain("Support: smshagor.dev@gmail.com");
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 

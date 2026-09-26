@@ -125,11 +125,42 @@
   font-size: 12px;
 }
 
+.about__contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about__contacts li {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font-size: 12px;
+}
+
+.about__contact-label {
+  color: var(--fg-muted);
+}
+
+.about__contact-text {
+  padding: 0 6px;
+  color: var(--fg);
+}
+
 .about__link {
-  margin-top: 8px;
-  padding: 3px 12px;
-  border: 1px solid var(--menu-border);
-  border-radius: 12px;
+  padding: 1px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  border: 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--link-fg);
   font-size: 12px;

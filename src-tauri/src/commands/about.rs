@@ -13,8 +13,13 @@ pub const AUTHOR_NAME: &str = "Md Shahanur Islam Shagor";
 pub const AUTHOR_ROLE: &str = "Founder & Developer, OpenMind Studio";
 pub const AUTHOR_LINE: &str = "Independent Researcher and Software Engineer";
 pub const AUTHOR_GITHUB: &str = "https://github.com/smshagor-dev";
-/// The workspace's licence field says `UNLICENSED`: nothing more permissive is claimed.
-pub const LICENSE: &str = "Proprietary — all rights reserved";
+pub const LICENSE: &str = "Apache-2.0";
+pub const SUPPORT_EMAIL: &str = "smshagor.dev@gmail.com";
+pub const TELEGRAM: &str = "@smshagor1";
+pub const WHATSAPP: &str = "smshagor1";
+/// The author's portfolio address. Empty until one is configured: nothing is invented, and the About window
+/// shows no portfolio entry while this is empty.
+pub const PORTFOLIO_URL: &str = "";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +28,11 @@ pub struct Author {
     pub role: String,
     pub line: String,
     pub github: String,
+    pub support_email: String,
+    pub telegram: String,
+    pub whatsapp: String,
+    /// `None` until a portfolio address is configured.
+    pub portfolio: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,7 +40,6 @@ pub struct Author {
 pub struct AboutInfo {
     pub name: String,
     pub version: String,
-    pub commit: String,
     pub tauri_version: String,
     pub rustc: String,
     pub webview: String,
@@ -48,7 +57,6 @@ impl AboutInfo {
         Self {
             name: PRODUCT_NAME.into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            commit: env!("OPENMIND_COMMIT").into(),
             tauri_version,
             rustc: env!("OPENMIND_RUSTC").into(),
             webview,
@@ -63,6 +71,10 @@ impl AboutInfo {
                 role: AUTHOR_ROLE.into(),
                 line: AUTHOR_LINE.into(),
                 github: AUTHOR_GITHUB.into(),
+                support_email: SUPPORT_EMAIL.into(),
+                telegram: TELEGRAM.into(),
+                whatsapp: WHATSAPP.into(),
+                portfolio: (!PORTFOLIO_URL.is_empty()).then(|| PORTFOLIO_URL.to_string()),
             },
         }
     }
@@ -71,7 +83,6 @@ impl AboutInfo {
     pub fn system_info(&self) -> String {
         [
             format!("{} {}", self.name, self.version),
-            format!("Commit: {}", self.commit),
             format!("OS: {} ({})", self.os, self.arch),
             format!("WebView: {}", self.webview),
             format!("Tauri: {}", self.tauri_version),
@@ -79,6 +90,7 @@ impl AboutInfo {
             format!("App folder: {}", self.app_dir),
             format!("Logs: {}", self.logs_dir),
             format!("License: {}", self.license),
+            format!("Support: {}", self.author.support_email),
         ]
         .join("\n")
     }
@@ -127,13 +139,21 @@ mod tests {
         assert_eq!(info.author.name, "Md Shahanur Islam Shagor");
         assert_eq!(info.author.role, "Founder & Developer, OpenMind Studio");
         assert!(info.author.github.starts_with("https://github.com/"));
-        assert!(!info.commit.is_empty() && !info.arch.is_empty());
+        assert!(!info.arch.is_empty());
+        assert_eq!(info.author.support_email, "smshagor.dev@gmail.com");
+        assert_eq!(info.author.telegram, "@smshagor1");
+        assert_eq!(info.author.whatsapp, "smshagor1");
+        assert!(
+            info.author.portfolio.is_none(),
+            "no portfolio address is invented"
+        );
     }
 
     #[test]
-    fn it_does_not_claim_a_licence_the_project_does_not_have() {
-        assert!(!info().license.contains("Apache"));
-        assert!(info().license.contains("Proprietary"));
+    fn the_licence_is_apache_2_and_matches_the_project_metadata() {
+        assert_eq!(info().license, "Apache-2.0");
+        assert!(!info().license.contains("Proprietary"));
+        assert_eq!(env!("CARGO_PKG_LICENSE"), "Apache-2.0");
     }
 
     #[test]
@@ -141,14 +161,19 @@ mod tests {
         let text = info().system_info();
         for wanted in [
             "OpenMind Studio",
-            "Commit:",
             "OS:",
             "WebView: 153.0",
             "Tauri: 2.11",
             "Logs:",
+            "License: Apache-2.0",
+            "Support: smshagor.dev@gmail.com",
         ] {
             assert!(text.contains(wanted), "{wanted}");
         }
+        assert!(
+            !text.contains("Commit"),
+            "no commit or build hash is copied"
+        );
         let lower = text.to_lowercase();
         for secret in ["password", "api key", "apikey", "token", "secret", "dpapi"] {
             assert!(!lower.contains(secret), "{secret}");

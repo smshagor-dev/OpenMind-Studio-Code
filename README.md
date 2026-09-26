@@ -92,4 +92,4 @@ persistence model, coding rules) and the milestone roadmap. In short:
 
 ## License
 
-Proprietary — UNLICENSED. Not for redistribution.
+Apache License 2.0 (`Apache-2.0`).
