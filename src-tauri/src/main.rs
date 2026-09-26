@@ -202,6 +202,7 @@ fn main() {
             commands::language::language_workspace_status,
             commands::language::language_file_status,
             commands::language::language_terminal_line,
+            commands::about::about_info,
             commands::toolchains::toolchains_list,
             commands::toolchains::toolchains_set_active,
             commands::toolchains::toolchains_verify,

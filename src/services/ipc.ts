@@ -628,6 +628,8 @@ export interface IpcClient
 
   // App metadata (Help > About)
   appInfo: () => Promise<AppInfo>;
+  /** Everything the About window shows, and the text "Copy system info" copies. */
+  aboutInfo: () => Promise<AboutInfo>;
 }
 
 export interface SearchQueryRequest {
@@ -891,6 +893,30 @@ export interface TerminalCommand {
   runtime: string;
   resolved: string;
   language: string;
+}
+
+export interface AboutAuthor {
+  name: string;
+  role: string;
+  line: string;
+  github: string;
+}
+
+export interface AboutInfo {
+  name: string;
+  version: string;
+  commit: string;
+  tauriVersion: string;
+  rustc: string;
+  webview: string;
+  os: string;
+  arch: string;
+  license: string;
+  description: string;
+  appDir: string;
+  logsDir: string;
+  author: AboutAuthor;
+  systemInfo: string;
 }
 
 export interface AppInfo {
@@ -1219,5 +1245,6 @@ export const tauriIpcClient: IpcClient = {
 
   clipboardReadText: () => readText(),
 
+  aboutInfo: () => invoke<AboutInfo>("about_info"),
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };

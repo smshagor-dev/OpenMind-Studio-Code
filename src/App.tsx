@@ -31,7 +31,7 @@ import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { container } from "./services/container";
-import { buildMenuBar } from "./services/menus";
+import { buildMenuBar, projectMenuCommands } from "./services/menus";
 
 /** The VS Code-style workbench: title bar, activity bar, side bar, editor group, status bar. */
 export function App() {
@@ -67,9 +67,25 @@ export function App() {
     document.title = titleParts.join(" - ");
   });
 
+  const shells = useSyncExternalStore(
+    (listener) => container.terminal.subscribe(listener),
+    () => container.terminal.getState().shells,
+  );
+  const languageState = useSyncExternalStore(
+    (listener) => container.language.support.subscribe(listener),
+    () => container.language.support.getState(),
+  );
+  const projects = languageState.workspace?.projects;
   const menus = useMemo(
-    () => buildMenuBar({ folders: recents.folders, files: recents.files }),
-    [recents],
+    () =>
+      buildMenuBar(
+        { folders: recents.folders, files: recents.files },
+        {
+          shells: shells.map((shell) => ({ kind: shell.kind, label: shell.label })),
+          projectCommands: projectMenuCommands(projects ?? []),
+        },
+      ),
+    [recents, shells, projects],
   );
   const dirtyPaths = new Set(
     allTabs.flatMap((tab) => (tab.dirty && tab.path !== null ? [tab.path] : [])),

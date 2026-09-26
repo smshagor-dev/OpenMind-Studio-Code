@@ -73,8 +73,11 @@ export function registerWorkbenchCommands(deps: WorkbenchDeps): void {
   registerViewCommands(deps);
 }
 
-function activeId(deps: WorkbenchDeps): string | null {
-  return deps.workspace.getState().activeId;
+/** The active tab's document id, only for a text tab (a file preview has no document to save or revert). */
+function activeTextId(deps: WorkbenchDeps): string | null {
+  const state = deps.workspace.getState();
+  const tab = state.tabs.find((candidate) => candidate.id === state.activeId);
+  return tab !== undefined && tab.kind !== "filePreview" ? tab.id : null;
 }
 
 function registerFileCommands(deps: WorkbenchDeps): void {
@@ -95,12 +98,13 @@ function registerFileCommands(deps: WorkbenchDeps): void {
   commands.register(
     "file.revert",
     () => {
-      const id = activeId(deps);
+      const id = activeTextId(deps);
       if (id) workspace.revert(id);
     },
     {
+      // A preview has no document: asking whether it is dirty used to throw and take the whole UI down.
       enabled: () => {
-        const id = activeId(deps);
+        const id = activeTextId(deps);
         return id !== null && documents.isDirty(id);
       },
     },
@@ -119,6 +123,7 @@ function registerEditorCommands(deps: WorkbenchDeps): void {
   const { commands, editor, workspace } = deps;
   const hasEditor = () => editor.hasEditor();
   for (const [id, action] of Object.entries(EDITOR_ACTIONS)) {
+    if (id === "edit.paste") continue;
     commands.register(
       id,
       () => {
@@ -127,6 +132,18 @@ function registerEditorCommands(deps: WorkbenchDeps): void {
       { enabled: hasEditor },
     );
   }
+  // Paste reads the clipboard through the app (Monaco's own action makes the WebView ask for permission).
+  commands.register(
+    "edit.paste",
+    async () => {
+      try {
+        editor.pasteText(await deps.ipc.clipboardReadText());
+      } catch (error) {
+        deps.events.emit("appError", { message: `Could not read the clipboard: ${String(error)}` });
+      }
+    },
+    { enabled: hasEditor },
+  );
   for (const [id, option] of Object.entries(EDITOR_TOGGLES)) {
     commands.register(id, () => editor.toggleOption(option), {
       checked: () => editor.getOptions()[option],

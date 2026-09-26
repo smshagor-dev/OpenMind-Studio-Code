@@ -187,6 +187,13 @@ export class TerminalService {
     }
   }
 
+  /** Closes every terminal (each one's process tree is ended by the backend). */
+  async closeAll(): Promise<void> {
+    for (const session of [...this.state.sessions]) {
+      await this.closeTerminal(session.id);
+    }
+  }
+
   setActive(id: string): void {
     if (this.state.activeId !== id && this.state.sessions.some((session) => session.id === id)) {
       this.update({ activeId: id });

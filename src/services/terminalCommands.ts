@@ -31,4 +31,9 @@ export function registerTerminalCommands(commands: CommandRegistry, terminal: Te
     { enabled: hasActive },
   );
   commands.register("terminal.kill", () => terminal.closeActive(), { enabled: hasActive });
+  commands.register("terminal.killAll", () => terminal.closeAll(), {
+    enabled: () => terminal.getState().sessions.length > 0,
+    disabledReason: () =>
+      terminal.getState().sessions.length > 0 ? undefined : "No terminal is open.",
+  });
 }

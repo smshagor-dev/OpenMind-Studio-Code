@@ -281,3 +281,25 @@ describe("wireLanguage: Run Linter and the status window", () => {
     expect(rig.ipc.languageWorkspaceStatus).not.toHaveBeenCalled();
   });
 });
+
+describe("wireLanguage: Run > Project commands", () => {
+  it("runs the chosen project command through the terminal, only when executed", async () => {
+    const rig = await setup();
+    await rig.support.refresh();
+    const project = rig.support.getState().workspace?.projects[0];
+    const command = project?.commandStatus[0];
+    if (!project || !command) throw new Error("the fixture has no project command");
+    expect(rig.terminal.createTerminal).not.toHaveBeenCalled();
+    await rig.commands.execute("language.runProjectCommand", project.root, command.id);
+    expect(rig.terminal.createTerminal).toHaveBeenCalledTimes(1);
+    expect(rig.terminal.write).toHaveBeenCalled();
+  });
+
+  it("says so, and runs nothing, when the command no longer exists", async () => {
+    const rig = await setup();
+    await rig.support.refresh();
+    await rig.commands.execute("language.runProjectCommand", "nowhere", "nothing");
+    expect(rig.notices).toEqual(["That project command is no longer available."]);
+    expect(rig.terminal.createTerminal).not.toHaveBeenCalled();
+  });
+});

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { container } from "../services/container";
 import type { TopLevelMenu } from "../services/menus";
 import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
@@ -29,6 +30,13 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
 
   function openMenu(index: number, keyboard: boolean) {
     const wrapped = ((index % menus.length) + menus.length) % menus.length;
+    const action = menus[wrapped]?.action;
+    if (action !== undefined) {
+      // A top-level entry without a dropdown (About): it just runs its command.
+      setOpen(null);
+      container.run(action);
+      return;
+    }
     const anchor = buttonRefs.current[wrapped]?.getBoundingClientRect();
     if (!anchor) return;
     setOpen({ index: wrapped, keyboard, anchor });
@@ -54,8 +62,8 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
           }}
           type="button"
           role="menuitem"
-          aria-haspopup="menu"
-          aria-expanded={open?.index === index}
+          aria-haspopup={menu.action === undefined ? "menu" : undefined}
+          aria-expanded={menu.action === undefined ? open?.index === index : undefined}
           className={open?.index === index ? "menubar__item menubar__item--open" : "menubar__item"}
           onMouseDown={(event) => {
             event.stopPropagation();
@@ -63,7 +71,7 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
             else openMenu(index, false);
           }}
           onMouseEnter={() => {
-            if (open && open.index !== index) openMenu(index, false);
+            if (open && open.index !== index && menu.action === undefined) openMenu(index, false);
           }}
         >
           {menu.label}
@@ -79,7 +87,15 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
           ariaLabel={openMenuDef.label}
           onClose={close}
           onNavigate={(direction) => {
-            openMenu(open.index + (direction === "right" ? 1 : -1), true);
+            // Arrow keys skip a top-level entry that has no dropdown (About).
+            const step = direction === "right" ? 1 : -1;
+            let next = open.index + step;
+            for (let guard = 0; guard < menus.length; guard += 1) {
+              const wrapped = ((next % menus.length) + menus.length) % menus.length;
+              if (menus[wrapped]?.action === undefined) break;
+              next += step;
+            }
+            openMenu(next, true);
           }}
         />
       ) : null}

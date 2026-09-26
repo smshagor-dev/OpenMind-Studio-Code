@@ -52,7 +52,12 @@ export class CommandRegistry {
     if (!entry) {
       return false;
     }
-    return entry.options.enabled?.() ?? true;
+    // A menu asks this while it draws: a predicate that throws must not take the whole window down.
+    try {
+      return entry.options.enabled?.() ?? true;
+    } catch {
+      return false;
+    }
   }
 
   /** Why a disabled command is disabled, when its owner says. */

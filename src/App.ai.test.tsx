@@ -152,6 +152,32 @@ describe("the AI panel appears only with an enabled provider", () => {
     expect(container.commands.has("ai.manageProviders")).toBe(true);
     expect(sent()).toEqual([]);
     expect(backend.calls.some((call) => call.command === "ai_provider_test")).toBe(false);
+    // The View menu has no AI Panel item without a provider.
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "View" }));
+    const view = await screen.findByRole("menu", { name: "View" });
+    expect(within(view).queryByText("AI Panel")).toBeNull();
+  });
+
+  it("the View menu offers AI Panel only while a provider is enabled", async () => {
+    backend.providers.push(providerInfo({ hasKey: true }));
+    render(<App />);
+    await started();
+    await screen.findByRole("button", { name: "AI" });
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "View" }));
+    const view = await screen.findByRole("menu", { name: "View" });
+    expect(within(view).getByText("AI Panel")).toBeInTheDocument();
+    fireEvent.keyDown(view, { key: "Escape" });
+
+    await act(async () => {
+      await container.ai.providers.setEnabled("p1", false);
+    });
+    await waitFor(() => {
+      expect(aiButton()).toBeNull();
+    });
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "View" }));
+    expect(
+      within(await screen.findByRole("menu", { name: "View" })).queryByText("AI Panel"),
+    ).toBeNull();
   });
 
   it("shows the AI item and panel once a provider is enabled, hides them when it is disabled and restores them on enable", async () => {

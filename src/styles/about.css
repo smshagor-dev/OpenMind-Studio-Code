@@ -1,0 +1,192 @@
+/* Help > About: two cards (the app, the author), a compact system list and actions. Tokens only. */
+
+.modal.modal--about.about {
+  width: min(720px, 94vw);
+  padding: 22px 24px 18px;
+  text-align: left;
+}
+
+.about__cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.about__app,
+.about__author,
+.about__system {
+  padding: 16px;
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
+  background-color: var(--sidebar-bg);
+}
+
+.about__app,
+.about__author {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.about h2 {
+  margin: 4px 0 0;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.about h3 {
+  margin: 10px 0 2px;
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.about__chips {
+  display: flex;
+  gap: 6px;
+}
+
+.about__chip {
+  padding: 1px 10px;
+  border-radius: 10px;
+  background-color: var(--button-bg);
+  color: var(--button-fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.about__chip--muted {
+  background-color: var(--toolbar-hover-bg);
+  color: var(--fg-muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+.about__desc {
+  margin: 4px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.about__tech {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.about__tech li {
+  padding: 1px 8px;
+  border: 1px solid var(--menu-border);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.about__avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 2px solid var(--focus-border);
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.about__avatar--initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--button-bg);
+  color: var(--button-fg);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.about__author-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.about__author-role,
+.about__author-line {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.about__link {
+  margin-top: 8px;
+  padding: 3px 12px;
+  border: 1px solid var(--menu-border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--link-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.about__link:hover {
+  background-color: var(--toolbar-hover-bg);
+}
+
+.about__system {
+  margin-top: 14px;
+}
+
+.about__system h3 {
+  margin-top: 0;
+}
+
+.about__rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 24px;
+  margin: 0;
+}
+
+.about__row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--menu-separator);
+  font-size: 12px;
+}
+
+.about__row dt {
+  color: var(--fg-muted);
+}
+
+.about__row dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about__actions {
+  margin-top: 14px;
+}
+
+.about button:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+@media (max-width: 620px) {
+  .about__cols,
+  .about__rows {
+    grid-template-columns: 1fr;
+  }
+}

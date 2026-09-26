@@ -385,6 +385,19 @@ export class EditorService {
     return true;
   }
 
+  /**
+   * Edit > Paste: pastes `text` (read through the app's clipboard bridge) exactly like Ctrl+V — one undoable step,
+   * replacing the selection. Monaco's own paste action reads the WebView clipboard, which asks the user for a
+   * permission every time.
+   */
+  pasteText(text: string): boolean {
+    const editor = this.editor;
+    if (!editor || editor.getModel() == null) return false;
+    editor.focus();
+    editor.trigger("menu", "paste", { text });
+    return true;
+  }
+
   hasEditor(): boolean {
     return this.editor?.getModel() != null;
   }

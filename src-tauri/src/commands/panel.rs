@@ -79,10 +79,20 @@ pub fn panel_open_folder(path: String) -> Result<(), String> {
         "xdg-open"
     };
     Command::new(program)
-        .arg(&dir)
+        .arg(file_manager_path(&dir))
         .spawn()
         .map(drop)
         .map_err(|err| format!("couldn't open the folder: {err}"))
+}
+
+/// The folder as the file manager wants it: Explorer reads `C:/a/b` as a switch and falls back to Documents, so on
+/// Windows every separator is a backslash.
+fn file_manager_path(dir: &std::path::Path) -> std::ffi::OsString {
+    if cfg!(windows) {
+        dir.to_string_lossy().replace('/', "\\").into()
+    } else {
+        dir.as_os_str().to_owned()
+    }
 }
 
 /// Opens a console in `cwd` (or the app folder) whose PATH starts with the
@@ -159,4 +169,16 @@ fn system_output(program: &str, args: &[&str]) -> Result<String, String> {
         .output()
         .map_err(|err| format!("couldn't run {program}: {err}"))?;
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn explorer_gets_backslashes_even_when_the_app_used_forward_slashes() {
+        let arg = file_manager_path(std::path::Path::new("C:/My Apps/OpenMind Studio/logs"));
+        assert_eq!(arg.to_string_lossy(), "C:\\My Apps\\OpenMind Studio\\logs");
+    }
 }

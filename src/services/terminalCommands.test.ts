@@ -93,4 +93,32 @@ describe("terminal commands", () => {
       expect(commands.list()).toContain(id);
     }
   });
+
+  it("Kill All Terminals is unavailable with none open and closes every terminal otherwise", async () => {
+    expect(commands.isEnabled("terminal.killAll")).toBe(false);
+    expect(commands.reasonFor("terminal.killAll")).toBe("No terminal is open.");
+
+    ipc.terminalCreate = vi
+      .fn()
+      .mockResolvedValueOnce({ id: "t1", shell: "cmd", cwd: "C:/proj", pid: 1 })
+      .mockResolvedValueOnce({ id: "t2", shell: "powerShell", cwd: "C:/proj", pid: 2 });
+    await commands.execute("terminal.new");
+    await commands.execute("terminal.new", "powerShell");
+    expect(terminal.getState().sessions).toHaveLength(2);
+    expect(commands.isEnabled("terminal.killAll")).toBe(true);
+
+    await commands.execute("terminal.killAll");
+
+    expect(ipc.terminalClose).toHaveBeenCalledWith("t1");
+    expect(ipc.terminalClose).toHaveBeenCalledWith("t2");
+    expect(terminal.getState().sessions).toEqual([]);
+  });
+
+  it("the profile entries of the menu open a terminal with that shell", () => {
+    const menu = buildMenuBar(
+      { folders: [], files: [] },
+      { shells: [{ kind: "powerShell", label: "PowerShell" }], projectCommands: [] },
+    ).find((entry) => entry.id === "terminal");
+    expect(JSON.stringify(menu)).toContain('"args":["powerShell"]');
+  });
 });

@@ -939,6 +939,28 @@ internals.
   `composer install` (while `vendor/` is missing) / `php artisan serve` / `npm run dev|build`; OpenMind **never writes or edits `.env`**) and Logs. `php_project_info` gained `isLaravel/hasVendor/hasEnv/npmScripts`.
   The password is decrypted only on Reveal or a Copy, is never logged (checked in the app's logs and `settings/`), and the connection string has none.
 
+- **Menu system and About (pre-Milestone 16 menu completion).** The title-bar menus are still pure data (`menus.ts`) over the `CommandRegistry`, with one new rule: **an entry whose command is not registered is not
+  shown** (`pruneMenuEntries`, applied in `resolveMenuEntries` each time a menu opens; also removes submenus left empty and leading/trailing/double separators). A registered command that can't run now stays visible with its
+  reason. Nothing in a menu is therefore a dead or placeholder item: the never-built entries (tasks, workspaces, Auto Save, Emmet, release notes, videos, feature requests, updates, developer tools ...) simply don't appear
+  (Help lost them from the data too), and an entry appears the moment its command exists — the **AI Panel** item (`ai.openChat`, View) exists only while an AI provider is enabled, a shell item only for a shell that was found.
+  Top level: **File, Edit, Selection, View, Go, Run, Terminal, Help, About**; `About` (Alt+A) is a top-level entry with an `action` and no dropdown — it opens the About window directly (arrow keys skip it). Entries with
+  arguments (a shell profile, a project command) show no shortcut. Dynamic content comes from `MenuContext`: `Terminal > New Terminal With Profile` lists `TerminalService`'s detected shells (PowerShell, Command Prompt,
+  Git Bash, WSL only when found); `Run > Project Run / Build / Test Commands` lists the language support's commands (`projectMenuCommands`, executed by `language.runProjectCommand`, which is the status window's click-to-run
+  path: a new terminal in the project folder, a disabled command says why). New commands: `terminal.killAll` (Kill All Terminals), `help.showLogs` (the app's log file opened as an editor tab), `help.openLogsFolder`
+  (`helpCommands.ts`). Help = Welcome, Show All Commands, Keyboard Shortcuts, Show Logs, Open Logs Folder, About OpenMind Studio. **Documentation, Report Issue and Check for Updates are deliberately absent**: no project
+  page URL and no update system exist, so they would be dead links. **Edit > Paste** now reads the clipboard through the app (`ipc.clipboardReadText`) and pastes with Monaco's `paste` command
+  (`EditorService.pasteText`, one undo step): Monaco's own paste action made WebView2 show a "wants to see text and images copied to the clipboard" permission prompt on every click. Save and Save As are unavailable
+  on a preview tab ("A preview is read-only: there is nothing to save."). Fixed on the way: **opening the File menu while a preview tab was active threw `document "pv:1" does not exist` and blanked the whole window**
+  (`file.revert`'s predicate asked a preview for its dirty state), and `CommandRegistry.isEnabled` now treats a throwing predicate as disabled instead of throwing into the menu; the Explorer "open folder" command
+  turned `C:/a/b` into a switch and opened Documents (`panel_open_folder` now passes backslashes). **About window** (`AboutDialog`, `about_info` in `commands/about.rs`): the app (logo, version, commit hash from
+  `build.rs`, description, technologies), the **author** card (Md Shahanur Islam Shagor — Founder & Developer, OpenMind Studio; Independent Researcher and Software Engineer; a GitHub link that opens only on click), a
+  System list (version, build, platform, WebView2, Tauri, compiler, licence — "Proprietary — all rights reserved", because the workspace licence is `UNLICENSED`, not Apache-2.0) and the buttons Copy System Info (built by
+  the backend: versions, platform, app and logs folders — no keys, passwords, provider settings or project content; a Rust test checks it), Open Logs and Close. **Author picture**: put it at
+  `src/assets/about/author.png` (`.jpg`, `.jpeg` or `.webp` also work); it is bundled with the app, never fetched, and when there is none, or it can't be decoded, the card shows the initials `MS`
+  (`aboutAuthor.ts`, `import.meta.glob`). The current `author.png` is the photo the author supplied. **Shortcuts** are unchanged: Ctrl+N, Ctrl+O, Ctrl+Shift+O (Open Folder — the `Ctrl+K Ctrl+O` chord is not supported),
+  Ctrl+S, Ctrl+Shift+S, Ctrl+Z, Ctrl+Y, Ctrl+X/C/V, Ctrl+A, Ctrl+F, Ctrl+H, Ctrl+Shift+F, Ctrl+P, Ctrl+T, Ctrl+G, Shift+F12, F5 / Shift+F5 / F10 / F11 / Shift+F11, Ctrl+` , Ctrl+Shift+P; **Ctrl+F5 stays Run Code**
+  (it is not "Run Without Debugging"), and chord sequences such as `Ctrl+K S` (Save All) don't exist.
+
 **Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
 (frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
 doesn't — `workbench--inactive`, from window focus/blur; editor `#121314`; side bar, panel and secondary side bar
@@ -1907,6 +1929,18 @@ right after start-up (the extension list marks it "Activates at every start-up (
   bundle must be laid out as `debugpy/adapter/__main__.py` and was verified only as a fixture (no real bundled debugpy was started); "Use External Path" is not implemented; the Runtimes section of the Tools
   tab is empty (the Runtimes tab already covers them); the Laravel helper copies commands, it does not run them. Note: the Extensions view now loads Popular by itself when it opens (a user request after Milestone
   14.1; never at launch). Left on disk: `C:\omtmp15`, `C:\omtmp`, `C:\Users\smsha\.cargo-target`.
+- [x] **Menu system completion and About** (branch `menu-system-completion`, `feat: complete application menu system and about section`). See "Menu system and About" above. Tests: `menus.test.ts` (prune rules,
+  About top-level entry, shells, project commands), `menuBar.test.tsx`, `about.test.tsx`, `helpCommands.test.ts`, `App.test.tsx` (nine top-level menus, every visible item backed by a registered command, no empty groups or
+  double separators, About opens from the bar, the Help menu), `App.ai.test.tsx` (AI Panel item follows the provider rule), terminal/language/editor/workbench/command-registry tests and the Rust `about` and `panel`
+  tests. **Verified by hand** in the built app (debug build, `C:\omtmp15`, workspace with a space, trusted mouse clicks through every menu): New File, Settings, Find/Replace widgets, Select All, Duplicate Selection,
+  Undo/Redo, Toggle Line Comment, Copy/Cut/real Paste (clipboard checked; no permission prompt after the fix), Find in Files, Format Document With Tool, Expand/Shrink Selection, Add Cursor Below, Command Palette,
+  Explorer/Search/Source Control/Extensions, Problems/Output/Ports/Debug Console panels, Terminal and Panel toggles, Zoom, Word Wrap, Go to File/Symbol/Line/References, Next Problem, Next Editor, Run Code,
+  Project Run Commands (typed `python main.py` in a new terminal in `python-app`), Start/Stop Debugging and Toggle Breakpoint (reachable), New Terminal With Profile (Command Prompt), Clear/Kill/Kill All Terminals,
+  Keyboard Shortcuts, Show Logs (the log opened as a tab), Open Logs Folder (a real Explorer window on the logs folder), About from Help and from the bar, Copy System Info (contents checked); with a preview tab in front
+  the Selection and Edit editor actions are disabled and the File menu opens. **Not driven by hand**: the native Open File / Open Folder / Save As dialogs (covered by their existing service tests), Save All with a
+  dirty file, and debugging a real session from the menu (Step/Continue only show a reason while no session exists). **Known limitations**: Step Over/Into/Out, Continue, Stop and Restart Debugging are always listed
+  and say "There is no debug session." until one runs; Edit > Cut/Copy need a real click or key (WebView2 refuses `execCommand` for scripted events, so an automated synthetic click can't test them); Documentation,
+  Report Issue and updates are absent (see above).
 - [ ] Milestone 16 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the

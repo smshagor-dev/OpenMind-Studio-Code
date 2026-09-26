@@ -137,7 +137,7 @@ describe("App", () => {
     await container.secondarySideBar.hide();
   });
 
-  it("opens the File menu with shortcuts, and disables commands of unbuilt features", async () => {
+  it("opens the File menu with shortcuts and lists only commands that exist", async () => {
     render(<App />);
 
     fireEvent.mouseDown(screen.getByRole("menuitem", { name: "File" }));
@@ -148,12 +148,81 @@ describe("App", () => {
     const newWindow = within(menu).getByText("New Window").closest("[role=menuitem]");
     expect(newWindow).not.toHaveAttribute("aria-disabled");
     expect(newWindow).toHaveTextContent("Ctrl+Shift+N");
-    const workspaceFile = within(menu)
-      .getByText("Open Workspace from File...")
-      .closest("[role=menuitem]");
-    expect(workspaceFile).toHaveAttribute("aria-disabled", "true");
+    // Features that don't exist yet are not listed at all (no dead, greyed-out items).
+    for (const missing of ["Open Workspace from File...", "Save Workspace As...", "Auto Save"]) {
+      expect(within(menu).queryByText(missing)).toBeNull();
+    }
     const openFolder = within(menu).getByText("Open Folder...").closest("[role=menuitem]");
     expect(openFolder).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("has File, Edit, Selection, View, Go, Run, Terminal, Help and About in the menu bar", () => {
+    render(<App />);
+    const bar = within(screen.getByRole("menubar", { name: "Application menu" }));
+    expect(bar.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "File",
+      "Edit",
+      "Selection",
+      "View",
+      "Go",
+      "Run",
+      "Terminal",
+      "Help",
+      "About",
+    ]);
+  });
+
+  it("every item in every menu is backed by a registered command, with no empty groups", async () => {
+    render(<App />);
+    for (const name of ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]) {
+      fireEvent.mouseDown(screen.getByRole("menuitem", { name }));
+      const menu = await screen.findByRole("menu", { name });
+      const rows = within(menu).getAllByRole("menuitem");
+      expect(rows.length, name).toBeGreaterThan(0);
+      const children = [...menu.children];
+      expect(children[0]?.getAttribute("role"), `${name} starts with a separator`).not.toBe(
+        "separator",
+      );
+      expect(
+        children[children.length - 1]?.getAttribute("role"),
+        `${name} ends with a separator`,
+      ).not.toBe("separator");
+      children.forEach((child, index) => {
+        if (child.getAttribute("role") === "separator") {
+          expect(
+            children[index + 1]?.getAttribute("role"),
+            `${name}: two separators in a row`,
+          ).not.toBe("separator");
+        }
+      });
+      fireEvent.keyDown(menu, { key: "Escape" });
+    }
+  });
+
+  it("About opens the About window straight from the menu bar", async () => {
+    render(<App />);
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "About" }));
+    const dialog = await screen.findByRole("dialog", { name: "OpenMind Studio" });
+    expect(within(dialog).getByText("Md Shahanur Islam Shagor")).toBeInTheDocument();
+    expect(within(dialog).getByText("Founder & Developer, OpenMind Studio")).toBeInTheDocument();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("the Help menu has the real Help commands and no dead links", async () => {
+    render(<App />);
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Help" }));
+    const menu = await screen.findByRole("menu", { name: "Help" });
+    const labels = within(menu)
+      .getAllByRole("menuitem")
+      .map((row) => row.textContent.replace(/Ctrl.*$/, "").trim());
+    expect(labels).toEqual([
+      "Welcome",
+      "Show All Commands",
+      "Keyboard Shortcuts",
+      "Show Logs",
+      "Open Logs Folder",
+      "About OpenMind Studio",
+    ]);
   });
 
   it("opens a menu from the keyboard with its Alt mnemonic", async () => {

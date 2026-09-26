@@ -104,6 +104,16 @@ describe("EditorService", () => {
     expect(bare.insertAtCursor("bye")).toBe(false);
   });
 
+  it("pasteText pastes like Ctrl+V (Monaco's paste command with the text) and refuses without an editor", () => {
+    const service = new EditorService(createFakeIpc());
+    expect(service.pasteText("x")).toBe(false);
+    const fake = createFakeEditor(model("hello"));
+    service.attach(fake.asEditor);
+    expect(service.pasteText("clip")).toBe(true);
+    expect(fake.editor.focus).toHaveBeenCalled();
+    expect(fake.editor.trigger).toHaveBeenCalledWith("menu", "paste", { text: "clip" });
+  });
+
   it("offers extension and AI actions side by side in the palette, with their own ids", () => {
     const service = new EditorService(createFakeIpc());
     const addAction = vi.fn(() => ({ dispose: vi.fn() }));

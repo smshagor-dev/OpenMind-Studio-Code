@@ -101,6 +101,56 @@ describe("registerWorkbenchCommands", () => {
     expect(ipc.workspaceOpenFolder).toHaveBeenCalledWith("C:/proj");
   });
 
+  it("Edit > Paste reads the clipboard through the app and never through the WebView", async () => {
+    const pasted: string[] = [];
+    const editor = { pasteText: (text: string) => pasted.push(text) > 0, hasEditor: () => true };
+    const localCommands = new CommandRegistry();
+    const localIpc = createFakeIpc({
+      clipboardReadText: vi.fn().mockResolvedValue("from clipboard"),
+    });
+    const documents = new DocumentService(localIpc, new BufferManager(), events);
+    registerWorkbenchCommands({
+      commands: localCommands,
+      events,
+      ipc: localIpc,
+      documents,
+      workspace: new WorkspaceService(documents, localIpc, events),
+      editor: editor as unknown as EditorService,
+      layout,
+      window: new WindowService(fakeWindowApi, localIpc),
+    });
+    await localCommands.execute("edit.paste");
+    expect(localIpc.clipboardReadText).toHaveBeenCalled();
+    expect(pasted).toEqual(["from clipboard"]);
+  });
+
+  it("File > Revert is simply unavailable on a preview tab instead of throwing", () => {
+    const localCommands = new CommandRegistry();
+    const documents = new DocumentService(ipc, new BufferManager(), events);
+    const isDirty = vi.spyOn(documents, "isDirty").mockImplementation(() => {
+      throw new Error('document "pv:1" does not exist');
+    });
+    const workspaceStub = {
+      getState: () => ({
+        activeId: "pv:1",
+        tabs: [{ id: "pv:1", kind: "filePreview", dirty: false }],
+      }),
+    } as unknown as WorkspaceService;
+    registerWorkbenchCommands({
+      commands: localCommands,
+      events,
+      ipc,
+      documents,
+      workspace: workspaceStub,
+      editor: new EditorService(ipc),
+      layout,
+      window: new WindowService(fakeWindowApi, ipc),
+    });
+    expect(() => localCommands.isEnabled("file.revert")).not.toThrow();
+    expect(localCommands.isEnabled("file.revert")).toBe(false);
+    expect(isDirty).not.toHaveBeenCalled();
+  });
+
   it("help.about emits showAbout", async () => {
     const listener = vi.fn();
     events.on("showAbout", listener);

@@ -79,6 +79,17 @@ describe("CommandRegistry", () => {
     expect(registry.isEnabled("gated")).toBe(true);
   });
 
+  it("treats an enabled predicate that throws as disabled instead of throwing into the menu", () => {
+    const registry = new CommandRegistry();
+    registry.register("boom", () => undefined, {
+      enabled: () => {
+        throw new Error("state is gone");
+      },
+    });
+    expect(() => registry.isEnabled("boom")).not.toThrow();
+    expect(registry.isEnabled("boom")).toBe(false);
+  });
+
   it("reports checked state only for toggle commands", () => {
     const registry = new CommandRegistry();
     registry.register("plain", vi.fn());

@@ -138,5 +138,17 @@ export function wireLanguage(deps: LanguageWiringDeps) {
       disabledReason: () => reasonFor(kind) ?? undefined,
     });
   }
+  // Run > Project Run / Build / Test Commands: the same click-to-run path as the status window's buttons.
+  commands.register("language.runProjectCommand", async (projectRoot, commandId) => {
+    const project = support
+      .getState()
+      .workspace?.projects.find((candidate) => candidate.root === projectRoot);
+    const command = project?.commandStatus.find((candidate) => candidate.id === commandId);
+    if (command === undefined) {
+      events.emit("appNotice", { message: "That project command is no longer available." });
+      return;
+    }
+    await projects.runCommand(command);
+  });
   return { support, projects, ui, reasonFor, activeText };
 }

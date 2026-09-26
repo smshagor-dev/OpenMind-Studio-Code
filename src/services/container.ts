@@ -52,6 +52,7 @@ import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexServic
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
 import { wireLanguage } from "./language/languageWiring";
+import { registerHelpCommands } from "./helpCommands";
 import { ToolchainService } from "./toolchains/toolchainService";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
@@ -361,6 +362,17 @@ workspace.subscribeWorkspace(() => {
 
 const hasActiveTab = () => workspace.getState().activeId !== null;
 
+/** A file preview is read-only: Save and Save As only apply to a text tab (they never pretend to save a preview). */
+const activeTabIsText = () => {
+  const state = workspace.getState();
+  const tab = state.tabs.find((candidate) => candidate.id === state.activeId);
+  return tab !== undefined && tab.kind !== "filePreview";
+};
+const notTextReason = () =>
+  hasActiveTab() && !activeTabIsText()
+    ? "A preview is read-only: there is nothing to save."
+    : undefined;
+
 commands.register("file.new", () => {
   workspace.createUntitled();
 });
@@ -395,7 +407,7 @@ commands.register(
       await workspace.save(activeId);
     }
   },
-  { enabled: hasActiveTab },
+  { enabled: activeTabIsText, disabledReason: notTextReason },
 );
 
 commands.register(
@@ -406,7 +418,7 @@ commands.register(
       await workspace.saveAs(activeId);
     }
   },
-  { enabled: hasActiveTab },
+  { enabled: activeTabIsText, disabledReason: notTextReason },
 );
 
 commands.register(
@@ -497,6 +509,12 @@ registerPhpCommands(commands, php, tauriIpcClient);
 registerGitCommands(commands, layout, gitClone, gitBlame);
 commands.register("help.welcome", () => {
   welcome.open();
+});
+registerHelpCommands({
+  commands,
+  events,
+  ipc: tauriIpcClient,
+  openFile: (path) => workspace.openPath(path),
 });
 commands.register("workbench.newWindow", async () => {
   await tauriIpcClient.windowNew();

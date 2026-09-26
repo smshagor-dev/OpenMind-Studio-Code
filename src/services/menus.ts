@@ -1,9 +1,10 @@
 /**
  * The title-bar menu structure, mirroring VS Code's (Windows) menu bar section
- * by section. Entries are pure data referencing command ids: an entry whose
- * command isn't registered (a feature from a later milestone — terminal,
- * debugging, search...) renders disabled rather than being backed by a stub,
- * and lights up automatically once that milestone registers the command.
+ * by section. Entries are pure data referencing command ids. **An entry whose command isn't
+ * registered is not shown at all** (`pruneMenuEntries`): the menu never lists something that does nothing, and an
+ * entry appears as soon as its command is registered (the AI panel item follows the AI provider rule, a shell
+ * item exists only for a shell that was found). A registered command that can't run right now stays visible with
+ * its reason.
  */
 export type MenuEntry =
   | {
@@ -23,6 +24,24 @@ export interface TopLevelMenu {
   /** Alt+<mnemonic> opens this menu, as in VS Code. */
   mnemonic: string;
   items: MenuEntry[];
+  /** A top-level entry that opens no dropdown: clicking it runs this command (the About entry). */
+  action?: string;
+}
+
+/** A project command (from the language support) offered under Run > Project ... Commands. */
+export interface ProjectMenuCommand {
+  category: "run" | "dev" | "build" | "test";
+  label: string;
+  projectRoot: string;
+  projectName: string;
+  commandId: string;
+}
+
+/** What the menus need beyond the fixed structure: recent items, the shells found here, the project's commands. */
+export interface MenuContext {
+  recent: RecentEntries;
+  shells: { kind: string; label: string }[];
+  projectCommands: ProjectMenuCommand[];
 }
 
 export interface RecentEntries {
@@ -49,7 +68,7 @@ function openRecentMenu(recent: RecentEntries): MenuEntry {
   if (folders.length > 0) items.push(...folders, SEPARATOR);
   if (files.length > 0) items.push(...files, SEPARATOR);
   // Only recent *files* have a clear operation in the backend so far, so the label says exactly that.
-  items.push(cmd("Clear Recent Files", "file.clearRecent"));
+  items.push(cmd("Clear Recently Opened", "file.clearRecent"));
   return sub("Open Recent", items);
 }
 
@@ -59,8 +78,7 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
     label: "File",
     mnemonic: "F",
     items: [
-      cmd("New Text File", "file.new"),
-      cmd("New File...", "file.newFilePicker"),
+      cmd("New File", "file.new"),
       cmd("New Window", "workbench.newWindow"),
       SEPARATOR,
       cmd("Open File...", "file.open"),
@@ -233,6 +251,7 @@ const VIEW_MENU: TopLevelMenu = {
     cmd("Source Control", "view.showSourceControl"),
     cmd("Run", "view.showRun"),
     cmd("Extensions", "view.showExtensions"),
+    cmd("AI Panel", "ai.openChat"),
     SEPARATOR,
     cmd("Problems", "view.showProblems"),
     cmd("Output", "view.showOutput"),
@@ -289,77 +308,106 @@ const GO_MENU: TopLevelMenu = {
   ],
 };
 
-const RUN_MENU: TopLevelMenu = {
-  id: "run",
-  label: "Run",
-  mnemonic: "R",
-  items: [
-    cmd("Run Code", "run.code"),
-    cmd("Run Code in Terminal", "run.codeInTerminal"),
-    cmd("Run Code and Show Output", "run.codeShowOutput"),
-    cmd("Stop Running Code", "run.stop"),
-    cmd("Configure Run Command...", "run.configure"),
-    cmd("Select Runtime...", "run.selectRuntime"),
-    SEPARATOR,
-    cmd("Start Debugging", "debug.start"),
-    cmd("Run Without Debugging", "debug.runWithoutDebugging"),
-    cmd("Stop Debugging", "debug.stop"),
-    cmd("Restart Debugging", "debug.restart"),
-    SEPARATOR,
-    cmd("Open Configurations", "debug.openConfigurations"),
-    cmd("Add Configuration...", "debug.addConfiguration"),
-    SEPARATOR,
-    cmd("Step Over", "debug.stepOver"),
-    cmd("Step Into", "debug.stepInto"),
-    cmd("Step Out", "debug.stepOut"),
-    cmd("Continue", "debug.continue"),
-    SEPARATOR,
-    cmd("Toggle Breakpoint", "debug.toggleBreakpoint"),
-    sub("New Breakpoint", [
-      cmd("Conditional Breakpoint...", "debug.newConditionalBreakpoint"),
-      cmd("Edit Breakpoint", "debug.editBreakpoint"),
-      cmd("Inline Breakpoint", "debug.newInlineBreakpoint"),
-      cmd("Function Breakpoint...", "debug.newFunctionBreakpoint"),
-      cmd("Logpoint...", "debug.newLogpoint"),
-      cmd("Triggered Breakpoint...", "debug.newTriggeredBreakpoint"),
-    ]),
-    SEPARATOR,
-    cmd("Enable All Breakpoints", "debug.enableAllBreakpoints"),
-    cmd("Disable All Breakpoints", "debug.disableAllBreakpoints"),
-    cmd("Remove All Breakpoints", "debug.removeAllBreakpoints"),
-    SEPARATOR,
-    cmd("Install Additional Debuggers...", "debug.installDebuggers"),
-  ],
-};
+const PROJECT_MENU_TITLES: { categories: string[]; title: string }[] = [
+  { categories: ["run", "dev"], title: "Project Run Commands" },
+  { categories: ["build"], title: "Project Build Commands" },
+  { categories: ["test"], title: "Project Test Commands" },
+];
 
-const TERMINAL_MENU: TopLevelMenu = {
-  id: "terminal",
-  label: "Terminal",
-  mnemonic: "T",
-  items: [
-    cmd("New Terminal", "terminal.new"),
-    cmd("Split Terminal", "terminal.split"),
-    cmd("Clear Terminal", "terminal.clear"),
-    cmd("Kill Terminal", "terminal.kill"),
-    SEPARATOR,
-    cmd("Manage Runtimes...", "runtime.manage"),
-    cmd("Language Tools...", "lsp.manage"),
-    cmd("Restart Language Server", "lsp.restart"),
-    cmd("Show LSP Output", "lsp.openOutput"),
-    SEPARATOR,
-    cmd("Run Task...", "tasks.run"),
-    cmd("Run Build Task...", "tasks.runBuild"),
-    cmd("Run Active File", "terminal.runActiveFile"),
-    cmd("Run Selected Text", "terminal.runSelectedText"),
-    SEPARATOR,
-    cmd("Show Running Tasks...", "tasks.showRunning"),
-    cmd("Restart Running Task...", "tasks.restartRunning"),
-    cmd("Terminate Task...", "tasks.terminate"),
-    SEPARATOR,
-    cmd("Configure Tasks...", "tasks.configure"),
-    cmd("Configure Default Build Task...", "tasks.configureDefaultBuild"),
-  ],
-};
+/** Run > Project Run / Build / Test Commands: the commands the language support found, one entry each. */
+function projectCommandMenus(commands: ProjectMenuCommand[]): MenuEntry[] {
+  const menus: MenuEntry[] = [];
+  const several = new Set(commands.map((c) => c.projectRoot)).size > 1;
+  for (const group of PROJECT_MENU_TITLES) {
+    const items = commands
+      .filter((c) => group.categories.includes(c.category))
+      .map((c) =>
+        cmd(several ? `${c.label} — ${c.projectName}` : c.label, "language.runProjectCommand", [
+          c.projectRoot,
+          c.commandId,
+        ]),
+      );
+    if (items.length > 0) menus.push(sub(group.title, items));
+  }
+  return menus.length > 0 ? [SEPARATOR, ...menus] : [];
+}
+
+function runMenu(projectCommands: ProjectMenuCommand[]): TopLevelMenu {
+  return {
+    id: "run",
+    label: "Run",
+    mnemonic: "R",
+    items: [
+      cmd("Run Code", "run.code"),
+      cmd("Run Code in Terminal", "run.codeInTerminal"),
+      cmd("Run Code and Show Output", "run.codeShowOutput"),
+      cmd("Stop Running Code", "run.stop"),
+      cmd("Configure Run Command...", "run.configure"),
+      cmd("Select Runtime...", "run.selectRuntime"),
+      ...projectCommandMenus(projectCommands),
+      SEPARATOR,
+      cmd("Start Debugging", "debug.start"),
+      cmd("Run Without Debugging", "debug.runWithoutDebugging"),
+      cmd("Stop Debugging", "debug.stop"),
+      cmd("Restart Debugging", "debug.restart"),
+      SEPARATOR,
+      cmd("Open Configurations", "debug.openConfigurations"),
+      cmd("Add Configuration...", "debug.addConfiguration"),
+      SEPARATOR,
+      cmd("Step Over", "debug.stepOver"),
+      cmd("Step Into", "debug.stepInto"),
+      cmd("Step Out", "debug.stepOut"),
+      cmd("Continue", "debug.continue"),
+      SEPARATOR,
+      cmd("Toggle Breakpoint", "debug.toggleBreakpoint"),
+      sub("New Breakpoint", [
+        cmd("Conditional Breakpoint...", "debug.newConditionalBreakpoint"),
+        cmd("Edit Breakpoint", "debug.editBreakpoint"),
+        cmd("Inline Breakpoint", "debug.newInlineBreakpoint"),
+        cmd("Function Breakpoint...", "debug.newFunctionBreakpoint"),
+        cmd("Logpoint...", "debug.newLogpoint"),
+        cmd("Triggered Breakpoint...", "debug.newTriggeredBreakpoint"),
+      ]),
+      SEPARATOR,
+      cmd("Enable All Breakpoints", "debug.enableAllBreakpoints"),
+      cmd("Disable All Breakpoints", "debug.disableAllBreakpoints"),
+      cmd("Remove All Breakpoints", "debug.removeAllBreakpoints"),
+      SEPARATOR,
+      cmd("Install Additional Debuggers...", "debug.installDebuggers"),
+    ],
+  };
+}
+
+function terminalMenu(shells: { kind: string; label: string }[]): TopLevelMenu {
+  return {
+    id: "terminal",
+    label: "Terminal",
+    mnemonic: "T",
+    items: [
+      cmd("New Terminal", "terminal.new"),
+      ...(shells.length > 0
+        ? [
+            sub(
+              "New Terminal With Profile",
+              shells.map((shell) => cmd(shell.label, "terminal.new", [shell.kind])),
+            ),
+          ]
+        : []),
+      cmd("Split Terminal", "terminal.split"),
+      cmd("Clear Terminal", "terminal.clear"),
+      cmd("Kill Terminal", "terminal.kill"),
+      cmd("Kill All Terminals", "terminal.killAll"),
+      SEPARATOR,
+      cmd("Run Active File", "terminal.runActiveFile"),
+      cmd("Run Selected Text", "terminal.runSelectedText"),
+      SEPARATOR,
+      cmd("Manage Runtimes...", "runtime.manage"),
+      cmd("Language Tools...", "lsp.manage"),
+      cmd("Restart Language Server", "lsp.restart"),
+      cmd("Show LSP Output", "lsp.openOutput"),
+    ],
+  };
+}
 
 const HELP_MENU: TopLevelMenu = {
   id: "help",
@@ -368,27 +416,23 @@ const HELP_MENU: TopLevelMenu = {
   items: [
     cmd("Welcome", "help.welcome"),
     cmd("Show All Commands", "workbench.commandPalette"),
-    cmd("Documentation", "help.documentation"),
-    cmd("Editor Playground", "help.editorPlayground"),
-    cmd("Show Release Notes", "help.releaseNotes"),
     SEPARATOR,
-    cmd("Keyboard Shortcuts Reference", "help.keybindingsReference"),
-    cmd("Video Tutorials", "help.videoTutorials"),
-    cmd("Tips and Tricks", "help.tipsAndTricks"),
+    cmd("Keyboard Shortcuts", "preferences.openKeybindings"),
     SEPARATOR,
-    cmd("Search Feature Requests", "help.featureRequests"),
-    cmd("Report Issue", "help.reportIssue"),
+    cmd("Show Logs", "help.showLogs"),
+    cmd("Open Logs Folder", "help.openLogsFolder"),
     SEPARATOR,
-    cmd("View License", "help.license"),
-    cmd("Privacy Statement", "help.privacy"),
-    SEPARATOR,
-    cmd("Toggle Developer Tools", "help.toggleDevTools"),
-    cmd("Open Process Explorer", "help.processExplorer"),
-    SEPARATOR,
-    cmd("Check for Updates...", "help.checkForUpdates"),
-    SEPARATOR,
-    cmd("About", "help.about"),
+    cmd("About OpenMind Studio", "help.about"),
   ],
+};
+
+/** The top-level About entry: no dropdown, it opens the About window directly. */
+const ABOUT_MENU: TopLevelMenu = {
+  id: "about",
+  label: "About",
+  mnemonic: "A",
+  items: [],
+  action: "help.about",
 };
 
 /** The activity bar's gear ("Manage") menu. */
@@ -414,24 +458,50 @@ export const MANAGE_MENU: MenuEntry[] = [
     cmd("Light", "theme.setLight"),
     cmd("High Contrast", "theme.setHighContrast"),
   ]),
-  SEPARATOR,
-  cmd("Check for Updates...", "help.checkForUpdates"),
 ];
 
 /** The explorer title's "..." menu: which explorer sections are shown. */
 export const EXPLORER_VIEWS_MENU: MenuEntry[] = [cmd("Open Editors", "explorer.toggleOpenEditors")];
 
-export function buildMenuBar(recent: RecentEntries): TopLevelMenu[] {
+export function buildMenuBar(
+  recent: RecentEntries,
+  context: Pick<MenuContext, "shells" | "projectCommands"> = { shells: [], projectCommands: [] },
+): TopLevelMenu[] {
   return [
     fileMenu(recent),
     EDIT_MENU,
     SELECTION_MENU,
     VIEW_MENU,
     GO_MENU,
-    RUN_MENU,
-    TERMINAL_MENU,
+    runMenu(context.projectCommands),
+    terminalMenu(context.shells),
     HELP_MENU,
+    ABOUT_MENU,
   ];
+}
+
+/**
+ * Drops every entry that would do nothing: a command that isn't registered, a submenu left with no entries, and
+ * separators that would sit at the start, at the end or twice in a row. A registered command that is unavailable
+ * right now is kept (it shows its reason).
+ */
+export function pruneMenuEntries(
+  items: MenuEntry[],
+  has: (command: string) => boolean,
+): MenuEntry[] {
+  const kept: MenuEntry[] = [];
+  for (const item of items) {
+    if (item.kind === "command") {
+      if (has(item.command)) kept.push(item);
+    } else if (item.kind === "submenu") {
+      const inner = pruneMenuEntries(item.items, has);
+      if (inner.length > 0) kept.push({ ...item, items: inner });
+    } else if (kept.length > 0 && kept[kept.length - 1]?.kind !== "separator") {
+      kept.push(item);
+    }
+  }
+  while (kept[kept.length - 1]?.kind === "separator") kept.pop();
+  return kept;
 }
 
 /** Every command id referenced anywhere in `menus` (recursing into submenus). */
@@ -445,4 +515,34 @@ export function collectCommandIds(menus: TopLevelMenu[]): string[] {
   };
   for (const menu of menus) visit(menu.items);
   return [...ids];
+}
+
+/** The Run > Project ... Commands entries from the language support's projects (only run/dev/build/test). */
+export function projectMenuCommands(
+  projects: {
+    root: string;
+    name: string;
+    commandStatus: { id: string; label: string; category: string }[];
+  }[],
+): ProjectMenuCommand[] {
+  const out: ProjectMenuCommand[] = [];
+  for (const project of projects) {
+    for (const command of project.commandStatus) {
+      if (
+        command.category === "run" ||
+        command.category === "dev" ||
+        command.category === "build" ||
+        command.category === "test"
+      ) {
+        out.push({
+          category: command.category,
+          label: command.label,
+          projectRoot: project.root,
+          projectName: project.name,
+          commandId: command.id,
+        });
+      }
+    }
+  }
+  return out;
 }
