@@ -3,13 +3,35 @@
   "displayName": "Node.js",
   "description": "JavaScript runtime with npm and npx.",
   "defaultVersion": "24.21.0",
-  "versionCommand": { "executable": "node.exe", "args": ["--version"], "outputPrefix": "v" },
-  "binDirs": ["."],
-  "verifyFiles": ["node.exe", "npm.cmd", "npx.cmd"],
+  "versionCommand": {
+    "executable": "node.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "v"
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "node.exe",
+    "npm.cmd",
+    "npx.cmd"
+  ],
   "env": {},
   "features": [
-    { "id": "npm", "label": "npm", "verifyFile": "npm.cmd", "missingNote": "npm isn't in this install. Use Repair to reinstall it." },
-    { "id": "npx", "label": "npx", "verifyFile": "npx.cmd", "missingNote": "npx isn't in this install. Use Repair to reinstall it." }
+    {
+      "id": "npm",
+      "label": "npm",
+      "verifyFile": "npm.cmd",
+      "missingNote": "npm isn't in this install. Use Repair to reinstall it."
+    },
+    {
+      "id": "npx",
+      "label": "npx",
+      "verifyFile": "npx.cmd",
+      "missingNote": "npx isn't in this install. Use Repair to reinstall it."
+    }
   ],
   "notes": "Official nodejs.org Windows ZIP; SHA256 from the release's SHASUMS256.txt.",
   "versions": [
@@ -32,6 +54,30 @@
           "platform": "windows-x64",
           "url": "https://nodejs.org/dist/v24.20.0/node-v24.20.0-win-x64.zip",
           "sha256": "6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba",
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    },
+    {
+      "version": "20.20.2",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://nodejs.org/dist/v20.20.2/node-v20.20.2-win-x64.zip",
+          "sha256": "dc3700fdd57a63eedb8fd7e3c7baaa32e6a740a1b904167ff4204bc68ed8bf77",
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    },
+    {
+      "version": "16.20.2",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://nodejs.org/dist/v16.20.2/node-v16.20.2-win-x64.zip",
+          "sha256": "f8bb35f6c08dc7bf14ac753509c06ed1a7ebf5b390cd3fbdc8f8c1aedd020ec3",
           "archive": "zip",
           "stripComponents": 1
         }

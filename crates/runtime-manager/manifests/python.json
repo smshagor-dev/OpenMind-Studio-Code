@@ -82,6 +82,48 @@
           "extractRoot": "tools"
         }
       ]
+    },
+    {
+      "version": "3.12.10",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg",
+          "sha256": "0eb85c2dfccccf1b17352de4c397f69194035b7d37149eacc16f1147d93de3b8",
+          "sizeBytes": 14515433,
+          "archive": "zip",
+          "stripComponents": 0,
+          "extractRoot": "tools"
+        }
+      ]
+    },
+    {
+      "version": "3.11.9",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://api.nuget.org/v3-flatcontainer/python/3.11.9/python.3.11.9.nupkg",
+          "sha256": "9283876d58c017e0e846f95b490da3bca0fc0a6ee1134b2870677cfb7eec3c67",
+          "sizeBytes": 17478009,
+          "archive": "zip",
+          "stripComponents": 0,
+          "extractRoot": "tools"
+        }
+      ]
+    },
+    {
+      "version": "3.10.11",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://api.nuget.org/v3-flatcontainer/python/3.10.11/python.3.10.11.nupkg",
+          "sha256": "7c6f99b160a36a7e09492dfcff2b0a3a60bb5229ca44cdcc3ecb32871a6144d0",
+          "sizeBytes": 16283939,
+          "archive": "zip",
+          "stripComponents": 0,
+          "extractRoot": "tools"
+        }
+      ]
     }
   ]
 }
