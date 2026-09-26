@@ -51,6 +51,7 @@ import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
 import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
+import { wireLanguage } from "./language/languageWiring";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -586,6 +587,27 @@ const ai = wireAi({
   previews: filePreviews,
 });
 
+const language = wireLanguage({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  workspace,
+  documents,
+  terminal,
+  showTerminal: () => panel.show("terminal"),
+});
+// Extensions' languages win; then the registry's grammar for languages the editor's own table doesn't know (Go, Rust ...).
+documents.setLanguageResolver(
+  (path) =>
+    extensions.contributions.languageForPath(path) ?? language.support.editorLanguageFor(path),
+);
+
+/** Loads the language table (static data) and looks at the open folder: file names and manifests only. */
+async function startLanguage(): Promise<void> {
+  await language.support.initialize();
+  await language.support.refresh();
+}
+
 /** Reads the configured AI providers (a local file) and starts listening; nothing is sent anywhere. */
 async function startAi(): Promise<void> {
   await extensions.registry.ensureLoaded();
@@ -672,6 +694,8 @@ export const container = {
   extensions,
   ai,
   startAi,
+  language,
+  startLanguage,
   startExtensions: extensions.start,
   finishExtensionsStartup: extensions.finishStartup,
 };

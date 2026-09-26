@@ -27,6 +27,7 @@ vi.mock("@tauri-apps/api/core", () => ({
       case "terminal_list_shells":
       case "breakpoints_load":
       case "ai_conversations_list":
+      case "language_registry":
         return Promise.resolve([]);
       case "settings_get":
       case "workspace_active_folder":

@@ -117,7 +117,7 @@ export class TerminalService {
   }
 
   /** Opens a new terminal (in the open workspace folder, if any) and shows the panel. */
-  async createTerminal(shell?: ShellKind): Promise<string | null> {
+  async createTerminal(shell?: ShellKind, cwdOverride?: string | null): Promise<string | null> {
     if (shell !== undefined && !this.state.shells.some((candidate) => candidate.kind === shell)) {
       // Only shells found on this machine are ever offered, so this is a stale or foreign request.
       this.events.emit("appError", {
@@ -126,7 +126,7 @@ export class TerminalService {
       return null;
     }
     const kind = shell ?? this.state.lastShell;
-    const cwd = this.getCwd();
+    const cwd = cwdOverride ?? this.getCwd();
     const info = await safely(
       this.events,
       () => this.ipc.terminalCreate(kind, cwd, INITIAL_COLS, INITIAL_ROWS),

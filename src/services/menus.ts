@@ -143,6 +143,8 @@ const EDIT_MENU: TopLevelMenu = {
     SEPARATOR,
     cmd("Rename Symbol", "edit.renameSymbol"),
     cmd("Format Document", "edit.formatDocument"),
+    cmd("Format Document With Tool", "language.formatWithTool"),
+    cmd("Run Linter", "language.runLinter"),
   ],
 };
 
@@ -401,6 +403,7 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Snippets", "preferences.configureSnippets"),
   cmd("Runtimes", "runtime.manage"),
   cmd("Language Tools", "lsp.manage"),
+  cmd("Project & Language Status...", "language.showStatus"),
   cmd("AI Providers...", "ai.manageProviders"),
   cmd("Tasks", "tasks.configure"),
   sub("Themes", [

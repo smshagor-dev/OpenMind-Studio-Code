@@ -2935,6 +2935,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-language"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-lsp"
 version = "0.1.0"
 dependencies = [
@@ -3038,6 +3049,7 @@ dependencies = [
  "openmind-file-watch",
  "openmind-fs",
  "openmind-git",
+ "openmind-language",
  "openmind-lsp",
  "openmind-preview",
  "openmind-runner",

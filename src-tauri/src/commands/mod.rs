@@ -8,6 +8,7 @@ pub mod extensions;
 pub mod filesystem;
 pub mod git;
 pub mod index;
+pub mod language;
 pub mod lsp;
 pub mod marketplace;
 pub mod panel;

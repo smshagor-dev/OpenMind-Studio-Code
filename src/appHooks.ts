@@ -57,6 +57,7 @@ export function useAppStartup(): boolean {
       // Before the session: files it reopens must already know the languages extensions contribute.
       await container.startExtensions(isMainWindow());
       await container.startAi();
+      await container.startLanguage();
       await container.workspace.restoreSession();
       // A window opened for a tab dragged out of another window opens that file.
       await container.editorWindows.openPending();

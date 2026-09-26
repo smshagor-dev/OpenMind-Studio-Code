@@ -18,6 +18,7 @@ import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
 import { AiConfirmDialog } from "./components/ai/AiConfirmDialog";
+import { LanguageStatusDialog } from "./components/language/LanguageStatusDialog";
 import { AiProviderManager } from "./components/ai/AiProviderManager";
 import { QuickOpen } from "./components/QuickOpen";
 import { ExtensionDialogs } from "./components/ExtensionDialogs";
@@ -135,6 +136,7 @@ export function App() {
       <QuickOpen />
       <AiProviderManager />
       <AiConfirmDialog />
+      <LanguageStatusDialog />
       <ExtensionDialogs />
       <ExtensionPrompts />
       {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}

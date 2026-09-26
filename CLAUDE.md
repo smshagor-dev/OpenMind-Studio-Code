@@ -416,6 +416,35 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   **refused by the backend too** while its extension is disabled or gone (`provider_offered`). Nothing runs at launch: the provider list is a local
   file read, the history file appears on first use, and the only requests are `ai_chat_send` (Send / an action) and `ai_provider_test`
   (Test connection). Window close cancels every request in flight.
+- `openmind-language` (Milestone 14) — language and project support, Tauri-agnostic and **side-effect free**: it only *looks* (file names, small manifests,
+  whether an executable exists) — it never runs a tool, installs anything, downloads, changes PATH or reads outside the folder it is given (links are never followed).
+  **Not literal support for every language**: the registry lists ~55 languages and stacks with practical IDE support, and each says honestly what OpenMind can do
+  with it (`levels`). `registry` (`LanguageDef`: id, name, group, extensions, whole file names with `*` patterns such as `Dockerfile.*`/`docker-compose.*.yml`/`.env.*`,
+  comment marker, the Monaco grammar to use and whether it is `exact`, `approximate` (Vue/Svelte/Astro coloured as HTML, TOML/.env as INI, Gradle as Java) or `none` (Dart,
+  Prisma, LaTeX, CMake, Makefile: shown plain), formatter/linter/language-server candidates, toolchain tools, and `levels`: syntax, lsp, format, lint, run, build, debug, test).
+  Levels are conservative: `lsp` only where OpenMind starts a server (TypeScript/JavaScript/JSX/TSX, Python, PHP, HTML, CSS/SCSS/Less, JSON), `debug` only Python and
+  JavaScript, `run` (Run Code on one file) only JavaScript, TypeScript, Python and PHP; a test asserts these sets. `tools` (~75 named tools: runtimes, package managers, SDKs,
+  formatters, linters, language servers, `ANDROID_HOME`) and how they are found — **the project's own copy first (`node_modules/.bin`, `.venv`, `vendor/bin`), then OpenMind's
+  portable runtimes, then the machine's PATH**, reporting which one (a bare file without `.exe/.cmd/.bat` isn't runnable on Windows); nothing is executed to ask a version.
+  `project` + `detect/{web,backend,native}` detect what a folder is from marker files/manifests (bounded: the folder plus two levels, 400 folders, never `node_modules`, `.git`,
+  `target`, `dist`, `build`, `vendor`, virtual environments or hidden folders): Node.js with package manager (`packageManager` field, lock file), React, Next.js, Vite, Vue,
+  Svelte, Astro, Tailwind, Express, NestJS, Electron, Neutralino, Tauri, React Native, Expo, Ionic, Capacitor, Flutter (+ Flutter desktop), Dart, Android (Gradle), iOS (Podfile/Xcode),
+  Swift package, Python (Django/FastAPI/Flask), PHP/Laravel, Ruby/Rails, Maven/Gradle/Spring/JavaFX, .NET (WPF, WinForms, ASP.NET Core), Go, Rust, CMake/Make, Docker/Compose,
+  Prisma, Jupyter (detected only). Every detection has a confidence (`high` = a definitive file, `medium` = a dependency or hint, `low`) and its evidence; a project's platform
+  folders (`android/`, `ios/`, `src-tauri/`) belong to the parent instead of becoming second projects; two Python web frameworks with no `manage.py` are all listed and the project is
+  `ambiguous` (nothing is guessed). `commands` generates run/dev/build/test/lint/format/install commands **from what is in the folder** (a `package.json` script — only
+  known names with safe characters —, `cargo`, `go`, `mvn`/`gradle` with the wrapper when there is one, `dotnet`, `flutter`/`dart`, `artisan`, `manage.py`, uvicorn only when
+  `app = FastAPI(` is really in the file, `cmake`, `docker compose`, ...); a command is an argument list, flagged `network` when it downloads, and has `tools` it needs. A command with
+  no support is not offered; one whose tool or platform is missing is offered disabled with the reason (`iOS builds require macOS and Xcode.`, `A Windows build needs Windows.`,
+  `Cargo not found. Install Rust (rustup) — OpenMind doesn't install it.`). `format` finds formatters/linters (Prettier, Biome, ESLint, Stylelint, Black, Ruff, isort, PHP CS Fixer,
+  Pint, rustfmt, clippy, gofmt, golangci-lint, clang-format, dotnet format, ktlint, dart) and builds their exact argument list (project's own first); `lsp` lists language server
+  candidates per language and says which are OpenMind's own (with their live state supplied by the app) and which are only *found* — **OpenMind cannot start rust-analyzer,
+  gopls, clangd, JDT LS, OmniSharp, Vue/Svelte/Astro/Tailwind/YAML/Docker/SQL/GraphQL servers yet, and says so** (detection only, no fake diagnostics). `service` assembles
+  `WorkspaceStatus` (projects with tool status, per-command availability and a one-sentence summary such as "Detected Tauri + React. Found: Node.js, pnpm, Cargo. Dev: pnpm tauri dev.")
+  and `FileStatus`; `shell::typed_line` renders an argument list for PowerShell/cmd/Git Bash (plain words stay plain, anything else is quoted, a line that can't be quoted safely
+  is refused). `src-tauri/src/commands/language.rs`: `language_registry`, `language_workspace_status` (the asking window's folder, portable runtimes from the Runtime Manager first),
+  `language_file_status` (path guarded with `ensure_within_root`), `language_terminal_line`.
+
 - `openmind-extensions` (Milestone 10) — the VS Code-compatible extension system foundation. **OpenMind Studio supports a VS Code
   API subset**; nothing here is VS Code's source. Layout (portable, never AppData): `extensions/installed/<publisher>.<name>-<version>/`,
   `extensions/disabled/…` (enabling/disabling *moves the folder*, so the state persists by location and there is no registry file that
@@ -856,6 +885,24 @@ internals.
   history; a provider without key or model shows a configuration prompt instead of a chat), `AiProviderManager` (list with kind, Online/Local, key state, status; Enabled, Edit,
   Test connection, Set as default, Delete with confirmation; the form masks the key, empty means keep, "Clear saved API key"; Clear AI history with confirmation) and
   `AiConfirmDialog`, mounted in `App.tsx`.
+
+- **Languages and projects (Milestone 14).** In `src/services/language/`, wired by `wireLanguage` (`container.language` = `{support, projects, ui, ...}`, `startLanguage` loads the
+  registry before the session is restored and scans the open folder). `LanguageSupportService`: the registry from the backend, `languageOf(path)` (the same matching rules as the
+  backend, in `languageRegistry.ts`), `editorLanguageFor(path)` — the editor grammar for files the built-in table and **extensions** don't know (it is chained *after*
+  `ExtensionContributionService.languageForPath`, so extension languages win, and disabling the extension removes them again): Go, Rust, Java, C#, C/C++, Ruby, Swift, Kotlin, shell,
+  PowerShell, batch, SQL, GraphQL, YAML, Dockerfile, INI ... now get real highlighting instead of plain text, Vue/Svelte/Astro as HTML — the workspace scan (`refresh`: when a folder
+  opens, when a manifest — `package.json`, `Cargo.toml`, `go.mod`, `pubspec.yaml`, a Gradle/`.csproj`/`Dockerfile` ... — is saved (debounced), or on request; a stale answer is dropped),
+  `summary()` for the status bar ("Vite + React", "Tauri + React (+2)", "No project detected") and `lookUpFile`. `ProjectCommandService`: `availability`/`describe` of a command and
+  `runCommand`/`runTool`, which — only on a click — open a **new integrated terminal in the project's folder** (so the portable runtimes are first on that terminal's PATH like every
+  terminal; nothing else touches PATH), ask the backend for the line quoted for that terminal's shell, type it and show the panel; a command that can't run says why and opens nothing; WSL
+  terminals are refused with a reason. Commands: `language.showStatus` (always there), `language.refresh`, `language.formatWithTool` ("Format Document With Tool", Edit menu) and
+  `language.runLinter` — they act on the **saved** file of the active *text* tab inside the folder (an edited file is saved first; a preview, an untitled or outside file is refused with a
+  reason), run the first *found* tool (the project's own first) in the terminal and otherwise say "No formatter found for <language> (looked in the project, OpenMind's runtimes and PATH)"
+  with each candidate's setup hint. The existing LSP "Format Document" (Shift+Alt+F) is untouched. UI: `LanguageStatusItem` (status bar) and `LanguageStatusDialog` ("Project & Language
+  Status..." in the Manage menu and the status bar item): the current file's language, group, support levels, syntax note, language servers (`languageView.lspLine`: OpenMind's own server's
+  live state or "LSP not configured: install it from Language Tools", any other candidate found/not found and always "OpenMind can't start this language server yet"), formatters and
+  linters; every detected project with its confidence chips (evidence in the tooltip), ambiguity warning, notes, tools and command buttons grouped Dev/Run/Build/Test/Lint/Format/Install
+  (a disabled button's reason is its tooltip *and* visible text below); and the toolchains on the computer.
 
 **Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
 (frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
@@ -1776,7 +1823,15 @@ right after start-up (the extension list marks it "Activates at every start-up (
   provider list is one file with no locking across two windows; Claude/Gemini/OpenAI model names come from the user or the connection test (no built-in list); the
   TextEditor.edit/status bar/webview samples and the preview tabs were re-checked by the automated tests (all green) but **not** re-installed by hand this time (the native file dialog
   can't be driven). A preview tab in front disabled every selected-code action with "A preview is not a text editor. Switch to a text file." and Summarize Current Preview said images are never sent; the search index and the image preview still worked; a normal close left no app/node/conhost/WebView2 process of the copy and User/Machine PATH were identical before and after. Left on disk: `E:\omai`, `E:\omidx`, `E:\wt12-target`.
-- [ ] Milestone 14 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
+- [x] **Milestone 14** — Language, framework and app stack support (`feat: expand language framework and app stack support`). New `openmind-language` crate (21 unit + 31
+  integration tests over real temp folders), `commands::language`, the frontend under `src/services/language/` and the Project & Language Status dialog (see above). **Practical, honest support —
+  not "every language"**: ~55 registry entries with per-language levels, project detection with confidence/evidence/ambiguity, project-local > portable > system tool lookup, formatter/linter
+  routing, run/build/test/lint/install commands generated from the folder and typed into a *new* terminal only on a click, editor grammars for languages the editor didn't colour, and a disabled
+  button with a visible reason wherever a runtime, SDK or platform is missing (iOS off macOS, Windows-only builds). Nothing is installed, downloaded or executed to detect; PATH/Registry untouched.
+  **Known limitations**: language servers other than OpenMind's six (rust-analyzer, gopls, clangd, JDT LS, OmniSharp, Vue/Svelte/Astro/Tailwind/YAML/Docker/SQL/GraphQL) are detected only; no
+  emulator/device manager, signing or store publishing; no notebook editor; no automatic runtime install; tool versions aren't checked; each command opens a new terminal; format/lint run through
+  the terminal on the saved file (the LSP Format Document is unchanged); symbols/frameworks are detected from marker files, not parsed. Left on disk: `E:\omlang`, `E:\wt14-target`.
+- [ ] Milestone 15 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

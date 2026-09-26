@@ -1,0 +1,139 @@
+/* --- Project & Language Status (Milestone 14) --- */
+
+.lang-dialog h3 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+}
+
+.lang-dialog h4 {
+  margin: 10px 0 4px;
+  font-size: 12px;
+}
+
+.lang-dialog p {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.lang-muted {
+  color: var(--fg-muted);
+}
+
+.lang-warn {
+  color: var(--warning-fg);
+}
+
+.lang-file {
+  font-weight: 600;
+}
+
+.lang-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.lang-chip {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.lang-project {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.lang-project h4 {
+  margin-top: 0;
+}
+
+.lang-lines {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.lang-line {
+  display: grid;
+  grid-template-columns: 10px minmax(90px, 160px) 1fr;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+}
+
+.lang-line__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--fg-disabled);
+}
+
+.lang-line--ok .lang-line__dot {
+  background-color: var(--success-fg);
+}
+
+.lang-line--warn .lang-line__dot {
+  background-color: var(--warning-fg);
+}
+
+.lang-line__detail {
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.lang-commands {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.lang-commands__label {
+  min-width: 48px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.lang-command {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lang-command:hover:not(:disabled) {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.lang-command:disabled {
+  color: var(--fg-disabled);
+  cursor: default;
+}
+
+.lang-command:focus-visible {
+  outline: 1px solid var(--focus-border);
+}
+
+.lang-reasons {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.modal.lang-dialog {
+  width: min(880px, 94vw);
+  max-height: 86vh;
+  overflow-y: auto;
+}
