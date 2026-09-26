@@ -29,8 +29,74 @@ pub struct Contributions {
     pub problem_matchers: Vec<String>,
     /// Activity bar containers and their views (see [`crate::views`]).
     pub views: crate::views::Views,
+    /// AI providers the extension offers (Milestone 13): declarative data — endpoint kind, models,
+    /// capabilities. The app's own client talks to them, so no extension code ever sees an API key.
+    pub ai_providers: Vec<AiProviderContribution>,
+    /// `aiProviders` entries that were unusable (no id/name, or a type the app has no client for).
+    pub unsupported_ai_providers: Vec<String>,
     /// Contribution points this app doesn't know at all, with how many entries each has.
     pub unsupported: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderContribution {
+    pub id: String,
+    pub name: String,
+    /// `claude`, `openai-compatible`, `gemini` or `local` (`openai` and `custom` mean `openai-compatible`).
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub capabilities: Vec<String>,
+    pub default_model: Option<String>,
+    pub models: Vec<String>,
+    pub base_url: Option<String>,
+    pub description: Option<String>,
+}
+
+/// The `type` values an `aiProviders` entry may use, and the kind each stands for.
+fn ai_provider_kind(kind: &str) -> Option<&'static str> {
+    match kind.trim().to_ascii_lowercase().as_str() {
+        "claude" | "anthropic" => Some("claude"),
+        "openai-compatible" | "openai" | "custom" => Some("openai-compatible"),
+        "gemini" => Some("gemini"),
+        "local" => Some("local"),
+        _ => None,
+    }
+}
+
+fn parse_ai_providers(value: &Value) -> (Vec<AiProviderContribution>, Vec<String>) {
+    let mut providers: Vec<AiProviderContribution> = Vec::new();
+    let mut unusable = Vec::new();
+    for entry in list(value, "aiProviders") {
+        let id = text(entry, "id");
+        let name = text(entry, "name").or_else(|| id.clone());
+        let kind = text(entry, "type").and_then(|t| ai_provider_kind(&t));
+        let (Some(id), Some(name), Some(kind)) = (id, name, kind) else {
+            unusable.push(text(entry, "id").unwrap_or_else(|| "(no id)".to_string()));
+            continue;
+        };
+        if providers.iter().any(|p| p.id == id) {
+            unusable.push(id);
+            continue;
+        }
+        let strings = |key: &str| -> Vec<String> {
+            list(entry, key)
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect()
+        };
+        providers.push(AiProviderContribution {
+            id,
+            name,
+            kind: kind.to_string(),
+            capabilities: strings("capabilities"),
+            default_model: text(entry, "defaultModel"),
+            models: strings("models"),
+            base_url: text(entry, "baseUrl"),
+            description: text(entry, "description"),
+        });
+    }
+    (providers, unusable)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -452,6 +518,7 @@ impl Contributions {
             })
             .collect();
         out.views = crate::views::parse(value);
+        (out.ai_providers, out.unsupported_ai_providers) = parse_ai_providers(value);
         out.problem_matchers = list(value, "problemMatchers")
             .iter()
             .filter_map(|entry| text(entry, "name"))
@@ -472,6 +539,7 @@ impl Contributions {
             "viewsContainers",
             "views",
             "viewsWelcome",
+            "aiProviders",
         ];
         for (point, body) in object {
             if !KNOWN.contains(&point.as_str()) {
@@ -546,6 +614,18 @@ impl Contributions {
             self.problem_matchers.len(),
             Support::Metadata,
             Some("Registered as metadata only: problem matchers aren't used yet."),
+        );
+        add(
+            "aiProviders",
+            self.ai_providers.len(),
+            Support::Supported,
+            Some("Endpoint, models and capabilities only; OpenMind's own client talks to the provider and keeps the API key."),
+        );
+        add(
+            "aiProviders: unusable entries",
+            self.unsupported_ai_providers.len(),
+            Support::Unsupported,
+            Some("An entry needs an id, a name and a type of claude, openai-compatible, gemini or local."),
         );
         let views = &self.views;
         add(
@@ -718,6 +798,30 @@ mod tests {
         assert_eq!(c.views.elsewhere, 2);
         assert!(c.views.containers.is_empty());
         assert!(c.unsupported.is_empty());
+    }
+
+    #[test]
+    fn ai_providers_are_read_and_bad_entries_are_reported() {
+        let c = parse(json!({
+            "aiProviders": [
+                {"id": "acme", "name": "Acme AI", "type": "custom", "capabilities": ["chat", "streaming"],
+                 "defaultModel": "acme-1", "models": ["acme-1", "acme-2"], "baseUrl": "https://api.acme.test/v1"},
+                {"id": "claude-x", "type": "Claude"},
+                {"id": "acme", "name": "Duplicate", "type": "gemini"},
+                {"id": "weird", "name": "Weird", "type": "telepathy"},
+                {"name": "no id", "type": "claude"}
+            ]
+        }));
+        assert_eq!(c.ai_providers.len(), 2);
+        assert_eq!(c.ai_providers[0].kind, "openai-compatible");
+        assert_eq!(c.ai_providers[0].models, ["acme-1", "acme-2"]);
+        assert_eq!(c.ai_providers[1].name, "claude-x");
+        assert_eq!(c.unsupported_ai_providers, ["acme", "weird", "(no id)"]);
+        assert!(c.unsupported.is_empty());
+        let report = c.report();
+        assert!(report
+            .iter()
+            .any(|line| line.point == "aiProviders" && line.support == Support::Supported));
     }
 
     #[test]

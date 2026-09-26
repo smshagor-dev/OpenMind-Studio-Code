@@ -24,6 +24,7 @@ openmind-extensions = { version = "0.1.0", path = "../crates/extensions" }
 openmind-git = { version = "0.1.0", path = "../crates/git" }
 openmind-fs = { version = "0.1.0", path = "../crates/fs" }
 openmind-preview = { version = "0.1.0", path = "../crates/preview" }
+openmind-ai = { version = "0.1.0", path = "../crates/ai" }
 openmind-search = { version = "0.1.0", path = "../crates/search" }
 openmind-runner = { version = "0.1.0", path = "../crates/runner" }
 openmind-runtime-manager = { version = "0.1.0", path = "../crates/runtime-manager" }
@@ -42,3 +43,6 @@ thiserror.workspace = true
 
 [target."cfg(windows)".dependencies]
 winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

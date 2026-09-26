@@ -67,6 +67,8 @@ pub struct AppState {
     pub lsp: openmind_lsp::LspManager,
     /// Installed extensions and the extension host (started on demand, stopped on app close).
     pub extensions: crate::commands::extensions::ExtensionsRuntime,
+    /// AI providers, their conversations and the requests in flight (nothing runs until the user asks).
+    pub ai: crate::commands::ai::AiRuntime,
     /// Geometry of secondary windows (the PHP Server window).
     pub window_states: openmind_settings::WindowStateService,
 }

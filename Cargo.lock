@@ -2838,6 +2838,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "openmind-ai"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "tracing-subscriber",
+ "ureq",
+]
+
+[[package]]
 name = "openmind-core"
 version = "0.1.0"
 dependencies = [
@@ -3016,6 +3030,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "getrandom 0.3.4",
+ "openmind-ai",
  "openmind-core",
  "openmind-dap",
  "openmind-db",
@@ -3037,6 +3052,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-dialog",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tracing",

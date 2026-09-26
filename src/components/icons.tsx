@@ -436,3 +436,13 @@ export function FilterIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** A chat bubble with a spark: the AI activity bar item. */
+export function AiIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2 3.5h12v7H8.5L5 13.5v-3H2z" />
+      <path d="M8 5.2v3.6M6.2 7h3.6" />
+    </Svg>
+  );
+}

@@ -50,6 +50,7 @@ import { disableBuiltinLanguageServices, freeReferencesShortcut } from "./monaco
 import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
 import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
 import { wireSearch } from "./searchWiring";
+import { wireAi } from "./ai/aiWiring";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -572,6 +573,24 @@ const extensions = wireExtensions({
       .groups.some((group) => group.tabs.some((tab) => tab.docId === docId && tab.kind === "text")),
 });
 contributionsRef = extensions.contributions;
+const ai = wireAi({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  settings,
+  extensions: extensions.registry,
+  layout,
+  editor,
+  terminal,
+  workspace,
+  previews: filePreviews,
+});
+
+/** Reads the configured AI providers (a local file) and starts listening; nothing is sent anywhere. */
+async function startAi(): Promise<void> {
+  await extensions.registry.ensureLoaded();
+  await Promise.all([ai.providers.initialize(), ai.chat.initialize()]);
+}
 
 /**
  * Fire-and-forget command execution for UI event handlers: a failing command
@@ -651,6 +670,8 @@ export const container = {
   quickOpen: searchWiring.quickOpen,
   ipc: tauriIpcClient,
   extensions,
+  ai,
+  startAi,
   startExtensions: extensions.start,
   finishExtensionsStartup: extensions.finishStartup,
 };

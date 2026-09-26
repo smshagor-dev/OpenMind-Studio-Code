@@ -35,6 +35,16 @@ impl<'a> EditorSettingsRepository<'a> {
         .map_err(DbError::Query)?;
         Ok(())
     }
+
+    /// Removes the key (nothing happens when it was not set).
+    pub async fn delete(&self, key: &str) -> Result<(), DbError> {
+        sqlx::query("DELETE FROM editor_settings WHERE key = ?1")
+            .bind(key)
+            .execute(self.pool)
+            .await
+            .map_err(DbError::Query)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -51,6 +61,19 @@ mod tests {
         let repo = EditorSettingsRepository::new(db.pool());
 
         assert_eq!(repo.get("sidebar.visible").await.expect("get"), None);
+    }
+
+    #[tokio::test]
+    async fn delete_removes_a_key_and_ignores_a_missing_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = Db::connect(&dir.path().join("test.db"))
+            .await
+            .expect("connect");
+        let repo = EditorSettingsRepository::new(db.pool());
+        repo.set("k", "v").await.expect("set");
+        repo.delete("k").await.expect("delete");
+        assert_eq!(repo.get("k").await.expect("get"), None);
+        repo.delete("k").await.expect("delete again");
     }
 
     #[tokio::test]

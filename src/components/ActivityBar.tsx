@@ -6,6 +6,7 @@ import { container } from "../services/container";
 import type { SideView } from "../services/layoutService";
 import { MANAGE_MENU } from "../services/menus";
 import {
+  AiIcon,
   DebugIcon,
   ExtensionsIcon,
   FilesIcon,
@@ -47,6 +48,8 @@ const VIEW_ITEMS: readonly ViewItem[] = [
   },
 ];
 
+const AI_ITEM: ViewItem = { view: "ai", label: "AI", command: "ai.openChat", icon: <AiIcon /> };
+
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
 const UNAVAILABLE_ITEMS: readonly { label: string; reason: string; icon: ReactNode }[] = [
   {
@@ -72,6 +75,12 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
     setManageAnchor(null);
   }, []);
   useDismissOnOutside(manageAnchor !== null, closeManage);
+  useSyncExternalStore(
+    (listener) => container.ai.providers.subscribe(listener),
+    () => container.ai.providers.getVersion(),
+  );
+  // The AI item exists only while a provider is available: no provider, no icon, no disabled placeholder.
+  const aiVisible = container.ai.providers.panelVisible();
   const views = container.extensions.views;
   useSyncExternalStore(
     (listener) => views.subscribe(listener),
@@ -81,7 +90,7 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
   return (
     <nav className="activity-bar" aria-label="Activity bar">
       <div className="activity-bar__top">
-        {VIEW_ITEMS.map((item) => {
+        {[...VIEW_ITEMS, ...(aiVisible ? [AI_ITEM] : [])].map((item) => {
           const active = sidebarVisible && layout.activeView === item.view;
           return (
             <button

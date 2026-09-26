@@ -17,6 +17,8 @@ import { ActivityBar } from "./components/ActivityBar";
 import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
+import { AiConfirmDialog } from "./components/ai/AiConfirmDialog";
+import { AiProviderManager } from "./components/ai/AiProviderManager";
 import { QuickOpen } from "./components/QuickOpen";
 import { ExtensionDialogs } from "./components/ExtensionDialogs";
 import { ExtensionPrompts } from "./components/ExtensionPrompts";
@@ -131,6 +133,8 @@ export function App() {
       ) : null}
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
       <QuickOpen />
+      <AiProviderManager />
+      <AiConfirmDialog />
       <ExtensionDialogs />
       <ExtensionPrompts />
       {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}

@@ -216,6 +216,22 @@ describe("TerminalService", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it("activeSelection is what is selected in the active terminal, and empty otherwise", async () => {
+    const service = makeService();
+    await service.initialize();
+    expect(service.activeSelection()).toBe("");
+    const id = (await service.createTerminal()) ?? "";
+    // A view that can't report a selection.
+    service.attachSink(id, { write: vi.fn(), clear: vi.fn() });
+    expect(service.activeSelection()).toBe("");
+    service.attachSink(id, {
+      write: vi.fn(),
+      clear: vi.fn(),
+      selection: () => "error: command not found",
+    });
+    expect(service.activeSelection()).toBe("error: command not found");
+  });
+
   it("clear asks the attached view to clear", async () => {
     const service = makeService();
     await service.initialize();

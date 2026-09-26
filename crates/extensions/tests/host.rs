@@ -392,6 +392,39 @@ fn the_language_and_theme_extensions_install_as_data_and_need_no_host() {
     assert!(node().is_none() || fixture.events.exits.lock().expect("lock").is_empty());
 }
 
+#[test]
+fn an_ai_provider_extension_installs_as_data_and_its_contribution_moves_with_enable_disable() {
+    let fixture = setup();
+    let extension = install(&fixture, "ai-provider-basic");
+    assert!(extension.runtime_requirement.is_none(), "no code, no host");
+    let providers = &extension.manifest.contributes.ai_providers;
+    assert_eq!(providers.len(), 2);
+    assert_eq!(providers[0].kind, "openai-compatible");
+    assert_eq!(providers[0].default_model.as_deref(), Some("sample-model"));
+    assert_eq!(providers[1].kind, "local");
+    assert!(extension
+        .points
+        .iter()
+        .any(|point| point.point == "aiProviders" && point.count == 2));
+    // The contribution is part of what the listing reports only while the extension is enabled.
+    fixture
+        .store
+        .set_enabled(&extension.id, false)
+        .expect("disable");
+    let listed = fixture.store.list();
+    let entry = listed
+        .extensions
+        .iter()
+        .find(|e| e.id == extension.id)
+        .expect("still listed");
+    assert!(!entry.enabled);
+    fixture
+        .store
+        .set_enabled(&extension.id, true)
+        .expect("enable");
+    assert!(fixture.store.list().extensions[0].enabled);
+}
+
 // ---- Milestone 10.1: the regression pack (permissions, cleanup, duplicates, throwing commands) ------------------------
 
 fn run(host: &ExtensionHost, id: &str) {
@@ -768,6 +801,7 @@ fn every_sample_installs_disables_enables_and_uninstalls_cleanly() {
         "statusbar-basic",
         "statusbar-dispose",
         "unsupported-api-still-clear",
+        "ai-provider-basic",
         "webview-panel-basic",
         "webview-panel-message",
         "webview-local-resource",

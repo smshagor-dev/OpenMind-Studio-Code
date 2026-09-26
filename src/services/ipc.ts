@@ -6,6 +6,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 
 import { type ExtensionsIpc, tauriExtensionsIpc } from "./extensionsIpc";
 import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
+import { type AiIpc, tauriAiIpc } from "./ai/aiIpc";
 import { type SearchIpc, tauriSearchIpc } from "./searchIpc";
 
 // Mirrors openmind_fs::TextEncoding (#[serde(rename_all = "kebab-case")]).
@@ -402,7 +403,7 @@ export interface RuntimeStatus {
 // clients in tests) that never rely on `this`, and method-shorthand syntax
 // makes eslint's `unbound-method` rule flag every bare `ipc.someMethod`
 // reference (e.g. `expect(ipc.documentSave).toHaveBeenCalledWith(...)`).
-export interface IpcClient extends ExtensionsIpc, PreviewIpc, SearchIpc {
+export interface IpcClient extends ExtensionsIpc, PreviewIpc, SearchIpc, AiIpc {
   // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
@@ -901,6 +902,7 @@ export const tauriIpcClient: IpcClient = {
   ...tauriExtensionsIpc,
   ...tauriPreviewIpc,
   ...tauriSearchIpc,
+  ...tauriAiIpc,
   async openDocumentDialog() {
     const selected = await openDialog({ multiple: false, directory: false });
     return typeof selected === "string" ? selected : null;

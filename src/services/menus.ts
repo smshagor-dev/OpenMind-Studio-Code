@@ -401,6 +401,7 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Snippets", "preferences.configureSnippets"),
   cmd("Runtimes", "runtime.manage"),
   cmd("Language Tools", "lsp.manage"),
+  cmd("AI Providers...", "ai.manageProviders"),
   cmd("Tasks", "tasks.configure"),
   sub("Themes", [
     cmd("Color Theme...", "preferences.colorTheme"),

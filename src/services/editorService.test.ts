@@ -65,6 +65,72 @@ describe("EditorService", () => {
     expect(fake.editor.trigger).toHaveBeenCalledWith("menu", "editor.action.commentLine", null);
   });
 
+  it("selectedText reports the selection with its language and lines, and nothing for an empty one", () => {
+    const service = new EditorService(createFakeIpc());
+    expect(service.selectedText()).toBeNull();
+    const fake = createFakeEditor(model("hello world\nsecond line"));
+    service.attach(fake.asEditor);
+    expect(service.selectedText()).toMatchObject({
+      text: "hello",
+      languageId: "markdown",
+      startLine: 1,
+      endLine: 1,
+    });
+    fake.selections[0] = new monaco.Selection(1, 3, 1, 3);
+    expect(service.selectedText()).toBeNull();
+    fake.selections[0] = new monaco.Selection(1, 1, 2, 4);
+    expect(service.selectedText()).toMatchObject({
+      text: "hello world\nsec",
+      startLine: 1,
+      endLine: 2,
+    });
+  });
+
+  it("insertAtCursor replaces the selection in one edit, and refuses without an editor", () => {
+    const service = new EditorService(createFakeIpc());
+    expect(service.insertAtCursor("x")).toBe(false);
+    const fake = createFakeEditor(model("hello"));
+    const executeEdits = vi.fn();
+    const asEditor = { ...fake.editor, executeEdits } as unknown as CodeEditorLike;
+    service.attach(asEditor);
+    expect(service.insertAtCursor("bye")).toBe(true);
+    expect(executeEdits).toHaveBeenCalledWith("ai", [
+      { range: fake.selections[0], text: "bye", forceMoveMarkers: true },
+    ]);
+    expect(fake.editor.focus).toHaveBeenCalled();
+    // A fake editor with no `executeEdits` can't take the text.
+    const bare = new EditorService(createFakeIpc());
+    bare.attach(createFakeEditor(model("hi")).asEditor);
+    expect(bare.insertAtCursor("bye")).toBe(false);
+  });
+
+  it("offers extension and AI actions side by side in the palette, with their own ids", () => {
+    const service = new EditorService(createFakeIpc());
+    const addAction = vi.fn(() => ({ dispose: vi.fn() }));
+    const asEditor = {
+      ...createFakeEditor(model("hi")).editor,
+      addAction,
+    } as unknown as CodeEditorLike;
+    service.attach(asEditor);
+    service.setExtensionActions([
+      { command: "hello.say", label: "Say Hello", inContextMenu: true },
+    ]);
+    service.setAiActions([
+      { command: "ai.openChat", label: "AI: Open Chat", inContextMenu: false },
+    ]);
+    const calls = addAction.mock.calls as unknown as [
+      { id: string; contextMenuGroupId?: string },
+    ][];
+    const last = calls.slice(-2).map(([action]) => action);
+    expect(last.map((a) => a.id)).toEqual(["extension.hello.say", "ai.ai.openChat"]);
+    expect(last[0]?.contextMenuGroupId).toBe("9_extensions");
+    expect(last[1]?.contextMenuGroupId).toBeUndefined();
+    // Clearing the AI actions (no provider any more) leaves only the extension's.
+    service.setAiActions([]);
+    const afterClear = (addAction.mock.calls as unknown as [{ id: string }][]).slice(-1)[0]?.[0];
+    expect(afterClear?.id).toBe("extension.hello.say");
+  });
+
   it("run is a no-op without an editor or without a model", () => {
     const service = new EditorService(createFakeIpc());
     expect(() => {

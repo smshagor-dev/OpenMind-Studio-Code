@@ -26,6 +26,8 @@ export interface TerminalState {
 export interface TerminalSink {
   write: (data: Uint8Array) => void;
   clear: () => void;
+  /** The text the user has selected in this terminal view (empty when nothing is). */
+  selection?: () => string;
 }
 
 const STATE_KEY = "terminal.state";
@@ -224,6 +226,12 @@ export class TerminalService {
   }
 
   /** Copies terminal text to the system clipboard; a failure is reported, not swallowed. */
+  /** The text selected in the active terminal (empty when nothing is): the AI's "explain terminal error" reads it. */
+  activeSelection(): string {
+    const id = this.state.activeId;
+    return (id === null ? undefined : this.sinks.get(id))?.selection?.() ?? "";
+  }
+
   async copyToClipboard(text: string): Promise<void> {
     if (text === "") {
       return;

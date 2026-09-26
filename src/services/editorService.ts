@@ -8,7 +8,7 @@ import type { IpcClient } from "./ipc";
 export type CodeEditorLike = Partial<
   Pick<
     monaco.editor.IStandaloneCodeEditor,
-    "addAction" | "setSelections" | "revealRangeInCenterIfOutsideViewport"
+    "addAction" | "setSelections" | "revealRangeInCenterIfOutsideViewport" | "executeEdits"
   >
 > &
   Pick<
@@ -122,6 +122,7 @@ export class EditorService {
   private editor: CodeEditorLike | null = null;
   private readonly editors = new Set<CodeEditorLike>();
   private extensionActions: ExtensionEditorAction[] = [];
+  private aiActions: ExtensionEditorAction[] = [];
   private runExtensionCommand: ((command: string) => void) | null = null;
   private readonly actionDisposables = new Map<CodeEditorLike, { dispose: () => void }[]>();
   private pendingReveal: (RevealRequest & { at: number }) | null = null;
@@ -184,6 +185,12 @@ export class EditorService {
     for (const editor of this.editors) this.applyActions(editor);
   }
 
+  /** The AI commands in the palette and the right-click menu — set only while an AI provider is enabled. */
+  setAiActions(actions: ExtensionEditorAction[]): void {
+    this.aiActions = actions;
+    for (const editor of this.editors) this.applyActions(editor);
+  }
+
   private disposeActions(editor: CodeEditorLike): void {
     for (const disposable of this.actionDisposables.get(editor) ?? []) disposable.dispose();
     this.actionDisposables.delete(editor);
@@ -193,11 +200,19 @@ export class EditorService {
     this.disposeActions(editor);
     const add = editor.addAction;
     if (add === undefined) return;
-    const disposables = this.extensionActions.map((action, index) =>
+    const own = [
+      ...this.extensionActions.map((action) => ({
+        action,
+        prefix: "extension",
+        group: "9_extensions",
+      })),
+      ...this.aiActions.map((action) => ({ action, prefix: "ai", group: "9_ai" })),
+    ];
+    const disposables = own.map(({ action, prefix, group }, index) =>
       add.call(editor, {
-        id: `extension.${action.command}`,
+        id: `${prefix}.${action.command}`,
         label: action.label,
-        contextMenuGroupId: action.inContextMenu ? "9_extensions" : undefined,
+        contextMenuGroupId: action.inContextMenu ? group : undefined,
         contextMenuOrder: index,
         run: () => {
           this.runExtensionCommand?.(action.command);
@@ -338,6 +353,36 @@ export class EditorService {
       return model.getValueInRange(selection).trim() || null;
     }
     return model.getWordAtPosition(selection.getPosition())?.word ?? null;
+  }
+
+  /** What is selected in the focused editor (all selections' first one), with its language and lines, or `null`. */
+  selectedText(): {
+    text: string;
+    languageId: string;
+    startLine: number;
+    endLine: number;
+    uri: string;
+  } | null {
+    const model = this.editor?.getModel();
+    const selection = this.editor?.getSelections()?.[0];
+    if (!model || !selection || selection.isEmpty()) return null;
+    return {
+      text: model.getValueInRange(selection),
+      languageId: model.getLanguageId(),
+      startLine: selection.startLineNumber,
+      endLine: selection.endLineNumber,
+      uri: model.uri.toString(),
+    };
+  }
+
+  /** Replaces the selection (or inserts at the cursor) as one undoable edit; false when there is no editor. */
+  insertAtCursor(text: string): boolean {
+    const editor = this.editor;
+    const selection = editor?.getSelections()?.[0];
+    if (!editor?.executeEdits || !selection || editor.getModel() == null) return false;
+    editor.executeEdits("ai", [{ range: selection, text, forceMoveMarkers: true }]);
+    editor.focus();
+    return true;
   }
 
   hasEditor(): boolean {

@@ -1,0 +1,67 @@
+import { useState } from "react";
+
+import { container } from "../../services/container";
+import { useChat } from "./aiHooks";
+
+/** Saved conversations: open one, delete one, or clear them all. (Empty when saving is off.) */
+export function History() {
+  const chat = useChat();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ai-history">
+      <button
+        type="button"
+        className="ai-link"
+        aria-expanded={open}
+        onClick={() => {
+          if (!open) void container.ai.chat.loadHistory();
+          setOpen(!open);
+        }}
+      >
+        {open ? "Hide history" : "Show history"}
+      </button>
+      {open && chat.history.length === 0 ? (
+        <p className="ai-note">No saved conversations.</p>
+      ) : null}
+      {open && chat.history.length > 0 ? (
+        <>
+          <ul className="ai-history__list">
+            {chat.history.map((entry) => (
+              <li key={entry.id} className="ai-history__item">
+                <button
+                  type="button"
+                  className="ai-history__open"
+                  title={entry.title}
+                  onClick={() => {
+                    void container.ai.chat.open(entry.id);
+                  }}
+                >
+                  {entry.title}
+                </button>
+                <button
+                  type="button"
+                  className="ai-link"
+                  aria-label={`Delete ${entry.title}`}
+                  onClick={() => {
+                    void container.ai.chat.deleteConversation(entry.id);
+                  }}
+                >
+                  Delete
+                </button>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="ai-link"
+            onClick={() => {
+              void container.ai.chat.clearHistory();
+            }}
+          >
+            Clear all history
+          </button>
+        </>
+      ) : null}
+    </div>
+  );
+}

@@ -8,7 +8,8 @@ targeting Windows primarily with future Linux/macOS support. Not a web app.
 OpenMind Studio is the desktop IDE in the broader OpenMind ecosystem:
 
 - **OpenMind Studio** — Desktop IDE (this project)
-- **OpenMind AI** — AI Assistant (future; see the planned `openmind-ai` crate below)
+- **OpenMind AI** — AI Assistant (provider architecture and chat landed in Milestone 13 as the `openmind-ai` crate; the
+  OpenMind AI provider itself is future)
 - **OpenMind Runtime** — Portable Runtime Manager (foundation landed in Milestone 5 as the
   `openmind-runtime-manager` crate)
 - **OpenMind Extensions** — extension ecosystem (VS Code-compatible foundation landed in Milestone 10 as the
@@ -92,7 +93,9 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   extensions contribute — every schema/store function takes `&Extras` (`definitions`, `find`, `effective`, `issues`, `set_value`,
   `reset_value`, `validate_text`); an extension can't replace a built-in id, its themes become extra options of
   `workbench.colorTheme` (`extension:<id>/<label>`), its category is added after the built-in ones. New built-in setting
-  `extensions.allowSystemNode` (user, default off).
+  `extensions.allowSystemNode` (user, default off). **AI (Milestone 13)**: category `AI` with `ai.enabled` (user, default on: the master
+  switch for the AI panel and commands), `ai.defaultProvider`, `ai.defaultModel`, `ai.confirmBeforeOnlineRequest` (default on) and
+  `ai.saveConversationHistory` (default on) — all user scope, each with a real consumer in `src/services/ai/`.
 - `openmind-fs` — file I/O with encoding detection (BOM-sniffed UTF-8/UTF-16LE/UTF-16BE, else
   Windows-1252 fallback) and line-ending detection (LF/CRLF/CR/Mixed), plus (Milestone 3) explorer
   file-system primitives: `read_dir` (one level only — the explorer tree loads lazily, so nothing
@@ -390,6 +393,29 @@ Only depend on a workspace crate you actually call into — an unused `[dependen
 lint away from a compile warning and dead weight either way; two path deps were caught and removed
 during the Milestone 1 → rebrand pass for exactly this reason.
 
+- `openmind-ai` (Milestone 13) — the AI provider layer, Tauri-agnostic. **Providers are data** (`provider::ProviderConfig`: id, name, kind, endpoint,
+  model, known models, enabled, `source` = the contributing extension, capabilities); one client speaks three wire formats chosen by
+  `ProviderKind`: `claude` (Anthropic Messages API, `x-api-key`), `openai-compatible` (Chat Completions — OpenAI and any server that copies it,
+  i.e. a *custom endpoint*) and `gemini` (`generateContent`/`streamGenerateContent`, key in `x-goog-api-key`, never in the URL), plus `local`
+  = the OpenAI-compatible protocol restricted to a loopback address (Ollama, LM Studio, llama.cpp ...): **OpenMind runs no model itself**, it talks to
+  one the user started. A provider can't claim more than `ProviderKind::implemented` (chat, streaming, code assistance; embeddings for OpenAI-
+  compatible/Gemini/local; vision and tool calling are parsed but never claimed). `normalized()` checks a provider: id/name/model, endpoint
+  `https` only (`http` only for `localhost`/`127.*`/`::1`), no user info in the address. `wire` = pure request builders and answer/stream parsers
+  (unit-tested for the exact request shape of each kind, SSE lines, model lists, embeddings, error messages by status), `transport` = the only
+  network code (ureq, worker thread + channel so cancelling returns at once, **redirects never followed** so an `Authorization` header can't leave
+  for another host, 15 s connect / 120 s first byte / 600 s body limits), `client` = `chat` (streamed or whole), `list_models` (the connection
+  test), `embed_text`/`list_embedding_models` (the embeddings *foundation*: callable, tested, used by nothing — no semantic index, no vector
+  store, no automatic workspace embeddings), `registry::ProviderStore` (`data/ai/providers.json`, no secrets, atomic write, a damaged file is
+  never overwritten), `store::ConversationStore` (`data/ai/conversations.sqlite`, created only when first used) and `error::redact` (removes a
+  key and `key=` query values from any message). **Keys**: passed into one call, never stored, logged or put in an error (`tests/
+  no_key_in_logs.rs` captures every log line of a real run; error messages are redacted). Cancelling stops the wait immediately; the worker
+  thread ends when the server closes or at its time limit (a stalled server can keep one thread until then).
+  `src-tauri/src/commands/ai.rs` (`ai_providers_list|provider_save|delete|set_enabled|set_key|clear_key|test`, `ai_chat_send` + `ai:chunk` events to
+  the asking window, `ai_request_cancel`, `ai_conversation*`) owns storage of keys: **encrypted with Windows DPAPI** (`secret.rs`) in `editor_settings`
+  as `ai.key.<provider id>`; the UI hands a key over once (`ai_provider_set_key`) and only ever learns `hasKey`. A provider from an extension is
+  **refused by the backend too** while its extension is disabled or gone (`provider_offered`). Nothing runs at launch: the provider list is a local
+  file read, the history file appears on first use, and the only requests are `ai_chat_send` (Send / an action) and `ai_provider_test`
+  (Test connection). Window close cancels every request in flight.
 - `openmind-extensions` (Milestone 10) — the VS Code-compatible extension system foundation. **OpenMind Studio supports a VS Code
   API subset**; nothing here is VS Code's source. Layout (portable, never AppData): `extensions/installed/<publisher>.<name>-<version>/`,
   `extensions/disabled/…` (enabling/disabling *moves the folder*, so the state persists by location and there is no registry file that
@@ -482,9 +508,8 @@ during the Milestone 1 → rebrand pass for exactly this reason.
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
-`openmind-git` (Git client), `openmind-search`
-(indexed workspace/symbol search), `openmind-ai` (AI provider plugin architecture, including the
-future OpenMind AI provider), `openmind-plugin-host`.
+`openmind-plugin-host` (the OpenMind AI provider itself, embeddings/RAG and an agent mode are also future work; the AI provider
+layer is `openmind-ai`, landed in Milestone 13).
 
 ## Frontend architecture
 
@@ -805,6 +830,33 @@ internals.
   Markdown through the existing safe renderer. Preview tabs are not documents: `activeTextEditor` is undefined while one is active, an extension edit for a file that is only previewed is
   refused ("isn't open"), the status bar shows no line/encoding info for them. pdf.js lives in `public/pdf` (worker, character maps, fonts, wasm; copied by `scripts/copy-pdf-assets.mjs` in
   `predev`/`prebuild`, git-ignored) and is loaded lazily (a separate chunk) — the same Rolldown-worker workaround as Monaco's.
+- **AI providers and chat (Milestone 13).** All in `src/services/ai/`, wired by `wireAi` (`aiWiring.ts`, called from `container.ts`; `container.ai` = `{providers, chat, actions, ui}`,
+  started by `startAi` after the extensions). **The rule that shapes everything: the AI panel exists only while a provider is available.** `AiProviderService` keeps the
+  configured providers (the backend owns the list; an API key is stored encrypted and never comes back — the UI only learns `hasKey`) and computes for each one `available`:
+  turned on, and — when it came from an extension — that extension installed, enabled and still offering it (`ext:<extension id>/<contribution id>`; `sourceMissing` when the
+  extension is gone, which makes the provider deletable). `panelVisible()` = `ai.enabled` and at least one provider available. That single value drives: the **AI activity bar
+  item** (absent otherwise — no disabled placeholder), the **side bar view** (`SideBar` falls back to the Explorer when the persisted `ai` view has no provider), the **AI
+  commands** (`syncCommands` *registers* `ai.openChat`, `ai.newChat`, `ai.explainSelection`, `ai.suggestFix`, `ai.generateDocs`, `ai.explainTerminalError`,
+  `ai.summarizePreview` when a provider becomes available and *unregisters* them when the last one goes; `EditorService.setAiActions` does the same for the F1 palette and the
+  right-click menu) and the running request (`AiChatService.onProvidersChanged` stops it and drops a waiting confirmation). Only `ai.manageProviders` ("AI Providers..." in the
+  Manage menu) is always registered: it is how the first provider gets added. Extensions' providers are created (once, then editable) when their extension is enabled
+  (`syncContributions`), disabling the extension makes them unavailable at once and enabling brings them back; the backend refuses them too. `AiChatService`: one open conversation,
+  `sendDraft()` (the message box's text lives in the service: `draft`, emptied on send and **restored when the user declines the confirmation**), `submit()`, `confirm()`/
+  `cancelConfirmation()`, streaming (`ai:chunk` events matched by request id), `stop()`, `retry()` after a failed or stopped answer (an error stays in the conversation),
+  `contextWarning()` (about 30 000 tokens), local history (`ai.saveConversationHistory`; list/open/delete/clear all) and pure `sendBlocker()` reasons (no provider, key, model, request
+  running). **Before text goes to an online provider the user sees a dialog** (`AiConfirmDialog`): "This will send <selected code | terminal output | preview text | your message>
+  (about N characters) to <provider> (<host>). It leaves this computer." — unless `ai.confirmBeforeOnlineRequest` is off *and* the message is small (more than 20 000 characters
+  always asks); a provider on this computer (loopback) is never asked about. `AiActionsService` builds the five actions from what the user selected or is looking at *at the moment
+  they run one* (`AiContextSource`): the active text editor's selection (only while a **text tab** is in front — a preview tab is not an `activeTextEditor`, with the reason in the
+  tooltip), the active terminal's selection (`TerminalSink.selection`, so nothing without a selection), and the active file preview's already-loaded text (Markdown, HTML source, CSV
+  rows, DOCX paragraphs, LaTeX structure; images, PDFs and spreadsheets are refused with a reason and never sent); more than 100 000 characters is refused, not cut; each action
+  has `reason()` (why it can't run) and the same reason is its disabled tooltip and the notice a palette run shows. "Insert" on an answer's code block uses
+  `EditorService.insertAtCursor` (one undoable edit that replaces the selection, only on a click, only into a text tab). UI: `AiView` (provider and model pickers, an Online/Local
+  label with the host, the five action buttons, the conversation as text nodes and code blocks with Copy/Insert — never HTML —, message box with Send/Stop/New chat/Clear chat,
+  history; a provider without key or model shows a configuration prompt instead of a chat), `AiProviderManager` (list with kind, Online/Local, key state, status; Enabled, Edit,
+  Test connection, Set as default, Delete with confirmation; the form masks the key, empty means keep, "Clear saved API key"; Clear AI history with confirmation) and
+  `AiConfirmDialog`, mounted in `App.tsx`.
+
 **Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
 (frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
 doesn't — `workbench--inactive`, from window focus/blur; editor `#121314`; side bar, panel and secondary side bar
@@ -875,7 +927,8 @@ against the extension). The permission column is what the extension must have be
 | `ExtensionContext` | P | `subscriptions`, `extensionPath`, `extensionUri`, `globalStorageUri/Path`, `storageUri`, `logUri/Path`, `globalState`, `workspaceState` (JSON mementos), `asAbsolutePath`, `extension` | No `secrets`, `environmentVariableCollection`, `extensionMode`, `globalState.setKeysForSync` (no-op) | none |
 
 Activation events: `*`, `onStartupFinished`, `onCommand:`, `onLanguage:`, `workspaceContains:` work; `onView:` is recorded and never triggers; every other event is
-listed as unsupported. Contribution points: commands, menus (`commandPalette`, `editor/context`, `explorer/context`), keybindings, configuration (boolean,
+listed as unsupported. `aiProviders` (Milestone 13) is supported as data: the app's own client talks to the provider, extension code is not involved and never sees a key; an entry
+needs an id, a name and a type of claude, openai-compatible, gemini or local. Contribution points: commands, menus (`commandPalette`, `editor/context`, `explorer/context`), keybindings, configuration (boolean,
 integer, whole-number `number`, string, string enums), configurationDefaults (metadata), languages, snippets and themes are used; grammars and icon themes,
 debuggers and problemMatchers are stored and shown ("This contribution point is not supported yet." / metadata only); every other point is counted and shown as
 unsupported.
@@ -897,6 +950,8 @@ OpenMind Studio/
     themes/                   on-disk theme/icon-theme assets (future milestone)
     language-servers/         npm-installed language servers, one folder per package revision (Milestone 7)
     settings/                 settings.json and keybindings.json (Milestone 9; edited by hand or from the Settings page)
+    data/ai/                  providers.json (no secrets) and conversations.sqlite, created only when AI is used (Milestone 13)
+    data/search-index/        the workspace search index, one SQLite file per folder (Milestone 12)
 ```
 
 `data/`, `runtimes/`, `logs/`, `cache/`, `language-servers/`, `extensions/` (Milestone 10) and `settings/` (Milestone 9) are in use; `themes/`
@@ -1681,8 +1736,46 @@ right after start-up (the extension list marks it "Activates at every start-up (
   folders excluded), Ctrl+P (fuzzy, glob, path), text search options and click-to-line, incremental updates (create/edit/rename/delete/save), symbol search and open, text-based references,
   index persisted across relaunch, clean close with no leftover process. The three sample extensions were **not** re-installed by hand this time (the native file dialog could not be driven);
   Extension System and previews are covered by their automated tests, which stay green. Left on disk: `E:\omidx`, `E:\wt12-target`.
-- [ ] Milestone 13 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
-  including the future OpenMind AI integration).
+- [x] **Milestone 13** — AI provider plugin architecture (`feat: add ai provider plugin architecture`). New `openmind-ai` crate (see above), `commands::ai`, the frontend AI services and UI
+  (see "AI providers and chat (Milestone 13)"), the extension contribution point `contributes.aiProviders`, five `ai.*` settings. **Providers**: Claude (Anthropic Messages API), OpenAI /
+  any OpenAI-compatible endpoint (the custom endpoint), Gemini, and *local* (an OpenAI-compatible server on this computer, e.g. Ollama/LM Studio — OpenMind runs no model itself, and
+  a local provider is refused unless its address is loopback). Chat with streaming, Stop, error display and Retry for all four; connection test = list models; embeddings are an interface
+  only (`embed_text`, `list_embedding_models`; OpenAI-compatible/Gemini/local), used by nothing — no RAG, no vector store, no workspace embeddings. **The AI panel appears only when a
+  provider is enabled**: no provider (or `ai.enabled` off) means no activity bar item, no side bar panel, no disabled placeholder, no AI command in the palette/menus/context menu
+  (only "AI Providers..." in the Manage menu, which opens the manager dialog, exists); a provider from an extension follows the extension (disable/uninstall -> gone at once, enable ->
+  back; a crash or an unavailable host doesn't matter because the extension contributes *data* and OpenMind's own client talks to the provider). **Extension model**: `contributes.aiProviders`
+  entries (`id`, `name`, `type` = claude | openai-compatible (`openai`, `custom`) | gemini | local, `capabilities`, `defaultModel`, `models`, `baseUrl`, `description`) are read by
+  `openmind-extensions` (listed as *supported*, unusable entries reported); the API key is never given to extension code (there is none involved) and the extension has no way to read it.
+  Not supported for a provider contribution: a per-provider configuration schema (the fields are fixed: endpoint, model, key), an icon, a custom activity view (the panel is OpenMind's own).
+  **Privacy/security**: no request at launch or in the background (nothing but a local file read; verified with a mock server that saw no request and the app folder had no `data/ai` until
+  used); every request starts from Send, an action button or Test connection; online providers ask first (provider, host, content kind, size); no automatic project scan, file upload or terminal
+  upload; no telemetry; keys are DPAPI-encrypted (`dpapi1:` in `editor_settings`, verified in the database) — on a non-Windows build they would be stored as they are (the same limit as the
+  MariaDB password) —, never returned to the UI, logged, put in an error, in a URL (Gemini uses a header) or in `providers.json`; endpoints are https (http only for this computer), no
+  redirects; conversations stay in `data/ai/conversations.sqlite` (created on first use, off with `ai.saveConversationHistory`, cleared from the panel or the manager). **Tests**:
+  Rust — 23 unit tests (request shapes for all three wire formats, SSE parsing, kinds' names, endpoint rules, registry add/update/delete/enable, conversation store incl. reopen,
+  redaction) and 10 mock-server tests (`127.0.0.1`, no real API: streaming OpenAI/Claude, Gemini whole answer with the key out of the URL, provider error mapped and redacted, dead
+  server, cancellation returns quickly, key required unless local, disabled provider refused, model listing, embeddings), `no_key_in_logs.rs` (every log line of a real run), extension
+  contribution parsing and a sample extension (`ai-provider-basic`, `ai-provider-mock`), `provider_offered` (an extension's provider is refused by the backend while the extension is off);
+  TypeScript — provider service (panel visibility rules, extension enable/disable/uninstall, configuration, key never kept, test), chat service (confirmation, local vs online, large
+  messages, streaming, Stop, error + Retry, persistence on/off, history, long-conversation warning, declined draft restored), actions (selected-code needs a text editor, preview is not
+  one, terminal selection, preview text extraction, insert), wiring (commands registered/unregistered with the provider), message parsing, `EditorService`/`TerminalService` additions,
+  component tests (`aiViews.test.tsx`) and an app-level test (`App.ai.test.tsx`: no provider -> no AI item, enabled -> panel, disabled -> Explorer, confirmation names the provider, key
+  prompt, first provider from the manager). **Verified by hand in the built app** (fresh portable copy `E:\omai`, workspace `My Project` with a space, a mock OpenAI-compatible server on
+  127.0.0.1:18080 driven through the WebView2 debugging port): launch showed no AI item and created no `data/ai` and the mock saw no request; a provider added from the manager
+  (Manage > AI Providers...) made the AI item appear; Test connection listed the mock's models; a message streamed in and was rendered with a code block; the connection dropping showed the
+  error with Retry, which worked; Stop cancelled a slow stream and kept the text; Explain Selected Code sent the selection with file, language and lines; Insert put the code into the
+  buffer (unsaved); an online provider (`https://api.example.com`) asked "Send to Online Example? This will send your message (about 32 characters) to Online Example (api.example.com). It
+  leaves this computer." and Cancel sent nothing; the key field was a password field and the key was in the database only as `dpapi1:...` (not in `providers.json`, not in the log);
+  history and providers survived a relaunch with no request at start; turning both providers off removed the AI item and the panel fell back to the Explorer, turning one on brought it
+  back; an extension's provider (copied into `extensions/installed`) appeared with the extension, Disable (Extensions view) removed the AI item at once, Enable brought it back,
+  Uninstall removed it again and left the provider deletable; the Extensions view still said nothing had been fetched from Open VSX until Load Popular. Real problem found by hand and fixed:
+  `serde`'s `kebab-case` spelled the kind `open-ai-compatible`, so saving an OpenAI-compatible provider failed (a regression test now pins every kind's spelling). Also fixed after the manual pass:
+  text typed before a declined confirmation is put back in the message box, an extension's provider whose extension was uninstalled can be deleted, the provider/model row wraps in a narrow side bar.
+  **Known limitations**: an API-key-less remote provider isn't offered (a key is required unless the address is on this computer); no vision, tool calling, agent mode, RAG, embeddings UI or
+  OpenMind AI provider; streaming stops only when the answer or the time limit ends the worker thread (the wait itself stops at once); conversation search/rename don't exist; the
+  provider list is one file with no locking across two windows; Claude/Gemini/OpenAI model names come from the user or the connection test (no built-in list); the
+  TextEditor.edit/status bar/webview samples and the preview tabs were re-checked by the automated tests (all green) but **not** re-installed by hand this time (the native file dialog
+  can't be driven). A preview tab in front disabled every selected-code action with "A preview is not a text editor. Switch to a text file." and Summarize Current Preview said images are never sent; the search index and the image preview still worked; a normal close left no app/node/conhost/WebView2 process of the copy and User/Machine PATH were identical before and after. Left on disk: `E:\omai`, `E:\omidx`, `E:\wt12-target`.
 - [ ] Milestone 14 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the

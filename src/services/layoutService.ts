@@ -2,7 +2,7 @@ import type { IpcClient } from "./ipc";
 
 /** The views the primary side bar can show, one per activity-bar icon. */
 /** A built-in side bar view. */
-export type BuiltInView = "explorer" | "search" | "scm" | "debug" | "extensions";
+export type BuiltInView = "explorer" | "search" | "scm" | "debug" | "extensions" | "ai";
 
 /** A built-in view, or an extension's activity bar container (`ext:<extension id>/<container id>`). */
 export type SideView = BuiltInView | `ext:${string}`;
@@ -13,6 +13,7 @@ export const SIDE_VIEWS: readonly BuiltInView[] = [
   "scm",
   "debug",
   "extensions",
+  "ai",
 ];
 
 export interface LayoutState {

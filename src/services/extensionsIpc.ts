@@ -88,6 +88,19 @@ export interface ExtensionViews {
   otherContainers: number;
 }
 
+/** An AI provider an extension offers (declarative: the app's own client talks to it; the extension never sees a key). */
+export interface ExtensionAiProviderContribution {
+  id: string;
+  name: string;
+  /** `claude`, `openai-compatible`, `gemini` or `local`. */
+  type: string;
+  capabilities: string[];
+  defaultModel: string | null;
+  models: string[];
+  baseUrl: string | null;
+  description: string | null;
+}
+
 export interface ExtensionContributions {
   commands: ExtensionCommandContribution[];
   menus: Record<string, ExtensionMenuContribution[]>;
@@ -104,6 +117,8 @@ export interface ExtensionContributions {
   debuggers: { kind: string; label: string | null }[];
   problemMatchers: string[];
   views: ExtensionViews;
+  aiProviders: ExtensionAiProviderContribution[];
+  unsupportedAiProviders: string[];
   unsupported: Record<string, number>;
 }
 

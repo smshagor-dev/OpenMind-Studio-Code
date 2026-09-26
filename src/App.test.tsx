@@ -13,6 +13,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (command === "terminal_list_shells") return Promise.resolve([]);
     if (command === "settings_get") return Promise.resolve(null);
     if (command === "breakpoints_load") return Promise.resolve([]);
+    if (command === "ai_providers_list" || command === "ai_conversations_list")
+      return Promise.resolve([]);
     return Promise.resolve(undefined);
   }),
 }));

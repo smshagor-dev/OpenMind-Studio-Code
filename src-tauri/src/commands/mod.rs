@@ -1,3 +1,4 @@
+pub mod ai;
 pub mod database;
 pub mod debug;
 pub mod document;

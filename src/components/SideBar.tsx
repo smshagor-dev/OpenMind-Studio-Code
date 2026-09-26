@@ -12,6 +12,7 @@ import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
 import { OpenEditorsSection } from "./OpenEditorsSection";
 import { PaneSection } from "./PaneSection";
+import { AiView } from "./AiView";
 import { RunDebugView } from "./RunDebugView";
 import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
@@ -35,6 +36,7 @@ const VIEW_TITLES: Record<BuiltInView, string> = {
   scm: "Source Control",
   debug: "Run and Debug",
   extensions: "Extensions",
+  ai: "AI",
 };
 
 /**
@@ -53,8 +55,13 @@ export function SideBar(props: SideBarProps) {
   const extension = isExtensionView(layout.activeView)
     ? container.extensions.views.find(layout.activeView)
     : undefined;
+  useSyncExternalStore(
+    (listener) => container.ai.providers.subscribe(listener),
+    () => container.ai.providers.getVersion(),
+  );
+  const aiGone = layout.activeView === "ai" && !container.ai.providers.panelVisible();
   const view: SideView =
-    extension || !isExtensionView(layout.activeView) ? layout.activeView : "explorer";
+    !aiGone && (extension || !isExtensionView(layout.activeView)) ? layout.activeView : "explorer";
   const title = extension ? extension.container.title : VIEW_TITLES[view as BuiltInView];
 
   const closeViewsMenu = useCallback(() => {
@@ -115,6 +122,8 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
       return <RunDebugView />;
     case "extensions":
       return <ExtensionsView />;
+    case "ai":
+      return <AiView />;
   }
 }
 

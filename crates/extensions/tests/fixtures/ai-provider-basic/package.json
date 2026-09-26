@@ -1,0 +1,28 @@
+{
+  "name": "sample-ai-provider",
+  "displayName": "Sample AI Provider",
+  "description": "Contributes an OpenAI-compatible AI provider (data only; no code).",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "contributes": {
+    "aiProviders": [
+      {
+        "id": "sample-openai",
+        "name": "Sample OpenAI-compatible",
+        "type": "openai-compatible",
+        "capabilities": ["chat", "streaming", "code-assistance"],
+        "defaultModel": "sample-model",
+        "models": ["sample-model", "sample-model-large"],
+        "description": "Talks to any OpenAI-compatible endpoint you configure."
+      },
+      {
+        "id": "sample-local",
+        "name": "Sample Local Server",
+        "type": "local",
+        "capabilities": ["chat", "streaming", "local/offline"],
+        "baseUrl": "http://127.0.0.1:11434/v1"
+      }
+    ]
+  }
+}

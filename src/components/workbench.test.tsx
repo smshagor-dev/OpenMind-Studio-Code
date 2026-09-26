@@ -122,6 +122,14 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
     terminal,
     search,
     searchPanel: new SearchPanelService(),
+    // No AI provider is enabled: the AI item and panel must not exist.
+    ai: {
+      providers: {
+        subscribe: () => () => undefined,
+        getVersion: () => 0,
+        panelVisible: () => false,
+      },
+    },
     workspaceIndex: {
       subscribe: () => () => undefined,
       getState: () => INDEX_STATE,

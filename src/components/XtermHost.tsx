@@ -96,6 +96,7 @@ export function XtermHost({ id, active, themeKind }: XtermHostProps) {
       clear: () => {
         terminal.clear();
       },
+      selection: () => terminal.getSelection(),
     });
     const input = terminal.onData((data) => {
       container.terminal.write(id, data);

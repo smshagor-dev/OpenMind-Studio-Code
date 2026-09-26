@@ -24,6 +24,8 @@ export function emptyContributions(): ExtensionContributions {
     debuggers: [],
     problemMatchers: [],
     views: { containers: [], elsewhere: 0, otherContainers: 0 },
+    aiProviders: [],
+    unsupportedAiProviders: [],
     unsupported: {},
   };
 }
