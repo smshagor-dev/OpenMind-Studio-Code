@@ -41,3 +41,6 @@ pnpm-debug.log*
 
 # Claude Code session lock (per machine, changes while a session runs)
 .claude/scheduled_tasks.lock
+
+# Developer-populated tool bundle copied into the portable package (see docs/toolchains.md)
+/tools-bundle/

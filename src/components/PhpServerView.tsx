@@ -1,8 +1,12 @@
 import { useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
+import "../styles/phpConfig.css";
 import type { Availability } from "../services/runtimeService";
 import { PhpRuntimeCards } from "./PhpRuntimeCards";
+import { StackSummary } from "./phpConfig/ConfigHeader";
+import { LaravelCard } from "./phpConfig/LaravelCard";
+import { Card } from "./phpConfig/parts";
 import {
   ComposerSection,
   DatabaseSection,
@@ -63,16 +67,18 @@ function WebRootSection() {
   const php = usePhp();
   const { root, defaultRoot, port } = php.getState();
   return (
-    <section className="php-view__section" aria-label="Web Root">
-      <h3>Web Root</h3>
+    <Card
+      title="Web Root"
+      label="Web Root"
+      description="Each folder inside this directory is served as a local site."
+    >
       <div className="php-view__field">
         <span className="php-view__label">
           Served folder{defaultRoot && root !== null ? " (default)" : ""}
         </span>
         <PathValue path={root} label="web root" />
         <span className="php-view__hint">
-          The server is not tied to one project: every folder inside the web root is its own site at
-          http://127.0.0.1:{port}/&lt;folder&gt;/, and the root itself lists them.
+          Sites open at http://127.0.0.1:{port}/&lt;folder&gt;/ — the root itself lists them.
         </span>
       </div>
       <div className="php-view__row">
@@ -101,7 +107,7 @@ function WebRootSection() {
           Use Default (htdocs)
         </button>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -123,8 +129,7 @@ function PortSection() {
           ? "Free"
           : "Busy — another program is using it";
   return (
-    <section className="php-view__section" aria-label="Ports">
-      <h3>Ports</h3>
+    <Card title="Ports" label="Ports">
       <div className="php-view__field">
         <label className="php-view__label" htmlFor="php-port">
           PHP built-in server
@@ -160,7 +165,7 @@ function PortSection() {
           Bound to 127.0.0.1 only — not reachable from the network.
         </span>
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -169,8 +174,12 @@ function ServerSection() {
   const state = php.getState();
   const start = php.startState();
   return (
-    <section className="php-view__section" aria-label="Server">
-      <h3>Server</h3>
+    <Card
+      title="PHP Server"
+      label="Server"
+      chip={state.server ? { label: "Running", tone: "ok" } : { label: "Stopped", tone: "off" }}
+      description="PHP built-in web server for the web root, on this computer only."
+    >
       <div className="php-view__field">
         <span className="php-view__label">Status</span>
         {state.server ? (
@@ -244,7 +253,7 @@ function ServerSection() {
         </div>
       ) : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
-    </section>
+    </Card>
   );
 }
 
@@ -257,10 +266,17 @@ function ServerSection() {
 export function PhpServerView() {
   usePhp();
   return (
-    <div className="php-view">
+    <div className="php-view pcfg">
+      <StackSummary />
       <WebRootSection />
-      <section className="php-view__section" aria-label="PHP and Composer">
-        <h3>PHP and Composer</h3>
+      <section className="php-view__section pcfg-card" aria-label="PHP and Composer">
+        <header className="pcfg-card__head">
+          <h3>PHP and Composer</h3>
+        </header>
+        <p className="pcfg-card__desc">
+          Portable versions kept inside OpenMind Studio. The active ones are used by terminals and
+          tools OpenMind starts, never by your system PATH.
+        </p>
         <PhpRuntimeCards />
         {PLANNED.map((item) => (
           <div
@@ -281,6 +297,7 @@ export function PhpServerView() {
       <DatabaseSection />
       <PhpMyAdminSection />
       <ComposerSection />
+      <LaravelCard />
       <LogsSection />
     </div>
   );

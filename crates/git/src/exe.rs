@@ -106,6 +106,24 @@ mod tests {
     }
 
     #[test]
+    fn the_first_folder_wins_so_a_bundled_git_beats_a_portable_one() {
+        // The app puts the active bundled tools' folders in front of the Runtime Manager's.
+        let temp = tempfile::tempdir().unwrap();
+        let bundled = fake_git(&temp.path().join("tools").join("git").join("2.47.0"));
+        fake_git(&temp.path().join("runtimes").join("git"));
+        let found = resolve(
+            &[
+                temp.path().join("tools").join("git").join("2.47.0"),
+                temp.path().join("runtimes").join("git"),
+            ],
+            false,
+            None,
+        )
+        .unwrap();
+        assert_eq!(found.path, bundled);
+    }
+
+    #[test]
     fn system_git_needs_permission_and_is_labelled_with_its_path() {
         let temp = tempfile::tempdir().unwrap();
         let system_dir = temp.path().join("system");

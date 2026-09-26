@@ -324,6 +324,41 @@ describe("RuntimeManagerDialog", () => {
     });
   });
 
+  it("keeps a card short: the long Python notes are in Details, not on the card", async () => {
+    const notes =
+      "python.org NuGet package: full standard library with venv and pip. pip and pip3 are small launchers written next to the runtime.";
+    await open([
+      runtime({
+        id: "python",
+        displayName: "Python",
+        description: "Python interpreter with pip and venv (the python.org NuGet distribution).",
+        notes,
+      }),
+    ]);
+    const card = screen.getByRole("region", { name: "Python" });
+    // The card shows the short description (styled to two lines, the full text as its tooltip), never the notes.
+    const description = within(card).getByText(/Python interpreter with pip and venv/);
+    expect(description).toHaveClass("runtime-card__description");
+    expect(description).toHaveAttribute("title", expect.stringContaining("NuGet distribution"));
+    expect(within(card).queryByText(/small launchers/)).toBeNull();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Details" }));
+    const details = screen.getByRole("dialog", { name: "Python" });
+    expect(
+      within(details).getByText(/small launchers written next to the runtime/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(details).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Python" })).toBeNull();
+  });
+
+  it("has Runtimes and Language Tools tabs, opening on Runtimes", async () => {
+    await open([runtime()]);
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Runtimes", "Language Tools"]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
+  });
+
   it("closes from the Close button", async () => {
     const onClose = await open([runtime()]);
 

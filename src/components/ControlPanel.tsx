@@ -15,6 +15,7 @@ import {
   QuitIcon,
   ShellIcon,
 } from "./controlPanelIcons";
+import { ConfigChips } from "./phpConfig/ConfigHeader";
 import { PhpServerView } from "./PhpServerView";
 
 /** Re-renders when the panel or any module service changes. */
@@ -260,7 +261,12 @@ function MainPage() {
   );
 }
 
-function SubPage(props: { title: string; children: ReactNode; actions?: ReactNode }) {
+function SubPage(props: {
+  title: string;
+  subtitle?: string;
+  children: ReactNode;
+  actions?: ReactNode;
+}) {
   const panel = container.controlPanel;
   return (
     <div className="cp__subpage">
@@ -274,7 +280,10 @@ function SubPage(props: { title: string; children: ReactNode; actions?: ReactNod
         >
           Back
         </button>
-        <h2>{props.title}</h2>
+        <div className="cp__titleblock">
+          <h2>{props.title}</h2>
+          {props.subtitle ? <p className="pcfg-subtitle">{props.subtitle}</p> : null}
+        </div>
         {props.actions}
       </header>
       <div className="cp__subbody">{props.children}</div>
@@ -387,7 +396,11 @@ export function ControlPanel() {
   const page = panel.getState().page;
   if (page === "config") {
     return (
-      <SubPage title="Configuration">
+      <SubPage
+        title="Configuration"
+        subtitle="Manage your local PHP stack, web root, database and admin tools."
+        actions={<ConfigChips />}
+      >
         <PhpServerView />
       </SubPage>
     );

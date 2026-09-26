@@ -49,3 +49,46 @@ export function readmeText(version) {
     "",
   ].join("\r\n");
 }
+
+/** The most versions of one tool a package may carry. */
+export const MAX_BUNDLED_VERSIONS = 5;
+
+/**
+ * Checks a `tools-bundle/toolchains.json` before it is copied into the package as `tools/toolchains.json`. Returns a
+ * list of problems (empty = fine): at most five versions per tool, every program present, paths inside the app
+ * folder, and a licence note for every bundled version (redistribution must have been checked).
+ * `exists(relativePath)` says whether a file is in the bundle folder.
+ */
+export function validateToolchainManifest(manifest, exists, platform = "windows-x64") {
+  const problems = [];
+  const tools = Array.isArray(manifest?.tools) ? manifest.tools : null;
+  if (tools === null) return ['toolchains.json has no "tools" list.'];
+  for (const tool of tools) {
+    const id = typeof tool?.id === "string" && tool.id ? tool.id : "(no id)";
+    const versions = (Array.isArray(tool?.versions) ? tool.versions : []).filter(
+      (v) => v?.bundled !== false && v?.platform === platform,
+    );
+    if (versions.length > MAX_BUNDLED_VERSIONS) {
+      problems.push(
+        `${id}: ${versions.length} versions for ${platform}; at most ${MAX_BUNDLED_VERSIONS} are kept.`,
+      );
+    }
+    for (const v of versions) {
+      const label = `${id} ${v?.version ?? "(no version)"}`;
+      const path = typeof v?.path === "string" ? v.path : "";
+      if (!path || /^(?:[A-Za-z]:|[\\/])/.test(path) || path.split(/[\\/]/).includes("..")) {
+        problems.push(
+          `${label}: the path "${path}" must be relative and stay inside the app folder.`,
+        );
+      } else if (!exists(path)) {
+        problems.push(`${label}: ${path} is listed but the file is not in the bundle.`);
+      }
+      if (typeof v?.license !== "string" || v.license.trim() === "") {
+        problems.push(
+          `${label}: no "license" note — check that it may be redistributed and say under what licence.`,
+        );
+      }
+    }
+  }
+  return problems;
+}

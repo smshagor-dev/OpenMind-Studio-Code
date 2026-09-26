@@ -57,8 +57,10 @@ pub struct TerminalCommand {
     pub language: String,
 }
 
+/// The environment for a process OpenMind starts: the active bundled tools (`<app>/tools`), then the portable
+/// runtimes. It is only ever applied to that process; the system PATH is never changed.
 pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
-    match state.runtime.environment().await {
+    let mut environment = match state.runtime.environment().await {
         Ok(environment) => RunEnvironment {
             path_prepend: environment.path_prepend,
             vars: environment.vars,
@@ -67,7 +69,11 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
             tracing::warn!(?err, "could not read the runtime environment for a run");
             RunEnvironment::default()
         }
-    }
+    };
+    let mut path_prepend = crate::commands::toolchains::bundled_dirs(state).await;
+    path_prepend.extend(std::mem::take(&mut environment.path_prepend));
+    environment.path_prepend = path_prepend;
+    environment
 }
 
 async fn make_plan(

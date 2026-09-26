@@ -11,7 +11,11 @@ import {
   tool,
   workspaceStatus,
 } from "../testUtils/languageFixtures";
+import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { gitWithVersions, packs, toolEntry } from "../testUtils/toolchainFixtures";
 import { LanguageUiService } from "../services/language/languageWiring";
+import { ToolchainService } from "../services/toolchains/toolchainService";
+import type { ToolEntry } from "../services/toolchains/toolchainIpc";
 import type { LspServerInfo } from "../services/ipc";
 import type { ProjectStatus } from "../services/language/languageIpc";
 
@@ -56,6 +60,7 @@ async function mount(
     servers?: LspServerInfo[];
     activePath?: string | null;
     file?: ReturnType<typeof fileStatus>;
+    bundled?: ToolEntry[];
   } = {},
 ) {
   const rig = languageRig({ workspace: workspaceStatus(options.projects ?? [projectStatus()]) });
@@ -82,6 +87,11 @@ async function mount(
       getState: () => LSP_STATE,
       servers: () => options.servers ?? [],
     },
+    toolchains: new ToolchainService(
+      createFakeIpc({
+        toolchainsList: vi.fn().mockResolvedValue(packs(options.bundled ?? [])),
+      }),
+    ),
     run,
   };
   return { rig, ui, run };
@@ -298,6 +308,30 @@ describe("LanguageStatusDialog", () => {
         /Language support metadata is built in\. Missing tools must be installed\/configured separately\./,
       ),
     ).toBeTruthy();
+  });
+
+  it("shows the bundled Git, Composer and Python debugger, or that none is bundled and what to do", async () => {
+    const { ui } = await mount({
+      bundled: [
+        gitWithVersions(),
+        toolEntry({ id: "composer", name: "Composer", category: "packageManager" }),
+        toolEntry({ id: "debugpy", name: "Python debugger (debugpy)", category: "debugger" }),
+      ],
+    });
+    ui.setOpen(true);
+    render(<LanguageStatusDialog />);
+    const dialog = screen.getByRole("dialog", { name: "Project & Language Status" });
+    expect(
+      await within(dialog).findByText(/Active 2\.47\.1 — bundled with OpenMind Studio/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Nothing bundled\. Not bundled in this build/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /No debugger bundled\. Python debugging uses the debugger from the Runtime Manager/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("says Unknown project type when the folder has no project", async () => {

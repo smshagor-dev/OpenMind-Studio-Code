@@ -8,6 +8,7 @@ import { type ExtensionsIpc, tauriExtensionsIpc } from "./extensionsIpc";
 import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
 import { type AiIpc, tauriAiIpc } from "./ai/aiIpc";
 import { type LanguageIpc, tauriLanguageIpc } from "./language/languageIpc";
+import { type ToolchainIpc, tauriToolchainIpc } from "./toolchains/toolchainIpc";
 import { type SearchIpc, tauriSearchIpc } from "./searchIpc";
 
 // Mirrors openmind_fs::TextEncoding (#[serde(rename_all = "kebab-case")]).
@@ -404,7 +405,8 @@ export interface RuntimeStatus {
 // clients in tests) that never rely on `this`, and method-shorthand syntax
 // makes eslint's `unbound-method` rule flag every bare `ipc.someMethod`
 // reference (e.g. `expect(ipc.documentSave).toHaveBeenCalledWith(...)`).
-export interface IpcClient extends ExtensionsIpc, PreviewIpc, SearchIpc, AiIpc, LanguageIpc {
+export interface IpcClient
+  extends ExtensionsIpc, PreviewIpc, SearchIpc, AiIpc, LanguageIpc, ToolchainIpc {
   // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
@@ -871,6 +873,12 @@ export interface DbCredentials {
 export interface ProjectInfo {
   isDir: boolean;
   hasComposerJson: boolean;
+  /** composer.json requires laravel/framework and there is an artisan file. */
+  isLaravel?: boolean;
+  hasVendor?: boolean;
+  hasEnv?: boolean;
+  /** `dev` and `build` from package.json's scripts, when they exist. */
+  npmScripts?: string[];
 }
 
 export type ComposerAction = "install" | "update" | "dump-autoload";
@@ -905,6 +913,7 @@ export const tauriIpcClient: IpcClient = {
   ...tauriSearchIpc,
   ...tauriAiIpc,
   ...tauriLanguageIpc,
+  ...tauriToolchainIpc,
   async openDocumentDialog() {
     const selected = await openDialog({ multiple: false, directory: false });
     return typeof selected === "string" ? selected : null;

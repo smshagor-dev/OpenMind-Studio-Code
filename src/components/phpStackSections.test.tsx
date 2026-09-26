@@ -120,7 +120,7 @@ describe("Database section", () => {
       "title",
       expect.stringContaining("isn't running"),
     );
-    expect(screen.getByRole("button", { name: "Show Password" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reveal Password" })).toBeDisabled();
   });
 
   it("installed and initialized: Start is enabled, the port is shown as free, paths can be copied", async () => {
@@ -153,7 +153,7 @@ describe("Database section", () => {
     );
   });
 
-  it("Show Password fetches it only on request, Hide hides it, Copy uses the clipboard", async () => {
+  it("Reveal Password fetches it only on request, Hide hides it, Copy uses the clipboard", async () => {
     const { ipc } = await setup(
       [status("php", [installed("8.4.26")]), status("mariadb", [installed("11.8.9")])],
       {
@@ -164,7 +164,7 @@ describe("Database section", () => {
 
     expect(ipc.mariadbCredentials).not.toHaveBeenCalled();
     expect(screen.queryByText("abc123XYZ")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show Password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reveal Password" }));
     expect(await screen.findByText("abc123XYZ")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Hide Password" }));
     expect(screen.queryByText("abc123XYZ")).toBeNull();

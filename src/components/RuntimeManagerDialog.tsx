@@ -3,13 +3,19 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { describeProgress, injectionStatus } from "../services/runtimeService";
+import "../styles/toolchains.css";
+import { ToolsPanel } from "./toolchains/ToolsPanel";
 
-/** Terminal > Manage Runtimes: install, switch, repair and remove portable toolchains. */
+type Tab = "runtimes" | "tools";
+
+/** Terminal > Manage Runtimes: portable runtimes to install and switch, and the app-local language tools. */
 export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
   const state = useSyncExternalStore(
     (listener) => container.runtime.subscribe(listener),
     () => container.runtime.getState(),
   );
+  const [tab, setTab] = useState<Tab>("runtimes");
+  const [detailsFor, setDetailsFor] = useState<RuntimeStatus | null>(null);
 
   useEffect(() => {
     void container.runtime.initialize();
@@ -21,7 +27,7 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
       className="modal-overlay"
       onClick={onClose}
       onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
+        if (event.key === "Escape" && detailsFor === null) onClose();
       }}
     >
       <div
@@ -33,20 +39,111 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
           event.stopPropagation();
         }}
       >
-        <h2 id="runtimes-title">Runtime Manager</h2>
-        <p className="runtimes__intro">
-          Portable toolchains live inside OpenMind Studio&apos;s own folder. They&apos;re added to
-          the PATH of terminals you open next — nothing is installed system-wide and your system
-          PATH is never changed.
-        </p>
-        {!state.loaded ? <p className="runtimes__loading">Loading…</p> : null}
-        <div className="runtimes__list">
-          {state.runtimes.map((runtime) => (
-            <RuntimeCard key={runtime.id} runtime={runtime} />
-          ))}
+        <div className="rm-head">
+          <h2 id="runtimes-title">Runtime Manager</h2>
+          <p className="runtimes__intro">
+            Everything here lives inside OpenMind Studio&apos;s own folder. It is added to the PATH
+            of terminals and tools OpenMind starts — never to your system PATH.
+          </p>
+          <div className="rm-tabs" role="tablist" aria-label="Runtime Manager sections">
+            {(
+              [
+                ["runtimes", "Runtimes"],
+                ["tools", "Language Tools"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                className="rm-tab"
+                aria-selected={tab === id}
+                onClick={() => {
+                  setTab(id);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="rm-body" role="tabpanel">
+          {tab === "runtimes" ? (
+            <>
+              {!state.loaded ? <p className="runtimes__loading">Loading…</p> : null}
+              <div className="rm-runtimes">
+                {state.runtimes.map((runtime) => (
+                  <RuntimeCard key={runtime.id} runtime={runtime} onDetails={setDetailsFor} />
+                ))}
+              </div>
+            </>
+          ) : (
+            <ToolsPanel />
+          )}
         </div>
         <div className="modal__actions">
           <button type="button" onClick={onClose} autoFocus>
+            Close
+          </button>
+        </div>
+        {detailsFor ? (
+          <RuntimeDetails
+            runtime={detailsFor}
+            onClose={() => {
+              setDetailsFor(null);
+            }}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** The long text of a runtime (its full description and notes) — kept out of the card so cards stay short. */
+function RuntimeDetails({ runtime, onClose }: { runtime: RuntimeStatus; onClose: () => void }) {
+  return (
+    <div
+      className="modal-overlay tc-details-overlay"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="modal tc-details rm-details"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="rm-details-title"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <header className="tc-details__head">
+          <h2 id="rm-details-title">{runtime.displayName}</h2>
+        </header>
+        <div className="tc-details__body">
+          <p>{runtime.description}</p>
+          {runtime.notes ? (
+            <>
+              <h4>Notes</h4>
+              <p>{runtime.notes}</p>
+            </>
+          ) : null}
+          <h4>Versions</h4>
+          <p>
+            {runtime.installed.length === 0
+              ? "None installed."
+              : runtime.installed
+                  .map((entry) => `${entry.version}${entry.active ? " (active)" : ""}`)
+                  .join(", ")}
+            {runtime.globalVersion ? ` · System: ${runtime.globalVersion}` : ""}
+          </p>
+        </div>
+        <div className="modal__actions">
+          <button type="button" autoFocus onClick={onClose}>
             Close
           </button>
         </div>
@@ -55,7 +152,13 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-function RuntimeCard({ runtime }: { runtime: RuntimeStatus }) {
+function RuntimeCard({
+  runtime,
+  onDetails,
+}: {
+  runtime: RuntimeStatus;
+  onDetails: (runtime: RuntimeStatus) => void;
+}) {
   const state = useSyncExternalStore(
     (listener) => container.runtime.subscribe(listener),
     () => container.runtime.getState(),
@@ -88,8 +191,20 @@ function RuntimeCard({ runtime }: { runtime: RuntimeStatus }) {
             System: {runtime.globalVersion}
           </span>
         ) : null}
+        <button
+          type="button"
+          className="rm-details-button"
+          title={`Full description and notes for ${runtime.displayName}`}
+          onClick={() => {
+            onDetails(runtime);
+          }}
+        >
+          Details
+        </button>
       </header>
-      <p className="runtime-card__description">{runtime.description}</p>
+      <p className="runtime-card__description" title={runtime.description}>
+        {runtime.description}
+      </p>
 
       {runtime.installed.length > 0 ? (
         <ul className="runtime-card__versions">
@@ -150,7 +265,6 @@ function RuntimeCard({ runtime }: { runtime: RuntimeStatus }) {
           </button>
         </div>
       ) : null}
-      {runtime.notes ? <p className="runtime-card__notes">{runtime.notes}</p> : null}
     </section>
   );
 }

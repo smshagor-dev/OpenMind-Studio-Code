@@ -25,6 +25,7 @@ openmind-extensions = { version = "0.1.0", path = "../crates/extensions" }
 openmind-git = { version = "0.1.0", path = "../crates/git" }
 openmind-fs = { version = "0.1.0", path = "../crates/fs" }
 openmind-preview = { version = "0.1.0", path = "../crates/preview" }
+openmind-toolchains = { version = "0.1.0", path = "../crates/toolchains" }
 openmind-ai = { version = "0.1.0", path = "../crates/ai" }
 openmind-search = { version = "0.1.0", path = "../crates/search" }
 openmind-runner = { version = "0.1.0", path = "../crates/runner" }

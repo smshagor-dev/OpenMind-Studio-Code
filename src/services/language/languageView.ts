@@ -20,6 +20,7 @@ export interface StatusLine {
 
 const SOURCE_LABELS: Record<ToolFound["source"], string> = {
   project: "the project's own copy",
+  bundled: "an app-local tool bundled with OpenMind",
   portable: "an OpenMind portable runtime",
   system: "the system PATH",
   env: "an environment variable",

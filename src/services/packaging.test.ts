@@ -9,6 +9,7 @@ import {
   PACKAGE_EXE,
   PACKAGE_FOLDER,
   readmeText,
+  validateToolchainManifest,
   zipName,
 } from "../../scripts/portablePackage.mjs";
 
@@ -88,5 +89,78 @@ describe("branding and packaging metadata agree", () => {
     for (const icon of icons) {
       expect(existsSync(join(root, "src-tauri", icon)), icon).toBe(true);
     }
+  });
+});
+
+describe("tool bundle validation (packaging time only)", () => {
+  const version = (v: string, extra: Record<string, unknown> = {}) => ({
+    version: v,
+    platform: "windows-x64",
+    path: `tools/git/${v}/git.exe`,
+    bundled: true,
+    license: "GPL-2.0",
+    ...extra,
+  });
+  const present = () => true;
+
+  it("accepts a bundle whose files exist, with a licence note and at most five versions", () => {
+    const manifest = {
+      tools: [
+        {
+          id: "git",
+          versions: ["2.47.0", "2.46.0", "2.45.0", "2.44.0", "2.43.0"].map((v) => version(v)),
+        },
+      ],
+    };
+    expect(validateToolchainManifest(manifest, present)).toEqual([]);
+  });
+
+  it("refuses more than five versions of one tool for the platform", () => {
+    const six = ["6", "5", "4", "3", "2", "1"].map((n) => version(`1.${n}.0`));
+    const problems = validateToolchainManifest({ tools: [{ id: "git", versions: six }] }, present);
+    expect(problems).toEqual(["git: 6 versions for windows-x64; at most 5 are kept."]);
+  });
+
+  it("does not count versions for other platforms or that are not bundled", () => {
+    const versions = [
+      ...["1", "2", "3", "4", "5"].map((n) => version(`1.${n}.0`)),
+      version("1.9.0", { platform: "linux-x64" }),
+      version("1.8.0", { bundled: false }),
+    ];
+    expect(validateToolchainManifest({ tools: [{ id: "git", versions }] }, present)).toEqual([]);
+  });
+
+  it("refuses a listed file that is not in the bundle", () => {
+    const problems = validateToolchainManifest(
+      { tools: [{ id: "git", versions: [version("2.47.0")] }] },
+      () => false,
+    );
+    expect(problems[0]).toContain("is listed but the file is not in the bundle");
+  });
+
+  it("refuses a version without a licence note: redistribution must have been checked", () => {
+    const problems = validateToolchainManifest(
+      { tools: [{ id: "git", versions: [version("2.47.0", { license: "" })] }] },
+      present,
+    );
+    expect(problems[0]).toContain('no "license" note');
+  });
+
+  it("refuses paths that leave the app folder", () => {
+    for (const path of ["../x/git.exe", "C:/git.exe", "/git.exe", "\\\\server\\git.exe", ""]) {
+      const problems = validateToolchainManifest(
+        { tools: [{ id: "git", versions: [version("2.47.0", { path })] }] },
+        present,
+      );
+      expect(
+        problems.some((p) => p.includes("must be relative")),
+        path,
+      ).toBe(true);
+    }
+  });
+
+  it("refuses a manifest without a tools list", () => {
+    expect(validateToolchainManifest({}, present)).toHaveLength(1);
+    expect(validateToolchainManifest(null, present)).toHaveLength(1);
   });
 });

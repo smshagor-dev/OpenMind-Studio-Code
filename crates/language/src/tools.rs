@@ -34,6 +34,8 @@ impl Os {
 pub enum Source {
     /// The project's own copy.
     Project,
+    /// A bundled app-local tool version (`<app>/tools`).
+    Bundled,
     /// One of OpenMind's portable runtimes.
     Portable,
     /// The machine's PATH.
@@ -182,6 +184,8 @@ pub struct ToolStatus {
 pub struct ToolEnv {
     pub os: Os,
     pub project_dirs: Vec<PathBuf>,
+    /// Folders of the active app-local tool versions (`<app>/tools/...`), after the project's own copy.
+    pub bundled_dirs: Vec<PathBuf>,
     pub portable_dirs: Vec<PathBuf>,
     pub system_dirs: Vec<PathBuf>,
     /// Windows executable suffixes, in order (`.exe`, `.cmd`, ...). Empty elsewhere.
@@ -192,6 +196,11 @@ pub struct ToolEnv {
 impl ToolEnv {
     /// The environment of this process, with the given portable runtime folders.
     pub fn from_process(portable_dirs: Vec<PathBuf>) -> Self {
+        Self::with_bundled(Vec::new(), portable_dirs)
+    }
+
+    /// Like `from_process`, plus the folders of the bundled toolchain packs' active versions.
+    pub fn with_bundled(bundled_dirs: Vec<PathBuf>, portable_dirs: Vec<PathBuf>) -> Self {
         let os = Os::current();
         let system_dirs = std::env::var_os("PATH")
             .map(|path| std::env::split_paths(&path).collect())
@@ -212,6 +221,7 @@ impl ToolEnv {
         Self {
             os,
             project_dirs: Vec::new(),
+            bundled_dirs,
             portable_dirs,
             system_dirs,
             pathext,
@@ -271,6 +281,7 @@ pub fn resolve(def: &ToolDef, env: &ToolEnv) -> ToolStatus {
     let found = match def.kind {
         Kind::Exe(names) => [
             (&env.project_dirs, Source::Project),
+            (&env.bundled_dirs, Source::Bundled),
             (&env.portable_dirs, Source::Portable),
             (&env.system_dirs, Source::System),
         ]
@@ -323,6 +334,7 @@ mod tests {
         ToolEnv {
             os,
             project_dirs: vec![base.join("project")],
+            bundled_dirs: vec![base.join("bundled")],
             portable_dirs: vec![base.join("portable")],
             system_dirs: vec![base.join("system")],
             pathext: if os == Os::Windows {
@@ -335,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn the_project_copy_wins_then_portable_then_system() {
+    fn the_project_copy_wins_then_bundled_then_portable_then_system() {
         let dir = tempfile::tempdir().expect("tmp");
         let e = env(dir.path(), Os::Windows);
         make(&dir.path().join("system"), "prettier.exe");
@@ -345,6 +357,11 @@ mod tests {
         assert_eq!(
             status_of("prettier", &e).found.expect("portable").source,
             Source::Portable
+        );
+        make(&dir.path().join("bundled"), "prettier.cmd");
+        assert_eq!(
+            status_of("prettier", &e).found.expect("bundled").source,
+            Source::Bundled
         );
         make(&dir.path().join("project"), "prettier.cmd");
         assert_eq!(

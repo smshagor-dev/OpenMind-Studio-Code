@@ -3,6 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import "../../styles/language.css";
 
 import { container } from "../../services/container";
+import { bundledLines } from "../../services/toolchains/toolchainView";
 import type { ProjectStatus } from "../../services/language/languageIpc";
 import { LEVEL_LABELS, syntaxNote } from "../../services/language/languageRegistry";
 import {
@@ -221,6 +222,19 @@ function Toolchains() {
   );
 }
 
+/** The app-local (bundled) Git, Composer and Python debugger: the active version, or that nothing is bundled. */
+function BundledTools() {
+  const state = useSyncExternalStore(
+    (listener) => container.toolchains.subscribe(listener),
+    () => container.toolchains.getState(),
+  );
+  useEffect(() => {
+    void container.toolchains.refresh();
+  }, []);
+  const lines = bundledLines(state.packs?.tools ?? []);
+  return <Lines lines={lines} empty="Bundled tools haven't been read yet." />;
+}
+
 /**
  * The Project & Language Status window: the current file's language and tools, every project detected in the open
  * folder with its commands (each disabled with its reason when a tool or platform is missing), and the toolchains on
@@ -269,6 +283,8 @@ export function LanguageStatusDialog() {
         <CurrentFile />
         <h3>Projects</h3>
         <Projects />
+        <h3>Bundled with OpenMind</h3>
+        <BundledTools />
         <h3>Tools on this computer</h3>
         <Toolchains />
         <div className="modal__actions">

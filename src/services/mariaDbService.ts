@@ -6,6 +6,7 @@ import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
 import { validatePort } from "./phpServerService";
 import type { PortsService } from "./portsService";
+import { connectionString, envBlock } from "./phpConfigModel";
 import type { Availability, RuntimeService } from "./runtimeService";
 
 export const MARIADB_CHANNEL = "MariaDB";
@@ -345,6 +346,22 @@ export class MariaDbService {
       return failed ? false : this.fail("There is no password to copy yet.");
     }
     await this.ipc.clipboardWriteText(password);
+    return true;
+  }
+
+  /** Copies `mysql://root@127.0.0.1:<port>` — no password, so it is safe to paste anywhere. */
+  async copyConnectionString(): Promise<boolean> {
+    await this.ipc.clipboardWriteText(connectionString(this.state.port));
+    return true;
+  }
+
+  /** Copies the DB_* lines a Laravel `.env` needs (with the password). Only on a click; nothing is written to any file. */
+  async copyEnvBlock(): Promise<boolean> {
+    const { password, failed } = await this.loadPassword();
+    if (password === null) {
+      return failed ? false : this.fail("There is no password to copy yet.");
+    }
+    await this.ipc.clipboardWriteText(envBlock(this.state.port, password));
     return true;
   }
 

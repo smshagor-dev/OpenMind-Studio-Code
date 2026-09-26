@@ -3,7 +3,16 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { COMPOSER_ACTIONS } from "../services/composerService";
 import { container } from "../services/container";
 import type { DatabaseStatus } from "../services/mariaDbService";
+import {
+  adminAvailability,
+  composerChip,
+  LOCAL_HOST,
+  mariaDbChip,
+  phpMyAdminChip,
+} from "../services/phpConfigModel";
 import type { Availability } from "../services/runtimeService";
+import { CredentialsBlock } from "./phpConfig/CredentialsBlock";
+import { Card, Facts } from "./phpConfig/parts";
 
 /** A button that is live, or disabled with its reason as tooltip. */
 export function StackButton(props: {
@@ -131,29 +140,28 @@ export function DatabaseSection() {
   const status = db.status();
   const start = db.startState();
   const installed = db.installed();
+  const statusText = state.busy === "initializing" ? "Initializing…" : DATABASE_LABELS[status];
   return (
-    <section className="php-view__section" aria-label="Database">
-      <h3>Database</h3>
-      <dl className="php-view__facts">
-        <dt>Status</dt>
-        <dd className={`php-view__db-status php-view__db-status--${status}`}>
-          {state.busy === "initializing" ? "Initializing…" : DATABASE_LABELS[status]}
-        </dd>
-        <dt>Version</dt>
-        <dd>{installed?.version ?? "Not installed"}</dd>
-        <dt>Host</dt>
-        <dd>127.0.0.1 (this computer only)</dd>
-        <dt>Username</dt>
-        <dd>root</dd>
-        <dt>Password</dt>
-        <dd>
-          {state.passwordVisible && state.password ? (
-            <code className="php-view__secret">{state.password}</code>
-          ) : (
-            db.passwordStatusLabel()
-          )}
-        </dd>
-      </dl>
+    <Card
+      title="MariaDB"
+      label="Database"
+      chip={mariaDbChip(status)}
+      description="A local database for your PHP projects. It listens on this computer only."
+    >
+      <Facts
+        rows={[
+          {
+            label: "Status",
+            value: (
+              <span className={`php-view__db-status php-view__db-status--${status}`}>
+                {statusText}
+              </span>
+            ),
+          },
+          { label: "Version", value: installed?.version ?? "Not installed" },
+          { label: "Bind address", value: `${LOCAL_HOST} (this computer only)` },
+        ]}
+      />
       <PortField
         id="mariadb-port"
         label="MariaDB port"
@@ -167,6 +175,20 @@ export function DatabaseSection() {
       <div className="php-view__field">
         <span className="php-view__label">Data directory</span>
         <PathValue path={state.dataDir === "" ? null : state.dataDir} label="data directory" />
+      </div>
+      <div className="php-view__field">
+        <span className="php-view__label">Config file</span>
+        <PathValue
+          path={state.configFile === "" ? null : state.configFile}
+          label="MariaDB config file"
+        />
+        {state.configFile === "" ? (
+          <span className="php-view__hint">Created the first time MariaDB starts.</span>
+        ) : null}
+      </div>
+      <div className="php-view__field">
+        <span className="php-view__label">Log directory</span>
+        <PathValue path={state.logDir === "" ? null : state.logDir} label="log directory" />
       </div>
       <div className="php-view__row">
         <StackButton
@@ -198,22 +220,6 @@ export function DatabaseSection() {
             void db.restart();
           }}
         />
-      </div>
-      <div className="php-view__row">
-        <StackButton
-          label={state.passwordVisible ? "Hide Password" : "Show Password"}
-          availability={db.passwordState()}
-          onClick={() => {
-            void db.togglePassword();
-          }}
-        />
-        <StackButton
-          label="Copy Password"
-          availability={db.passwordState()}
-          onClick={() => {
-            void db.copyPassword();
-          }}
-        />
         <button
           type="button"
           className="php-view__button"
@@ -231,7 +237,8 @@ export function DatabaseSection() {
         </div>
       ) : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
-    </section>
+      <CredentialsBlock />
+    </Card>
   );
 }
 
@@ -253,34 +260,50 @@ export function PhpMyAdminSection() {
   const start = pma.startState();
   const note = pma.databaseNote();
   const notice = pma.restartNotice();
+  const installedVersion = pma.installedVersion();
+  const running = state.server !== null;
+  const url = state.server?.url ?? null;
+  const admin = adminAvailability({
+    installed: installedVersion !== null,
+    running,
+    dbStatus: container.mariaDb.status(),
+    url,
+  });
+  const open = pma.openState();
   return (
-    <section className="php-view__section" aria-label="phpMyAdmin">
-      <h3>phpMyAdmin</h3>
-      <dl className="php-view__facts">
-        <dt>Status</dt>
-        <dd>
-          {state.server ? (
-            <>
-              Running at{" "}
-              <a
-                href={state.server.url ?? undefined}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void pma.open();
-                }}
-              >
-                {state.server.url}
-              </a>
-            </>
-          ) : pma.installedVersion() === null ? (
-            "Not installed"
-          ) : (
-            "Stopped"
-          )}
-        </dd>
-        <dt>Version</dt>
-        <dd>{pma.installedVersion() ?? "Not installed"}</dd>
-      </dl>
+    <Card
+      title="phpMyAdmin"
+      label="phpMyAdmin"
+      chip={phpMyAdminChip({ installed: installedVersion !== null, running })}
+      description="Browse and manage your databases in the browser."
+    >
+      <Facts
+        rows={[
+          {
+            label: "Status",
+            value: state.server ? (
+              <>
+                Running at{" "}
+                <a
+                  href={state.server.url ?? undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void pma.open();
+                  }}
+                >
+                  {state.server.url}
+                </a>
+              </>
+            ) : installedVersion === null ? (
+              "Not installed"
+            ) : (
+              "Stopped"
+            ),
+          },
+          { label: "Version", value: installedVersion ?? "Not installed" },
+          { label: "Address", value: url ?? "None until it runs" },
+        ]}
+      />
       <PortField
         id="pma-port"
         label="phpMyAdmin port"
@@ -309,9 +332,20 @@ export function PhpMyAdminSection() {
         />
         <StackButton
           label="Open phpMyAdmin"
-          availability={pma.openState()}
+          availability={open.enabled && !admin.enabled ? admin : open}
           onClick={() => {
             void pma.open();
+          }}
+        />
+        <StackButton
+          label="Copy phpMyAdmin URL"
+          availability={
+            url === null
+              ? { enabled: false, reason: "phpMyAdmin has no address until it runs." }
+              : { enabled: true }
+          }
+          onClick={() => {
+            if (url !== null) void container.ipc.clipboardWriteText(url);
           }}
         />
         <button
@@ -325,9 +359,14 @@ export function PhpMyAdminSection() {
           Open phpMyAdmin Logs
         </button>
       </div>
-      {!start.enabled && state.server === null ? (
+      {!start.enabled && !running ? (
         <div className="php-view__reason" role="note">
           {start.reason}
+        </div>
+      ) : null}
+      {!admin.enabled && installedVersion !== null && admin.reason ? (
+        <div className="php-view__reason" role="note">
+          Admin: {admin.reason}
         </div>
       ) : null}
       {note ? (
@@ -342,9 +381,10 @@ export function PhpMyAdminSection() {
       ) : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
       <span className="php-view__hint">
-        Log in with user root and the MariaDB password above. Served on 127.0.0.1 only.
+        Log in with user root and the MariaDB password from the MariaDB card. Served on 127.0.0.1
+        only.
       </span>
-    </section>
+    </Card>
   );
 }
 
@@ -358,11 +398,22 @@ export function ComposerSection() {
     () => container.runtime.getState(),
   );
   const composer = container.composer;
+  const composerRuntime = container.runtime
+    .getState()
+    .runtimes.find((entry) => entry.id === "composer");
+  const composerActive = composerRuntime?.installed.find((entry) => entry.active) ?? null;
   const state = composer.getState();
   const availability = composer.availability();
   return (
-    <section className="php-view__section" aria-label="Composer">
-      <h3>Composer</h3>
+    <Card
+      title="Composer"
+      label="Composer"
+      chip={composerChip({
+        installed: (composerRuntime?.installed.length ?? 0) > 0,
+        active: composerActive?.version ?? null,
+      })}
+      description="Install and update the PHP packages of one project, on OpenMind's PHP."
+    >
       <div className="php-view__field">
         <span className="php-view__label">Project folder</span>
         <PathValue path={state.projectRoot} label="Composer project folder" />
@@ -413,7 +464,7 @@ export function ComposerSection() {
         Runs in the project folder above (usually one inside the web root) on the active portable
         PHP; its output is in Logs.
       </span>
-    </section>
+    </Card>
   );
 }
 
@@ -451,8 +502,10 @@ export function LogsSection() {
     sectionRef.current?.scrollIntoView({ block: "nearest" });
   }, [channel]);
   return (
-    <section className="php-view__section" aria-label="Logs" ref={sectionRef}>
-      <h3>Logs</h3>
+    <section className="php-view__section pcfg-card" aria-label="Logs" ref={sectionRef}>
+      <header className="pcfg-card__head">
+        <h3>Logs</h3>
+      </header>
       <div className="php-view__row" role="tablist" aria-label="Log channel">
         {LOG_CHANNELS.map((name) => (
           <button

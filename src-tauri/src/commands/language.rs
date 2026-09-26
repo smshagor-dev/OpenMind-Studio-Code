@@ -20,8 +20,9 @@ async fn workspace_root(state: &AppState, window: &tauri::Window) -> Result<Path
         .ok_or_else(|| "Open a folder first.".to_string())
 }
 
-/// The lookup environment: OpenMind's portable runtimes, then the machine's PATH (read, never written).
+/// The lookup environment: bundled app-local tools, OpenMind's portable runtimes, then the machine's PATH (read, never written).
 async fn tool_env(state: &AppState) -> ToolEnv {
+    let bundled = crate::commands::toolchains::bundled_dirs(state).await;
     let portable = match state.runtime.environment().await {
         Ok(environment) => environment.path_prepend,
         Err(err) => {
@@ -32,7 +33,7 @@ async fn tool_env(state: &AppState) -> ToolEnv {
             Vec::new()
         }
     };
-    ToolEnv::from_process(portable)
+    ToolEnv::with_bundled(bundled, portable)
 }
 
 /// Every language OpenMind knows (static data).

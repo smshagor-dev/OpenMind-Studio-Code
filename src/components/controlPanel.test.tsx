@@ -12,6 +12,7 @@ import { PhpMyAdminService } from "../services/phpMyAdminService";
 import { PhpServerService } from "../services/phpServerService";
 import { PortsService } from "../services/portsService";
 import { RuntimeService } from "../services/runtimeService";
+import { PhpRuntimeService } from "../services/phpRuntimeService";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
@@ -61,7 +62,8 @@ async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
     Promise.resolve(),
   );
   await controlPanel.initialize();
-  harness.current = { controlPanel, php, mariaDb, phpMyAdmin: pma, runtime };
+  const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma });
+  harness.current = { controlPanel, php, mariaDb, phpMyAdmin: pma, runtime, phpRuntime };
   return { controlPanel, output };
 }
 
@@ -148,6 +150,15 @@ describe("ControlPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Config" }));
     expect(screen.getByText("server view")).toBeInTheDocument();
+    // The page has its own title, one line of subtitle and a chip per part of the stack.
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Manage your local PHP stack, web root, database and admin tools."),
+    ).toBeInTheDocument();
+    const chips = within(screen.getByRole("list", { name: "Stack status" }));
+    expect(chips.getByText(/^PHP: /)).toBeInTheDocument();
+    expect(chips.getByText("MariaDB: Not installed")).toBeInTheDocument();
+    expect(chips.getByText("phpMyAdmin: Not installed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByRole("row", { name: "MariaDB" })).toBeInTheDocument();
   });

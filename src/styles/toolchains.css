@@ -1,0 +1,524 @@
+/* Runtime Manager and Language Tools: compact, consistent cards, chips and details. Colours are tokens only. */
+
+.modal.modal--runtimes {
+  width: min(880px, 96vw);
+  max-height: 84vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal--runtimes .rm-head {
+  padding: 18px 22px 0;
+}
+
+.modal--runtimes .rm-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.rm-tabs {
+  display: flex;
+  gap: 2px;
+  margin-top: 12px;
+  border-bottom: 1px solid var(--menu-border);
+}
+
+.rm-tab {
+  padding: 7px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rm-tab:hover {
+  color: var(--fg);
+}
+
+.rm-tab[aria-selected="true"] {
+  color: var(--fg-strong);
+  border-bottom-color: var(--focus-border);
+}
+
+.rm-tab:focus-visible,
+.tc-card button:focus-visible,
+.tc-card select:focus-visible,
+.runtime-card button:focus-visible,
+.tc-details button:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.rm-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 22px 8px;
+}
+
+.modal--runtimes .modal__actions {
+  padding: 10px 22px 16px;
+  margin: 0;
+  border-top: 1px solid var(--menu-border);
+}
+
+/* Chips */
+
+.tc-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.tc-chip--ok {
+  background-color: var(--success-bg);
+  color: var(--on-accent-fg);
+}
+
+.tc-chip--warn {
+  background-color: var(--warning-bg-soft);
+  color: var(--warning-fg);
+  border-color: var(--warning-fg);
+}
+
+.tc-chip--error {
+  background-color: var(--error-bg-soft);
+  color: var(--error-fg);
+  border-color: var(--error-border);
+}
+
+.tc-chip--info {
+  background-color: transparent;
+  color: var(--info-fg);
+  border-color: var(--info-fg);
+}
+
+.tc-chip--off {
+  background-color: var(--toolbar-hover-bg);
+  color: var(--fg-muted);
+}
+
+/* Language Tools panel */
+
+.tc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tc-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tc-summary strong {
+  font-size: 13px;
+  color: var(--fg-strong);
+}
+
+.tc-summary__meta {
+  margin-left: 10px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.tc-note {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.tc-banner {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  list-style: none;
+}
+
+ul.tc-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tc-banner--error {
+  border-color: var(--error-border);
+  background-color: var(--error-bg-soft);
+}
+
+.tc-banner--warn {
+  border-color: var(--warning-fg);
+  background-color: var(--warning-bg-soft);
+}
+
+.tc-banner--ok {
+  border-color: var(--success-fg);
+}
+
+.tc-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--menu-border);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tc-section__count {
+  padding: 0 6px;
+  border-radius: 8px;
+  background-color: var(--toolbar-hover-bg);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.tc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.tc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  background-color: var(--sidebar-bg);
+  transition: border-color 0.12s;
+}
+
+.tc-card:hover,
+.tc-card:focus-within {
+  border-color: var(--focus-border);
+}
+
+.tc-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tc-card__name {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+/* The two-line rule: descriptions never make a card tall. The full text is the tooltip and lives in Details. */
+.tc-card__summary,
+.tc-card__hint,
+.runtime-card__description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.tc-card__hint {
+  color: var(--warning-fg);
+}
+
+.tc-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 11px;
+}
+
+.tc-card__active {
+  color: var(--success-fg);
+  font-weight: 600;
+}
+
+.tc-card__count {
+  color: var(--fg-muted);
+}
+
+.tc-card__path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 10.5px;
+}
+
+.tc-card__verify {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.tc-card__verify--ok {
+  color: var(--success-fg);
+}
+
+.tc-card__verify--bad {
+  color: var(--error-fg);
+}
+
+.tc-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.tc-card__select {
+  flex: 1 1 100%;
+}
+
+.tc-card button,
+.tc-card select,
+.tc-details button {
+  padding: 3px 10px;
+  border: 1px solid var(--menu-border);
+  border-radius: 3px;
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.tc-card select {
+  width: 100%;
+  background-color: var(--input-bg);
+  color: var(--fg);
+}
+
+.tc-card button:hover:not(:disabled),
+.tc-details button:hover:not(:disabled) {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.tc-card button:disabled,
+.tc-details button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tc-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Details dialog */
+
+.tc-details-overlay {
+  z-index: 2100;
+  align-items: center;
+  padding-top: 0;
+}
+
+.modal.tc-details {
+  width: min(640px, 94vw);
+  max-height: 84vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tc-details__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px 10px;
+}
+
+.tc-details__head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.tc-details__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  user-select: text;
+}
+
+.tc-details__text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.tc-details__sub {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tc-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.tc-facts dt {
+  color: var(--fg-muted);
+}
+
+.tc-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.tc-versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tc-versions__row {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.tc-versions__name {
+  font-weight: 600;
+}
+
+.tc-versions__meta {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.tc-versions__path,
+.tc-versions__license {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  font-size: 10.5px;
+}
+
+.tc-details .modal__actions {
+  padding: 10px 20px 14px;
+  margin: 0;
+  border-top: 1px solid var(--menu-border);
+}
+
+/* Runtime cards (the Runtimes tab) */
+
+.rm-runtimes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.runtime-card {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  background-color: var(--sidebar-bg);
+}
+
+.runtime-card:hover,
+.runtime-card:focus-within {
+  border-color: var(--focus-border);
+}
+
+.runtime-card__header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.runtime-card__header .rm-details-button {
+  margin-left: auto;
+}
+
+.modal--runtimes .runtime-card__description {
+  margin-top: 5px;
+  font-size: 11.5px;
+}
+
+.modal--runtimes .runtime-card__notes {
+  display: none;
+}
+
+/* Runtime details */
+
+.rm-details p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.rm-details h4 {
+  margin: 12px 0 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

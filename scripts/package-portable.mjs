@@ -8,10 +8,25 @@
 // (crates/core/src/paths.rs), so the package needs no installer, no Registry and no AppData.
 import { execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 
-import { builtExe, PACKAGE_EXE, PACKAGE_FOLDER, readmeText, zipName } from "./portablePackage.mjs";
+import {
+  builtExe,
+  PACKAGE_EXE,
+  PACKAGE_FOLDER,
+  readmeText,
+  validateToolchainManifest,
+  zipName,
+} from "./portablePackage.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
@@ -34,10 +49,7 @@ if (!flag("--no-build")) {
 }
 
 const tauriExe = builtExe(targetDir, profile);
-const exe = option(
-  "--exe",
-  existsSync(tauriExe) ? tauriExe : builtExe(targetDir, profile, true),
-);
+const exe = option("--exe", existsSync(tauriExe) ? tauriExe : builtExe(targetDir, profile, true));
 if (!existsSync(exe)) {
   throw new Error(`The built app was not found at ${exe}. Build it first, or pass --exe <path>.`);
 }
@@ -47,6 +59,25 @@ rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 copyFileSync(exe, join(staging, PACKAGE_EXE));
 writeFileSync(join(staging, "README.txt"), readmeText(version));
+
+// Optional, developer-populated tool bundle (see docs/toolchains.md). Nothing is downloaded here: the folder must
+// already hold the programs, and it is refused unless its manifest checks out.
+const bundle = join(root, "tools-bundle");
+if (existsSync(join(bundle, "toolchains.json"))) {
+  const manifest = JSON.parse(readFileSync(join(bundle, "toolchains.json"), "utf8"));
+  const problems = validateToolchainManifest(manifest, (relative) =>
+    existsSync(join(root, relative.replace(/^tools[\\/]/, "tools-bundle/"))),
+  );
+  if (problems.length > 0) {
+    throw new Error(
+      `tools-bundle/toolchains.json is not ready to package:\n  ${problems.join("\n  ")}`,
+    );
+  }
+  cpSync(bundle, join(staging, "tools"), { recursive: true });
+  console.log("Copied tools-bundle/ into the package as tools/.");
+} else {
+  console.log("No tools-bundle/ found: the package carries no bundled tools.");
+}
 
 const zip = join(outDir, zipName(version));
 rmSync(zip, { force: true });

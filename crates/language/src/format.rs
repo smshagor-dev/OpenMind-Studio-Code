@@ -147,9 +147,10 @@ pub struct FormatOption {
 fn rank(option: &FormatOption) -> u8 {
     match option.found.as_ref().map(|f| f.source) {
         Some(Source::Project) => 0,
-        Some(Source::Portable) => 1,
-        Some(Source::System | Source::Env) => 2,
-        None => 3,
+        Some(Source::Bundled) => 1,
+        Some(Source::Portable) => 2,
+        Some(Source::System | Source::Env) => 3,
+        None => 4,
     }
 }
 
@@ -207,6 +208,7 @@ mod tests {
         ToolEnv {
             os: Os::Linux,
             project_dirs: vec![project.to_path_buf()],
+            bundled_dirs: vec![],
             portable_dirs: vec![],
             system_dirs: vec![system.to_path_buf()],
             pathext: vec![],

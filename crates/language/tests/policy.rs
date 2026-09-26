@@ -14,6 +14,7 @@ fn empty_env(os: Os) -> ToolEnv {
     ToolEnv {
         os,
         project_dirs: vec![],
+        bundled_dirs: vec![],
         portable_dirs: vec![],
         system_dirs: vec![],
         pathext: if os == Os::Windows {
@@ -164,4 +165,61 @@ fn a_scan_with_no_tools_disables_commands_with_a_setup_reason_and_changes_nothin
         .formatters
         .iter()
         .all(|f| f.found.is_none() && !f.hint.is_empty()));
+}
+
+fn write_tool(dir: &Path, name: &str) {
+    fs::create_dir_all(dir).expect("dir");
+    fs::write(dir.join(name), "").expect("tool");
+}
+
+#[test]
+fn a_formatter_comes_from_the_project_then_the_bundled_pack_then_the_system() {
+    let work = tempfile::tempdir().expect("work");
+    let app = tempfile::tempdir().expect("app");
+    let system = tempfile::tempdir().expect("system");
+    let project = work.path().join("web app");
+    fs::create_dir_all(project.join("src")).expect("src");
+    fs::write(
+        project.join("package.json"),
+        r#"{"scripts":{"dev":"vite"},"devDependencies":{"vite":"6.0.0"}}"#,
+    )
+    .expect("package");
+    fs::write(project.join("src/a.ts"), "export {}").expect("file");
+    let file = project.join("src/a.ts");
+    let bundled = app.path().join("tools/prettier/3.3.0/bin");
+    let mut env = empty_env(Os::Windows);
+    env.bundled_dirs = vec![bundled.clone()];
+    env.pathext = vec![".exe".into(), ".cmd".into()];
+    env.system_dirs = vec![system.path().to_path_buf()];
+    let first = |env: &ToolEnv| {
+        let status = workspace_status(work.path(), env);
+        let f = file_status(work.path(), &file, env, &status);
+        f.formatters
+            .into_iter()
+            .find(|o| o.tool == "prettier")
+            .expect("prettier option")
+    };
+
+    // Nothing anywhere: not found, with a hint, and no command to run.
+    let none = first(&env);
+    assert!(none.found.is_none() && none.argv.is_empty() && !none.hint.is_empty());
+
+    write_tool(system.path(), "prettier.exe");
+    assert_eq!(first(&env).found.expect("system").source, Source::System);
+
+    write_tool(&bundled, "prettier.cmd");
+    let found = first(&env).found.expect("bundled");
+    assert_eq!(
+        found.source,
+        Source::Bundled,
+        "the bundled tool beats the system PATH"
+    );
+
+    write_tool(&project.join("node_modules/.bin"), "prettier.cmd");
+    let found = first(&env).found.expect("project");
+    assert_eq!(
+        found.source,
+        Source::Project,
+        "the project's own copy beats the bundled one"
+    );
 }

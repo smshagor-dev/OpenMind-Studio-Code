@@ -450,6 +450,20 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   missing with a setup hint, never bundled or faked, and that Node/Python/PHP are the Runtime Manager's portable tools). Nothing is bundled beyond this metadata (no third-party asset, no size
   to license). The status dialog says so: "Language support metadata is built in. Missing tools must be installed/configured separately."
 
+- `openmind-toolchains` (Milestone 15) — **bundled toolchain packs**: app-local tools in `<app>/tools`, listed in `tools/toolchains.json` (docs: `docs/toolchains.md`). The crate only
+  *reads*: no network, no installs, no PATH/Registry writes (`tests/policy.rs` scans its source and manifest), and the only process it can start is the program the user asked to **Verify**
+  (`verify.rs`, only with the manifest's `verifyArgs`, 8 s limit; without them the file is only checked to exist). `catalog` = the ~40 tools OpenMind knows as static data (id, name, category, one-sentence
+  summary, long details, used-by, the command name, hint; the big SDKs — Flutter, Android SDK, Xcode, JDK, .NET, C/C++ toolchain, Rust toolchain, Go, Docker — are `external`: never bundled). `manifest` parses
+  it (a damaged file is reported and ignored; a path must be relative with no `..`/drive/UNC). `packs::load(app_root, platform, chosen)` builds per tool the versions (platform-filtered, newest first, **at most
+  5 kept** — `maxBundledVersions` can only lower it, extra oldest ones are ignored with a warning), each `Active | Bundled | Broken` (Broken = listed but the program is missing) and the tool `Active | Missing |
+  Broken | External`. **Active version** = the user's choice (`editor_settings` `toolchains.active`, only if that version is present) > the manifest's `activeVersion` > the newest *stable* present version; a
+  missing program is never Active. `injection()` = the folders of active programs (debuggers excluded: their files are not commands) for the PATH of processes OpenMind starts. `commands::toolchains`
+  (`toolchains_list|set_active|verify`) plus `run::environment` (put the bundled folders **in front of** the Runtime Manager's — used by terminals, Git, runs, LSP, extensions), `language::tool_env`
+  (`ToolEnv.bundled_dirs`, so lookup order is **project-local > bundled > portable runtime > system**, `Source::Bundled`), `debug` (the active bundled debugpy — path
+  `<v>/debugpy/adapter/__main__.py` — is the adapter folder before the Runtime Manager's) and `composer_run` (an active bundled `composer.phar` before the Runtime Manager's Composer). Git needs no change:
+  its resolver takes the first folder that has `git.exe`. **What is physically bundled in this build: nothing** — the system, manifest, detection, selection, Verify, UI and packaging check are built and tested
+  against fixture folders; every tool shows Missing (or External) until real files are added. Do not claim "last five versions" shipped until they are.
+
 - `openmind-extensions` (Milestone 10) — the VS Code-compatible extension system foundation. **OpenMind Studio supports a VS Code
   API subset**; nothing here is VS Code's source. Layout (portable, never AppData): `extensions/installed/<publisher>.<name>-<version>/`,
   `extensions/disabled/…` (enabling/disabling *moves the folder*, so the state persists by location and there is no registry file that
@@ -908,6 +922,22 @@ internals.
   live state or "LSP not configured: install it from Language Tools", any other candidate found/not found and always "OpenMind can't start this language server yet"), formatters and
   linters; every detected project with its confidence chips (evidence in the tooltip), ambiguity warning, notes, tools and command buttons grouped Dev/Run/Build/Test/Lint/Format/Install
   (a disabled button's reason is its tooltip *and* visible text below); and the toolchains on the computer.
+
+- **Toolchains and the Runtime Manager (Milestone 15).** `Terminal > Manage Runtimes` is now the **Runtime Manager** with two tabs. *Runtimes*: the existing portable runtimes as a two-column grid of compact cards
+  (name, chips, a description clamped to two lines with the full text as its tooltip, version selector, Install; the long `notes` — e.g. Python's — moved into a **Details** dialog). *Language Tools*: `ToolchainService`
+  (`src/services/toolchains/`, `container.toolchains`; list, `setActive` — only a present, inactive version —, `verify`, details, refresh of the language status after a change) and `toolchainView.ts` (pure:
+  sections Package Managers / Language Servers / Formatters / Linters / Debuggers / Version Control / Helper Tools / Mobile/Desktop SDKs / External Required, status chips, honest version counts, middle-ellipsis
+  paths). `ToolsPanel` draws cards (name, chip, two-line summary, active version, "N versions available (up to 5 kept)", shortened path, version selector, Verify, Details, the setup hint when missing),
+  `ToolDetailsDialog` the full text, every version with its licence and a Use button, the source and the verification result. Project & Language Status gained a **Bundled with OpenMind** section (Git,
+  Composer, Python debugger: the active bundled version or that nothing is bundled). Tokens only in `styles/toolchains.css`.
+- **PHP stack Configuration page (Milestone 15).** Only the *Config* sub-page of the PHP window was redesigned; the main control panel (module table, side buttons, log) is unchanged. `phpConfigModel.ts`
+  (pure: status chips, `connectionString` — no password —, `envBlock`, `adminAvailability`, `laravelCommands`), `components/phpConfig/` (`Card`/`StatusChip`/`Facts`, `ConfigHeader` = title chips + Stack Summary,
+  `CredentialsBlock`, `LaravelCard`) and restyled sections in `PhpStackSections`/`PhpServerView`: header (Back, title, subtitle, chips PHP / Composer / MariaDB / phpMyAdmin), Stack Summary, Web Root, PHP and Composer
+  version cards, PHP Server, Ports, MariaDB (status, version, bind address, port, data/config/log paths, Init/Start/Stop/Restart/Logs, and a **Connection** block: host, port, user, password masked `••••••••`
+  until **Reveal Password**, Copy Password, Copy Connection String), phpMyAdmin (status, address, Start/Stop, **Open phpMyAdmin** = Admin — disabled with "Start MariaDB first." / "Start phpMyAdmin first…" /
+  "isn't installed…" —, Copy URL, Logs), Composer, **Laravel helper** (only when the Composer project has `laravel/framework` + `artisan`: PHP/Composer/MariaDB/.env status, *Copy DB Credentials for .env*, copyable
+  `composer install` (while `vendor/` is missing) / `php artisan serve` / `npm run dev|build`; OpenMind **never writes or edits `.env`**) and Logs. `php_project_info` gained `isLaravel/hasVendor/hasEnv/npmScripts`.
+  The password is decrypted only on Reveal or a Copy, is never logged (checked in the app's logs and `settings/`), and the connection string has none.
 
 **Look (post-6.3)**: the dark theme follows VS Code's *current* default dark, measured from a real VS Code window
 (frame, title bar, status bar and the 4px gaps between cards `#191a1b` while the window has focus, `#121314` when it
@@ -1857,7 +1887,27 @@ right after start-up (the extension list marks it "Activates at every start-up (
   (built-in, not configured), C++ (clangd not found), Rust (rust-analyzer found, can't start), SQL (not found, can't start); text and symbol search across the workspace; image preview; AI item absent, present, gone;
   Load Popular only after a click; no connection from the app tree at launch; clean close, PATH unchanged. **Known gaps**: a Tauri project shows no Cargo commands and Run Linter on a file in `src-tauri/` runs
   `cargo clippy` in the project folder, where cargo says it finds no `Cargo.toml`; Dart, CMake and Podfile are shown as Plain Text (no grammar); the reference-search fallback was not re-checked. Left on disk: `E:\omstack qa`.
-- [ ] Milestone 15 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
+- [x] **Milestone 15** — Bundled toolchain packs, professional Runtime/Tools UI and PHP Configuration page (`feat: add bundled toolchain packs and polish tools ui`). New `openmind-toolchains` crate
+  (7 unit + 15 integration + 1 policy test), `commands::toolchains`, the Language Tools tab and Details dialogs, the redesigned Runtime cards (two-line clamp, Python notes in Details), the Bundled section of
+  Project & Language Status, `scripts/portablePackage.mjs` `validateToolchainManifest` (a `tools-bundle/` is refused unless: at most 5 versions per tool, every file present, paths inside the folder, a `license`
+  note on every version) and the PHP Configuration page redesign incl. DB credentials and the Laravel helper (see above). **Actually bundled: nothing yet.** Manifest-supported (shown Missing until files exist): Git,
+  Composer, debugpy, Pyright, Ruff, Black, isort, pytest, TypeScript / HTML-CSS-JSON servers, ESLint, Prettier, Biome, Tailwind/Vue/Svelte/Astro servers, Intelephense, Phpactor, PHP CS Fixer, Pint, rust-analyzer,
+  gopls, clangd, YAML/Dockerfile/GraphQL/SQL servers. External required (never bundled): Flutter, Android SDK, Xcode, JDK, .NET SDK, C/C++ toolchain, Rust toolchain, Go SDK, Docker. **Behaviour**: last 5
+  versions per tool is a cap enforced on the manifest, not a promise; the active version is the user's choice, else the manifest's, else the newest stable present one; a broken listed version is shown Broken
+  and cannot be chosen; project-local tool > bundled > portable > system (tests for each step); bundled folders go only on the PATH of terminals/processes OpenMind starts. **Verified by hand** (debug build,
+  fresh portable copy `C:\omtmp15`, workspace `My Workspace` with a space, *fixtures*: Git versions are junctions to the machine's real Git for Windows, Composer/debugpy/Prettier are placeholder files/stub `.cmd`):
+  the tab lists the sections with chips; the Git selector offered 2.47.0/2.46.2/2.45.1 and a Broken 2.44.0 (disabled), switching to 2.46.2 stuck and Verify ran the real `git --version`; Composer's Verify said
+  "file present, not run"; with no Runtime-Manager Git and the system Git not allowed, Source Control initialised a repository using the bundled Git ("OpenMind portable Git"); Format Document With Tool
+  used the project's own `prettier.cmd` in one project and the bundled one in another; Project & Language Status showed the three bundled lines; the Python runtime card's description is two lines (measured) with
+  its notes under Details; the PHP Configuration page (PHP 8.4.26, Composer, MariaDB 11.8.9, phpMyAdmin 5.2.3 installed from it) showed the header chips, cards, masked password, Reveal/Hide, Copy Password
+  (24 characters, absent from every log and settings file), Copy Connection String (`mysql://root@127.0.0.1:3307`), phpMyAdmin Running with its address and Open phpMyAdmin (opened the browser), Admin disabled
+  with "Start MariaDB first." after stopping MariaDB, and the Laravel card for a Laravel folder (no `.env` created); the main control panel looked as before; a normal close (after stopping phpMyAdmin — closing
+  with a server running hides to the tray, as designed) left no process of the copy; User/Machine PATH identical; no outside connection from the app tree at launch. **Not done / limitations**: no tool
+  binaries are bundled; a bundled Composer is a `composer.phar` used by the PHP panel's Composer buttons (a `composer.cmd` next to it is needed to also find `composer` for project commands); the debugpy
+  bundle must be laid out as `debugpy/adapter/__main__.py` and was verified only as a fixture (no real bundled debugpy was started); "Use External Path" is not implemented; the Runtimes section of the Tools
+  tab is empty (the Runtimes tab already covers them); the Laravel helper copies commands, it does not run them. Note: the Extensions view now loads Popular by itself when it opens (a user request after Milestone
+  14.1; never at launch). Left on disk: `C:\omtmp15`, `C:\omtmp`, `C:\Users\smsha\.cargo-target`.
+- [ ] Milestone 16 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

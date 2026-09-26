@@ -23,7 +23,7 @@ export interface LanguageDef {
   levels: SupportLevel[];
 }
 
-export type ToolSource = "project" | "portable" | "system" | "env";
+export type ToolSource = "project" | "bundled" | "portable" | "system" | "env";
 
 export interface ToolFound {
   path: string;

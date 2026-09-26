@@ -47,6 +47,7 @@ fn env(os: Os, tools: &[&str]) -> (tempfile::TempDir, ToolEnv) {
     let env = ToolEnv {
         os,
         project_dirs: vec![],
+        bundled_dirs: vec![],
         portable_dirs: vec![],
         system_dirs: vec![bin.path().to_path_buf()],
         pathext: if os == Os::Windows {

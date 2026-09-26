@@ -43,10 +43,22 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     searchSymbolsOfText: vi.fn().mockResolvedValue([]),
     searchTextIndexed: vi.fn(),
     onIndexStatus: vi.fn().mockResolvedValue(() => undefined),
+    toolchainsList: vi.fn().mockResolvedValue({
+      toolsDir: "tools",
+      platform: "windows-x64",
+      manifestFound: false,
+      manifestError: null,
+      warnings: [],
+      tools: [],
+    }),
+    toolchainsSetActive: vi.fn(),
+    toolchainsVerify: vi.fn(),
     languageRegistry: vi.fn().mockResolvedValue([]),
     languageWorkspaceStatus: vi.fn().mockResolvedValue({ os: "windows", projects: [], tools: [] }),
     languageFileStatus: vi.fn(),
-    languageTerminalLine: vi.fn().mockImplementation((argv: string[]) => Promise.resolve(argv.join(" "))),
+    languageTerminalLine: vi
+      .fn()
+      .mockImplementation((argv: string[]) => Promise.resolve(argv.join(" "))),
     aiProvidersList: vi.fn().mockResolvedValue([]),
     aiProviderSave: vi.fn(),
     aiProviderDelete: vi.fn().mockResolvedValue(undefined),

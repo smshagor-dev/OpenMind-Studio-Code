@@ -239,14 +239,19 @@
 
 .cp__subhead {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
 }
 
+.cp__titleblock {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
 .cp__subhead h2 {
-  flex: 1;
   margin: 0;
   font-size: 13px;
 }

@@ -1,0 +1,319 @@
+/* PHP stack Configuration page: section cards, status chips, compact facts and version rows. Tokens only. */
+
+.php-window .php-view.pcfg {
+  max-width: 780px;
+  gap: 12px;
+  padding: 12px 16px 20px;
+}
+
+.pcfg-card {
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
+  background-color: var(--sidebar-bg);
+}
+
+.pcfg-card:hover,
+.pcfg-card:focus-within {
+  border-color: var(--focus-border);
+}
+
+.php-view__section.pcfg-card {
+  border-bottom: 1px solid var(--menu-border);
+}
+
+.pcfg-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pcfg .pcfg-card__head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--fg-strong);
+}
+
+.pcfg-card__desc {
+  margin: -4px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pcfg-muted {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* Chips */
+
+.pcfg-chips {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 0 2px 2px;
+}
+
+.pcfg-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 9px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+.pcfg-chip--ok {
+  background-color: var(--success-bg);
+  color: var(--on-accent-fg);
+}
+
+.pcfg-chip--warn {
+  background-color: var(--warning-bg-soft);
+  border-color: var(--warning-fg);
+  color: var(--warning-fg);
+}
+
+.pcfg-chip--error {
+  background-color: var(--error-bg-soft);
+  border-color: var(--error-border);
+  color: var(--error-fg);
+}
+
+.pcfg-chip--info {
+  border-color: var(--info-fg);
+  color: var(--info-fg);
+}
+
+.pcfg-chip--off {
+  background-color: var(--toolbar-hover-bg);
+  color: var(--fg-muted);
+}
+
+/* Facts */
+
+.pcfg-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+}
+
+.pcfg-facts__row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--menu-separator);
+}
+
+.pcfg-facts__row:last-child {
+  border-bottom: 0;
+}
+
+.pcfg-facts dt {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.pcfg-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pcfg-inline-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Paths */
+
+.pcfg .php-view__path-row {
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--menu-border);
+  border-radius: 5px;
+  background-color: var(--input-bg);
+}
+
+.pcfg .php-view__path {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
+}
+
+/* Buttons */
+
+.pcfg .php-view__button,
+.pcfg .ext-view__button {
+  padding: 3px 11px;
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pcfg .php-view__button:hover:not(:disabled),
+.pcfg .ext-view__button:hover:not(:disabled) {
+  background-color: var(--button-secondary-hover-bg);
+}
+
+.pcfg .php-view__button--primary,
+.pcfg .ext-view__button--primary {
+  border-color: transparent;
+  background-color: var(--button-bg);
+  color: var(--button-fg);
+}
+
+.pcfg .php-view__button:disabled,
+.pcfg .ext-view__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pcfg .php-view__button:focus-visible,
+.pcfg .ext-view__button:focus-visible,
+.pcfg .php-view__input:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.pcfg .php-view__row {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Credentials */
+
+.pcfg-credentials {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  background-color: var(--editor-bg);
+}
+
+.pcfg-credentials h4 {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pcfg-credentials .php-view__secret {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  user-select: all;
+}
+
+/* Laravel helper */
+
+.pcfg-commands {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pcfg-commands li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.pcfg-commands code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* PHP and Composer version cards, embedded */
+
+.pcfg .ext-view--embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pcfg .ext-view__card {
+  padding: 10px 12px;
+  border: 1px solid var(--menu-border);
+  border-radius: 6px;
+  background-color: var(--editor-bg);
+}
+
+.pcfg .ext-view__version {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--menu-separator);
+}
+
+.pcfg .ext-view__version:last-child {
+  border-bottom: 0;
+}
+
+.pcfg .ext-view__version-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pcfg .ext-view__badge {
+  padding: 1px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--menu-border);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.pcfg .ext-view__badge--installed,
+.pcfg .ext-view__badge--active {
+  border-color: transparent;
+  background-color: var(--success-bg);
+  color: var(--on-accent-fg);
+}
+
+.pcfg .ext-view__badge--recommended {
+  border-color: var(--info-fg);
+  color: var(--info-fg);
+}
+
+.pcfg .ext-view__badge--needs-repair {
+  border-color: var(--error-border);
+  color: var(--error-fg);
+}
+
+/* Header under the page title */
+
+.cp__subhead .pcfg-subtitle {
+  margin: 2px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}

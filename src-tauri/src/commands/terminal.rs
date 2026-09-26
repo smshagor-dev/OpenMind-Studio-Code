@@ -51,16 +51,7 @@ pub async fn terminal_create(
     state.editor_windows.track_terminal(&id, &owner);
     // Active portable runtimes go in front of the new shell's PATH — and only
     // that shell's. A runtime problem never blocks opening a terminal.
-    let runtime = match state.runtime.environment().await {
-        Ok(environment) => environment,
-        Err(err) => {
-            tracing::warn!(
-                ?err,
-                "could not read the runtime environment for a new terminal"
-            );
-            Default::default()
-        }
-    };
+    let runtime = crate::commands::run::environment(&state).await;
     let mut env = openmind_terminal::default_environment();
     env.extend(runtime.vars);
     let request = CreateTerminalRequest {

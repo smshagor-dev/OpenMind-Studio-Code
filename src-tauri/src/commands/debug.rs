@@ -95,10 +95,20 @@ pub struct DebugStatus {
     php: Readiness,
 }
 
+/// Where the adapter's files are: the active *bundled* debugpy (`<app>/tools`) first, then the Runtime Manager's install.
+async fn adapter_dir(state: &AppState, runtime_kind: &str) -> Option<PathBuf> {
+    if runtime_kind == "debugpy" {
+        if let Some(dir) = crate::commands::toolchains::debugpy_dir(state).await {
+            return Some(dir);
+        }
+    }
+    state.runtime.installed_dir(runtime_kind).await
+}
+
 async fn target_readiness(state: &AppState, target: Target, prepend: &[PathBuf]) -> Readiness {
     let interpreter = resolve_interpreter(target, prepend, std::env::var_os("PATH"));
     let dir = match adapter_for(target) {
-        Some(adapter) => state.runtime.installed_dir(adapter.runtime_kind).await,
+        Some(adapter) => adapter_dir(state, adapter.runtime_kind).await,
         None => None,
     };
     readiness(target, interpreter.as_ref(), dir.as_deref())
@@ -131,7 +141,7 @@ pub async fn debug_start(
         resolve_interpreter(target, &environment.path_prepend, std::env::var_os("PATH"));
     let adapter = adapter_for(target);
     let adapter_dir = match adapter {
-        Some(adapter) => state.runtime.installed_dir(adapter.runtime_kind).await,
+        Some(adapter) => adapter_dir(&state, adapter.runtime_kind).await,
         None => None,
     };
     let ready = readiness(target, interpreter.as_ref(), adapter_dir.as_deref());

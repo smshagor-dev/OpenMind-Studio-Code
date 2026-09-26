@@ -69,6 +69,7 @@ mod tests {
         ToolEnv {
             os: Os::Linux,
             project_dirs: vec![],
+            bundled_dirs: vec![],
             portable_dirs: vec![],
             system_dirs: vec![dir.to_path_buf()],
             pathext: vec![],

@@ -52,6 +52,7 @@ import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexServic
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
 import { wireLanguage } from "./language/languageWiring";
+import { ToolchainService } from "./toolchains/toolchainService";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -596,6 +597,10 @@ const language = wireLanguage({
   terminal,
   showTerminal: () => panel.show("terminal"),
 });
+/** The bundled app-local tools: choosing another active version makes the language support look again. */
+const toolchains = new ToolchainService(tauriIpcClient, () => {
+  void language.support.refresh();
+});
 // Extensions' languages win; then the registry's grammar for languages the editor's own table doesn't know (Go, Rust ...).
 documents.setLanguageResolver(
   (path) =>
@@ -695,6 +700,7 @@ export const container = {
   ai,
   startAi,
   language,
+  toolchains,
   startLanguage,
   startExtensions: extensions.start,
   finishExtensionsStartup: extensions.finishStartup,
