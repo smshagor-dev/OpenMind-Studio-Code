@@ -85,7 +85,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     onError: (message) => {
       events.emit("appError", { message });
     },
-    autoFetch: () => settings.bool("extensions.marketplace.autoFetch", false),
+    autoFetch: () => settings.bool("extensions.marketplace.autoFetch", true),
   });
   // Problems an extension reported for files that aren't open yet are kept until they are.
   const pendingDiagnostics = new Map<string, Map<string, MarkerInput[]>>();

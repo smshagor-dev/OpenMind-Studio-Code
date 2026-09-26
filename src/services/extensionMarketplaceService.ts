@@ -69,7 +69,7 @@ export interface MarketplaceHooks {
   /** Hands a downloaded `.vsix` to the normal install flow (trust dialog, then install). */
   install: (path: string) => Promise<void>;
   onError: (message: string) => void;
-  /** `extensions.marketplace.autoFetch`: load Popular when the view shows. Off unless the user turned it on. */
+  /** `extensions.marketplace.autoFetch`: load Popular when the view shows. On by default; the user can turn it off. */
   autoFetch?: () => boolean;
 }
 
