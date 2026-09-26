@@ -83,7 +83,7 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "Ctrl+Shift+O", command: "go.toSymbolInEditor", owner: "editor" },
   { key: "F12", command: "go.toDefinition", owner: "editor" },
   { key: "Ctrl+F12", command: "go.toImplementations", owner: "editor" },
-  { key: "Shift+F12", command: "go.toReferences", owner: "editor" },
+  { key: "Shift+F12", command: "go.toReferences", owner: "app" },
   { key: "F2", command: "edit.renameSymbol", owner: "editor" },
   { key: "Shift+Alt+F", command: "edit.formatDocument", owner: "editor" },
   { key: "Ctrl+G", command: "go.toLine", owner: "editor" },

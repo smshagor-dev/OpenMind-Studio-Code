@@ -37,3 +37,16 @@ export function disableBuiltinLanguageServices(): void {
     );
   }
 }
+
+/**
+ * Shift+F12 (Go to References) is the app's own shortcut: it asks the language server when one is running and falls
+ * back to the workspace index otherwise, which Monaco's built-in binding would bypass. Its default key is switched off.
+ */
+export function freeReferencesShortcut(): void {
+  monaco.editor.addKeybindingRules([
+    {
+      keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F12,
+      command: "-editor.action.goToReferences",
+    },
+  ]);
+}

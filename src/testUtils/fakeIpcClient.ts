@@ -1,8 +1,27 @@
 import { vi } from "vitest";
 
 import type { IpcClient } from "../services/ipc";
+import type { IndexStatus } from "../services/searchIpc";
 import { createFakeExtensionsIpc } from "./fakeExtensionsIpc";
 import { emptyPreferences } from "./preferencesFixture";
+
+export function idleStatus(overrides: Partial<IndexStatus> = {}): IndexStatus {
+  return {
+    root: "C:/My Site",
+    state: "none",
+    discovered: 0,
+    processed: 0,
+    indexed: 0,
+    skipped: 0,
+    errors: 0,
+    symbols: 0,
+    contentBytes: 0,
+    dbBytes: 0,
+    lastIndexedMs: null,
+    error: null,
+    ...overrides,
+  };
+}
 
 /**
  * A fully-stubbed `IpcClient` for tests, so each test file only needs to
@@ -12,6 +31,18 @@ import { emptyPreferences } from "./preferencesFixture";
 export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
   return {
     ...createFakeExtensionsIpc(),
+    indexStart: vi.fn().mockResolvedValue(idleStatus()),
+    indexStatus: vi.fn().mockResolvedValue(idleStatus()),
+    indexCancel: vi.fn().mockResolvedValue(undefined),
+    indexRebuild: vi.fn().mockResolvedValue(undefined),
+    indexClear: vi.fn().mockResolvedValue(undefined),
+    indexTouch: vi.fn().mockResolvedValue(undefined),
+    searchFilesIndexed: vi.fn().mockResolvedValue([]),
+    searchSymbolsIndexed: vi.fn().mockResolvedValue([]),
+    searchFileSymbols: vi.fn().mockResolvedValue([]),
+    searchSymbolsOfText: vi.fn().mockResolvedValue([]),
+    searchTextIndexed: vi.fn(),
+    onIndexStatus: vi.fn().mockResolvedValue(() => undefined),
     previewInspect: vi.fn(),
     previewReadBytes: vi.fn(),
     previewReadText: vi.fn(),

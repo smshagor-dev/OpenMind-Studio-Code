@@ -1,9 +1,9 @@
-//! Workspace text search: a plain, cancellable, symlink-safe walk that skips
-//! heavy folders, binary and huge files, and reports matches the way Monaco
-//! addresses text. No index yet — that belongs to the later indexed-search
-//! milestone; this is the real, working search the UI needs now.
+//! Workspace search. Two engines share one result shape: a plain, cancellable, symlink-safe walk over the disk
+//! (`walk`, used while no index exists), and the persistent local index (`index`, Milestone 12: file names, text via a
+//! trigram full-text index, symbols), which answers without touching the workspace.
 
 pub mod error;
+pub mod index;
 pub mod matcher;
 pub mod query;
 pub mod registry;

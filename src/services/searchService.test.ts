@@ -165,7 +165,7 @@ describe("SearchService", () => {
     await service.run();
 
     const line = output.getLines("Search").join("\n");
-    expect(line).toContain('Searched for "needle": 1 match in 1 file');
+    expect(line).toContain('Searched (files) for "needle": 1 match in 1 file');
     expect(line).toContain("result limit");
     expect(line).toContain("2 binary and 1 large");
   });

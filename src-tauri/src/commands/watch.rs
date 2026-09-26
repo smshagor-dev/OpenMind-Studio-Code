@@ -32,10 +32,13 @@ pub async fn watch_start(
     }
     let handle = app.clone();
     let target = label.clone();
+    let index = state.index.clone();
+    let index_root = std::path::PathBuf::from(&workspace.path);
     let watcher = FileWatcher::start(
         Path::new(&workspace.path),
         Arc::new(move |batch: ChangeBatch| {
             // Each window hears only about its own folder.
+            crate::commands::index::apply_watch_batch(&index, &index_root, &batch);
             let _ = handle.emit_to(target.as_str(), "fs:changed", batch);
         }),
     )

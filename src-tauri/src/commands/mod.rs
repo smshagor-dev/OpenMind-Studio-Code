@@ -6,6 +6,7 @@ pub mod extension_manage;
 pub mod extensions;
 pub mod filesystem;
 pub mod git;
+pub mod index;
 pub mod lsp;
 pub mod marketplace;
 pub mod panel;

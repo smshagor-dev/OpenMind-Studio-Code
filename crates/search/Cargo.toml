@@ -8,8 +8,10 @@ authors.workspace = true
 
 [dependencies]
 globset = "0.4"
+ignore = "0.4"
 openmind-fs = { version = "0.1.0", path = "../fs" }
 regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true

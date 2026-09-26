@@ -33,12 +33,15 @@ import { ActivityBar } from "./ActivityBar";
 import { BottomPanel } from "./BottomPanel";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { MenuPopup, type PopupItem } from "./MenuPopup";
+import { SearchPanelService } from "../services/searchPanelService";
 import { SearchView } from "./SearchView";
 
 const FAKE_PROBLEMS = {
   files: [] as unknown[],
   listeners: new Set<() => void>(),
 };
+
+const INDEX_STATE = { status: null, busy: false, error: null };
 
 function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = {}) {
   const ipc = createFakeIpc({
@@ -118,6 +121,14 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
     ports,
     terminal,
     search,
+    searchPanel: new SearchPanelService(),
+    workspaceIndex: {
+      subscribe: () => () => undefined,
+      getState: () => INDEX_STATE,
+      label: () => "",
+      detail: () => "",
+      actionReason: () => null,
+    },
     run,
     documents,
     markdown: { followLink },
@@ -363,7 +374,7 @@ describe("SearchView", () => {
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "needle" } });
     fireEvent.keyDown(screen.getByLabelText("Search"), { key: "Enter" });
 
-    expect(await screen.findByText("3 results in 2 files")).toBeInTheDocument();
+    expect(await screen.findByText(/^3 results in 2 files/)).toBeInTheDocument();
     expect(ipc.searchRun).toHaveBeenCalled();
     const files = within(screen.getByRole("list", { name: "Search results" })).getAllByRole(
       "button",
@@ -414,7 +425,7 @@ describe("SearchView", () => {
     render(<SearchView />);
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "needle" } });
     fireEvent.keyDown(screen.getByLabelText("Search"), { key: "Enter" });
-    await screen.findByText("3 results in 2 files");
+    await screen.findByText(/^3 results in 2 files/);
     expect(screen.getAllByTitle(/^Line /)).toHaveLength(3);
 
     fireEvent.click(screen.getByTitle("C:/p/src/a.rs"));

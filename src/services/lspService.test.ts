@@ -461,12 +461,10 @@ describe("editor commands are gated by the server", () => {
     return { r, commands, run, output, show };
   }
 
-  it("Go to Definition, Find References and Rename run Monaco's action when the server supports them", async () => {
+  it("Go to Definition and Rename run Monaco's action when the server supports them (Find References is covered in searchWiring.test)", async () => {
     const { commands, run } = await commandRig([server()]);
     for (const [command, action] of [
       ["go.toDefinition", "editor.action.revealDefinition"],
-      ["go.toReferences", "editor.action.referenceSearch.trigger"],
-      ["lsp.findReferences", "editor.action.referenceSearch.trigger"],
       ["edit.renameSymbol", "editor.action.rename"],
     ] as const) {
       expect(commands.isEnabled(command)).toBe(true);
@@ -510,7 +508,6 @@ describe("editor commands are gated by the server", () => {
   function r_expectMissing(commands: CommandRegistry) {
     for (const command of [
       "go.toDefinition",
-      "go.toReferences",
       "edit.renameSymbol",
       "edit.formatDocument",
     ]) {

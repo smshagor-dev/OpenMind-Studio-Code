@@ -46,7 +46,10 @@ import { parseEvaluate } from "./debugModel";
 import { DebugService } from "./debugService";
 import { VariablesService } from "./variablesService";
 import { WatchService } from "./watchService";
-import { disableBuiltinLanguageServices } from "./monacoBuiltins";
+import { disableBuiltinLanguageServices, freeReferencesShortcut } from "./monacoBuiltins";
+import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
+import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
+import { wireSearch } from "./searchWiring";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -77,6 +80,7 @@ import * as monaco from "monaco-editor";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
+freeReferencesShortcut();
 
 const events = new EventBus<AppEvents>();
 const buffers = new BufferManager();
@@ -117,12 +121,19 @@ const terminal = new TerminalService(
   panel,
   log("Terminal"),
 );
+const workspaceIndex = new WorkspaceIndexService(
+  tauriIpcClient,
+  events,
+  () => workspace.getActiveWorkspace()?.path ?? null,
+  () => indexSettingsFrom(settings),
+);
 const search = new SearchService(
   tauriIpcClient,
   events,
   output,
   () => workspace.getActiveWorkspace()?.path ?? null,
   workspace,
+  workspaceIndex,
 );
 
 const php = new PhpServerService(tauriIpcClient, events, output, runtime, ports, panel, () =>
@@ -304,6 +315,13 @@ async function startDebugTools(): Promise<void> {
 async function startLanguageTools(): Promise<void> {
   diagnostics.initialize();
   registerLspProviders({ ipc: tauriIpcClient, documents, workspace, lsp });
+  registerIndexSymbolProvider({
+    textSymbols: (language, text) => tauriIpcClient.searchSymbolsOfText(language, text),
+    languageServerHandles: (uri) => {
+      const id = documents.idForModelUri(uri);
+      return id !== undefined && lsp.available("documentSymbol", id).enabled;
+    },
+  });
   await lsp.initialize();
 }
 
@@ -456,6 +474,19 @@ registerPreviewCommands({
   markdown,
   filePreviews,
 });
+const searchWiring = wireSearch({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  settings,
+  workspace,
+  editor,
+  lsp,
+  layout,
+  search,
+  index: workspaceIndex,
+});
+void workspaceIndex.listen();
 registerRuntimeCommands(commands, events);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerDebugCommands({ commands, debug, breakpoints, editor, events, activeFile });
@@ -536,9 +567,9 @@ const extensions = wireExtensions({
   languageForPath,
   activeTabId: () => workspace.getState().activeId,
   hasTextTab: (docId) =>
-    workspace.getState().groups.some((group) =>
-      group.tabs.some((tab) => tab.docId === docId && tab.kind === "text"),
-    ),
+    workspace
+      .getState()
+      .groups.some((group) => group.tabs.some((tab) => tab.docId === docId && tab.kind === "text")),
 });
 contributionsRef = extensions.contributions;
 
@@ -612,6 +643,12 @@ export const container = {
   associations,
   markdown,
   filePreviews,
+  workspaceIndex,
+  searchPanel: searchWiring.panel,
+  fileSearch: searchWiring.fileSearch,
+  symbolSearch: searchWiring.symbolSearch,
+  references: searchWiring.references,
+  quickOpen: searchWiring.quickOpen,
   ipc: tauriIpcClient,
   extensions,
   startExtensions: extensions.start,

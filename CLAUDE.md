@@ -1662,7 +1662,25 @@ right after start-up (the extension list marks it "Activates at every start-up (
   grew wider than the editor group (flex sizing), and a stalled test harness (not the app). Tests: 14 Rust (`kind`, `path`, `inspect`, `docx`, `xlsx` incl. macros, DTD, limits, malformed), TypeScript for the
   parsers (CSV, LaTeX, SVG and HTML notices), the service (routing, models, limits, errors, stale loads, zoom, pages), the workspace (tabs, no dirty/save, Open as Text, restore, extensions' active editor and edit
   refusal), the commands and the view (every format, controls, messages, sanitizing). Roadmap renumbered: indexed search is now Milestone 12, AI providers 13, icon themes/profiles/signing 14.
-- [ ] Milestone 12 — Indexed workspace/symbol/reference search.
+- [x] **Milestone 12** — Indexed workspace / symbol / reference search (`feat: add indexed workspace symbol and reference search`). `openmind-search` gained `index/`
+  (`ignore` + bundled `rusqlite`, SQLite WAL + an FTS5 trigram table, one database per workspace at `data/search-index/<hash>.sqlite`, local only, no network): `crawl` (the
+  `ignore` walker, `.gitignore`, `.openmindignore`, `search.indexing.exclude`, built-in skips `.git node_modules target dist build .next vendor .venv __pycache__` ..., never follows
+  symlinks, every path checked to lie inside the root), `text` (binary/text sniff, language), `symbols` (line-based **heuristic** extractors for TypeScript/JavaScript, Python, PHP, Rust,
+  Markdown headings and JSON keys; containers tracked), `store`, `sync` (incremental pass by size+mtime in batches; `apply_changes` for watcher batches and saves), `query`
+  (`search_files` fuzzy/glob/path ranking with highlights, `search_text` = FTS prefilter + regex/whole word/case, `search_symbols`, `file_symbols`) and `IndexManager` (start/refresh/
+  rebuild/clear/cancel/status, `index:status` events, stopped on window close). Defaults: 1 MiB per file, 256 MiB total, `.gitignore` on, hidden files off. Settings: `search.indexing.enabled|
+  exclude|maxFileSizeKb|useGitignore|indexHiddenFiles` (user + workspace); there is no follow-symlinks setting because links are never followed. Tauri: `commands::index`
+  (`index_*`, `search_*_indexed`, `search_file_symbols`), the watcher feeds the index (`apply_watch_batch`), a saved file is `index_touch`ed. Frontend: `WorkspaceIndexService`,
+  `FileSearchService`, `SymbolSearchService`, `ReferenceSearchService`, `QuickOpenService`, `SearchPanelService`, `searchWiring.ts` (commands `go.toFile` Ctrl+P, `go.toSymbolInWorkspace`
+  Ctrl+T, `search.show*`, `search.refresh/rebuild/clearIndex`, `search.cancelIndexing`); the Search view has Files / Text / Symbols / References tabs and an index bar, the status bar shows
+  the index state, `SearchService` uses the index and falls back to the disk walk (results say "from the index"). **Find References (Shift+F12, now app-owned)**: language server first,
+  otherwise a **labelled "Text-based references"** whole-word text search — not semantic. Monaco's outline gets an index-based symbol provider only when no language server handles the file.
+  **Privacy**: the index holds project text on the local disk, inside the app folder; *Clear Search Index* deletes it, nothing leaves the machine. **Limitations**: symbols are heuristics (not
+  a parser; no LSP workspace/symbol use), references are text matches, PDF/DOCX/XLSX and other previews are not indexed, nested `.gitignore` files are honoured in the full pass only,
+  files outside the open folder are not indexed, no semantic/AI search (Milestone 13). Verified by hand in a fresh copy with a path containing spaces: background indexing (ignored
+  folders excluded), Ctrl+P (fuzzy, glob, path), text search options and click-to-line, incremental updates (create/edit/rename/delete/save), symbol search and open, text-based references,
+  index persisted across relaunch, clean close with no leftover process. The three sample extensions were **not** re-installed by hand this time (the native file dialog could not be driven);
+  Extension System and previews are covered by their automated tests, which stay green. Left on disk: `E:\omidx`, `E:\wt12-target`.
 - [ ] Milestone 13 — AI provider plugin architecture (local + hosted providers, chat, embeddings,
   including the future OpenMind AI integration).
 - [ ] Milestone 14 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.

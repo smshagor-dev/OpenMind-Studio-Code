@@ -17,6 +17,7 @@ import { ActivityBar } from "./components/ActivityBar";
 import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
+import { QuickOpen } from "./components/QuickOpen";
 import { ExtensionDialogs } from "./components/ExtensionDialogs";
 import { ExtensionPrompts } from "./components/ExtensionPrompts";
 import { RunConfigurationDialog } from "./components/RunConfigurationDialog";
@@ -123,9 +124,13 @@ export function App() {
         ) : null}
       </div>
       {layout.statusBarVisible ? (
-        <StatusBar activeDocument={activeTab?.kind === "text" ? activeTab : null} hasWorkspace={activeWorkspace !== null} />
+        <StatusBar
+          activeDocument={activeTab?.kind === "text" ? activeTab : null}
+          hasWorkspace={activeWorkspace !== null}
+        />
       ) : null}
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
+      <QuickOpen />
       <ExtensionDialogs />
       <ExtensionPrompts />
       {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}

@@ -329,6 +329,17 @@ export class EditorService {
     return true;
   }
 
+  /** The selected text (when it is one line) or the word at the cursor of the focused editor, or `null`. */
+  wordAtCursor(): string | null {
+    const model = this.editor?.getModel();
+    const selection = this.editor?.getSelections()?.[0];
+    if (!model || !selection) return null;
+    if (!selection.isEmpty() && selection.startLineNumber === selection.endLineNumber) {
+      return model.getValueInRange(selection).trim() || null;
+    }
+    return model.getWordAtPosition(selection.getPosition())?.word ?? null;
+  }
+
   hasEditor(): boolean {
     return this.editor?.getModel() != null;
   }

@@ -39,6 +39,8 @@ pub struct AppState {
     pub terminal: TerminalRegistry,
     pub runtime: RuntimeManager,
     pub search: SearchRegistry,
+    /// The persistent workspace index (background indexing, file/text/symbol queries).
+    pub index: std::sync::Arc<openmind_search::index::IndexManager>,
     pub runner: RunRegistry,
     /// The PHP built-in server (at most one), its own registry so its events never look like a Run Code run.
     pub php_server: RunRegistry,

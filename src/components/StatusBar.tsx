@@ -5,6 +5,7 @@ import { container } from "../services/container";
 import type { DocumentSnapshot } from "../services/documentService";
 import type { LineEnding, TextEncoding } from "../services/ipc";
 import { DebugStatusItem } from "./DebugStatusItem";
+import { IndexStatusItem } from "./IndexStatusItem";
 import { GitBranchIndicator } from "./GitBranchIndicator";
 import { LspStatusItem } from "./LspStatusItem";
 import { ExtensionStatusItems } from "./ExtensionStatusItems";
@@ -79,6 +80,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
           <span>{problems.warnings}</span>
         </button>
         <DebugStatusItem />
+        <IndexStatusItem />
         {showBranch ? (
           <GitBranchIndicator
             className="statusbar__item"

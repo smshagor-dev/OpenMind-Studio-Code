@@ -13,4 +13,16 @@ pub enum SearchError {
 
     #[error("\"{pattern}\" isn't a valid file pattern: {reason}")]
     InvalidGlob { pattern: String, reason: String },
+
+    #[error("the search index couldn't be used: {0}")]
+    Index(String),
+
+    #[error("that path is outside the workspace")]
+    OutsideWorkspace,
+}
+
+impl From<rusqlite::Error> for SearchError {
+    fn from(err: rusqlite::Error) -> Self {
+        Self::Index(err.to_string())
+    }
 }

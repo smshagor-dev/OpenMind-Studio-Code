@@ -83,7 +83,7 @@ impl SearchQuery {
 /// matches everything under `src`, `a/b.txt` is anchored to the search root.
 /// Matching is on root-relative, forward-slash paths, so a pattern can never
 /// address anything outside the searched folder.
-fn build_globs(patterns: &[String]) -> Result<GlobSet, SearchError> {
+pub(crate) fn build_globs(patterns: &[String]) -> Result<GlobSet, SearchError> {
     let mut builder = GlobSetBuilder::new();
     for raw in patterns {
         let pattern = raw.trim().trim_start_matches("./").trim_end_matches('/');

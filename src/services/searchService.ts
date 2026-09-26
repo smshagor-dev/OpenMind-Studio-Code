@@ -29,7 +29,16 @@ export interface SearchState {
   error: string | null;
   /** Relative paths of result files whose matches are folded away. */
   collapsed: readonly string[];
+  /** Where the answer came from: the workspace index, or a plain read of the files (no index yet). */
+  source: "index" | "disk" | null;
+  /** How many result files are drawn (more are added on request, so a huge result set never freezes the panel). */
+  visibleFiles: number;
+  /** Result files whose long match list is shown in full. */
+  expandedFiles: readonly string[];
 }
+
+export const RESULT_PAGE = 40;
+export const MATCHES_PER_FILE = 100;
 
 export const SEARCH_CHANNEL = "Search";
 const DEBOUNCE_MS = 350;
@@ -44,6 +53,9 @@ const INITIAL: SearchState = {
   outcome: null,
   error: null,
   collapsed: [],
+  source: null,
+  visibleFiles: RESULT_PAGE,
+  expandedFiles: [],
 };
 
 /** What the service needs to open a result. */
@@ -84,6 +96,8 @@ export class SearchService {
     /** The open workspace folder to search in, or `null` with none open. */
     private readonly getRoot: () => string | null,
     private readonly opener: SearchResultOpener,
+    /** The workspace index; without it (or before it is ready) the files are searched directly. */
+    private readonly index?: { isReady: () => boolean },
   ) {}
 
   getState(): SearchState {
@@ -160,7 +174,13 @@ export class SearchService {
     const runNumber = ++this.runCounter;
     const searchId = `search-${String(runNumber)}`;
     this.currentId = searchId;
-    this.update({ status: "searching", error: null, collapsed: [] });
+    this.update({
+      status: "searching",
+      error: null,
+      collapsed: [],
+      visibleFiles: RESULT_PAGE,
+      expandedFiles: [],
+    });
     const request: SearchQueryRequest = {
       root,
       text: query,
@@ -170,9 +190,23 @@ export class SearchService {
       maxResults: MAX_RESULTS,
     };
     try {
-      const outcome = await this.ipc.searchRun(searchId, request);
+      let source: "index" | "disk" = this.index?.isReady() === true ? "index" : "disk";
+      let outcome: SearchOutcome;
+      if (source === "index") {
+        try {
+          outcome = await this.ipc.searchTextIndexed(searchId, request);
+        } catch (indexError) {
+          // A pattern or glob error is the user's to fix; anything else falls back to reading the files.
+          const text = String(indexError);
+          if (/isn't a valid|nothing to search/.test(text)) throw indexError;
+          source = "disk";
+          outcome = await this.ipc.searchRun(searchId, request);
+        }
+      } else {
+        outcome = await this.ipc.searchRun(searchId, request);
+      }
       if (runNumber !== this.runCounter) return; // a newer search took over
-      this.update({ status: "done", outcome, error: null });
+      this.update({ status: "done", outcome, error: null, source });
       this.logOutcome(query, outcome);
     } catch (error) {
       if (runNumber !== this.runCounter) return;
@@ -195,7 +229,16 @@ export class SearchService {
   /** Clears the query and results. */
   clear(): void {
     this.cancel();
-    this.update({ query: "", status: "idle", outcome: null, error: null, collapsed: [] });
+    this.update({
+      query: "",
+      status: "idle",
+      outcome: null,
+      error: null,
+      collapsed: [],
+      source: null,
+      visibleFiles: RESULT_PAGE,
+      expandedFiles: [],
+    });
   }
 
   toggleFile(relativePath: string): void {
@@ -203,6 +246,17 @@ export class SearchService {
       ? this.state.collapsed.filter((path) => path !== relativePath)
       : [...this.state.collapsed, relativePath];
     this.update({ collapsed });
+  }
+
+  /** Draws the next page of result files. */
+  showMoreFiles(): void {
+    this.update({ visibleFiles: this.state.visibleFiles + RESULT_PAGE });
+  }
+
+  /** Shows every match of one file (a file's list is cut at `MATCHES_PER_FILE`). */
+  expandMatches(relativePath: string): void {
+    if (this.state.expandedFiles.includes(relativePath)) return;
+    this.update({ expandedFiles: [...this.state.expandedFiles, relativePath] });
   }
 
   collapseAll(): void {
@@ -254,7 +308,7 @@ export class SearchService {
   private logOutcome(query: string, outcome: SearchOutcome): void {
     const files = outcome.files.length;
     const parts = [
-      `Searched for "${query}": ${String(outcome.totalMatches)} match${outcome.totalMatches === 1 ? "" : "es"} in ${String(files)} file${files === 1 ? "" : "s"}`,
+      `Searched${this.state.source === "index" ? " (index)" : " (files)"} for "${query}": ${String(outcome.totalMatches)} match${outcome.totalMatches === 1 ? "" : "es"} in ${String(files)} file${files === 1 ? "" : "s"}`,
       `(${String(outcome.filesSearched)} searched, ${String(outcome.durationMs)} ms)`,
     ];
     if (outcome.truncated) parts.push("— stopped at the result limit");

@@ -28,6 +28,9 @@ export const LSP_EDITOR_COMMANDS: Record<string, [LspAction, string]> = {
   "edit.formatDocument": ["formatting", "editor.action.formatDocument"],
 };
 
+/** Commands that `searchWiring` owns (they use the language server when there is one, else the workspace index). */
+const REFERENCE_COMMANDS: ReadonlySet<string> = new Set(["go.toReferences", "lsp.findReferences"]);
+
 /**
  * Language features as commands (menus, shortcuts, the palette): each is enabled
  * only when the file in front has a running server that supports it, and says
@@ -40,6 +43,8 @@ export function registerLspCommands(deps: LspCommandDeps): void {
     editor.hasEditor() ? lsp.activeAvailable(action).reason : "Open a file first.";
 
   for (const [id, [action, monacoAction]] of Object.entries(LSP_EDITOR_COMMANDS)) {
+    // Find References is registered with the search commands: it falls back to a text-based search.
+    if (REFERENCE_COMMANDS.has(id)) continue;
     commands.register(
       id,
       () => {
