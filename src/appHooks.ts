@@ -4,6 +4,7 @@ import type { ToastMessage } from "./components/ErrorToast";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { container } from "./services/container";
+import { StartupTimings } from "./services/startupTimings";
 import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./services/ipc";
 
 const TOAST_LIFETIME_MS = 6000;
@@ -25,9 +26,11 @@ export function useAppStartup(): boolean {
     // An object (not a `let`) so the async closure sees the cleanup's write.
     const lifecycle = { cancelled: false };
     let stopWindowTracking: (() => void) | null = null;
+    const timings = new StartupTimings();
     void (async () => {
       // Settings and shortcuts first: everything below reads them.
       await container.startSettings();
+      timings.mark("settings");
       await Promise.all([
         container.theme.initialize(),
         container.layout.initialize(),
@@ -42,6 +45,7 @@ export function useAppStartup(): boolean {
         // Listens for runtime changes made in the PHP Server window too.
         container.runtime.initialize(),
       ]);
+      timings.mark("workbench");
       container.window.initialize().then(
         (stop) => {
           if (lifecycle.cancelled) stop();
@@ -54,30 +58,43 @@ export function useAppStartup(): boolean {
         },
       );
       await container.workspace.restoreActiveWorkspace();
+      timings.mark("workspace");
       // Before the session: files it reopens must already know the languages extensions contribute.
       await container.startExtensions(isMainWindow());
+      timings.mark("extensions");
       await container.startAi();
+      timings.mark("ai");
       await container.startLanguage();
+      timings.mark("language");
       await container.startFormatting();
+      timings.mark("formatting");
       await container.workspace.restoreSession();
       // A window opened for a tab dragged out of another window opens that file.
       await container.editorWindows.openPending();
-      await container.runCode.initialize();
-      await container.php.initialize();
-      // The main window mirrors the database services' output and ports too.
+      timings.mark("session");
+      // The editor is usable now: what follows (services that only mirror state or wait for a click) must not keep
+      // the window blank.
+      if (!lifecycle.cancelled) setReady(true);
+      const usable = timings.elapsed();
       await Promise.all([
+        container.runCode.initialize(),
+        container.php.initialize(),
+        // The main window mirrors the database services' output and ports too.
         container.mariaDb.initialize(),
         container.phpMyAdmin.initialize(),
         container.composer.initialize(),
+        container.fileSync.initialize(),
+        container.startLanguageTools(),
+        container.startDebugTools(),
+        container.git.initialize(),
       ]);
-      await container.fileSync.initialize();
-      await container.startLanguageTools();
-      await container.startDebugTools();
-      await container.git.initialize();
       await container.sourceControl.initialize();
+      timings.mark("background");
       // Only now may extensions with "*" / onStartupFinished run: the window is up and the session restored.
       if (isMainWindow()) container.finishExtensionsStartup();
-      if (!lifecycle.cancelled) setReady(true);
+      if (isMainWindow()) {
+        container.reportStartup(timings.phases(), usable);
+      }
     })();
     return () => {
       lifecycle.cancelled = true;

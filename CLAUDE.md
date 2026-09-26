@@ -1147,7 +1147,7 @@ migration file, check for stray running instances first, not just after somethin
 
 ## Packaging and startup baseline (Milestone 9)
 
-Two Windows x64 editions, neither code-signed (no signing is configured):
+Windows x64 editions (portable ZIP, per-user NSIS setup, and — since Milestone 16 — an MSI; none is code-signed unless a certificate is configured, see `docs/release.md`):
 
 - **Portable ZIP** — `pnpm package:portable` (`scripts/package-portable.mjs`; `--no-build`, `--profile debug`, `--out` and `--exe`
   exist for testing) runs `pnpm tauri build --no-bundle` and zips a folder `OpenMind Studio/` holding `OpenMindStudio.exe` and a
@@ -2005,12 +2005,47 @@ right after start-up (the extension list marks it "Activates at every start-up (
   `files.autoSaveDelay`, File > Auto Save toggles afterDelay; only files that already have a path, never one changed on disk underneath, an after-delay save skips Format on Save), `editorLayout.single|twoColumns|threeColumns`
   (`EditorGroupService.setColumns`: extra groups' tabs move into the last kept group, none is closed), Go > Switch Group (`go.group1|2`, `go.next|previousGroup`), **Zen Mode** (hides side/status/panel, full screen, restored on exit)
   and **Centered Layout**, Terminal > **Run Active File** (= Run Code in Terminal) and **Run Selected Text**, Help > Keyboard Shortcuts Reference and View License (open the shortcuts page / About). **Still disabled with a reason**:
-  tasks, multi-folder workspaces and workspace files, profiles, icon themes, Replace in Files, Emmet, conditional/log/function breakpoints and launch.json, split up/down/rows/grid, last edit location, next/previous change,
+  tasks, multi-folder workspaces and workspace files, Replace in Files (profiles and the file icon theme were built in Milestone 16), Emmet, conditional/log/function breakpoints and launch.json, split up/down/rows/grid, last edit location, next/previous change,
   used-editor switching, Open View, and everything that needs an online service or update system. Save of an unsaved (untitled) file opens the Save dialog (any location) as before. **Formatting is now on by default**:
   `editor.formatOnSave` defaults to **on** (still user-only), the right-click menu has Format Document and Format Document With..., and Auto Save formats when it saves on a focus/window change. Verified by hand in the built app:
   all eight menus listed with the right entries disabled, Auto Save saved an edit ~1 s later without touching the text, Two Columns / Single, Zen Mode, and File > Save formatted a minified package.json with the default settings.
   **Not driven by hand**: the native New File... dialog (covered by unit tests).
-- [ ] Milestone 16 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
+- [x] **Milestone 16** — Icon themes, profiles, sync-readiness, startup diagnostics and release-installer preparation (`feat: add release polish profiles icons and installer prep`). Docs: `docs/release.md`, `docs/sync-readiness.md`,
+  `docs/release-notes-0.1.0.md` (draft).
+  **Icon themes** (`components/iconThemes.ts`, `fileIconSpec.ts`, `fileIcons.tsx`): setting `workbench.iconTheme` = `material` (files + folders, default), `material-files` (files only, the old look) or `minimal` (one generic file icon,
+  no folder icons). All icons are bundled Material Icon Theme SVGs (MIT): nothing is fetched and an unknown name falls back to the generic file/folder icon (a test checks every name the tables can return is bundled). Files: JS/TS/TSX/JSX,
+  HTML/CSS/SCSS, JSON/YAML/TOML/XML, Python, PHP, Laravel (`artisan`, `*.blade.php`), Rust, Go, Java, C/C++, C#, Markdown, Dockerfile (+ `Dockerfile.*`, `docker-compose.*`), SQL, Prisma, GraphQL, Dart/Flutter (`pubspec.yaml`), Gradle,
+  `AndroidManifest.xml`, Tauri, Git files, `.env*`; there is **no Electron icon in the theme**, so Electron files use their language's icon. Folders (closed/open): src, src-tauri, test/tests/__tests__/spec, node_modules, .git, .github,
+  dist/build/out, target, public, assets/resources, routes, controllers, components, pages/views, config, docs, lib, app, database, images, scripts, utils, api, android, ios, else the generic folder. The Settings page shows the theme as a dropdown;
+  File > Preferences > Themes > File Icon Theme opens it. **Extension icon themes are not supported** (stored and shown as unsupported, as before): no fake support.
+  **Profiles** (`openmind_settings::profiles`, `commands::profiles`, `src/services/profiles/`, `ProfilesDialog`, status bar item): files in `settings/profiles/` (`<id>.json` + `active.json`; `format: "openmind-profile"`, `version: 1`, `createdAt`/
+  `updatedAt`). A profile is a **fixed list of 21 settings** (`PROFILE_SETTINGS`: color/icon theme, editor font/tab/wrap/minimap/line numbers/sticky/whitespace, format on save, Auto Save + delay, terminal font size/scrollback, search indexing,
+  `ai.enabled`, marketplace auto-fetch, `lsp.enabled`, `git.autoRefresh`) — keybindings, extensions, runtimes, keys and passwords are **not** profile-aware and the dialog says so. Ready-made: Default (your settings at first run),
+  Web Development, Python, PHP / Laravel, Systems (Rust / Go / C++), Minimal / Low memory (seeded once; a deleted one stays deleted). Switching first saves the current values into the profile being left, then writes the target's values into the
+  user `settings.json` (a setting the profile lacks is removed so its default applies; every other key is kept) and re-reads the settings, so theme/icons/editor follow at once; a `settings.json` with a syntax error blocks the switch. Create
+  (empty or from the current settings), rename, duplicate, delete (**Default and the active profile can't be deleted**), export, import; names 1-40 characters, unique ignoring case; ids are slugs, never paths; a damaged profile file is skipped, listed
+  and never overwritten; a damaged/missing `active.json` falls back to Default.
+  **Sync readiness (no sync exists)**: `crates/settings/src/sync.rs` lists the app-local layout as data (syncable / user's choice / never) with tests; export/import keep only valid, path-free profile settings (a drive or UNC path or an unknown
+  setting is dropped, keys/passwords cannot be in a profile), refuse another `format`, a newer `version` or a file over 256 KB, and an import gets a fresh id. Profiles and export files carry format, version and timestamps. See `docs/sync-readiness.md`
+  (what may sync later; never: API keys, DB passwords, provider keys, absolute paths unless chosen, search index, conversations unless chosen, runtime binaries). No "Sync now", no account, no network.
+  **Start-up**: the window is **usable before background work ends** — `useAppStartup` sets ready after the session is restored and runs the mirror/initialise services (Run Code, PHP, MariaDB, phpMyAdmin, Composer, file sync, language tools, debug tools, Git)
+  in parallel afterwards; the About, Run Configuration, Language Tools and Runtime Manager dialogs are `React.lazy` chunks. **Diagnostics**: `StartupTimings` measures each phase, the main window reports them once (`startup_report`) and the app log gets
+  one line (`main window shown elapsed_ms=…` and `startup: window usable after N ms (process M ms) | phases (ms): settings=… | working set X MB` — names and numbers only; `startup.rs` drops any other name). `startup.test.ts` scans the start-up sequence
+  and start functions for anything that belongs to a click (marketplace, AI requests, tool verification, server starts, installs, extension host start, external URLs) and pins the phase order. Measured (release build, installed by the NSIS setup):
+  main window shown after 642 ms, editor usable 74 ms of front-end work later (process clock 1.06 s), app process 42 MB, ~546 MB with all WebView2 helpers, the only outside connections were WebView2's usual Microsoft ones (none from the app itself).
+  **Installers** (`pnpm release:build` = `tauri build --bundles nsis,msi`; `pnpm release:collect`): `bundle.license = "Apache-2.0"`, `bundle.licenseFile = "../LICENSE"`; `scripts/releaseTools.mjs` + `release.mjs` check the configuration and LICENSE
+  (and the generated WiX for a PATH change, licence page and launch option), copy the installers that exist to `release/` under the release names (`OpenMind-Studio-Setup-<v>-x64.exe`, `OpenMind-Studio-<v>-x64.msi`, `OpenMind-Studio-Portable-<v>-x64.zip`),
+  sign them when configured, and write `SHA256SUMS.txt` and `RELEASE-REPORT.md` (version, arch, **build type unsigned / test-signed / signed**, date, size, SHA256; only existing files). **Signing** is optional and env-only (`SIGNING_CERT_PATH`,
+  `SIGNING_CERT_PASSWORD`, `TIMESTAMP_URL`, `SIGNING_CERT_KIND=test`): nothing configured = unsigned with a clear message, a half-configured pair = skipped with a message, the password is never printed or written (tests, incl. one that fails on a tracked
+  certificate/key file or a committed password); `signtool` signs the installer files only (the exe inside is not signed yet). **Verified by hand**: the NSIS setup (UI driven through UI Automation) — Welcome, **licence page with the full Apache text and
+  "You must accept the agreement to install"** (only *I Agree* continues), install location, install, Finish with *Run OpenMind Studio* (launched the installed app) and *Create desktop shortcut*; per-user (no UAC, HKCU uninstall entry `OpenMind Studio 0.1.0`,
+  publisher OpenMind, Start Menu shortcut), data folders next to the installed exe, About-level checks below, uninstall (`/S`) removed the app and the uninstall entry (the `data/settings/...` folders are kept, by design); PATH (User and Machine) identical.
+  The **MSI** (WiX, **per-machine: Program Files, needs administrator rights / UAC**): its wizard was driven up to *Ready to install* — the licence page shows the Apache text and **Next stays disabled until "I accept" is ticked** — and cancelled there
+  because installing needs elevation: **MSI install, launch and uninstall were NOT run**. The MSI has no `<Environment>` element (no PATH change), writes only HKCU keys for the install folder and shortcuts, and offers *Launch* on its last page; when
+  WebView2 is missing its installer would download Microsoft's bootstrapper (installer-time, not the app). **Known limitations**: unsigned; MSI needs admin and was not installed here; no auto-update; the NSIS uninstaller keeps user data; the portable
+  zip was built from the same release exe and not re-run; extension icon themes, Electron icon, cloud sync, profile-aware keybindings/extensions/runtimes are not built; a profile switch does not reload extensions. Left on disk: `C:\omfmt`, `E:\Code Editor\release`
+  (git-ignored), `C:\Users\smsha\.cargo-target`.
+- [ ] Milestone 17 — to be scoped (icon/product themes from extensions, profile-aware keybindings, signing with a real certificate, auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

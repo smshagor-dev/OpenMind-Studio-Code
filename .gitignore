@@ -44,3 +44,4 @@ pnpm-debug.log*
 
 # Developer-populated tool bundle copied into the portable package (see docs/toolchains.md)
 /tools-bundle/
+/release/

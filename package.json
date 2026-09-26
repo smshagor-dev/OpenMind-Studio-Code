@@ -14,7 +14,9 @@
     "lint": "eslint .",
     "tauri": "tauri",
     "package:portable": "node scripts/package-portable.mjs",
-    "package:installer": "tauri build --bundles nsis"
+    "package:installer": "tauri build --bundles nsis",
+    "release:build": "tauri build --bundles nsis,msi",
+    "release:collect": "node scripts/release.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

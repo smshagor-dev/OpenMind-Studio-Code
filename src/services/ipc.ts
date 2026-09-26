@@ -9,6 +9,7 @@ import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
 import { type AiIpc, tauriAiIpc } from "./ai/aiIpc";
 import { type FormattingIpc, tauriFormattingIpc } from "./formatting/formattingIpc";
 import { type LanguageIpc, tauriLanguageIpc } from "./language/languageIpc";
+import { type ProfilesIpc, tauriProfilesIpc } from "./profiles/profilesIpc";
 import { type ToolchainIpc, tauriToolchainIpc } from "./toolchains/toolchainIpc";
 import { type SearchIpc, tauriSearchIpc } from "./searchIpc";
 
@@ -407,7 +408,15 @@ export interface RuntimeStatus {
 // makes eslint's `unbound-method` rule flag every bare `ipc.someMethod`
 // reference (e.g. `expect(ipc.documentSave).toHaveBeenCalledWith(...)`).
 export interface IpcClient
-  extends ExtensionsIpc, PreviewIpc, SearchIpc, AiIpc, LanguageIpc, ToolchainIpc, FormattingIpc {
+  extends
+    ExtensionsIpc,
+    PreviewIpc,
+    SearchIpc,
+    AiIpc,
+    LanguageIpc,
+    ToolchainIpc,
+    FormattingIpc,
+    ProfilesIpc {
   // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
@@ -631,6 +640,8 @@ export interface IpcClient
   appInfo: () => Promise<AppInfo>;
   /** Everything the About window shows, and the text "Copy system info" copies. */
   aboutInfo: () => Promise<AboutInfo>;
+  /** Start-up phase timings (names and milliseconds) for the app log. */
+  startupReport: (marks: [string, number][], usableMs: number) => Promise<string>;
 }
 
 export interface SearchQueryRequest {
@@ -945,6 +956,7 @@ export const tauriIpcClient: IpcClient = {
   ...tauriAiIpc,
   ...tauriLanguageIpc,
   ...tauriFormattingIpc,
+  ...tauriProfilesIpc,
   ...tauriToolchainIpc,
   async openDocumentDialog() {
     const selected = await openDialog({ multiple: false, directory: false });
@@ -1252,5 +1264,6 @@ export const tauriIpcClient: IpcClient = {
   clipboardReadText: () => readText(),
 
   aboutInfo: () => invoke<AboutInfo>("about_info"),
+  startupReport: (marks, usableMs) => invoke<string>("startup_report", { marks, usableMs }),
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };

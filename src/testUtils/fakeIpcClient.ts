@@ -89,6 +89,17 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       reason: "No formatter configured for this file type.",
     }),
     formatRun: vi.fn(),
+    startupReport: vi.fn().mockResolvedValue(""),
+    profilesList: vi
+      .fn()
+      .mockResolvedValue({ profiles: [], active: "default", problems: [], covers: [] }),
+    profileCreate: vi.fn(),
+    profileSwitch: vi.fn(),
+    profileRename: vi.fn(),
+    profileDuplicate: vi.fn(),
+    profileDelete: vi.fn(),
+    profileExport: vi.fn(),
+    profileImport: vi.fn(),
     languageTerminalLine: vi
       .fn()
       .mockImplementation((argv: string[]) => Promise.resolve(argv.join(" "))),

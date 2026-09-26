@@ -45,7 +45,7 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [target."cfg(windows)".dependencies]
-winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef"] }
+winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

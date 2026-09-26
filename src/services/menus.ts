@@ -93,7 +93,10 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
       cmd("Save As...", "file.saveAs"),
       cmd("Save All", "file.saveAll"),
       SEPARATOR,
-      sub("Share", [cmd("Export Profile...", "profiles.export")]),
+      sub("Share", [
+        cmd("Export Profile...", "profiles.export"),
+        cmd("Import Profile...", "profiles.import"),
+      ]),
       SEPARATOR,
       cmd("Auto Save", "file.toggleAutoSave"),
       sub("Preferences", [
@@ -524,10 +527,9 @@ const UNBUILT: [RegExp, string][] = [
     /^workspace\./,
     "Multi-folder workspace files aren't built yet: OpenMind opens one folder per window.",
   ],
-  [/^profiles\./, "Profiles aren't built yet (planned for Milestone 16)."],
   [
-    /^preferences\.(fileIconTheme|productIconTheme)$/,
-    "Icon themes aren't built yet (planned for Milestone 16).",
+    /^preferences\.productIconTheme$/,
+    "Product icon themes aren't built: there is one built-in set of interface icons.",
   ],
   [/^preferences\.onlineServices$/, "There are no online services to configure."],
   [

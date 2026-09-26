@@ -69,12 +69,12 @@ describe("branding and packaging metadata agree", () => {
     expect(text("Cargo.toml")).toContain(`version = "${String(pkg.version)}"`);
   });
 
-  it("the installer is per-user, so the app and its data folders never need administrator rights", () => {
+  it("the NSIS installer is per-user, so the app and its data folders never need administrator rights", () => {
     const bundle = tauri.bundle as {
       targets: string[];
       windows: { nsis: { installMode: string } };
     };
-    expect(bundle.targets).toEqual(["nsis"]);
+    expect(bundle.targets).toEqual(["nsis", "msi"]);
     expect(bundle.windows.nsis.installMode).toBe("currentUser");
   });
 

@@ -24,11 +24,11 @@ const BY_FILENAME: Record<string, string> = {
   ".gitattributes": "git",
   ".gitmodules": "git",
   "readme.md": "readme",
-  "readme": "readme",
-  "license": "license",
+  readme: "readme",
+  license: "license",
   "license.md": "license",
   "license.txt": "license",
-  "dockerfile": "docker",
+  dockerfile: "docker",
   "docker-compose.yml": "docker",
   "docker-compose.yaml": "docker",
   ".dockerignore": "docker",
@@ -55,13 +55,32 @@ const BY_FILENAME: Record<string, string> = {
   "composer.lock": "php",
   "requirements.txt": "python-misc",
   "pyproject.toml": "python-misc",
-  "makefile": "makefile",
+  makefile: "makefile",
   "cmakelists.txt": "cmake",
-  "gemfile": "gemfile",
+  gemfile: "gemfile",
   "tauri.conf.json": "tauri",
   "claude.md": "claude",
   "nginx.conf": "nginx",
+  artisan: "laravel",
+  "build.gradle": "gradle",
+  "build.gradle.kts": "gradle",
+  "settings.gradle": "gradle",
+  "settings.gradle.kts": "gradle",
+  "gradle.properties": "gradle",
+  "androidmanifest.xml": "android",
+  "pubspec.yaml": "dart",
+  "pubspec.lock": "dart",
+  "analysis_options.yaml": "dart",
+  "schema.prisma": "prisma",
 };
+
+/** Names that start with a known word (`.env.production`, `Dockerfile.dev`, `docker-compose.override.yml`). */
+const BY_PREFIX: [string, string][] = [
+  [".env", "tune"],
+  ["dockerfile", "docker"],
+  ["docker-compose", "docker"],
+  ["tauri.", "tauri"],
+];
 
 /** Icons by extension (lower case, without the dot). */
 const BY_EXTENSION: Record<string, string> = {
@@ -179,6 +198,7 @@ const BY_EXTENSION: Record<string, string> = {
   crt: "certificate",
   cer: "certificate",
   key: "key",
+  gradle: "gradle",
 };
 
 /** Used for anything the tables don't know. */
@@ -189,6 +209,9 @@ export function fileIconName(name: string): string {
   const lower = name.toLowerCase();
   const byName = BY_FILENAME[lower];
   if (byName) return byName;
+  if (lower.endsWith(".blade.php")) return "laravel";
+  const byPrefix = BY_PREFIX.find(([prefix]) => lower.startsWith(prefix));
+  if (byPrefix && !lower.endsWith(".json")) return byPrefix[1];
   if (lower.endsWith(".d.ts")) return "typescript-def";
   const dotIndex = lower.lastIndexOf(".");
   if (dotIndex < 0) return DEFAULT_ICON;
@@ -201,8 +224,61 @@ export function usedIconNames(): string[] {
     ...new Set([
       ...Object.values(BY_FILENAME),
       ...Object.values(BY_EXTENSION),
+      ...BY_PREFIX.map(([, icon]) => icon),
+      "laravel",
       "typescript-def",
       DEFAULT_ICON,
     ]),
   ].sort();
+}
+
+/** Folder icons by folder name (lower case); the icon name has an `-open` twin in the theme. */
+const BY_FOLDER: Record<string, string> = {
+  src: "folder-src",
+  "src-tauri": "folder-src-tauri",
+  test: "folder-test",
+  tests: "folder-test",
+  __tests__: "folder-test",
+  spec: "folder-test",
+  node_modules: "folder-node",
+  ".git": "folder-git",
+  ".github": "folder-github",
+  dist: "folder-dist",
+  build: "folder-dist",
+  out: "folder-dist",
+  target: "folder-target",
+  public: "folder-public",
+  assets: "folder-resource",
+  resources: "folder-resource",
+  routes: "folder-routes",
+  controllers: "folder-controller",
+  components: "folder-components",
+  pages: "folder-views",
+  views: "folder-views",
+  config: "folder-config",
+  docs: "folder-docs",
+  lib: "folder-lib",
+  app: "folder-app",
+  database: "folder-database",
+  images: "folder-images",
+  scripts: "folder-scripts",
+  utils: "folder-utils",
+  api: "folder-api",
+  android: "folder-android",
+  ios: "folder-ios",
+};
+
+/** Used for a folder the table doesn't know. */
+export const DEFAULT_FOLDER_ICON = "folder-base";
+
+/** The icon name for a folder, in its closed or open form. */
+export function folderIconName(name: string, open: boolean): string {
+  const base = BY_FOLDER[name.toLowerCase()] ?? DEFAULT_FOLDER_ICON;
+  return open ? `${base}-open` : base;
+}
+
+/** Every folder icon name (closed and open) the table can return, for the loader and its test. */
+export function usedFolderIconNames(): string[] {
+  const bases = new Set([...Object.values(BY_FOLDER), DEFAULT_FOLDER_ICON]);
+  return [...bases].flatMap((base) => [base, `${base}-open`]).sort();
 }

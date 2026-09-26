@@ -3,6 +3,7 @@
 mod app_state;
 mod commands;
 mod secret;
+mod startup;
 mod tray;
 mod window_events;
 mod windows;
@@ -22,6 +23,7 @@ use tauri::Manager;
 use app_state::AppState;
 
 fn main() {
+    startup::mark_process_start();
     let app_paths = AppPaths::resolve().expect("failed to resolve application paths");
     app_paths
         .ensure_dirs()
@@ -202,6 +204,15 @@ fn main() {
             commands::language::language_workspace_status,
             commands::language::language_file_status,
             commands::language::language_terminal_line,
+            startup::startup_report,
+            commands::profiles::profiles_list,
+            commands::profiles::profile_create,
+            commands::profiles::profile_switch,
+            commands::profiles::profile_rename,
+            commands::profiles::profile_duplicate,
+            commands::profiles::profile_delete,
+            commands::profiles::profile_export,
+            commands::profiles::profile_import,
             commands::format::format_options,
             commands::format::format_run,
             commands::about::about_info,
@@ -250,6 +261,7 @@ fn main() {
 
             window_events::apply_window_state(&window, &saved_state)?;
             window.show()?;
+            tracing::info!(elapsed_ms = startup::since_start_ms(), "main window shown");
             window_events::register_close_handler(&window, window_state_service.clone());
 
             let (registry, manifest_warnings) = RuntimeRegistry::builtin()

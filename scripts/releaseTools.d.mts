@@ -1,0 +1,39 @@
+export const SIGNING_VARIABLES: string[];
+
+export interface SigningConfig {
+  mode: "unsigned" | "signed" | "test-signed" | "misconfigured";
+  message: string;
+  certPath?: string;
+  password?: string;
+  timestampUrl?: string | null;
+}
+
+export function readSigningConfig(env: Record<string, string | undefined>): SigningConfig;
+export function publicSigningInfo(config: SigningConfig): {
+  mode: string;
+  message: string;
+  timestamp: string | null;
+};
+export function signtoolArgs(config: SigningConfig, file: string): string[];
+export function redact(text: unknown, secrets: (string | undefined)[]): string;
+export function releaseName(kind: "setup" | "msi" | "portable", version: string, arch?: string): string;
+export function formatSize(bytes: number): string;
+
+export interface Artifact {
+  name: string;
+  size: number;
+  sha256: string;
+  kind: string;
+}
+
+export function reportText(input: {
+  version: string;
+  arch: string;
+  buildType: string;
+  date: string;
+  artifacts: Artifact[];
+  notes?: string[];
+}): string;
+export function checksumsText(artifacts: Artifact[]): string;
+export function checkWixSource(wxs: string): string[];
+export function checkInstallerConfig(tauri: Record<string, unknown>, licenseText: string): string[];

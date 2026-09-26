@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
 import { visibleTreeRows } from "../services/explorerTree";
-import { FileTypeIcon } from "./fileIcons";
+import { FileTypeIcon, FolderTypeIcon } from "./fileIcons";
 import { ChevronIcon } from "./icons";
 import { InlineNameInput } from "./InlineNameInput";
 
@@ -227,7 +227,11 @@ function TreeRow(props: TreeRowProps) {
       <span className="tree-row__twistie">
         {node.isDir ? <ChevronIcon expanded={isExpanded} /> : null}
       </span>
-      {node.isDir ? null : <FileTypeIcon name={node.name} />}
+      {node.isDir ? (
+        <FolderTypeIcon name={node.name} open={isExpanded} />
+      ) : (
+        <FileTypeIcon name={node.name} />
+      )}
       <TreeRowLabel node={node} {...props} />
     </div>
   );

@@ -7,6 +7,7 @@ import type { LineEnding, TextEncoding } from "../services/ipc";
 import { DebugStatusItem } from "./DebugStatusItem";
 import { IndexStatusItem } from "./IndexStatusItem";
 import { FormatterStatusItem } from "./formatting/FormatterStatusItem";
+import { ProfileStatusItem } from "./profiles/ProfileStatusItem";
 import { LanguageStatusItem } from "./language/LanguageStatusItem";
 import { GitBranchIndicator } from "./GitBranchIndicator";
 import { LspStatusItem } from "./LspStatusItem";
@@ -85,6 +86,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
         <IndexStatusItem />
         <LanguageStatusItem />
         <FormatterStatusItem />
+        <ProfileStatusItem />
         {showBranch ? (
           <GitBranchIndicator
             className="statusbar__item"

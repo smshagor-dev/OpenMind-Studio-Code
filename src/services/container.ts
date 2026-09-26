@@ -51,7 +51,9 @@ import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
 import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
+import { followIconTheme } from "../components/iconThemes";
 import { AutoSaveService } from "./autoSaveService";
+import { ProfileService } from "./profiles/profileService";
 import { wireFormatting } from "./formatting/formattingWiring";
 import { registerMenuFillCommands } from "./menuFillCommands";
 import { wireLanguage } from "./language/languageWiring";
@@ -634,6 +636,20 @@ editor.setFormatActions([
   { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
   { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: true },
 ]);
+/** The Explorer's icons follow `workbench.iconTheme`. */
+followIconTheme(settings);
+commands.register("preferences.fileIconTheme", () => {
+  preferencesPage.open("settings", { query: "Icon Theme" });
+});
+/** Profiles: named sets of settings, kept in settings/profiles next to the app. */
+const profiles = new ProfileService(tauriIpcClient, events, () => settings.reload());
+commands.register("profiles.manage", () => profiles.openWindow());
+commands.register("profiles.export", async () => {
+  await profiles.exportProfile();
+});
+commands.register("profiles.import", async () => {
+  await profiles.importProfile();
+});
 /** Files > Auto Save (afterDelay / onFocusChange / onWindowChange). Only files that already have a path are saved. */
 const autoSave = new AutoSaveService({
   events,
@@ -684,9 +700,15 @@ async function startLanguage(): Promise<void> {
   await language.support.refresh();
 }
 
+/** Writes the start-up timings (phase names and milliseconds only) to the app log; a failure is not worth a message. */
+function reportStartup(phases: [string, number][], usableMs: number): void {
+  void tauriIpcClient.startupReport(phases, usableMs).catch(() => undefined);
+}
+
 /** Loads the formatter choices the user made and looks up the formatter of the file in front (no formatter runs). */
 async function startFormatting(): Promise<void> {
   autoSave.start();
+  await profiles.load();
   await formatting.initialize();
   await formatting.refreshStatus();
 }
@@ -781,6 +803,8 @@ export const container = {
   toolchains,
   startLanguage,
   formatting,
+  profiles,
+  reportStartup,
   startFormatting,
   startExtensions: extensions.start,
   finishExtensionsStartup: extensions.finishStartup,

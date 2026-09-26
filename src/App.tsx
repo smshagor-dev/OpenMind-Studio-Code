@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import {
   useAboutDialog,
@@ -12,27 +12,40 @@ import {
   useToasts,
   useWorkbenchState,
 } from "./appHooks";
-import { AboutDialog } from "./components/AboutDialog";
 import { ActivityBar } from "./components/ActivityBar";
 import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
 import { ErrorToast } from "./components/ErrorToast";
 import { AiConfirmDialog } from "./components/ai/AiConfirmDialog";
 import { FormatterDialog } from "./components/formatting/FormatterDialog";
+import { ProfilesDialog } from "./components/profiles/ProfilesDialog";
 import { LanguageStatusDialog } from "./components/language/LanguageStatusDialog";
 import { AiProviderManager } from "./components/ai/AiProviderManager";
 import { QuickOpen } from "./components/QuickOpen";
 import { ExtensionDialogs } from "./components/ExtensionDialogs";
 import { ExtensionPrompts } from "./components/ExtensionPrompts";
-import { RunConfigurationDialog } from "./components/RunConfigurationDialog";
-import { LanguageToolsDialog } from "./components/LanguageToolsDialog";
-import { RuntimeManagerDialog } from "./components/RuntimeManagerDialog";
 import { SecondarySideBar } from "./components/SecondarySideBar";
 import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { container } from "./services/container";
 import { buildMenuBar, projectMenuCommands } from "./services/menus";
+
+// Dialogs that only open on a click are loaded then (a separate chunk each), not at start-up.
+const AboutDialog = lazy(() =>
+  import("./components/AboutDialog").then((m) => ({ default: m.AboutDialog })),
+);
+const RunConfigurationDialog = lazy(() =>
+  import("./components/RunConfigurationDialog").then((m) => ({
+    default: m.RunConfigurationDialog,
+  })),
+);
+const LanguageToolsDialog = lazy(() =>
+  import("./components/LanguageToolsDialog").then((m) => ({ default: m.LanguageToolsDialog })),
+);
+const RuntimeManagerDialog = lazy(() =>
+  import("./components/RuntimeManagerDialog").then((m) => ({ default: m.RuntimeManagerDialog })),
+);
 
 /** The VS Code-style workbench: title bar, activity bar, side bar, editor group, status bar. */
 export function App() {
@@ -164,12 +177,15 @@ export function App() {
       <AiConfirmDialog />
       <LanguageStatusDialog />
       <FormatterDialog />
+      <ProfilesDialog />
       <ExtensionDialogs />
       <ExtensionPrompts />
-      {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}
-      {runtimesOpen ? <RuntimeManagerDialog onClose={closeRuntimes} /> : null}
-      {languageToolsOpen ? <LanguageToolsDialog onClose={closeLanguageTools} /> : null}
-      {runConfigOpen ? <RunConfigurationDialog onClose={closeRunConfig} /> : null}
+      <Suspense fallback={null}>
+        {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}
+        {runtimesOpen ? <RuntimeManagerDialog onClose={closeRuntimes} /> : null}
+        {languageToolsOpen ? <LanguageToolsDialog onClose={closeLanguageTools} /> : null}
+        {runConfigOpen ? <RunConfigurationDialog onClose={closeRunConfig} /> : null}
+      </Suspense>
     </div>
   );
 }
