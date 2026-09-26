@@ -7,6 +7,7 @@ pub mod extension_host;
 pub mod extension_manage;
 pub mod extensions;
 pub mod filesystem;
+pub mod format;
 pub mod git;
 pub mod index;
 pub mod language;

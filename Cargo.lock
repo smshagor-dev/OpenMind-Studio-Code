@@ -2911,6 +2911,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-format"
+version = "0.1.0"
+dependencies = [
+ "openmind-language",
+ "openmind-process",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-fs"
 version = "0.1.0"
 dependencies = [
@@ -3047,6 +3059,7 @@ dependencies = [
  "openmind-db",
  "openmind-extensions",
  "openmind-file-watch",
+ "openmind-format",
  "openmind-fs",
  "openmind-git",
  "openmind-language",

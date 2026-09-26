@@ -21,7 +21,7 @@ async fn workspace_root(state: &AppState, window: &tauri::Window) -> Result<Path
 }
 
 /// The lookup environment: bundled app-local tools, OpenMind's portable runtimes, then the machine's PATH (read, never written).
-async fn tool_env(state: &AppState) -> ToolEnv {
+pub(crate) async fn tool_env(state: &AppState) -> ToolEnv {
     let bundled = crate::commands::toolchains::bundled_dirs(state).await;
     let portable = match state.runtime.environment().await {
         Ok(environment) => environment.path_prepend,

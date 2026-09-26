@@ -97,7 +97,7 @@ fn def(
 const MONO: &str = "Consolas, 'Cascadia Mono', 'Courier New', monospace";
 
 fn editor_definitions() -> Vec<SettingDef> {
-    use SettingScope::Both;
+    use SettingScope::{Both, User};
     let int = |min, max| SettingKind::Int { min, max };
     let text = || SettingKind::Text { max_length: 200 };
     vec![
@@ -196,6 +196,62 @@ fn editor_definitions() -> Vec<SettingDef> {
             SettingKind::Bool,
             json!(true),
             Both,
+        ),
+        // Formatting (Milestone 15.2). Everything that can start a tool is user-only: a folder you open must not be
+        // able to switch on running its own tools from a checked-in settings file.
+        def(
+            "editor.formatOnSave",
+            "Editor",
+            "Format on Save",
+            "Format a text file with its formatter just before it is saved. If there is no formatter or it fails, the file is still saved as it is.",
+            SettingKind::Bool,
+            json!(false),
+            User,
+        ),
+        def(
+            "editor.defaultFormatter",
+            "Editor",
+            "Default Formatter",
+            "The id of the formatter to prefer (for example prettier, biome, black, ruff, builtin.json). It is used for the languages it supports; other languages ignore it. Format Document With... can set a per-language choice.",
+            text(),
+            json!(""),
+            Both,
+        ),
+        def(
+            "formatter.timeoutMs",
+            "Editor",
+            "Formatter Time Limit",
+            "An external formatter that takes longer than this many milliseconds is stopped and the text is left as it is.",
+            int(1000, 120_000),
+            json!(10_000),
+            User,
+        ),
+        def(
+            "formatter.useProjectLocalTools",
+            "Editor",
+            "Formatters: Use Project Tools",
+            "Run a formatter installed in the open project (node_modules/.bin, .venv, vendor/bin). Project tools are programs from the folder you opened: turn this off for folders you do not trust.",
+            SettingKind::Bool,
+            json!(true),
+            User,
+        ),
+        def(
+            "formatter.useBundledTools",
+            "Editor",
+            "Formatters: Use Bundled Tools",
+            "Run a formatter from OpenMind's own tools folder.",
+            SettingKind::Bool,
+            json!(true),
+            User,
+        ),
+        def(
+            "formatter.useSystemTools",
+            "Editor",
+            "Formatters: Use System Tools",
+            "Also run a formatter found on the computer's PATH when nothing else provides one.",
+            SettingKind::Bool,
+            json!(false),
+            User,
         ),
     ]
 }

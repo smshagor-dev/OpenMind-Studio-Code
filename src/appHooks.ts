@@ -58,6 +58,7 @@ export function useAppStartup(): boolean {
       await container.startExtensions(isMainWindow());
       await container.startAi();
       await container.startLanguage();
+      await container.startFormatting();
       await container.workspace.restoreSession();
       // A window opened for a tab dragged out of another window opens that file.
       await container.editorWindows.openPending();

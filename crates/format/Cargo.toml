@@ -1,0 +1,19 @@
+[package]
+name = "openmind-format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+openmind-language = { version = "0.1.0", path = "../language" }
+serde = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+[target."cfg(windows)".dependencies]
+openmind-process = { version = "0.1.0", path = "../process" }
+
+[dev-dependencies]
+tempfile = "3.27.0"

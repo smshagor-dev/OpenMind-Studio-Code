@@ -172,6 +172,7 @@ export function formatOption(overrides: Partial<FormatOption> = {}): FormatOptio
     found: { path: "C:/My Project/node_modules/.bin/prettier.cmd", source: "project" },
     hint: "Add it to the project (`npm i -D prettier`).",
     argv: ["C:/My Project/node_modules/.bin/prettier.cmd", "--write", "C:/My Project/src/a.ts"],
+    stdinArgv: [],
     wholeProject: false,
     ...overrides,
   };

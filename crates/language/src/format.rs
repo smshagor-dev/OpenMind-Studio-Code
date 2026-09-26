@@ -14,6 +14,9 @@ struct Recipe {
     kind: Category,
     /// Arguments; `{file}` is replaced by the file. A recipe without `{file}` works on the whole project.
     args: &'static [&'static str],
+    /// Arguments that make the tool read the *text* from stdin and print the formatted text to stdout (`{file}` = the
+    /// file's name, for its config and language). `None`: the tool only works on files on disk.
+    stdin: Option<&'static [&'static str]>,
 }
 
 const RECIPES: &[Recipe] = &[
@@ -21,111 +24,133 @@ const RECIPES: &[Recipe] = &[
         tool: "prettier",
         kind: Category::Format,
         args: &["--write", "{file}"],
+        stdin: Some(&["--stdin-filepath", "{file}"]),
     },
     Recipe {
         tool: "biome",
         kind: Category::Format,
         args: &["format", "--write", "{file}"],
+        stdin: Some(&["format", "--stdin-file-path={file}"]),
     },
     Recipe {
         tool: "biome",
         kind: Category::Lint,
         args: &["lint", "{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "eslint",
         kind: Category::Lint,
         args: &["{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "stylelint",
         kind: Category::Lint,
         args: &["{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "black",
         kind: Category::Format,
         args: &["{file}"],
+        stdin: Some(&["-q", "--stdin-filename", "{file}", "-"]),
     },
     Recipe {
         tool: "ruff",
         kind: Category::Format,
         args: &["format", "{file}"],
+        stdin: Some(&["format", "--stdin-filename", "{file}", "-"]),
     },
     Recipe {
         tool: "ruff",
         kind: Category::Lint,
         args: &["check", "{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "isort",
         kind: Category::Format,
         args: &["{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "php-cs-fixer",
         kind: Category::Format,
         args: &["fix", "{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "pint",
         kind: Category::Format,
         args: &["{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "rustfmt",
         kind: Category::Format,
         args: &["{file}"],
+        stdin: Some(&["--edition", "2021", "--emit", "stdout"]),
     },
     Recipe {
         tool: "cargo",
         kind: Category::Lint,
         args: &["clippy"],
+        stdin: None,
     },
     Recipe {
         tool: "gofmt",
         kind: Category::Format,
         args: &["-w", "{file}"],
+        stdin: Some(&[]),
     },
     Recipe {
         tool: "go",
         kind: Category::Lint,
         args: &["vet", "./..."],
+        stdin: None,
     },
     Recipe {
         tool: "golangci-lint",
         kind: Category::Lint,
         args: &["run"],
+        stdin: None,
     },
     Recipe {
         tool: "clang-format",
         kind: Category::Format,
         args: &["-i", "{file}"],
+        stdin: Some(&["--assume-filename={file}"]),
     },
     Recipe {
         tool: "dotnet",
         kind: Category::Format,
         args: &["format", "--include", "{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "ktlint",
         kind: Category::Format,
         args: &["-F", "{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "ktlint",
         kind: Category::Lint,
         args: &["{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "dart",
         kind: Category::Format,
         args: &["format", "{file}"],
+        stdin: None,
     },
     Recipe {
         tool: "dart",
         kind: Category::Lint,
         args: &["analyze", "{file}"],
+        stdin: None,
     },
 ];
 
@@ -140,6 +165,8 @@ pub struct FormatOption {
     pub hint: String,
     /// The whole argument list with the program's resolved path first (only when found).
     pub argv: Vec<String>,
+    /// The argument list (program first) that formats text passed on stdin; empty when the tool only works on files.
+    pub stdin_argv: Vec<String>,
     /// The tool works on the project rather than on the one file.
     pub whole_project: bool,
 }
@@ -182,6 +209,12 @@ pub fn options(
                     argv
                 })
                 .unwrap_or_default();
+            let stdin_argv = match (&status.found, recipe.stdin) {
+                (Some(found), Some(args)) => std::iter::once(found.path.clone())
+                    .chain(args.iter().map(|a| a.replace("{file}", file)))
+                    .collect(),
+                _ => Vec::new(),
+            };
             Some(FormatOption {
                 tool: status.id,
                 name: status.name,
@@ -189,6 +222,7 @@ pub fn options(
                 found: status.found,
                 hint: status.hint,
                 argv,
+                stdin_argv,
                 whole_project: !recipe.args.iter().any(|a| a.contains("{file}")),
             })
         })
@@ -235,6 +269,58 @@ mod tests {
         );
         assert_eq!(list[0].argv[1..], ["--write", "/w/a b.ts"]);
         assert!(!list[0].whole_project);
+    }
+
+    #[test]
+    fn tools_that_can_read_stdin_say_how_and_file_only_tools_do_not() {
+        let project = tempfile::tempdir().expect("tmp");
+        for tool in [
+            "prettier", "biome", "black", "ruff", "rustfmt", "gofmt", "pint",
+        ] {
+            std::fs::write(project.path().join(tool), "").expect("file");
+        }
+        let e = env(project.path(), project.path());
+        let stdin = |language: &str, tool: &str| {
+            options(
+                by_id(language).expect("language"),
+                Category::Format,
+                "/w/a b.x",
+                &e,
+            )
+            .into_iter()
+            .find(|o| o.tool == tool)
+            .map(|o| o.stdin_argv[1..].to_vec())
+            .unwrap_or_default()
+        };
+        assert_eq!(
+            stdin("typescript", "prettier"),
+            ["--stdin-filepath", "/w/a b.x"]
+        );
+        assert_eq!(
+            stdin("typescript", "biome"),
+            ["format", "--stdin-file-path=/w/a b.x"]
+        );
+        assert_eq!(
+            stdin("python", "black"),
+            ["-q", "--stdin-filename", "/w/a b.x", "-"]
+        );
+        assert_eq!(
+            stdin("python", "ruff"),
+            ["format", "--stdin-filename", "/w/a b.x", "-"]
+        );
+        assert_eq!(
+            stdin("rust", "rustfmt"),
+            ["--edition", "2021", "--emit", "stdout"]
+        );
+        assert!(
+            options(by_id("go").expect("go"), Category::Format, "/w/a.go", &e)[0]
+                .stdin_argv
+                .len()
+                == 1
+        );
+        // Pint and PHP CS Fixer only rewrite files on disk.
+        let php = options(by_id("php").expect("php"), Category::Format, "/w/a.php", &e);
+        assert!(php.iter().all(|o| o.stdin_argv.is_empty()));
     }
 
     #[test]

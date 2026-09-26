@@ -111,6 +111,8 @@ export interface FormatOption {
   hint: string;
   /** The program's resolved path first (empty when the tool wasn't found). */
   argv: string[];
+  /** The argument list that formats text passed on stdin (empty when the tool only works on files). */
+  stdinArgv: string[];
   wholeProject: boolean;
 }
 

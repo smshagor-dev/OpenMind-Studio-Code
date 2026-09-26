@@ -29,7 +29,12 @@ export const LSP_EDITOR_COMMANDS: Record<string, [LspAction, string]> = {
 };
 
 /** Commands that `searchWiring` owns (they use the language server when there is one, else the workspace index). */
-const REFERENCE_COMMANDS: ReadonlySet<string> = new Set(["go.toReferences", "lsp.findReferences"]);
+const REFERENCE_COMMANDS: ReadonlySet<string> = new Set([
+  "go.toReferences",
+  "lsp.findReferences",
+  // Format Document is registered by the formatting service (built-in and tool formatters, and the server).
+  "edit.formatDocument",
+]);
 
 /**
  * Language features as commands (menus, shortcuts, the palette): each is enabled

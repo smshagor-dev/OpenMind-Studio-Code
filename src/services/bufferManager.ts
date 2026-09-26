@@ -67,6 +67,39 @@ export class BufferManager {
     model.pushEditOperations([], [{ range, text: edit.text }], () => null);
   }
 
+  /** The line ending of the text as the model holds it (a model has one). */
+  eolOf(id: string): "\n" | "\r\n" {
+    return this.requireModel(id).getEOL() === "\r\n" ? "\r\n" : "\n";
+  }
+
+  /** One indentation level as the model uses it (its tab size / insert-spaces, which follow the detected indentation). */
+  indentUnitOf(id: string): string {
+    const { insertSpaces, tabSize } = this.requireModel(id).getOptions();
+    return insertSpaces ? " ".repeat(tabSize) : "\t";
+  }
+
+  /** The text that results from applying language-server style edits to the model's text; the model is not changed. */
+  textWithEdits(id: string, edits: { range: monaco.IRange; text: string }[]): string {
+    const model = this.requireModel(id);
+    const text = model.getValue();
+    const spans = edits
+      .map((edit) => ({
+        start: model.getOffsetAt({
+          lineNumber: edit.range.startLineNumber,
+          column: edit.range.startColumn,
+        }),
+        end: model.getOffsetAt({
+          lineNumber: edit.range.endLineNumber,
+          column: edit.range.endColumn,
+        }),
+        text: edit.text,
+      }))
+      .sort((a, b) => b.start - a.start);
+    let out = text;
+    for (const span of spans) out = out.slice(0, span.start) + span.text + out.slice(span.end);
+    return out;
+  }
+
   /**
    * Applies edits from an extension as ONE undoable step. Everything is checked first (every range inside
    * the text, no two ranges overlapping) so a bad batch changes nothing. Line/column are 0-based.

@@ -7,6 +7,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { type ExtensionsIpc, tauriExtensionsIpc } from "./extensionsIpc";
 import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
 import { type AiIpc, tauriAiIpc } from "./ai/aiIpc";
+import { type FormattingIpc, tauriFormattingIpc } from "./formatting/formattingIpc";
 import { type LanguageIpc, tauriLanguageIpc } from "./language/languageIpc";
 import { type ToolchainIpc, tauriToolchainIpc } from "./toolchains/toolchainIpc";
 import { type SearchIpc, tauriSearchIpc } from "./searchIpc";
@@ -406,7 +407,7 @@ export interface RuntimeStatus {
 // makes eslint's `unbound-method` rule flag every bare `ipc.someMethod`
 // reference (e.g. `expect(ipc.documentSave).toHaveBeenCalledWith(...)`).
 export interface IpcClient
-  extends ExtensionsIpc, PreviewIpc, SearchIpc, AiIpc, LanguageIpc, ToolchainIpc {
+  extends ExtensionsIpc, PreviewIpc, SearchIpc, AiIpc, LanguageIpc, ToolchainIpc, FormattingIpc {
   // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
@@ -943,6 +944,7 @@ export const tauriIpcClient: IpcClient = {
   ...tauriSearchIpc,
   ...tauriAiIpc,
   ...tauriLanguageIpc,
+  ...tauriFormattingIpc,
   ...tauriToolchainIpc,
   async openDocumentDialog() {
     const selected = await openDialog({ multiple: false, directory: false });

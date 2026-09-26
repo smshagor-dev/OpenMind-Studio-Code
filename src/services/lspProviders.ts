@@ -523,14 +523,9 @@ export function registerLspProviders(deps: ProviderDeps): {
       ),
       monaco.languages.registerReferenceProvider(language, createReferenceProvider(deps, peek)),
       monaco.languages.registerRenameProvider(language, createRenameProvider(deps)),
-      monaco.languages.registerDocumentFormattingEditProvider(
-        language,
-        createFormattingProvider(deps),
-      ),
-      monaco.languages.registerDocumentRangeFormattingEditProvider(
-        language,
-        createRangeFormattingProvider(deps),
-      ),
+      // Formatting (document and selection) is not registered with Monaco: Format Document / Format Selection are the
+      // app's own commands (FormattingService), which use the language server through `createFormattingProvider` and
+      // `createRangeFormattingProvider`. Registered providers would add a second, native "Format Document" to the menu.
       monaco.languages.registerDocumentSymbolProvider(language, createSymbolProvider(deps)),
     );
   }

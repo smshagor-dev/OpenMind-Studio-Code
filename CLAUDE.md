@@ -464,6 +464,23 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   its resolver takes the first folder that has `git.exe`. **What is physically bundled in this build: nothing** — the system, manifest, detection, selection, Verify, UI and packaging check are built and tested
   against fixture folders; every tool shows Missing (or External) until real files are added. Do not claim "last five versions" shipped until they are.
 
+- `openmind-format` (Milestone 15.2) — the formatting backend, Tauri-agnostic. It formats **text** (the editor's in-memory buffer, never a file on disk). `json` = the **built-in JSON / JSONC
+  formatter** (own lexer + checker + printer: comments and trailing commas are accepted and kept, structure is validated with a line/column, strings and numbers are copied verbatim, key order is kept, every member
+  and element on its own line, `{}`/`[]` stay, a final newline only if there was one, tab/space indent and LF/CRLF from the document, depth limit 256, stable when run twice; an invalid document is refused and
+  changes nothing). `run::run_stdin` pipes the text through an external formatter's stdin/stdout (argument list, no shell, `CREATE_NO_WINDOW`, a time limit, on Windows a Job Object so a timeout kills the
+  whole tree — `prettier.cmd` starts a `node` —, output capped, invalid UTF-8 / empty output for non-empty input / a non-zero exit are errors and the caller keeps its text; the runtime folders go in front of PATH
+  **for that child only**). `project::nearest_project_root` gives the working folder (nearest ancestor with `package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `composer.json`, `.prettierrc`, `.editorconfig`,
+  `.git` ..., never above the open folder). `resolve` builds the candidates from `openmind_language::format::options` (which gained `stdin_argv`: prettier `--stdin-filepath`, biome `format --stdin-file-path`, black
+  `-q --stdin-filename - `, ruff `format --stdin-filename -`, rustfmt `--edition 2021 --emit stdout`, gofmt, clang-format `--assume-filename`) plus the built-in JSON formatter, with a `Policy` (project / bundled /
+  system tools allowed; a source that is off is not searched, so the next one can supply the tool, and the reason says so) and **the order: the user's default, project-local, bundled, built-in, OpenMind's portable
+  runtime, the system PATH (only when allowed), otherwise a reason** (`No formatter available for TypeScript. Prettier not found. ...` / `No formatter configured for Plain Text.`). A default that is not one of the
+  file's candidates is ignored; one that is but can't be used is an error, never silently replaced. Tools that only rewrite files on disk (**Pint, PHP CS Fixer, dotnet format, ktlint, `dart format`**) are listed
+  as unavailable for Format Document with the reason and stay reachable through "Format Saved File With Tool (Terminal)"; isort is not a document formatter and is not offered. `tests/policy.rs` scans the source: no
+  environment writes, no registry, no files written, no network, no shell. `src-tauri/src/commands/format.rs`: `format_options` (candidates + the selected one + why none) and `format_run` (limit 2 MB, absolute
+  path without NUL, timeout 1-120 s, on `spawn_blocking`). **Settings** (all in the Editor category): `editor.formatOnSave` (user, default off), `editor.defaultFormatter` (user + workspace), `formatter.timeoutMs`
+  (default 10 000), `formatter.useProjectLocalTools` (default on), `formatter.useBundledTools` (default on), `formatter.useSystemTools` (default **off**) — every setting that can start a program is **user-only**, so a
+  folder's own `.openmind/settings.json` can't switch on running its tools.
+
 - `openmind-extensions` (Milestone 10) — the VS Code-compatible extension system foundation. **OpenMind Studio supports a VS Code
   API subset**; nothing here is VS Code's source. Layout (portable, never AppData): `extensions/installed/<publisher>.<name>-<version>/`,
   `extensions/disabled/…` (enabling/disabling *moves the folder*, so the state persists by location and there is no registry file that
@@ -914,14 +931,30 @@ internals.
   `summary()` for the status bar ("Vite + React", "Tauri + React (+2)", "No project detected") and `lookUpFile`. `ProjectCommandService`: `availability`/`describe` of a command and
   `runCommand`/`runTool`, which — only on a click — open a **new integrated terminal in the project's folder** (so the portable runtimes are first on that terminal's PATH like every
   terminal; nothing else touches PATH), ask the backend for the line quoted for that terminal's shell, type it and show the panel; a command that can't run says why and opens nothing; WSL
-  terminals are refused with a reason. Commands: `language.showStatus` (always there), `language.refresh`, `language.formatWithTool` ("Format Document With Tool", Edit menu) and
+  terminals are refused with a reason. Commands: `language.showStatus` (always there), `language.refresh`, `language.formatWithTool` ("Format Saved File With Tool (Terminal)", Edit menu; since Milestone 15.2) and
   `language.runLinter` — they act on the **saved** file of the active *text* tab inside the folder (an edited file is saved first; a preview, an untitled or outside file is refused with a
   reason), run the first *found* tool (the project's own first) in the terminal and otherwise say "No formatter found for <language> (looked in the project, OpenMind's runtimes and PATH)"
-  with each candidate's setup hint. The existing LSP "Format Document" (Shift+Alt+F) is untouched. UI: `LanguageStatusItem` (status bar) and `LanguageStatusDialog` ("Project & Language
+  with each candidate's setup hint. Format Document itself (Shift+Alt+F) is the formatting service's since Milestone 15.2. UI: `LanguageStatusItem` (status bar) and `LanguageStatusDialog` ("Project & Language
   Status..." in the Manage menu and the status bar item): the current file's language, group, support levels, syntax note, language servers (`languageView.lspLine`: OpenMind's own server's
   live state or "LSP not configured: install it from Language Tools", any other candidate found/not found and always "OpenMind can't start this language server yet"), formatters and
   linters; every detected project with its confidence chips (evidence in the tooltip), ambiguity warning, notes, tools and command buttons grouped Dev/Run/Build/Test/Lint/Format/Install
   (a disabled button's reason is its tooltip *and* visible text below); and the toolchains on the computer.
+
+- **Formatting (Milestone 15.2).** `src/services/formatting/`: `FormattingService` (the brain, free of Monaco/React over a small `FormattingHost`), `formattingWiring.ts` (commands, host, save hook), `formatSelection.ts`,
+  `formattingIpc.ts`. Format Document is **the app's own command** (`edit.formatDocument`, Shift+Alt+F is now an app-owned binding and Monaco's own key is switched off): it asks the backend which formatter applies,
+  runs it on the buffer's text and applies the answer with `BufferManager.replaceContent` (a minimal prefix/suffix edit: one undo step, the cursor stays where it can, the tab is dirty unless the text is the same, nothing
+  is saved). The **language server is one formatter among the others** (`lsp`, after the tool formatters; the LSP document/range formatting providers are no longer registered with Monaco, so the context menu shows one
+  Format Document, not two). Guards: only a **text tab** formats (a preview says "A preview is read-only and can't be formatted. Open the file as text first."), a file over 2 MB is refused, if the text changed while the
+  formatter ran nothing is applied, a failure (invalid JSON with its line/column, Prettier's own error, a timeout) is shown and the text is untouched, "No formatter available for <Language>. ..." with the reason when there
+  is none. Commands: `edit.formatDocument`, `edit.formatDocumentWith` (**Format Document With...**: every formatter with its source or the reason it can't be used, "Remember as the default formatter for <Language>"
+  stored as `formatting.defaults` in `editor_settings`), `edit.configureDefaultFormatter`, `format.showStatus`, `edit.formatSelection` (**only with a running language server that supports range formatting**; the built-in and
+  tool formatters format the whole document), `format.toggleOnSave` (checkable, writes the user setting); in the Edit menu and, for Format Document / With..., the F1 palette and the right-click menu
+  (`EditorService.setFormatActions`). `language.formatWithTool` is now "Format Saved File With Tool (Terminal)". **Format on Save** = `DocumentService.setBeforeSave` (only a save to the document's own path, not Save As):
+  off by default; no formatter is silent (a line in the **Formatting** Output channel), a failing one shows "Format on Save: ... The file was saved as it was." and the save goes on; never for an unsaved, huge or
+  preview document. **Status bar**: `FormatterStatusItem` ("JSON — Built-in JSON formatter", "TypeScript — Prettier (from the project)", "⚠ Python — Black missing, Ruff missing"; a formatter that exists but is turned off
+  reads "unavailable"), click = `FormatterDialog` in status mode (lookup only; nothing runs). Nothing formats at launch. **Key limits**: no Ctrl+K Ctrl+F (chords are not supported), no Format Modified Lines, no bundled
+  Prettier/Biome (nothing is bundled; they come from the project, a bundled toolchain pack or — when allowed — the PATH), no HTML/CSS/JS/TS/Markdown/YAML/SQL/Dockerfile/Java formatter of OpenMind's own, Rust formatting
+  passes `--edition 2021` on stdin (a different edition needs `cargo fmt`), a project's own formatter is a program from the folder you opened (turn `formatter.useProjectLocalTools` off for untrusted folders).
 
 - **Toolchains and the Runtime Manager (Milestone 15).** `Terminal > Manage Runtimes` is now the **Runtime Manager** with two tabs. *Runtimes*: the existing portable runtimes as a two-column grid of compact cards
   (name, chips, a description clamped to two lines with the full text as its tooltip, version selector, Install; the long `notes` — e.g. Python's — moved into a **Details** dialog). *Language Tools*: `ToolchainService`
@@ -1941,6 +1974,29 @@ right after start-up (the extension list marks it "Activates at every start-up (
   dirty file, and debugging a real session from the menu (Step/Continue only show a reason while no session exists). **Known limitations**: Step Over/Into/Out, Continue, Stop and Restart Debugging are always listed
   and say "There is no debug session." until one runs; Edit > Cut/Copy need a real click or key (WebView2 refuses `execCommand` for scripted events, so an automated synthetic click can't test them); Documentation,
   Report Issue and updates are absent (see above).
+- [x] **Milestone 15.2** — VS Code-like formatting system (`feat: add vscode-like formatting system`). See `openmind-format` and "Formatting (Milestone 15.2)" above. **Regression fixed**: a one-line `package.json` now
+  formats to readable JSON with no tool and no language server (`{"name":"r","scripts":{"dev":"vite","build":"vite build"},"dependencies":{"react":"19.0.0"}}` -> the two-space, one-member-per-line form asked for;
+  Rust test `the_package_json_regression_formats_without_any_tool_or_server`). **Supported**: built-in JSON/JSONC; Prettier or Biome (project / bundled / runtime / allowed system) for HTML, CSS/SCSS/Less, JS/JSX,
+  TS/TSX, JSON, Markdown, YAML, Vue/Svelte/Astro, GraphQL; Black or Ruff for Python; rustfmt; gofmt; clang-format (C/C++/Objective-C); the language server for the languages OpenMind starts one for. Not document
+  formatters (listed with their reason): Pint, PHP CS Fixer, dotnet format, ktlint, dart format. No tool is installed, downloaded or bundled by this milestone; PATH and the Registry are never written.
+  **Tests**: Rust — `openmind-format` 22 unit (JSON: package.json, stability, verbatim strings/numbers, tabs/CRLF, comments + trailing commas, errors with a position, deep nesting; resolver: project > bundled > built-in >
+  portable > system, system refused unless allowed with the setting named, missing-formatter reasons, the default never silently replaced, file-only tools; project root; a real `cmd.exe` for stdin/stdout, failure message,
+  timeout kill, empty output never empties a file, missing program, working folder and child-only PATH) + 3 policy tests, `openmind-language` stdin recipes, `commands::format` (the package.json case, invalid JSON, no formatter,
+  unknown/unavailable id, path rules, language lookup); TypeScript — `formattingService` (format, invalid JSON, unchanged, preview refused, no formatter, text changed mid-run, huge file, default/timeouts/policy, language server
+  first/preferred, With... list, remember, Configure, saved defaults, Format on Save on/off/failing/no formatter/huge, status texts), `formattingWiring` (real command handlers, preview reasons, Format Selection gating, the
+  on-save toggle, the save hook, Shift+Alt+F resolution, Edit menu), components (status item, dialog modes) and `BufferManager` (one undo step, EOL, indent, edits applied to a copy). **Verified by hand** in the built
+  app (fresh copy `C:\omfmt\OpenMind Studio`, workspace `C:\omfmt\My Workspace` — a space —, Prettier installed *into the workspace* with npm and Black/Ruff into its `.venv` as test fixtures): a one-line package.json
+  through Edit > Format Document (real Prettier from the project; status bar "JSON — Prettier (from the project)"), Edit > Undo restored the one-liner and Redo re-formatted (one step), File > Save wrote the formatted file;
+  invalid JSON showed Prettier's error and, through Format Document With... > Built-in, "The document is not valid JSON: Unexpected ',', expected a property name in double quotes (line 1, column 9)" with the text
+  untouched; HTML, CSS, TS, TSX, Markdown (Prettier) and Python (Black from `.venv`) formatted; Rust and Go said "No formatter available ... A tool found on the system PATH is not used unless you allow it (setting
+  formatter.useSystemTools)" and formatted with the real rustfmt/gofmt after that user setting was turned on; a plain-text file said "No formatter configured for Plain Text."; with an image preview in front every
+  formatting item in the Edit menu was disabled with its reason; Format on Save (toggled from the Edit menu) formatted a minified package.json on Save, and with invalid JSON showed "Format on Save: prettier failed: ...
+  The file was saved as it was." and saved; Shift+Alt+F (real key event) and the right-click menu (one Format Document) formatted; Format Document With... > Built-in with "Remember" formatted with the built-in formatter
+  and the choice survived a reload; the status dialog listed Prettier / Built-in / Biome (missing, with the install hint); no connection from the app's own processes at launch or while formatting (only WebView2's usual
+  Microsoft connections); a normal close left no OpenMindStudio/node process and User/Machine PATH were identical. **Not verified by hand**: formatting through a running language server and Format Selection (no server was
+  installed; covered by unit tests), C/C++, PHP, Windows-only quirks of `.cmd` argument quoting for paths with `&`, Ruff (installed, Black won). **Known limitations**: see "Formatting (Milestone 15.2)". Left on disk:
+  `C:\omfmt`.
+
 - [ ] Milestone 16 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the

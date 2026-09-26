@@ -51,6 +51,7 @@ import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
 import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
+import { wireFormatting } from "./formatting/formattingWiring";
 import { wireLanguage } from "./language/languageWiring";
 import { registerHelpCommands } from "./helpCommands";
 import { ToolchainService } from "./toolchains/toolchainService";
@@ -615,6 +616,22 @@ const language = wireLanguage({
   terminal,
   showTerminal: () => panel.show("terminal"),
 });
+/** Format Document: built-in / project / bundled / runtime formatters and the language server, run on the editor's text. */
+const formatting = wireFormatting({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  workspace,
+  documents,
+  editor,
+  lsp,
+  settings,
+  log: log("Formatting"),
+}).service;
+editor.setFormatActions([
+  { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
+  { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: false },
+]);
 /** The bundled app-local tools: choosing another active version makes the language support look again. */
 const toolchains = new ToolchainService(tauriIpcClient, () => {
   void language.support.refresh();
@@ -629,6 +646,12 @@ documents.setLanguageResolver(
 async function startLanguage(): Promise<void> {
   await language.support.initialize();
   await language.support.refresh();
+}
+
+/** Loads the formatter choices the user made and looks up the formatter of the file in front (no formatter runs). */
+async function startFormatting(): Promise<void> {
+  await formatting.initialize();
+  await formatting.refreshStatus();
 }
 
 /** Reads the configured AI providers (a local file) and starts listening; nothing is sent anywhere. */
@@ -720,6 +743,8 @@ export const container = {
   language,
   toolchains,
   startLanguage,
+  formatting,
+  startFormatting,
   startExtensions: extensions.start,
   finishExtensionsStartup: extensions.finishStartup,
 };

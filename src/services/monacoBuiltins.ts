@@ -44,6 +44,11 @@ export function disableBuiltinLanguageServices(): void {
  */
 export function freeReferencesShortcut(): void {
   monaco.editor.addKeybindingRules([
+    // Shift+Alt+F (Format Document) is the app's own shortcut too: it runs the formatting service.
+    {
+      keybinding: monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+      command: "-editor.action.formatDocument",
+    },
     {
       keybinding: monaco.KeyMod.Shift | monaco.KeyCode.F12,
       command: "-editor.action.goToReferences",

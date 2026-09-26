@@ -81,6 +81,14 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     languageRegistry: vi.fn().mockResolvedValue([]),
     languageWorkspaceStatus: vi.fn().mockResolvedValue({ os: "windows", projects: [], tools: [] }),
     languageFileStatus: vi.fn(),
+    formatOptions: vi.fn().mockResolvedValue({
+      languageId: null,
+      languageName: null,
+      formatters: [],
+      selected: null,
+      reason: "No formatter configured for this file type.",
+    }),
+    formatRun: vi.fn(),
     languageTerminalLine: vi
       .fn()
       .mockImplementation((argv: string[]) => Promise.resolve(argv.join(" "))),

@@ -123,6 +123,7 @@ export class EditorService {
   private readonly editors = new Set<CodeEditorLike>();
   private extensionActions: ExtensionEditorAction[] = [];
   private aiActions: ExtensionEditorAction[] = [];
+  private formatActions: ExtensionEditorAction[] = [];
   private runExtensionCommand: ((command: string) => void) | null = null;
   private readonly actionDisposables = new Map<CodeEditorLike, { dispose: () => void }[]>();
   private pendingReveal: (RevealRequest & { at: number }) | null = null;
@@ -191,6 +192,12 @@ export class EditorService {
     for (const editor of this.editors) this.applyActions(editor);
   }
 
+  /** Format Document (and Format Document With...) in the palette and the right-click menu: they run the app's own commands. */
+  setFormatActions(actions: ExtensionEditorAction[]): void {
+    this.formatActions = actions;
+    for (const editor of this.editors) this.applyActions(editor);
+  }
+
   private disposeActions(editor: CodeEditorLike): void {
     for (const disposable of this.actionDisposables.get(editor) ?? []) disposable.dispose();
     this.actionDisposables.delete(editor);
@@ -207,6 +214,11 @@ export class EditorService {
         group: "9_extensions",
       })),
       ...this.aiActions.map((action) => ({ action, prefix: "ai", group: "9_ai" })),
+      ...this.formatActions.map((action) => ({
+        action,
+        prefix: "format",
+        group: "1_modification",
+      })),
     ];
     const disposables = own.map(({ action, prefix, group }, index) =>
       add.call(editor, {

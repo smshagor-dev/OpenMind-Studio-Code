@@ -159,7 +159,12 @@ const EDIT_MENU: TopLevelMenu = {
     SEPARATOR,
     cmd("Rename Symbol", "edit.renameSymbol"),
     cmd("Format Document", "edit.formatDocument"),
-    cmd("Format Document With Tool", "language.formatWithTool"),
+    cmd("Format Document With...", "edit.formatDocumentWith"),
+    cmd("Format Selection", "edit.formatSelection"),
+    cmd("Configure Default Formatter...", "edit.configureDefaultFormatter"),
+    cmd("Formatter Status", "format.showStatus"),
+    cmd("Format on Save", "format.toggleOnSave"),
+    cmd("Format Saved File With Tool (Terminal)", "language.formatWithTool"),
     cmd("Run Linter", "language.runLinter"),
   ],
 };

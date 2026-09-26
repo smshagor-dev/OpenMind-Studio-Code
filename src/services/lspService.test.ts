@@ -145,7 +145,10 @@ describe("LspService: the lsp.enabled setting", () => {
     const id = await r.documents.openFromPath(PY);
 
     expect(r.ipc.lspSyncDocument).not.toHaveBeenCalled();
-    expect(r.lsp.available("definition", id)).toEqual({ enabled: false, reason: LSP_DISABLED_REASON });
+    expect(r.lsp.available("definition", id)).toEqual({
+      enabled: false,
+      reason: LSP_DISABLED_REASON,
+    });
     r.lsp.dispose();
   });
 
@@ -473,12 +476,9 @@ describe("editor commands are gated by the server", () => {
     }
   });
 
-  it("Format Document is disabled with the server's name when it can't format", async () => {
+  it("Format Document is not a language-server command: the formatting service owns it (formatting tests)", async () => {
     const { commands } = await commandRig([server()]);
     expect(commands.isEnabled("edit.formatDocument")).toBe(false);
-    expect(commands.reasonFor("edit.formatDocument")).toBe(
-      "Pyright doesn't support Format Document.",
-    );
     expect(commands.reasonFor("go.toDefinition")).toBeUndefined();
   });
 
@@ -506,11 +506,7 @@ describe("editor commands are gated by the server", () => {
   });
 
   function r_expectMissing(commands: CommandRegistry) {
-    for (const command of [
-      "go.toDefinition",
-      "edit.renameSymbol",
-      "edit.formatDocument",
-    ]) {
+    for (const command of ["go.toDefinition", "edit.renameSymbol"]) {
       expect(commands.isEnabled(command)).toBe(false);
       expect(commands.reasonFor(command)).toBe("Language server is not installed yet.");
     }

@@ -44,6 +44,7 @@ export class DocumentService {
   private readonly documents = new Map<string, DocumentRecord>();
   private nextId = 0;
   private languageResolver: ((path: string) => string | null) | null = null;
+  private beforeSave: ((id: string) => Promise<void>) | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
@@ -109,6 +110,13 @@ export class DocumentService {
       await this.saveAs(id);
       return;
     }
+    if (this.beforeSave !== null) {
+      try {
+        await this.beforeSave(id);
+      } catch {
+        // A hook that fails must never keep the file from being saved.
+      }
+    }
     await this.writeAndMarkClean(id, doc, doc.path);
   }
 
@@ -149,6 +157,40 @@ export class DocumentService {
   /** The current text of an open document (the Markdown preview renders this live). */
   contentOf(id: string): string {
     return this.buffers.getValue(id);
+  }
+
+  /** The editor model behind a document (for language-server requests). */
+  modelFor(id: string): monaco.editor.ITextModel | null {
+    return this.buffers.get(id) ?? null;
+  }
+
+  /** The line ending of the open buffer. */
+  eolOf(id: string): "\n" | "\r\n" {
+    this.requireDocument(id);
+    return this.buffers.eolOf(id);
+  }
+
+  /** One indentation level as the buffer uses it. */
+  indentUnitOf(id: string): string {
+    this.requireDocument(id);
+    return this.buffers.indentUnitOf(id);
+  }
+
+  /** Replaces the text as one undoable edit that touches only what differs (the cursor stays where it can). Nothing is saved. */
+  replaceText(id: string, text: string): void {
+    this.requireDocument(id);
+    this.buffers.replaceContent(id, text);
+  }
+
+  /** The text that results from applying `edits` (line/column ranges) to the buffer; the buffer is not changed. */
+  textWithEdits(id: string, edits: { range: monaco.IRange; text: string }[]): string {
+    this.requireDocument(id);
+    return this.buffers.textWithEdits(id, edits);
+  }
+
+  /** Runs `hook` before a save to the document's own path (Format on Save). It must not throw; a failure never stops the save. */
+  setBeforeSave(hook: ((id: string) => Promise<void>) | null): void {
+    this.beforeSave = hook;
   }
 
   /** Edits from an extension, applied to the open buffer only (nothing is written to disk). */
