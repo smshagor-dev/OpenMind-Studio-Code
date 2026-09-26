@@ -159,18 +159,19 @@ describe("formatting commands", () => {
 
   it("the Format on Save toggle writes the user setting and is checkable", async () => {
     const r = rig();
-    expect(r.commands.isChecked("format.toggleOnSave")).toBe(false);
-    await r.commands.execute("format.toggleOnSave");
-    expect(r.set).toHaveBeenCalledWith("user", "editor.formatOnSave", true);
     expect(r.commands.isChecked("format.toggleOnSave")).toBe(true);
+    await r.commands.execute("format.toggleOnSave");
+    expect(r.set).toHaveBeenCalledWith("user", "editor.formatOnSave", false);
+    expect(r.commands.isChecked("format.toggleOnSave")).toBe(false);
   });
 
-  it("saving runs the formatting hook: formatted before the write when the setting is on", async () => {
+  it("saving runs the formatting hook: formatted before the write unless the setting is off", async () => {
     const r = rig();
     const hook = r.beforeSave();
     expect(hook).not.toBeNull();
+    await r.commands.execute("format.toggleOnSave"); // on by default: this turns it off
     await hook?.("d1");
-    expect(r.texts.get("d1")).toBe(MINIFIED); // off by default
+    expect(r.texts.get("d1")).toBe(MINIFIED);
     await r.commands.execute("format.toggleOnSave");
     await hook?.("d1");
     expect(r.texts.get("d1")).toBe(PRETTY);

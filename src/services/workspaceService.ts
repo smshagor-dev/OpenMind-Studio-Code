@@ -417,10 +417,16 @@ export class WorkspaceService {
     this.recompute();
   }
 
-  async save(id: string): Promise<void> {
+  /** `format: false` skips Format on Save (Auto Save after a delay must not rearrange text while you type). */
+  async save(id: string, options: { format?: boolean } = {}): Promise<void> {
     const docId = this.docIdOfTab(id) ?? (this.documents.has(id) ? id : null);
     if (docId === null || this.filePreviews.has(docId)) return;
-    await safely(this.events, () => this.documents.save(docId), "save that file", undefined);
+    await safely(
+      this.events,
+      () => this.documents.save(docId, options),
+      "save that file",
+      undefined,
+    );
     this.recompute();
   }
 

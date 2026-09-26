@@ -301,14 +301,14 @@ describe("Format Document With... and the default formatter", () => {
 });
 
 describe("Format on Save", () => {
-  it("does nothing while the setting is off (the default)", async () => {
+  it("does nothing while the setting is off", async () => {
+    r.settings["editor.formatOnSave"] = false;
     await r.service.beforeSave("d1");
     expect(r.ipc.formatOptions).not.toHaveBeenCalled();
     expect(r.host.applied).toEqual([]);
   });
 
-  it("formats before the save when it is on", async () => {
-    r.settings["editor.formatOnSave"] = true;
+  it("is on by default and formats before the save", async () => {
     await r.service.beforeSave("d1");
     expect(r.host.texts.get("d1")).toBe(PRETTY);
   });

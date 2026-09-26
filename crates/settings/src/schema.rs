@@ -197,6 +197,29 @@ fn editor_definitions() -> Vec<SettingDef> {
             json!(true),
             Both,
         ),
+        def(
+            "files.autoSave",
+            "Editor",
+            "Auto Save",
+            "Save changed files by themselves: after a short delay, when you switch to another editor, or when you leave the window. An unsaved new file is never saved automatically.",
+            opts(&[
+                ("off", "Off"),
+                ("afterDelay", "After Delay"),
+                ("onFocusChange", "On Focus Change"),
+                ("onWindowChange", "On Window Change"),
+            ]),
+            json!("off"),
+            User,
+        ),
+        def(
+            "files.autoSaveDelay",
+            "Editor",
+            "Auto Save Delay",
+            "Milliseconds after the last edit before Auto Save (After Delay) saves the file.",
+            int(100, 60_000),
+            json!(1000),
+            User,
+        ),
         // Formatting (Milestone 15.2). Everything that can start a tool is user-only: a folder you open must not be
         // able to switch on running its own tools from a checked-in settings file.
         def(
@@ -205,7 +228,7 @@ fn editor_definitions() -> Vec<SettingDef> {
             "Format on Save",
             "Format a text file with its formatter just before it is saved. If there is no formatter or it fails, the file is still saved as it is.",
             SettingKind::Bool,
-            json!(false),
+            json!(true),
             User,
         ),
         def(

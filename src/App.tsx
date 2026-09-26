@@ -93,7 +93,16 @@ export function App() {
   );
 
   return (
-    <div className={focused ? "workbench" : "workbench workbench--inactive"}>
+    <div
+      className={[
+        "workbench",
+        focused ? "" : "workbench--inactive",
+        layout.zenMode ? "workbench--zen" : "",
+        layout.centeredLayout ? "workbench--centered" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <TitleBar
         menus={menus}
         title={activeWorkspace?.name ?? "Search"}

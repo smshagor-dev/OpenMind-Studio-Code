@@ -485,3 +485,19 @@
   overflow: auto;
   user-select: text;
 }
+
+/* View > Appearance > Zen Mode: only the editor. */
+.workbench--zen .workbench__side,
+.workbench--zen .statusbar,
+.workbench--zen .terminal-panel,
+.workbench--zen .secondary-sidebar {
+  display: none;
+}
+
+/* View > Appearance > Centered Layout: the editor groups are a centered column. */
+.workbench--centered .editor-area {
+  width: 100%;
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+}

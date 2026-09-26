@@ -207,7 +207,7 @@ export class FormattingService {
   }
 
   formatOnSaveEnabled(): boolean {
-    return this.settings.bool("editor.formatOnSave", false);
+    return this.settings.bool("editor.formatOnSave", true);
   }
 
   private async saveDefaults(): Promise<void> {

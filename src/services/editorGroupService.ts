@@ -251,6 +251,41 @@ export class EditorGroupService {
     return id;
   }
 
+  /**
+   * Makes the editor area exactly `count` groups side by side (1 to 4): missing ones are added empty on the right, and
+   * the tabs of extra ones move into the last kept group (a tab already there is not duplicated), so nothing is closed.
+   */
+  setColumns(count: number): void {
+    const wanted = Math.max(1, Math.min(4, Math.trunc(count)));
+    let groups = [...this.state.groups];
+    if (groups.length > wanted) {
+      const kept = groups.slice(0, wanted);
+      const last = kept[wanted - 1];
+      if (last === undefined) return;
+      const tabs = [...last.tabs];
+      for (const extra of groups.slice(wanted)) {
+        for (const tab of extra.tabs) {
+          if (!tabs.some((existing) => existing.id === tab.id))
+            tabs.push({ ...tab, preview: false });
+        }
+      }
+      kept[wanted - 1] = { ...last, tabs, activeTabId: last.activeTabId ?? tabs[0]?.id ?? null };
+      groups = kept;
+    }
+    while (groups.length < wanted) {
+      groups.push({
+        id: `group-${String(this.nextGroup++)}`,
+        tabs: [],
+        activeTabId: null,
+        locked: false,
+      });
+    }
+    const active = groups.some((group) => group.id === this.state.activeGroupId)
+      ? this.state.activeGroupId
+      : (groups[groups.length - 1]?.id ?? this.state.activeGroupId);
+    this.set({ groups, activeGroupId: active, weights: equalWeights(groups.length) });
+  }
+
   /** The group immediately to the right of `groupId`, if there is one. */
   groupToTheRight(groupId: string): EditorGroup | null {
     const index = this.state.groups.findIndex((group) => group.id === groupId);

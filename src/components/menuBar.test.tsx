@@ -41,11 +41,11 @@ beforeEach(() => {
 });
 
 describe("MenuBar", () => {
-  it("lists only entries whose command exists", () => {
+  it("lists an entry whose command isn't built as disabled instead of hiding it", () => {
     render(<MenuBar menus={MENUS} />);
     fireEvent.mouseDown(screen.getByRole("menuitem", { name: "File" }));
     expect(screen.getByRole("menuitem", { name: "Real" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Dead" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: /Dead/ })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("an entry appears once its command is registered", () => {

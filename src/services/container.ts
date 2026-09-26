@@ -51,7 +51,9 @@ import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
 import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
+import { AutoSaveService } from "./autoSaveService";
 import { wireFormatting } from "./formatting/formattingWiring";
+import { registerMenuFillCommands } from "./menuFillCommands";
 import { wireLanguage } from "./language/languageWiring";
 import { registerHelpCommands } from "./helpCommands";
 import { ToolchainService } from "./toolchains/toolchainService";
@@ -630,8 +632,42 @@ const formatting = wireFormatting({
 }).service;
 editor.setFormatActions([
   { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
-  { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: false },
+  { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: true },
 ]);
+/** Files > Auto Save (afterDelay / onFocusChange / onWindowChange). Only files that already have a path are saved. */
+const autoSave = new AutoSaveService({
+  events,
+  settings,
+  documents,
+  save: (id, format) => workspace.save(id, { format }),
+  activeDocId: () => {
+    const id = workspace.getState().activeId;
+    return id !== null && documents.has(id) ? id : null;
+  },
+  onActiveChanged: (handler) => workspace.subscribe(handler),
+  onWindowBlur: (handler) => {
+    window.addEventListener("blur", handler);
+    return () => {
+      window.removeEventListener("blur", handler);
+    };
+  },
+});
+registerMenuFillCommands({
+  commands,
+  events,
+  ipc: tauriIpcClient,
+  workspace,
+  groups: editorGroups,
+  editor,
+  terminal,
+  panel,
+  layout,
+  window: windowService,
+  autoSave,
+  run: (id) => {
+    run(id);
+  },
+});
 /** The bundled app-local tools: choosing another active version makes the language support look again. */
 const toolchains = new ToolchainService(tauriIpcClient, () => {
   void language.support.refresh();
@@ -650,6 +686,7 @@ async function startLanguage(): Promise<void> {
 
 /** Loads the formatter choices the user made and looks up the formatter of the file in front (no formatter runs). */
 async function startFormatting(): Promise<void> {
+  autoSave.start();
   await formatting.initialize();
   await formatting.refreshStatus();
 }

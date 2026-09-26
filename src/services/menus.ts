@@ -1,10 +1,10 @@
 /**
  * The title-bar menu structure, mirroring VS Code's (Windows) menu bar section
- * by section. Entries are pure data referencing command ids. **An entry whose command isn't
- * registered is not shown at all** (`pruneMenuEntries`): the menu never lists something that does nothing, and an
- * entry appears as soon as its command is registered (the AI panel item follows the AI provider rule, a shell
- * item exists only for a shell that was found). A registered command that can't run right now stays visible with
- * its reason.
+ * by section. Entries are pure data referencing command ids. Every VS Code entry is listed; one whose feature
+ * OpenMind hasn't built is shown **disabled with the reason** (`unbuiltReason`), never as a click that does nothing,
+ * and it lights up the moment its command is registered. Only the AI panel item follows the AI provider rule
+ * (`HIDDEN_WHEN_UNREGISTERED`), and a shell item exists only for a shell that was found. A registered command that
+ * can't run right now stays visible with its reason.
  */
 export type MenuEntry =
   | {
@@ -77,6 +77,7 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
     mnemonic: "F",
     items: [
       cmd("New File", "file.new"),
+      cmd("New File...", "file.newFilePicker"),
       cmd("New Window", "workbench.newWindow"),
       SEPARATOR,
       cmd("Open File...", "file.open"),
@@ -404,6 +405,15 @@ function terminalMenu(shells: { kind: string; label: string }[]): TopLevelMenu {
       cmd("Run Active File", "terminal.runActiveFile"),
       cmd("Run Selected Text", "terminal.runSelectedText"),
       SEPARATOR,
+      cmd("Run Task...", "tasks.run"),
+      cmd("Run Build Task...", "tasks.runBuild"),
+      cmd("Show Running Tasks...", "tasks.showRunning"),
+      cmd("Restart Running Task...", "tasks.restartRunning"),
+      cmd("Terminate Task...", "tasks.terminate"),
+      SEPARATOR,
+      cmd("Configure Tasks...", "tasks.configure"),
+      cmd("Configure Default Build Task...", "tasks.configureDefaultBuild"),
+      SEPARATOR,
       cmd("Manage Runtimes...", "runtime.manage"),
       cmd("Language Tools...", "lsp.manage"),
       cmd("Restart Language Server", "lsp.restart"),
@@ -418,13 +428,27 @@ const HELP_MENU: TopLevelMenu = {
   mnemonic: "H",
   items: [
     cmd("Welcome", "help.welcome"),
+    cmd("Documentation", "help.documentation"),
+    cmd("Show Release Notes", "help.releaseNotes"),
+    cmd("Editor Playground", "help.editorPlayground"),
     cmd("Show All Commands", "workbench.commandPalette"),
     SEPARATOR,
-    cmd("Keyboard Shortcuts", "preferences.openKeybindings"),
+    cmd("Keyboard Shortcuts Reference", "help.keybindingsReference"),
+    cmd("Video Tutorials", "help.videoTutorials"),
+    cmd("Tips and Tricks", "help.tipsAndTricks"),
+    SEPARATOR,
+    cmd("Search Feature Requests", "help.featureRequests"),
+    cmd("Report Issue", "help.reportIssue"),
+    SEPARATOR,
+    cmd("View License", "help.license"),
+    cmd("Privacy Statement", "help.privacy"),
     SEPARATOR,
     cmd("Show Logs", "help.showLogs"),
     cmd("Open Logs Folder", "help.openLogsFolder"),
+    cmd("Toggle Developer Tools", "help.toggleDevTools"),
+    cmd("Open Process Explorer", "help.processExplorer"),
     SEPARATOR,
+    cmd("Check for Updates...", "help.checkForUpdates"),
     cmd("About OpenMind Studio", "help.about"),
   ],
 };
@@ -478,6 +502,68 @@ export function buildMenuBar(
  * separators that would sit at the start, at the end or twice in a row. A registered command that is unavailable
  * right now is kept (it shows its reason).
  */
+/** Commands whose entry is hidden (not shown disabled) while nothing registers them. */
+export const HIDDEN_WHEN_UNREGISTERED: ReadonlySet<string> = new Set(["ai.openChat"]);
+
+const NO_ONLINE =
+  "There is no online documentation, feedback or update service set up for OpenMind Studio yet.";
+const UNBUILT: [RegExp, string][] = [
+  [
+    /^help\.(documentation|releaseNotes|editorPlayground|videoTutorials|tipsAndTricks|featureRequests|reportIssue|privacy|checkForUpdates)$/,
+    NO_ONLINE,
+  ],
+  [
+    /^help\.(toggleDevTools|processExplorer)$/,
+    "Developer tools and the process explorer aren't available in this build.",
+  ],
+  [
+    /^tasks\./,
+    "Tasks (tasks.json) aren't built yet. Use Run Code, the Project Run Commands or the terminal.",
+  ],
+  [
+    /^workspace\./,
+    "Multi-folder workspace files aren't built yet: OpenMind opens one folder per window.",
+  ],
+  [/^profiles\./, "Profiles aren't built yet (planned for Milestone 16)."],
+  [
+    /^preferences\.(fileIconTheme|productIconTheme)$/,
+    "Icon themes aren't built yet (planned for Milestone 16).",
+  ],
+  [/^preferences\.onlineServices$/, "There are no online services to configure."],
+  [
+    /^preferences\.configureSnippets$/,
+    "User snippet files aren't built yet (extensions can contribute snippets).",
+  ],
+  [
+    /^debug\.(newConditionalBreakpoint|newLogpoint|newFunctionBreakpoint|newInlineBreakpoint|newTriggeredBreakpoint|editBreakpoint)$/,
+    "The debugger supports plain line breakpoints only for now.",
+  ],
+  [
+    /^debug\.(openConfigurations|addConfiguration)$/,
+    "launch.json isn't supported yet: OpenMind starts Python and Node.js sessions with built-in configurations.",
+  ],
+  [
+    /^editorLayout\./,
+    "Editor groups are side by side only for now: use Single, Two Columns, Three Columns or Split Right.",
+  ],
+  [/^go\.(lastEditLocation|nextChange|previousChange)$/, "Not built yet."],
+  [
+    /^go\.(nextUsedEditor|previousUsedEditor)$/,
+    "Switching by most recently used isn't built yet: use Next Editor / Previous Editor.",
+  ],
+  [
+    /^search\.replaceInFiles$/,
+    "Replace in Files isn't built yet. Find in Files and the editor's Replace work.",
+  ],
+  [/^emmet\./, "Emmet isn't built in. An extension can provide it."],
+  [/^workbench\.openView$/, "Open a view from the activity bar or the View menu."],
+];
+
+/** Why a menu entry whose command isn't registered is unavailable. */
+export function unbuiltReason(command: string): string {
+  return UNBUILT.find(([pattern]) => pattern.test(command))?.[1] ?? "This isn't built yet.";
+}
+
 export function pruneMenuEntries(
   items: MenuEntry[],
   has: (command: string) => boolean,

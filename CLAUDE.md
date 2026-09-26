@@ -477,7 +477,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   file's candidates is ignored; one that is but can't be used is an error, never silently replaced. Tools that only rewrite files on disk (**Pint, PHP CS Fixer, dotnet format, ktlint, `dart format`**) are listed
   as unavailable for Format Document with the reason and stay reachable through "Format Saved File With Tool (Terminal)"; isort is not a document formatter and is not offered. `tests/policy.rs` scans the source: no
   environment writes, no registry, no files written, no network, no shell. `src-tauri/src/commands/format.rs`: `format_options` (candidates + the selected one + why none) and `format_run` (limit 2 MB, absolute
-  path without NUL, timeout 1-120 s, on `spawn_blocking`). **Settings** (all in the Editor category): `editor.formatOnSave` (user, default off), `editor.defaultFormatter` (user + workspace), `formatter.timeoutMs`
+  path without NUL, timeout 1-120 s, on `spawn_blocking`). **Settings** (all in the Editor category): `editor.formatOnSave` (user, default **on** since the menu-restore pass), `editor.defaultFormatter` (user + workspace), `formatter.timeoutMs`
   (default 10 000), `formatter.useProjectLocalTools` (default on), `formatter.useBundledTools` (default on), `formatter.useSystemTools` (default **off**) — every setting that can start a program is **user-only**, so a
   folder's own `.openmind/settings.json` can't switch on running its tools.
 
@@ -1997,6 +1997,19 @@ right after start-up (the extension list marks it "Activates at every start-up (
   installed; covered by unit tests), C/C++, PHP, Windows-only quirks of `.cmd` argument quoting for paths with `&`, Ruff (installed, Black won). **Known limitations**: see "Formatting (Milestone 15.2)". Left on disk:
   `C:\omfmt`.
 
+- **Menu restore, Auto Save and always-on formatting (after Milestone 15.2, same branch).** *Why entries had vanished*: the menu-completion pass hid every entry whose command was not registered. **That rule is reversed**:
+  every VS Code entry is listed again (`menus.ts`, incl. Help's Documentation / Release Notes / Playground / Videos / Tips / Feature Requests / Report Issue / License / Privacy / Developer Tools / Process Explorer /
+  Check for Updates, Terminal's Run Task / Build Task / Running Tasks / Configure Tasks, File's New File... and workspace entries); an entry whose feature is not built is **disabled with its reason** (`unbuiltReason`,
+  tooltip only), and lights up the moment its command is registered. Only the AI item is still hidden while no provider is on (`HIDDEN_WHEN_UNREGISTERED`). **Built for real**: `file.newFilePicker` (**New File...**: the native
+  Save dialog picks any drive/folder, an empty file is created — an existing file is opened, never emptied — and opened), **Auto Save** (`AutoSaveService`, `files.autoSave` off / afterDelay / onFocusChange / onWindowChange +
+  `files.autoSaveDelay`, File > Auto Save toggles afterDelay; only files that already have a path, never one changed on disk underneath, an after-delay save skips Format on Save), `editorLayout.single|twoColumns|threeColumns`
+  (`EditorGroupService.setColumns`: extra groups' tabs move into the last kept group, none is closed), Go > Switch Group (`go.group1|2`, `go.next|previousGroup`), **Zen Mode** (hides side/status/panel, full screen, restored on exit)
+  and **Centered Layout**, Terminal > **Run Active File** (= Run Code in Terminal) and **Run Selected Text**, Help > Keyboard Shortcuts Reference and View License (open the shortcuts page / About). **Still disabled with a reason**:
+  tasks, multi-folder workspaces and workspace files, profiles, icon themes, Replace in Files, Emmet, conditional/log/function breakpoints and launch.json, split up/down/rows/grid, last edit location, next/previous change,
+  used-editor switching, Open View, and everything that needs an online service or update system. Save of an unsaved (untitled) file opens the Save dialog (any location) as before. **Formatting is now on by default**:
+  `editor.formatOnSave` defaults to **on** (still user-only), the right-click menu has Format Document and Format Document With..., and Auto Save formats when it saves on a focus/window change. Verified by hand in the built app:
+  all eight menus listed with the right entries disabled, Auto Save saved an edit ~1 s later without touching the text, Two Columns / Single, Zen Mode, and File > Save formatted a minified package.json with the default settings.
+  **Not driven by hand**: the native New File... dialog (covered by unit tests).
 - [ ] Milestone 16 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the

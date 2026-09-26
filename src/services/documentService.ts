@@ -104,13 +104,13 @@ export class DocumentService {
   }
 
   /** Saves to the document's current path, or delegates to `saveAs` if it has none yet. */
-  async save(id: string): Promise<void> {
+  async save(id: string, options: { format?: boolean } = {}): Promise<void> {
     const doc = this.requireDocument(id);
     if (doc.path === null) {
       await this.saveAs(id);
       return;
     }
-    if (this.beforeSave !== null) {
+    if (this.beforeSave !== null && options.format !== false) {
       try {
         await this.beforeSave(id);
       } catch {

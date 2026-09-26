@@ -137,7 +137,7 @@ describe("App", () => {
     await container.secondarySideBar.hide();
   });
 
-  it("opens the File menu with shortcuts and lists only commands that exist", async () => {
+  it("opens the File menu with shortcuts; a feature that isn't built is listed disabled, not hidden", async () => {
     render(<App />);
 
     fireEvent.mouseDown(screen.getByRole("menuitem", { name: "File" }));
@@ -148,9 +148,14 @@ describe("App", () => {
     const newWindow = within(menu).getByText("New Window").closest("[role=menuitem]");
     expect(newWindow).not.toHaveAttribute("aria-disabled");
     expect(newWindow).toHaveTextContent("Ctrl+Shift+N");
-    // Features that don't exist yet are not listed at all (no dead, greyed-out items).
-    for (const missing of ["Open Workspace from File...", "Save Workspace As...", "Auto Save"]) {
-      expect(within(menu).queryByText(missing)).toBeNull();
+    // Auto Save and New File... exist; multi-folder workspaces don't, so those entries are there but disabled.
+    for (const built of ["Auto Save", "New File..."]) {
+      const row = within(menu).getByText(built).closest("[role^=menuitem]");
+      expect(row, built).not.toHaveAttribute("aria-disabled", "true");
+    }
+    for (const unbuilt of ["Open Workspace from File...", "Save Workspace As..."]) {
+      const row = within(menu).getByText(unbuilt).closest("[role=menuitem]");
+      expect(row, unbuilt).toHaveAttribute("aria-disabled", "true");
     }
     const openFolder = within(menu).getByText("Open Folder...").closest("[role=menuitem]");
     expect(openFolder).not.toHaveAttribute("aria-disabled");
@@ -171,7 +176,7 @@ describe("App", () => {
     ]);
   });
 
-  it("every item in every menu is backed by a registered command, with no empty groups", async () => {
+  it("every menu has entries and no empty groups or doubled separators", async () => {
     render(<App />);
     for (const name of ["File", "Edit", "Selection", "View", "Go", "Run", "Terminal", "Help"]) {
       fireEvent.mouseDown(screen.getByRole("menuitem", { name }));
@@ -208,7 +213,7 @@ describe("App", () => {
     expect(within(dialog).getByText("Founder & Developer, OpenMind Studio")).toBeInTheDocument();
   });
 
-  it("the Help menu has the real Help commands and no dead links", async () => {
+  it("the Help menu lists every Help entry; the ones with no service are disabled", async () => {
     render(<App />);
     fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Help" }));
     const menu = await screen.findByRole("menu", { name: "Help" });
@@ -217,12 +222,33 @@ describe("App", () => {
       .map((row) => row.textContent.replace(/Ctrl.*$/, "").trim());
     expect(labels).toEqual([
       "Welcome",
+      "Documentation",
+      "Show Release Notes",
+      "Editor Playground",
       "Show All Commands",
-      "Keyboard Shortcuts",
+      "Keyboard Shortcuts Reference",
+      "Video Tutorials",
+      "Tips and Tricks",
+      "Search Feature Requests",
+      "Report Issue",
+      "View License",
+      "Privacy Statement",
       "Show Logs",
       "Open Logs Folder",
+      "Toggle Developer Tools",
+      "Open Process Explorer",
+      "Check for Updates...",
       "About OpenMind Studio",
     ]);
+    // The ones with no service behind them are disabled and say why.
+    for (const label of ["Documentation", "Report Issue", "Check for Updates..."]) {
+      const row = within(menu).getByText(label).closest("[role=menuitem]");
+      expect(row, label).toHaveAttribute("aria-disabled", "true");
+    }
+    for (const label of ["Keyboard Shortcuts Reference", "View License", "Show Logs"]) {
+      const row = within(menu).getByText(label).closest("[role=menuitem]");
+      expect(row, label).not.toHaveAttribute("aria-disabled", "true");
+    }
   });
 
   it("opens a menu from the keyboard with its Alt mnemonic", async () => {

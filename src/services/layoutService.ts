@@ -29,6 +29,10 @@ export interface LayoutState {
   openEditorsExpanded: boolean;
   /** Explorer's workspace-folder section expanded (header click). */
   folderExpanded: boolean;
+  /** View > Appearance > Zen Mode: only the editor is shown (never restored at start-up). */
+  zenMode: boolean;
+  /** View > Appearance > Centered Layout: the editor is a centered column. */
+  centeredLayout: boolean;
 }
 
 export const DEFAULT_LAYOUT: LayoutState = {
@@ -41,6 +45,8 @@ export const DEFAULT_LAYOUT: LayoutState = {
   openEditorsVisible: true,
   openEditorsExpanded: false,
   folderExpanded: true,
+  zenMode: false,
+  centeredLayout: false,
 };
 
 export const SIDEBAR_MIN_WIDTH = 170;
@@ -176,5 +182,6 @@ function parseLayout(raw: string): LayoutState {
     state.activeView = "explorer";
   }
   state.sidebarWidth = clampWidth(state.sidebarWidth);
+  state.zenMode = false;
   return state;
 }
