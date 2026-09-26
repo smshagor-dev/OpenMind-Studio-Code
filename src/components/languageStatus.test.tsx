@@ -289,6 +289,17 @@ describe("LanguageStatusDialog", () => {
     expect(screen.getByText("No commands are known for this project.")).toBeInTheDocument();
   });
 
+  it("says the language support is built in and the missing tools are the user's to set up", async () => {
+    const { ui } = await mount();
+    ui.setOpen(true);
+    render(<LanguageStatusDialog />);
+    expect(
+      screen.getByText(
+        /Language support metadata is built in\. Missing tools must be installed\/configured separately\./,
+      ),
+    ).toBeTruthy();
+  });
+
   it("says Unknown project type when the folder has no project", async () => {
     const { ui } = await mount({ projects: [] });
     ui.setOpen(true);

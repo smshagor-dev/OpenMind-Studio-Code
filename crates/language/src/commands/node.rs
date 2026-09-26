@@ -131,7 +131,7 @@ fn shells(dir: &Dir, pm: &str, detections: &[Detection], tools: &[&str], out: &m
         out.push(with_argv(
             cmd(
                 "tauri.dev",
-                &format!("{pm} tauri dev"),
+                &format!("{} tauri dev", if pm == "npm" { "npm run" } else { pm }),
                 Category::Dev,
                 &[],
                 &tauri_tools,
@@ -141,7 +141,7 @@ fn shells(dir: &Dir, pm: &str, detections: &[Detection], tools: &[&str], out: &m
         out.push(with_argv(
             cmd(
                 "tauri.build",
-                &format!("{pm} tauri build"),
+                &format!("{} tauri build", if pm == "npm" { "npm run" } else { pm }),
                 Category::Build,
                 &[],
                 &tauri_tools,

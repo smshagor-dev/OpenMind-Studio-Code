@@ -444,6 +444,11 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   and `FileStatus`; `shell::typed_line` renders an argument list for PowerShell/cmd/Git Bash (plain words stay plain, anything else is quoted, a line that can't be quoted safely
   is refused). `src-tauri/src/commands/language.rs`: `language_registry`, `language_workspace_status` (the asking window's folder, portable runtimes from the Runtime Manager first),
   `language_file_status` (path guarded with `ensure_within_root`), `language_terminal_line`.
+  **Built-in policy (no extra download)**: *OpenMind Studio ships language/project support metadata in the app bundle. It does not download language support at runtime.* The
+  registry, detection rules, command templates, formatter/linter recipes and language-server candidate list are Rust data compiled into the app; the crate has no network or process
+  dependency (`tests/policy.rs` scans its source and manifest, and checks that large SDKs — Flutter, JDK, .NET, Go, Rust, Docker, Ruby, C/C++, Xcode, the Android SDK — are reported
+  missing with a setup hint, never bundled or faked, and that Node/Python/PHP are the Runtime Manager's portable tools). Nothing is bundled beyond this metadata (no third-party asset, no size
+  to license). The status dialog says so: "Language support metadata is built in. Missing tools must be installed/configured separately."
 
 - `openmind-extensions` (Milestone 10) — the VS Code-compatible extension system foundation. **OpenMind Studio supports a VS Code
   API subset**; nothing here is VS Code's source. Layout (portable, never AppData): `extensions/installed/<publisher>.<name>-<version>/`,
@@ -1831,6 +1836,15 @@ right after start-up (the extension list marks it "Activates at every start-up (
   **Known limitations**: language servers other than OpenMind's six (rust-analyzer, gopls, clangd, JDT LS, OmniSharp, Vue/Svelte/Astro/Tailwind/YAML/Docker/SQL/GraphQL) are detected only; no
   emulator/device manager, signing or store publishing; no notebook editor; no automatic runtime install; tool versions aren't checked; each command opens a new terminal; format/lint run through
   the terminal on the saved file (the LSP Format Document is unchanged); symbols/frameworks are detected from marker files, not parsed. Left on disk: `E:\omlang`, `E:\wt14-target`.
+  **Verification pass (rebuilt debug app from the final tree, fresh-ish copy `E:\omlang`, workspace `My Projects` with a space)**: clicking a command opened a new terminal in the project's folder and
+  typed `cargo run` (output `hi`); Format Document With Tool typed `& 'C:\Program Files\Go\bin\gofmt.exe' -w '<file>'` for a Go file, and for `app.ts` said "No formatter found for TypeScript ... Prettier: Add it to
+  the project (`npm i -D prettier`) — OpenMind doesn't install it. Biome: ..."; Run Linter did the same for ESLint, `query.sql` had the item disabled ("No formatter is known for SQL."), a preview tab
+  disabled it ("Open a text file first (a preview can't be formatted)."); command lists were checked for Android, Django, Docker Compose, .NET (disabled: ".NET SDK not found ..."), Electron, React Native/Expo
+  (iOS disabled: "iOS builds require macOS and Xcode."), FastAPI (uvicorn disabled with its reason), Flutter, Go, Laravel, Next.js, Rust, Tauri; the current-file section showed gopls "Found on this computer, but
+  OpenMind can't start this language server yet" and "LSP not configured: install it from Language Tools" for TypeScript/JSON/HTML; an image opened as a preview tab; the search index answered a text search ("from
+  the index"); the AI item was absent with no provider, appeared when one was added, vanished when it was disabled and came back when re-enabled; the Extensions view fetched nothing until Load Popular (no connection
+  from the app's process tree before the click, Open VSX's after it); a normal close left no app/WebView2/node process and User/Machine PATH were byte-identical. Not re-done by hand: symbol/reference search, the
+  native VSIX dialog (can't be driven — covered by automated tests). Found and fixed: the npm label "npm tauri dev" now reads "npm run tauri dev".
 - [ ] Milestone 15 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the

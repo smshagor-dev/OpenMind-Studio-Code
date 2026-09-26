@@ -262,7 +262,8 @@ export function LanguageStatusDialog() {
         <h2 id="lang-title">Project &amp; Language Status</h2>
         <p className="lang-muted">
           What OpenMind found in this folder and on this computer. Looking never runs, installs or
-          downloads anything; a command runs in the terminal only when you click it.
+          downloads anything; a command runs in the terminal only when you click it. Language
+          support metadata is built in. Missing tools must be installed/configured separately.
         </p>
         <h3>Current file</h3>
         <CurrentFile />
