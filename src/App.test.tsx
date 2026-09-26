@@ -156,7 +156,7 @@ describe("App", () => {
     expect(openFolder).not.toHaveAttribute("aria-disabled");
   });
 
-  it("has File, Edit, Selection, View, Go, Run, Terminal, Help and About in the menu bar", () => {
+  it("has File, Edit, Selection, View, Go, Run, Terminal and Help in the menu bar", () => {
     render(<App />);
     const bar = within(screen.getByRole("menubar", { name: "Application menu" }));
     expect(bar.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
@@ -168,7 +168,6 @@ describe("App", () => {
       "Run",
       "Terminal",
       "Help",
-      "About",
     ]);
   });
 
@@ -199,13 +198,14 @@ describe("App", () => {
     }
   });
 
-  it("About opens the About window straight from the menu bar", async () => {
+  it("Help > About OpenMind Studio opens the About window", async () => {
     render(<App />);
-    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "About" }));
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Help" }));
+    const menu = await screen.findByRole("menu", { name: "Help" });
+    fireEvent.click(within(menu).getByText("About OpenMind Studio"));
     const dialog = await screen.findByRole("dialog", { name: "OpenMind Studio" });
     expect(within(dialog).getByText("Md Shahanur Islam Shagor")).toBeInTheDocument();
     expect(within(dialog).getByText("Founder & Developer, OpenMind Studio")).toBeInTheDocument();
-    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("the Help menu has the real Help commands and no dead links", async () => {

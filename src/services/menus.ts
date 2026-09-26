@@ -24,8 +24,6 @@ export interface TopLevelMenu {
   /** Alt+<mnemonic> opens this menu, as in VS Code. */
   mnemonic: string;
   items: MenuEntry[];
-  /** A top-level entry that opens no dropdown: clicking it runs this command (the About entry). */
-  action?: string;
 }
 
 /** A project command (from the language support) offered under Run > Project ... Commands. */
@@ -426,15 +424,6 @@ const HELP_MENU: TopLevelMenu = {
   ],
 };
 
-/** The top-level About entry: no dropdown, it opens the About window directly. */
-const ABOUT_MENU: TopLevelMenu = {
-  id: "about",
-  label: "About",
-  mnemonic: "A",
-  items: [],
-  action: "help.about",
-};
-
 /** The activity bar's gear ("Manage") menu. */
 export const MANAGE_MENU: MenuEntry[] = [
   cmd("Command Palette...", "workbench.commandPalette"),
@@ -476,7 +465,6 @@ export function buildMenuBar(
     runMenu(context.projectCommands),
     terminalMenu(context.shells),
     HELP_MENU,
-    ABOUT_MENU,
   ];
 }
 

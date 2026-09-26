@@ -24,7 +24,6 @@ const MENUS: TopLevelMenu[] = [
       { kind: "command", label: "Dead", command: "dead.command" },
     ],
   },
-  { id: "about", label: "About", mnemonic: "A", items: [], action: "help.about" },
 ];
 
 let commands: CommandRegistry;
@@ -54,23 +53,6 @@ describe("MenuBar", () => {
     commands.register("dead.command", () => undefined);
     fireEvent.mouseDown(screen.getByRole("menuitem", { name: "File" }));
     expect(screen.getByRole("menuitem", { name: "Dead" })).toBeInTheDocument();
-  });
-
-  it("a top-level entry with an action runs it and opens no dropdown", () => {
-    render(<MenuBar menus={MENUS} />);
-    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "About" }));
-    expect(run).toHaveBeenCalledWith("help.about");
-    expect(screen.queryByRole("menu")).toBeNull();
-  });
-
-  it("Alt+A runs the About action and moving right from the last dropdown skips it", () => {
-    render(<MenuBar menus={MENUS} />);
-    fireEvent.keyDown(window, { code: "KeyA", altKey: true });
-    expect(run).toHaveBeenCalledWith("help.about");
-    run.mockClear();
-    fireEvent.keyDown(window, { code: "KeyF", altKey: true });
-    fireEvent.keyDown(screen.getByRole("menu", { name: "File" }), { key: "ArrowRight" });
-    expect(run).not.toHaveBeenCalled();
   });
 });
 

@@ -31,7 +31,6 @@ describe("buildMenuBar", () => {
       "Run",
       "Terminal",
       "Help",
-      "About",
     ]);
     expect(new Set(menus.map((menu) => menu.mnemonic)).size).toBe(menus.length);
   });
@@ -132,11 +131,6 @@ describe("pruneMenuEntries", () => {
 });
 
 describe("dynamic menu content", () => {
-  it("About is a top-level entry that runs a command instead of opening a dropdown", () => {
-    const about = buildMenuBar(EMPTY).find((menu) => menu.id === "about");
-    expect(about).toMatchObject({ label: "About", action: "help.about", items: [] });
-  });
-
   it("lists only the shells that were found under Terminal > New Terminal With Profile", () => {
     const none = buildMenuBar(EMPTY).find((menu) => menu.id === "terminal");
     expect(none?.items.some((item) => item.kind === "submenu")).toBe(false);
