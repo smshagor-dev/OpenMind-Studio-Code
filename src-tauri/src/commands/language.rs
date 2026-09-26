@@ -75,7 +75,9 @@ fn file_status_of(
 ) -> Result<FileStatus, String> {
     let canonical =
         openmind_fs::path_safety::ensure_within_root(root, file).map_err(|err| err.to_string())?;
-    let root_canonical = std::fs::canonicalize(root).map_err(|err| err.to_string())?;
+    // The same normalisation as `canonical` (no `\?\` prefix on Windows), or the two paths can't be compared.
+    let root_canonical =
+        openmind_fs::path_safety::normalize_path(root).map_err(|err| err.to_string())?;
     let workspace = workspace_status(&root_canonical, env);
     let mut status = file_status(&root_canonical, &canonical, env, &workspace);
     status.path = shown.replace('\\', "/");
@@ -86,4 +88,29 @@ fn file_status_of(
 #[tauri::command]
 pub fn language_terminal_line(argv: Vec<String>, style: ShellStyle) -> Result<String, String> {
     typed_line(&argv, style).map_err(|err| err.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_in_a_sub_folder_is_matched_to_its_project() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let root = dir.path().join("multi language workspace");
+        let project = root.join("rust-json-sql");
+        std::fs::create_dir_all(project.join("src")).expect("dirs");
+        std::fs::write(
+            project.join("Cargo.toml"),
+            "[package]
+name = \"r\"
+",
+        )
+        .expect("cargo");
+        std::fs::write(project.join("src/main.rs"), "fn main() {}").expect("main");
+        let env = ToolEnv::from_process(vec![]);
+        let file = project.join("src/main.rs");
+        let status = file_status_of(&root, &file, &file.to_string_lossy(), &env).expect("status");
+        assert_eq!(status.project_root.as_deref(), Some("rust-json-sql"));
+    }
 }

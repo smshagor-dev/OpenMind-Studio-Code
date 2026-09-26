@@ -2,7 +2,7 @@
 
 use crate::project::{
     det,
-    Confidence::{High, Medium},
+    Confidence::{High, Low, Medium},
     Detection, Dir,
     StackGroup::{Backend, Desktop, Systems},
 };
@@ -37,6 +37,10 @@ fn python(out: &mut Vec<Detection>, dir: &Dir) {
         .chain(["manage.py"].iter())
         .find(|name| dir.has(name))
     else {
+        // A bare script folder (`main.py` beside a C++ or web project, say) is still Python, just less sure.
+        if let Some(entry) = ["main.py", "app.py"].iter().find(|name| dir.has(name)) {
+            out.push(det("python", "Python", Backend, Low, *entry));
+        }
         return;
     };
     let confidence = if strong.iter().any(|name| dir.has(name)) {

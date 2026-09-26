@@ -1845,6 +1845,18 @@ right after start-up (the extension list marks it "Activates at every start-up (
   the index"); the AI item was absent with no provider, appeared when one was added, vanished when it was disabled and came back when re-enabled; the Extensions view fetched nothing until Load Popular (no connection
   from the app's process tree before the click, Open VSX's after it); a normal close left no app/WebView2/node process and User/Machine PATH were byte-identical. Not re-done by hand: symbol/reference search, the
   native VSIX dialog (can't be driven — covered by automated tests). Found and fixed: the npm label "npm tauri dev" now reads "npm run tauri dev".
+- [x] **Milestone 14.1** — Cross-language and multi-stack integration QA (`fix: stabilize mixed language workspace support`). Verification-only phase with two small bug fixes, run on a
+  nine-project workspace under a path with spaces (plain web, Vite + React, Python + JSON, Python + C++/CMake, Tauri, Laravel, Rust + JSON + SQL, Go + Docker Compose, Flutter + Android + iOS).
+  **Bugs found and fixed**: (1) `language_file_status` compared a `std::fs::canonicalize` root (Windows `\?\` prefix) with a `dunce`-normalised file, so **no file in a sub-folder was ever matched to its
+  project** — project-local tool lookup (`node_modules/.bin`, `.venv`) and the folder a whole-project linter/formatter runs in were wrong (`cargo clippy` ran in the workspace root); both paths now use
+  `path_safety::normalize_path` (regression test in `commands::language`, fails without the fix). (2) A folder with only `main.py`/`app.py` (no manifest) beside a CMake or web project was not Python at all,
+  so its run command was missing; it is now a low-confidence Python detection. New `crates/language/tests/mixed.rs` (4 tests: nine projects found once each with no Android/`src-tauri` duplicates and nothing written,
+  commands and detections stay in their own project incl. `npm run tauri dev`, a missing tool disables only the projects that need it, each file keeps its own language and nearest project). **Verified by hand**
+  (rebuilt debug app): every project's command list; a click opened a new terminal in the right project folder for Python, Rust, Vite/React, Tauri and the Python+CMake project; languages of ~24 file types;
+  formatter/linter messages for TS/TSX/CSS/HTML/JS/Python (missing, with hints) and real `rustfmt`/`cargo clippy` for Rust in `rust-json-sql`; SQL/none disabled with a reason; language-server lines for TSX/CSS/JSON
+  (built-in, not configured), C++ (clangd not found), Rust (rust-analyzer found, can't start), SQL (not found, can't start); text and symbol search across the workspace; image preview; AI item absent, present, gone;
+  Load Popular only after a click; no connection from the app tree at launch; clean close, PATH unchanged. **Known gaps**: a Tauri project shows no Cargo commands and Run Linter on a file in `src-tauri/` runs
+  `cargo clippy` in the project folder, where cargo says it finds no `Cargo.toml`; Dart, CMake and Podfile are shown as Plain Text (no grammar); the reference-search fallback was not re-checked. Left on disk: `E:\omstack qa`.
 - [ ] Milestone 15 — Icon themes, profiles, sync-readiness, installer signing and startup/memory reduction.
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
