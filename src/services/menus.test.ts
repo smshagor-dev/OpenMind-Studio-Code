@@ -69,8 +69,7 @@ describe("buildMenuBar", () => {
 
   it("only binds keys to commands that appear in the menus", () => {
     const ids = new Set(collectCommandIds(buildMenuBar(EMPTY)));
-    // No task system exists, so its default keys have no menu entry (the menu lists only real commands).
-    const menuless = new Set(["search.findInFiles", "search.replaceInFiles", "tasks.runBuild"]);
+    const menuless = new Set(["search.findInFiles", "search.replaceInFiles"]);
 
     for (const binding of DEFAULT_KEYBINDINGS) {
       if (menuless.has(binding.command)) continue;

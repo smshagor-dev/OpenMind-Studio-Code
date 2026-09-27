@@ -2865,6 +2865,7 @@ dependencies = [
 name = "openmind-dap"
 version = "0.1.0"
 dependencies = [
+ "openmind-core",
  "openmind-lsp",
  "serde",
  "serde_json",
@@ -2972,6 +2973,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-notebook"
+version = "0.1.0"
+dependencies = [
+ "openmind-process",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-preview"
 version = "0.1.0"
 dependencies = [
@@ -3066,11 +3080,13 @@ dependencies = [
  "openmind-git",
  "openmind-language",
  "openmind-lsp",
+ "openmind-notebook",
  "openmind-preview",
  "openmind-runner",
  "openmind-runtime-manager",
  "openmind-search",
  "openmind-settings",
+ "openmind-tasks",
  "openmind-terminal",
  "openmind-toolchains",
  "openmind-workspace",
@@ -3085,6 +3101,18 @@ dependencies = [
  "tokio",
  "tracing",
  "winapi",
+]
+
+[[package]]
+name = "openmind-tasks"
+version = "0.1.0"
+dependencies = [
+ "openmind-core",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

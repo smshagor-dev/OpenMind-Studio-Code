@@ -120,11 +120,31 @@ describe("BreakpointService", () => {
     expect(ipc.debugSetBreakpoints).not.toHaveBeenCalled();
     state.debugging = true;
     service.toggle(A, 8);
-    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(A, [3, 8]);
+    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(A, [{ line: 3 }, { line: 8 }]);
     service.setEnabled(service.at(A, 3)?.id ?? "", false);
-    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(A, [8]);
+    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(A, [{ line: 8 }]);
     service.toggle(B, 1);
-    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(B, [1]);
+    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(B, [{ line: 1 }]);
+  });
+
+  it("conditions, hit counts and log messages are kept, saved and sent; blank text clears them", async () => {
+    const { service, ipc, state } = rig();
+    state.debugging = true;
+    service.toggle(A, 5);
+    const id = service.at(A, 5)?.id ?? "";
+    service.setOptions(id, { condition: " x > 1 ", hitCondition: "3", logMessage: "x = {x}" });
+    expect(service.at(A, 5)).toMatchObject({ condition: "x > 1", hitCondition: "3", logMessage: "x = {x}" });
+    expect(ipc.debugSetBreakpoints).toHaveBeenLastCalledWith(A, [
+      { line: 5, condition: "x > 1", hitCondition: "3", logMessage: "x = {x}" },
+    ]);
+    expect(service.usesOptions()).toEqual({ condition: true, hitCondition: true, logMessage: true });
+    await service.saveNow();
+    expect(ipc.breakpointsSave).toHaveBeenLastCalledWith([
+      { filePath: A, line: 5, enabled: true, condition: "x > 1", hitCondition: "3", logMessage: "x = {x}" },
+    ]);
+    service.setOptions(id, { condition: "", logMessage: "  " });
+    expect(service.at(A, 5)).toMatchObject({ condition: null, hitCondition: "3", logMessage: null });
+    expect(service.activeRows()).toEqual([{ filePath: A, line: 5, enabled: true, hitCondition: "3" }]);
   });
 
   it("subscribers hear every change", () => {

@@ -3,8 +3,9 @@ use sqlx::SqlitePool;
 
 use crate::error::DbError;
 
-/// One breakpoint: a line of a file. Files are absolute paths, so breakpoints are not scoped to a
-/// workspace (`project_id` stays NULL, like the recent files list).
+/// One breakpoint: a line of a file, optionally with a condition, a hit count or a log message (a logpoint).
+/// Files are absolute paths, so a folder's breakpoints are the ones inside it (`project_id` stays NULL, like the
+/// recent files list).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BreakpointRow {
@@ -12,11 +13,21 @@ pub struct BreakpointRow {
     /// 1-based.
     pub line: u32,
     pub enabled: bool,
+    #[serde(default)]
+    pub condition: Option<String>,
+    #[serde(default)]
+    pub hit_condition: Option<String>,
+    #[serde(default)]
+    pub log_message: Option<String>,
 }
 
 /// Repository for the `breakpoints` table.
 pub struct BreakpointsRepository<'a> {
     pool: &'a SqlitePool,
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|text| !text.trim().is_empty())
 }
 
 impl<'a> BreakpointsRepository<'a> {
@@ -26,7 +37,7 @@ impl<'a> BreakpointsRepository<'a> {
 
     pub async fn list(&self) -> Result<Vec<BreakpointRow>, DbError> {
         let rows = sqlx::query_as::<_, Row>(
-            "SELECT file_path, line, enabled FROM breakpoints ORDER BY file_path, line",
+            "SELECT file_path, line, enabled, condition, hit_condition, log_message FROM breakpoints ORDER BY file_path, line",
         )
         .fetch_all(self.pool)
         .await
@@ -37,6 +48,9 @@ impl<'a> BreakpointsRepository<'a> {
                 file_path: row.file_path,
                 line: u32::try_from(row.line).unwrap_or(1),
                 enabled: row.enabled != 0,
+                condition: non_empty(row.condition),
+                hit_condition: non_empty(row.hit_condition),
+                log_message: non_empty(row.log_message),
             })
             .collect())
     }
@@ -49,13 +63,18 @@ impl<'a> BreakpointsRepository<'a> {
             .await
             .map_err(DbError::Query)?;
         for row in rows {
-            sqlx::query("INSERT INTO breakpoints (file_path, line, enabled) VALUES (?1, ?2, ?3)")
-                .bind(&row.file_path)
-                .bind(i64::from(row.line))
-                .bind(i64::from(row.enabled))
-                .execute(&mut *transaction)
-                .await
-                .map_err(DbError::Query)?;
+            sqlx::query(
+                "INSERT INTO breakpoints (file_path, line, enabled, condition, hit_condition, log_message) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            )
+            .bind(&row.file_path)
+            .bind(i64::from(row.line))
+            .bind(i64::from(row.enabled))
+            .bind(non_empty(row.condition.clone()))
+            .bind(non_empty(row.hit_condition.clone()))
+            .bind(non_empty(row.log_message.clone()))
+            .execute(&mut *transaction)
+            .await
+            .map_err(DbError::Query)?;
         }
         transaction.commit().await.map_err(DbError::Query)?;
         Ok(())
@@ -67,6 +86,9 @@ struct Row {
     file_path: String,
     line: i64,
     enabled: i64,
+    condition: Option<String>,
+    hit_condition: Option<String>,
+    log_message: Option<String>,
 }
 
 #[cfg(test)]
@@ -79,6 +101,9 @@ mod tests {
             file_path: path.into(),
             line,
             enabled,
+            condition: None,
+            hit_condition: None,
+            log_message: None,
         }
     }
 
@@ -105,6 +130,34 @@ mod tests {
                 row("C:/My Site/a.py", 12, false),
                 row("C:/My Site/b.py", 9, true),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn conditions_hit_counts_and_log_messages_are_kept() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = Db::connect(&dir.path().join("test.db"))
+            .await
+            .expect("connect");
+        let repo = BreakpointsRepository::new(db.pool());
+        let logpoint = BreakpointRow {
+            condition: Some("x > 2".into()),
+            hit_condition: Some("3".into()),
+            log_message: Some("x = {x}".into()),
+            ..row("C:/My Site/a.py", 5, false)
+        };
+        let blank = BreakpointRow {
+            condition: Some("  ".into()),
+            ..row("C:/My Site/a.py", 7, true)
+        };
+        repo.replace_all(&[logpoint.clone(), blank])
+            .await
+            .expect("save");
+        let loaded = repo.list().await.expect("load");
+        assert_eq!(loaded[0], logpoint);
+        assert_eq!(
+            loaded[1].condition, None,
+            "a blank condition is no condition"
         );
     }
 

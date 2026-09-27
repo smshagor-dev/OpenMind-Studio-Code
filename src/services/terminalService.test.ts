@@ -53,6 +53,34 @@ describe("TerminalService", () => {
     counter = 0;
   });
 
+  it("a task terminal runs a step: output is tapped, its exit code awaited, and the panel opens only when asked", async () => {
+    const service = makeService();
+    await service.initialize();
+    const start = vi.fn(() => Promise.resolve(sessionInfo("task-1")));
+    const id = await service.createTaskTerminal("Task - build", start, false);
+    expect(id).toBe("task-1");
+    expect(start).toHaveBeenCalledWith(expect.any(Number), expect.any(Number));
+    expect(panel.getState().visible).toBe(false);
+    expect(service.getState().sessions.at(-1)?.title).toBe("Task - build");
+    const seen: string[] = [];
+    const off = service.onOutput("task-1", (data) => seen.push(new TextDecoder().decode(data)));
+    outputHandler("task-1", new TextEncoder().encode("hello"));
+    off();
+    outputHandler("task-1", new TextEncoder().encode("ignored"));
+    expect(seen).toEqual(["hello"]);
+    const waiting = service.waitForExit("task-1");
+    exitHandler("task-1", 3);
+    expect(await waiting).toBe(3);
+    expect(await service.waitForExit("task-1")).toBe(3);
+    const shown = await service.createTaskTerminal("Task - test", () => Promise.resolve(sessionInfo("task-2")), true);
+    expect(panel.getState().visible).toBe(true);
+    const closing = service.waitForExit(shown ?? "");
+    await service.closeTerminal(shown ?? "");
+    expect(await closing).toBeNull();
+    const failed = await service.createTaskTerminal("Task - x", () => Promise.reject(new Error("tool not found")), true);
+    expect(failed).toBeNull();
+  });
+
   it("only offers shells that are actually available", async () => {
     const service = makeService();
     await service.initialize();

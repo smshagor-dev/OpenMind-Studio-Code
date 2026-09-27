@@ -113,11 +113,15 @@ export function ProblemsPanel() {
                     type="button"
                     className="problems__item"
                     onClick={() => {
-                      container.workspace.openProblemAt(file.uri, {
+                      const target = {
                         line: problem.line,
                         column: problem.column,
                         length: Math.max(1, problem.endColumn - problem.column),
-                      });
+                      };
+                      // A task's problem may be in a file that isn't open: open it by path.
+                      if (!container.workspace.openProblemAt(file.uri, target) && file.path !== null) {
+                        void container.workspace.openPathAt(file.path, target);
+                      }
                     }}
                   >
                     {problem.severity === "error" ? (

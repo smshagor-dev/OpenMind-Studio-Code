@@ -1,0 +1,15 @@
+[package]
+name = "openmind-tasks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+openmind-core.workspace = true
+regex = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+thiserror.workspace = true

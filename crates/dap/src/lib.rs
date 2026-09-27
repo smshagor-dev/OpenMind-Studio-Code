@@ -5,6 +5,7 @@
 
 pub mod adapter;
 pub mod error;
+pub mod launch;
 pub mod manager;
 pub mod protocol;
 pub mod session;
@@ -12,12 +13,14 @@ pub mod target;
 pub mod wire;
 
 pub use adapter::{
-    adapter_for, readiness, resolve_interpreter, AdapterInfo, Interpreter, Readiness,
+    adapter_for, project_interpreter, readiness, resolve_interpreter, AdapterInfo, Interpreter,
+    Readiness,
 };
 pub use error::DapError;
+pub use launch::{parse_launch, Compound, Discovered, LaunchFile, LAUNCH_FILES};
 pub use manager::{DapEvents, DapManager, RunSnapshot, RunState, StartRequest};
 pub use protocol::{
     evaluate_arguments, parse_evaluate, parse_output, parse_scopes, parse_stack_frames,
-    parse_stopped, parse_variables, Control,
+    parse_stopped, parse_variables, Capabilities, Control, SourceBreakpoint,
 };
 pub use target::{default_configs, detect, LaunchConfig, Target};

@@ -31,6 +31,13 @@ export interface DebugDeps {
   stopOnEntry?: () => boolean;
   /** Writes a line to the "Debug" output channel. */
   log: (line: string) => void;
+  /** Saves every edited file (a launch.json program may not be the file in front). */
+  saveAll?: () => Promise<void>;
+}
+
+function samePath(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\\/g, "/").toLowerCase();
+  return norm(a) === norm(b);
 }
 
 /**
@@ -44,6 +51,8 @@ export class DebugService {
   private readonly listeners = new Set<() => void>();
   private offs: (() => void)[] = [];
   private lastConfig: LaunchConfig | null = null;
+  /** The run whose adapter abilities were already checked against the breakpoints. */
+  private checkedRun: number | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
@@ -112,8 +121,13 @@ export class DebugService {
   // --- What the UI may offer ---
 
   startState(): StartAvailability {
+    const active = this.deps.activeFile()?.path ?? null;
+    const entry = this.configs.currentEntry(active, this.deps.workspacePath());
+    if (entry?.problem && (this.state.run === null || this.state.run.state === "terminated")) {
+      return { enabled: false, reason: `${entry.name}: ${entry.problem}` };
+    }
     return startAvailability({
-      path: this.deps.activeFile()?.path ?? null,
+      path: entry?.config?.program ?? active,
       status: this.state.status,
       run: this.state.run,
     });
@@ -137,10 +151,21 @@ export class DebugService {
     const availability = this.startState();
     if (!availability.enabled) return false;
     const file = this.deps.activeFile();
-    const chosen = this.configs.current(file?.path ?? null, this.deps.workspacePath());
-    if (file === null || chosen === null) return false;
+    // `${file}` in a launch.json depends on the file in front: read the configurations again for it.
+    await this.configs.refresh(file?.path ?? null);
+    const entry = this.configs.currentEntry(file?.path ?? null, this.deps.workspacePath());
+    const chosen = entry?.config ?? null;
+    if (entry === null || chosen === null) {
+      if (entry?.problem)
+        this.events.emit("appError", { message: `${entry.name}: ${entry.problem}` });
+      return false;
+    }
     const stopOnEntry = chosen.stopOnEntry || (this.deps.stopOnEntry?.() ?? false);
-    return this.startWith({ ...chosen, stopOnEntry }, file.docId);
+    const docId = file !== null && samePath(file.path, chosen.program) ? file.docId : null;
+    if (docId === null) await this.deps.saveAll?.();
+    const started = await this.startWith({ ...chosen, stopOnEntry }, docId);
+    if (started) this.configs.recordUsed(entry.id);
+    return started;
   }
 
   private async startWith(config: LaunchConfig, docId: string | null): Promise<boolean> {
@@ -210,6 +235,42 @@ export class DebugService {
     });
   }
 
+  /**
+   * What the program has loaded — scripts (js-debug) or modules (debugpy) — when the adapter can list them.
+   * `null` without a session or when the adapter can't.
+   */
+  async loadedItems(): Promise<{ title: string; items: string[] } | null> {
+    const abilities = this.state.run?.capabilities;
+    if (!abilities || !this.isDebugging()) return null;
+    const names = (list: unknown): string[] =>
+      Array.isArray(list)
+        ? list
+            .map((item: unknown) => {
+              const entry = item as { path?: unknown; name?: unknown };
+              return typeof entry.path === "string"
+                ? entry.path
+                : typeof entry.name === "string"
+                  ? entry.name
+                  : "";
+            })
+            .filter((name) => name !== "")
+        : [];
+    if (abilities.loadedSources) {
+      const answer = (await this.ipc.debugRequest("loadedSources", {})) as { sources?: unknown };
+      return { title: "Loaded Scripts", items: names(answer.sources) };
+    }
+    if (abilities.modules) {
+      const answer = (await this.ipc.debugRequest("modules", {
+        startModule: 0,
+        moduleCount: 500,
+      })) as {
+        modules?: unknown;
+      };
+      return { title: "Modules", items: names(answer.modules) };
+    }
+    return null;
+  }
+
   // --- The backend's reports ---
 
   private onRun(run: DebugRun): void {
@@ -217,6 +278,7 @@ export class DebugService {
     this.state = { ...this.state, run };
     this.events.emit("debugRunChanged", run);
     this.notify();
+    this.checkAbilities(run);
     if (run.state === "stopped" && before?.state !== "stopped") {
       this.events.emit("debugPaused", { threadId: run.stopped?.threadId ?? 0 });
     } else if (before?.state === "stopped" && run.state !== "stopped") {
@@ -230,6 +292,25 @@ export class DebugService {
         this.console.append("system", "The debug session ended.");
       }
       this.deps.log(run.error ? `ended: ${run.error}` : "ended");
+    }
+  }
+
+  /** Once per run: a breakpoint condition, hit count or logpoint the adapter can't honour is named in the console. */
+  private checkAbilities(run: DebugRun): void {
+    const abilities = run.capabilities;
+    if (!abilities || this.checkedRun === run.runId || run.state === "starting") return;
+    this.checkedRun = run.runId;
+    const uses = this.breakpoints.usesOptions();
+    const missing = [
+      uses.condition && !abilities.conditionalBreakpoints ? "conditions" : null,
+      uses.hitCondition && !abilities.hitConditionalBreakpoints ? "hit counts" : null,
+      uses.logMessage && !abilities.logPoints ? "logpoints" : null,
+    ].filter((item): item is string => item !== null);
+    if (missing.length > 0) {
+      this.console.append(
+        "error",
+        `This debugger doesn't support breakpoint ${missing.join(", ")}: those breakpoints stop like plain ones or are ignored.`,
+      );
     }
   }
 

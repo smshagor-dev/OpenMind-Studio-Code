@@ -1,5 +1,7 @@
 pub mod error;
+pub mod jsonc;
 pub mod paths;
+pub mod vars;
 
 pub use error::CoreError;
 pub use paths::AppPaths;

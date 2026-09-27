@@ -41,6 +41,7 @@ import { CallStackService } from "./callStackService";
 import { DebugConfigurationService } from "./debugConfigurationService";
 import { DebugConsoleService } from "./debugConsoleService";
 import { registerDebugCommands } from "./debugCommands";
+import { launchJsonOpener, watchLaunchFiles, wireNotebooks } from "./workflowWiring";
 import { registerDebugEditorBinding } from "./debugEditorBinding";
 import { parseEvaluate } from "./debugModel";
 import { DebugService } from "./debugService";
@@ -84,6 +85,7 @@ import { WorkspaceService } from "./workspaceService";
 import type { ExtensionContributionService } from "./extensionContributionService";
 import { wireExtensions } from "./extensionsWiring";
 import { wireExtensionApis } from "./extensionApiWiring";
+import { wireTasks } from "./taskWiring";
 import { ExtensionFormatterRegistry } from "./extensionFormatters";
 import { languageForPath } from "../editor/languageForPath";
 import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
@@ -273,7 +275,8 @@ const activeFile = (): { path: string; docId: string } | null => {
   return path === null ? null : { path, docId: id };
 };
 const breakpoints = new BreakpointService(tauriIpcClient, (): boolean => debug.isDebugging());
-const debugConfigs = new DebugConfigurationService();
+const debugConfigs = new DebugConfigurationService(tauriIpcClient);
+watchLaunchFiles(events, debugConfigs, () => activeFile()?.path ?? null);
 const callStack = new CallStackService(tauriIpcClient, events, (path, line, column) => {
   void workspace.openPathAt(path, { line, column, length: 0 });
 });
@@ -308,6 +311,7 @@ const debug: DebugService = new DebugService(
     },
     stopOnEntry: () => settings.bool("debug.stopOnEntry", false),
     log: log("Debug"),
+    saveAll: () => workspace.saveAll(),
   },
 );
 
@@ -316,7 +320,12 @@ async function startDebugTools(): Promise<void> {
   callStack.initialize();
   variables.initialize();
   registerDebugEditorBinding({ documents, breakpoints, callStack });
-  await Promise.all([breakpoints.initialize(), watches.initialize(), debug.initialize()]);
+  await Promise.all([
+    breakpoints.initialize(),
+    watches.initialize(),
+    debug.initialize(),
+    debugConfigs.refresh(activeFile()?.path ?? null),
+  ]);
 }
 
 /**
@@ -511,7 +520,24 @@ const searchWiring = wireSearch({
 void workspaceIndex.listen();
 registerRuntimeCommands(commands, events);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
-registerDebugCommands({ commands, debug, breakpoints, editor, events, activeFile });
+registerDebugCommands({
+  commands,
+  debug,
+  breakpoints,
+  editor,
+  events,
+  activeFile,
+  showDebugView: () => {
+    void layout.showView("debug");
+  },
+  hasFolder: () => workspace.getActiveWorkspace() !== null,
+  openLaunchJson: launchJsonOpener({
+    ipc: tauriIpcClient,
+    folder: () => workspace.getActiveWorkspace()?.path ?? null,
+    openPath: (path) => workspace.openPath(path),
+    events,
+  }),
+});
 registerPhpCommands(commands, php, tauriIpcClient);
 registerGitCommands(commands, layout, gitClone, gitBlame);
 commands.register("help.welcome", () => {
@@ -652,6 +678,28 @@ const extensionApis = wireExtensionApis({
   formatters: extensionFormatters,
   settings,
   languageOf: (name) => languageForPath(name),
+});
+const notebooks = wireNotebooks({
+  ipc: tauriIpcClient,
+  prompts: extensions.prompts,
+  events,
+  settings,
+  filePreviews,
+  log: log("Notebook"),
+});
+/** tasks.json tasks (and the extensions' tasks): Terminal > Run Task... and friends. Nothing runs by itself. */
+const workspaceTasks = wireTasks({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  terminal,
+  prompts: extensions.prompts,
+  markers,
+  extensionTasks: extensionApis.tasks,
+  activeFile: () => activeFile()?.path ?? null,
+  workspaceFolder: () => workspace.getActiveWorkspace()?.path ?? null,
+  openPath: (path) => workspace.openPath(path),
+  log: log("Tasks"),
 });
 editor.setFormatActions([
   { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
@@ -819,6 +867,8 @@ export const container = {
   ipc: tauriIpcClient,
   extensions,
   extensionApis,
+  workspaceTasks,
+  notebooks,
   ai,
   startAi,
   language,

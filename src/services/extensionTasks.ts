@@ -138,7 +138,8 @@ export class ExtensionTaskService {
     return this.confirmAndRun(task);
   }
 
-  private async confirmAndRun(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
+  /** Shows the task and runs it after the user confirmed (the picker of Run Task... calls this too). */
+  async confirmAndRun(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
     if (!task.cwdInsideFolder) {
       const reason = `The task's folder is outside the open folder: ${task.cwd ?? "(none)"}`;
       this.deps.notice(reason);

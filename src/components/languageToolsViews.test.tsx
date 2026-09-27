@@ -378,7 +378,7 @@ describe("Problems panel with language server diagnostics", () => {
   });
 
   it("clicking a problem opens its file at the location", () => {
-    const openProblemAt = vi.fn();
+    const openProblemAt = vi.fn(() => true);
     harness.current = { markers: markers(files), workspace: { openProblemAt } };
     render(<ProblemsPanel />);
     fireEvent.click(screen.getByText("Undefined name"));
@@ -393,6 +393,15 @@ describe("Problems panel with language server diagnostics", () => {
       column: 1,
       length: 1,
     });
+  });
+
+  it("a problem in a file that isn't open (a task's) opens the file by its path", () => {
+    const openProblemAt = vi.fn(() => false);
+    const openPathAt = vi.fn(() => Promise.resolve(null));
+    harness.current = { markers: markers(files), workspace: { openProblemAt, openPathAt } };
+    render(<ProblemsPanel />);
+    fireEvent.click(screen.getByText("Undefined name"));
+    expect(openPathAt).toHaveBeenCalledWith(expect.stringContaining("C:/My Site/"), { line: 3, column: 5, length: 4 });
   });
 });
 

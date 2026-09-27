@@ -1,5 +1,6 @@
 //! What can be debugged: the target for a file, and the launch configuration that starts it.
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -53,6 +54,12 @@ pub struct LaunchConfig {
     pub args: Vec<String>,
     #[serde(default)]
     pub stop_on_entry: bool,
+    /// Variables set for the program (on top of the environment OpenMind gives it).
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    /// Python only: step into library code too when false (default true).
+    #[serde(default)]
+    pub just_my_code: Option<bool>,
 }
 
 fn parent_of(path: &str) -> String {
@@ -74,6 +81,8 @@ pub fn default_configs(path: &str, workspace: Option<&str>) -> Vec<LaunchConfig>
         cwd: Some(cwd),
         args: Vec::new(),
         stop_on_entry: false,
+        env: BTreeMap::new(),
+        just_my_code: None,
     }]
 }
 
@@ -110,7 +119,8 @@ impl LaunchConfig {
                 "python": interpreter,
                 "console": "internalConsole",
                 "redirectOutput": true,
-                "justMyCode": true,
+                "env": self.env,
+                "justMyCode": self.just_my_code.unwrap_or(true),
                 "stopOnEntry": self.stop_on_entry,
                 "subProcess": false
             })),
@@ -122,6 +132,7 @@ impl LaunchConfig {
                 "cwd": cwd,
                 "args": self.args,
                 "runtimeExecutable": interpreter,
+                "env": self.env,
                 "console": "internalConsole",
                 "stopOnEntry": self.stop_on_entry,
                 "skipFiles": ["<node_internals>/**"]
@@ -222,6 +233,8 @@ mod tests {
             cwd: Some(folder.display().to_string()),
             args: vec![],
             stop_on_entry: false,
+            env: BTreeMap::new(),
+            just_my_code: None,
         };
         assert!(config.validate().is_ok());
         config.program = folder.display().to_string();

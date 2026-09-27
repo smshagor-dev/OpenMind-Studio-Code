@@ -34,7 +34,11 @@ export interface ExtensionApiWiringDeps {
 }
 
 /** A file watcher batch as the host's `createFileSystemWatcher` wants it. */
-export function filesChanged(batch: FsChangeBatch): { created: string[]; changed: string[]; deleted: string[] } {
+export function filesChanged(batch: FsChangeBatch): {
+  created: string[];
+  changed: string[];
+  deleted: string[];
+} {
   const created: string[] = [];
   const changed: string[] = [];
   const deleted: string[] = [];
@@ -56,7 +60,7 @@ export function filesChanged(batch: FsChangeBatch): { created: string[]; changed
  * extension would run is confirmed by the user first (see `ExtensionTerminalService`, `ExtensionTaskService`).
  */
 export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
-  const { extensions, ipc, events, commands, terminal, panel, workspace, documents } = deps;
+  const { extensions, ipc, events, terminal, panel, workspace, documents } = deps;
   const { host, bridge, prompts, registry, webviews } = extensions;
   const log = (line: string) => {
     deps.output.append("Extensions", stamped(line));
@@ -140,17 +144,7 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
     void terminals.keepOnly(enabled);
   });
 
-  // Terminal > Run Task...: tasks extensions provide, run only after the user picks and confirms one.
-  commands.register(
-    "tasks.run",
-    async () => {
-      await tasks.pickAndRun();
-    },
-    {
-      enabled: () => host.needsHost(),
-      disabledReason: () => "No enabled extension with code is installed, so there are no tasks.",
-    },
-  );
+  // Terminal > Run Task... lists these tasks next to the folder's own (`taskWiring.ts`).
 
   // The app's own file watcher feeds `createFileSystemWatcher` (nothing new watches the disk).
   void ipc

@@ -581,6 +581,28 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   default theme. Extensions with `"*"`/`onStartupFinished` run only after startup finished (`finishStartup` at the end of the startup sequence, after the
   window is up and the session restored); the host is never started before an extension needs it.
 
+- `openmind-tasks` (Milestone 19) — user/project tasks, Tauri-agnostic and side-effect free (reads text, builds plans; the app starts the processes). `file` parses
+  `.openmind/tasks.json` and `.vscode/tasks.json` (JSON with comments via `openmind_core::jsonc`, version 2.0.0): `shell`/`process` tasks with label, command, args (strings or
+  `{value}`), `options.cwd`/`options.env`, `group` (kind + isDefault), `dependsOn`/`dependsOrder`, `isBackground`, `problemMatcher`, `detail`, `hide` and the `windows` overrides;
+  every other field is named in the task's `notes` (presentation, runOptions, `options.shell` ...), other types (`npm` ...) get a `problem`. `graph::execution_order` puts
+  dependencies first, each once (same file first), and refuses loops ("a → b → a"), missing tasks and chains deeper than 32. `plan` expands variables (`openmind_core::vars`:
+  workspaceFolder, file, fileDirname, fileBasename(NoExtension), fileExtname, relativeFile, cwd, env:NAME; `${input:}`/`${command:}`/`${config:}` refused by name), refuses a
+  folder outside the open folder, builds the argv — shell tasks run as PowerShell `-EncodedCommand` (UTF-16LE base64, so no quoting can break; prints " * Executing task: ..."
+  and exits with the program's own code) or Git Bash `-c` when that is the user's terminal shell, process tasks run the program directly —, names risks (network, deleting,
+  administrator, outside the folder, PATH change) and a SHA-256 fingerprint. `matcher` = problem matchers: built-in `$tsc`, `$gcc`, `$msCompile`, `$eslint-compact`, `$rustc`
+  (two-line), custom `{owner, fileLocation, severity, pattern}` with one or two patterns; `background`/`base`/`loop`/unknown names are *unsupported with the reason*; output is
+  ANSI-stripped (ConPTY cursor moves become line breaks) and OpenMind's own echo line is skipped. `commands::tasks`: `tasks_list`, `tasks_plan`, `task_run_step` (re-plans the
+  step in the backend — the page names only task + step, never a program — and starts it as the program of a new terminal session: `CreateTerminalRequest.program/args`,
+  `terminal::start_session`), `tasks_problems`.
+- `openmind-notebook` (Milestone 19) — Jupyter notebooks. `ipynb::load` (nbformat 4; 3 and non-notebooks refused with the reason) gives cells (kind, source, execution count,
+  raw outputs, language); `save` starts from the original document and changes only cell order/types/sources/outputs/counts, keeping every other field, the key order
+  (`preserve_order`) and the file's indentation; new cells get an id when nbformat_minor >= 5. `kernel` = **OpenMind's own Python cell runner** (`runner.py`, embedded and
+  written to `cache/notebook/`), *not* Jupyter/IPython: one namespace per notebook, last expression's `repr` (+ `_repr_png_`/`_repr_jpeg_`), stdout/stderr, tracebacks, `%`/`!`
+  lines and `input()` refused with a message, output capped at 1 MB; started with `-u -X utf8` in the notebook's folder inside a Job Object, answers as JSON lines, Stop kills the
+  tree. `candidates` = project `.venv`/`venv` Python, OpenMind's portable Python, the system Python (labelled), each with whether `ipykernel` is present (informational).
+  `commands::notebook`: `notebook_open` (reads only), `notebook_save` (refuses a file that changed on disk unless overwrite; atomic write; keeps trust for the user's own save),
+  `notebook_set_trust`, `notebook_kernels`, `notebook_kernel_start` (only a candidate the app found), `notebook_kernel_stop`, `notebook_execute` (refused unless the file's
+  content is trusted; each run recorded in `notebook_runs`); `window_events::shutdown` stops every kernel.
 - `openmind-preview` (Milestone 11) — the backend of the **read-only file previews**, Tauri-agnostic and in-process only: no external program, no network,
   nothing written, no macro or script ever run. `kind::detect` maps an extension to `PreviewKind` (image: png/jpg/jpeg/webp/gif/bmp/svg, pdf, docx, xlsx, csv, markdown,
   html, latex, else `unsupported`) and holds the size limits (image 15 MB, PDF 30 MB, DOCX/XLSX 25 MB, Markdown/HTML/LaTeX 5 MB, a CSV is read only up to its first 8 MB, "Open as
@@ -2146,7 +2168,55 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   variables); the update check reads Open VSX only and ignores extensions without a publisher; the permission guard is still not a sandbox; the extension host keeps running after its last code extension is
   uninstalled until the app closes. Files that were over 700 lines before this milestone (`contributions.rs`, `tests/host.rs`, `container.ts`, `workspaceService.ts`) are still over it; this milestone moved its own
   additions out where it could. The unmerged `formatters-offline` branch (`2b739b2`) calls itself "Milestone 18" in its CLAUDE.md and needs renumbering before it is merged. Left on disk: `C:\omm18`.
-- [ ] Milestone 19 — to be scoped (profile-aware keybindings, signing with a real certificate, auto-update).
+- [x] **Milestone 19** — Advanced debug, tasks and notebook foundation (`feat: add advanced debug tasks and notebook foundation`). New crates `openmind-tasks` and `openmind-notebook`
+  (see above), `openmind_core::{jsonc, vars}`, `openmind_dap::launch`, migration `0003_debug_tasks_notebooks.sql` (breakpoint `hit_condition`/`log_message`, `notebook_trust`,
+  `notebook_runs`), `commands::{tasks, notebook}` + `debug_configurations`.
+  **Debug.** launch.json: `.openmind/launch.json` and `.vscode/launch.json` (JSON with comments) are read by the backend with variables expanded for the file in front;
+  `debugpy`/`python` and `node`/`pwa-node` **launch** configurations run (program, cwd, args, env, stopOnEntry, justMyCode); every ignored field is listed ("console is ignored",
+  "preLaunchTask is not run" ...), and what can't run is listed with the reason — other debugger types ("cppdbg is not supported"), types an enabled extension declares ("declared by
+  the extension X, but OpenMind can't run extension debug adapters yet"), `attach`, compounds ("one debug session at a time"), `${input:...}`. The Run and Debug view's picker shows
+  built-in "Current File" entries and the launch files' entries (⚠ for the ones that can't run, recently used first — `debug.recentConfigurations`); Start is disabled with the
+  chosen entry's reason; a launch.json button (Run > Open/Add Configuration) opens the file or creates `.vscode/launch.json` from a template. Breakpoints: condition, hit count and
+  logpoint (the Breakpoints pane's ✎ form, Run > New Breakpoint > Conditional Breakpoint... / Logpoint... / Edit Breakpoint at the cursor), enable/disable, saved in SQLite
+  and restored after a restart; the adapter's abilities (`initialize` answer: conditional/hit/log breakpoints, loaded sources, modules) are in the run snapshot and a breakpoint
+  the adapter can't honour is named in the Debug Console; a **Loaded Scripts** (js-debug) / **Modules** (debugpy) pane appears when the adapter can list them. Python runs on the
+  project's `.venv` first, then OpenMind's portable Python, then the system's (labelled); edited files are saved before a launch.json program starts. Function/inline/
+  triggered breakpoints, attach, compounds, `preLaunchTask`, extension debug adapters and the `vscode.debug` API remain unsupported.
+  **Tasks.** Terminal > Run Task... lists `.openmind/tasks.json`, `.vscode/tasks.json` and the extensions' tasks (Milestone 18) in one picker (recent first — `tasks.recent`);
+  Run Build Task... (Ctrl+Shift+B) / Run Test Task... run the group's default (else pick); Show Running Tasks..., Terminate Task..., Restart Running Task..., Configure Tasks...
+  (opens or creates `.vscode/tasks.json`). Before a task runs the user sees every step (command, folder, environment, source file), its risks and what isn't supported (problem
+  matchers, ignored fields) and chooses Run Task or "Run and Don't Ask Again for This Task" (remembered per fingerprint in `tasks.approved`, never for a task with a risk). Each step
+  runs as the program of a new integrated terminal (the first one opens the panel), dependencies first; a failing step stops the chain ("Task "fails" failed with exit code 3;
+  the 1 task after it didn't run."); a loop is refused before anything runs; a background task can't be a dependency; tasks of a folder stop when the folder closes, and all with
+  the app. Problem matchers put their findings in the Problems panel (`MarkerService.setExternal`, owner `task:<label>`; clicking one opens the file by path).
+  **Notebooks.** `.ipynb` opens in a notebook editor tab (a preview-kind tab, `FilePreviewService` model `notebook`; `NotebookService` + `components/notebook/`): Markdown cells
+  through the app's safe renderer (double-click to edit), code/raw cells in small Monaco editors (syntax highlighting), outputs as text, PNG/JPEG `data:` images, errors with the
+  traceback, Markdown, and HTML **only in a trusted notebook** (sanitized, scripts off, empty `sandbox`); long outputs collapse. Opening runs nothing. An untrusted notebook shows
+  a banner, hides HTML output and can't run; trust belongs to the file's content (SHA-256) and is kept for the user's own saves. Select Kernel lists the Pythons found; the chosen one
+  starts OpenMind's Python runner (not Jupyter); Run Cell (▶ / Shift+Enter), Run All (asks first, stops at the first failing cell), Stop (kills the runner: variables are lost),
+  Clear Outputs, add/delete/move cells, change a cell's type; "Kernel not configured. Install/configure from Runtime Manager." when none is running; other languages can be read
+  but not run. Save keeps unknown fields and refuses a file changed on disk (then "Overwrite on Disk"); Auto Save `afterDelay`/`onFocusChange`/`onWindowChange` applies; closing the
+  tab stops its kernel. The notebook extension API stays unsupported (`vscode.notebooks` throws the unsupported message).
+  **Validated**: fmt, clippy `-D warnings`, `cargo test --workspace` (974 passed, 18 ignored), `pnpm lint`, `pnpm test` ×3 (1667), `pnpm build`, `pnpm lsp:bundle -- --check`.
+  **Verified by hand** (debug build, fresh copy `C:\omm19\OpenMind Studio` with the Milestone 17 `lsp/`, project `C:\omm19\My Project` with launch.json, both tasks.json files and a
+  notebook): launch started only WebView2, no connection from the app, and no kernel or debugger even with a notebook tab restored; the picker listed the launch.json entries and each
+  unsupported one said why; debugpy and js-debug installed from the view (checksum-verified downloads); a condition `i == 1` stopped only on the second iteration, a logpoint printed
+  "total is 10/11/12" without stopping, the launch.json `env` reached the program (`GREETING` = 'hi'), Continue ended with exit code 0 and no Python left; Node.js: a hit count of 2
+  stopped at `i = 1`, Stop left only the language servers; the breakpoints (with condition, hit count, logpoint) were back after a restart; Run Task... listed both files' tasks and the
+  npm provider task with its reason; a .vscode task ran in its own terminal; Run Build Task ran `prep` then `build` with `STAGE=prep` for `prep` only and named the unsupported
+  `$tsc-watch`; a failing step stopped its chain; a dependency loop was refused; a custom matcher put `src/err.ts:1` in Problems and clicking it opened the file (next to the
+  TypeScript server's own diagnostic); the notebook opened untrusted with nothing run, HTML hidden and `<script>` shown as text; after Trust the HTML rendered in an empty-sandbox
+  frame without its script or remote image, the system Python became the kernel, cells ran in one namespace (`hello 40`, `42`, then `7.0`), Save kept the notebook, cell and custom
+  metadata, ids, key order and indentation, declining Run All ran nothing, Stop ended the runner, trust survived the restart; Milestone 18: VSIX install with the trust dialog,
+  WebviewView, extension task in the merged picker, extension terminal confirmation, SecretStorage; search, image preview, Runtime Manager, Profiles, PHP Configuration, no AI item;
+  each normal close left no process of the copy (no runner, adapter, task or terminal); User/Machine PATH identical. Found and fixed during the pass: two open documents for one file
+  from a click + double-click (Milestone 18 fix confirmed), the start controls not following the chosen configuration, ConPTY cursor moves gluing task output lines together, and the
+  task's own echo line matching a custom problem matcher.
+  **Limitations**: not Jupyter — no Jupyter protocol or ipykernel, no magics, no widgets, no rich display beyond text/PNG/JPEG/Markdown/trusted HTML, output arrives when a cell ends,
+  interrupt = restart, Python only, one runner per notebook; tasks: no `inputs`, `options.shell`, parallel `dependsOrder` (runs in order), background readiness patterns, problem
+  matchers beyond the listed subset, Configure Default Build Task (edit the file); debug: see above; a task's problems appear in the Problems panel but not as squiggles in the editor;
+  `container.ts`, `ipc.ts`, `dap/manager.rs` and `terminal/registry.rs` were over 700 lines before this milestone and still are. Left on disk: `C:\omm19`.
+- [ ] Milestone 20 — to be scoped (profile-aware keybindings, signing with a real certificate, auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

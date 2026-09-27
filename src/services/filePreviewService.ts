@@ -16,7 +16,14 @@ export type PreviewModel =
   | { type: "latex"; outline: LatexOutline }
   | { type: "message"; message: string }
   /** A document an extension's file system provider served (a custom scheme): shown read-only (Milestone 18). */
-  | { type: "virtualText"; text: string; language: string; extension: string; readonly: boolean };
+  | { type: "virtualText"; text: string; language: string; extension: string; readonly: boolean }
+  /** A Jupyter notebook: the notebook editor loads and edits it (`NotebookService`), Milestone 19. */
+  | { type: "notebook" };
+
+/** Whether a file is a Jupyter notebook (opened in the notebook editor, never run on open). */
+export function isNotebookPath(path: string): boolean {
+  return /\.ipynb$/i.test(path);
+}
 
 export type PreviewStatus = "loading" | "ready" | "error";
 export type ZoomMode = "fit" | "actual" | "zoom";
@@ -107,6 +114,7 @@ function normalizeKey(path: string): string {
  * for zoom, page, sheet and reload changes through it.
  */
 export class FilePreviewService {
+  private readonly releaseListeners = new Set<(doc: FilePreviewDoc) => void>();
   private state: FilePreviewState = { docs: {} };
   private readonly listeners = new Set<() => void>();
   private readonly byPath = new Map<string, string>();
@@ -144,7 +152,7 @@ export class FilePreviewService {
    * previewed in part). Ordinary text and code open as text.
    */
   async shouldPreview(path: string): Promise<boolean> {
-    if (DIRECT_KINDS.has(kindOfPath(path))) return true;
+    if (isNotebookPath(path) || DIRECT_KINDS.has(kindOfPath(path))) return true;
     try {
       const info = await this.ipc.previewInspect(path);
       return info.binary || info.tooLarge;
@@ -189,7 +197,13 @@ export class FilePreviewService {
    * Opens (or refreshes) a read-only tab for a custom-scheme document an extension served (`memfs:/a.txt`). The text
    * comes from the extension; nothing is read from disk, and the tab can't be edited or saved.
    */
-  openVirtual(request: { uri: string; text: string; language: string; extension: string; readonly: boolean }): string {
+  openVirtual(request: {
+    uri: string;
+    text: string;
+    language: string;
+    extension: string;
+    readonly: boolean;
+  }): string {
     const key = `virtual:${request.uri}`;
     const model: PreviewModel = {
       type: "virtualText",
@@ -200,7 +214,12 @@ export class FilePreviewService {
     };
     const existing = this.byPath.get(key);
     if (existing !== undefined && this.has(existing)) {
-      this.patch(existing, { model, status: "ready", error: null, loadSeq: (this.get(existing)?.loadSeq ?? 0) + 1 });
+      this.patch(existing, {
+        model,
+        status: "ready",
+        error: null,
+        loadSeq: (this.get(existing)?.loadSeq ?? 0) + 1,
+      });
       return existing;
     }
     const id = `pv:${String(this.next)}`;
@@ -244,10 +263,21 @@ export class FilePreviewService {
     }
   }
 
+  /** Called with the path of a preview whose last tab closed (a notebook stops its kernel). */
+  onRelease(listener: (doc: FilePreviewDoc) => void): () => void {
+    this.releaseListeners.add(listener);
+    return () => {
+      this.releaseListeners.delete(listener);
+    };
+  }
+
   release(id: string): void {
     const doc = this.state.docs[id];
     if (!doc) return;
-    this.byPath.delete(doc.model?.type === "virtualText" ? `virtual:${doc.path}` : normalizeKey(doc.path));
+    for (const listener of this.releaseListeners) listener(doc);
+    this.byPath.delete(
+      doc.model?.type === "virtualText" ? `virtual:${doc.path}` : normalizeKey(doc.path),
+    );
     this.set(Object.fromEntries(Object.entries(this.state.docs).filter(([key]) => key !== id)));
   }
 
@@ -272,6 +302,11 @@ export class FilePreviewService {
     const doc = this.state.docs[id];
     if (!doc) return;
     const seq = doc.loadSeq + 1;
+    if (isNotebookPath(doc.path)) {
+      // The notebook editor reads the file itself (nothing runs on open).
+      this.patch(id, { status: "ready", error: null, model: { type: "notebook" }, loadSeq: seq });
+      return;
+    }
     this.patch(id, { status: "loading", error: null, loadSeq: seq });
     try {
       const info = await this.ipc.previewInspect(doc.path);

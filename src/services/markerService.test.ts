@@ -77,3 +77,19 @@ describe("MarkerService", () => {
     unsubscribe();
   });
 });
+
+describe("external problems (task output)", () => {
+  it("are listed per file and counted, and an owner's list is replaced or cleared", () => {
+    const service = new MarkerService();
+    const off = service.subscribe(() => undefined);
+    const problem = { severity: "error" as const, message: "bad", source: "typescript", line: 3, column: 7, endLine: 3, endColumn: 8 };
+    service.setExternal("task:build", [{ path: "C:/w/src/a.ts", title: "a.ts", problems: [problem] }]);
+    expect(service.getCounts().errors).toBeGreaterThanOrEqual(1);
+    const file = service.getProblemFiles().find((f) => f.uri === "external:task:build:C:/w/src/a.ts");
+    expect(file?.path).toBe("C:/w/src/a.ts");
+    expect(file?.problems[0]?.message).toBe("bad");
+    service.setExternal("task:build", []);
+    expect(service.getProblemFiles().some((f) => f.uri.startsWith("external:"))).toBe(false);
+    off();
+  });
+});

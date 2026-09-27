@@ -85,7 +85,10 @@ fn debug_file(
     let mut config = default_configs(&program, Some(&workspace.display().to_string())).remove(0);
     config.cwd = Some(workspace.display().to_string());
     let mut breakpoints = HashMap::new();
-    breakpoints.insert(program.clone(), vec![break_line]);
+    breakpoints.insert(
+        program.clone(),
+        vec![openmind_dap::SourceBreakpoint::at(break_line)],
+    );
     manager
         .start(StartRequest {
             config,

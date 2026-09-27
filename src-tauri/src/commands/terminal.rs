@@ -61,8 +61,21 @@ pub async fn terminal_create(
         rows,
         env,
         path_prepend: runtime.path_prepend,
+        program: None,
+        args: Vec::new(),
     };
 
+    start_session(&state, app, id, owner, request)
+}
+
+/// Starts a terminal session owned by the window `owner`: its output and exit go to that window only.
+pub(crate) fn start_session(
+    state: &AppState,
+    app: AppHandle,
+    id: String,
+    owner: String,
+    request: CreateTerminalRequest,
+) -> Result<TerminalSessionInfo, String> {
     let output_id = id.clone();
     let output_app = app.clone();
     let output_owner = owner.clone();

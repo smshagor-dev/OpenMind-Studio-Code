@@ -10,6 +10,7 @@ import { safeHref } from "../services/markdown";
 import type { PreviewKind } from "../services/previewIpc";
 import "../styles/filePreview.css";
 import { DocxPreview } from "./filePreview/DocxPreview";
+import { NotebookView } from "./notebook/NotebookView";
 import { HtmlPreview } from "./filePreview/HtmlPreview";
 import { ImagePreview } from "./filePreview/ImagePreview";
 import { LatexPreview } from "./filePreview/LatexPreview";
@@ -161,7 +162,9 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
         {doc.name}
       </span>
       <span className="file-preview__meta">
-        {model?.type === "virtualText" ? `Served by ${model.extension} · read-only` : meta.join(" · ")}
+        {model?.type === "virtualText"
+          ? `Served by ${model.extension} · read-only`
+          : meta.join(" · ")}
       </span>
       <span className="file-preview__badge" title="Previews never change the file.">
         Read-only preview
@@ -239,6 +242,8 @@ function Body({ doc, model }: { doc: FilePreviewDoc; model: PreviewModel }) {
       return <LatexPreview outline={model.outline} />;
     case "virtualText":
       return <VirtualTextPreview text={model.text} language={model.language} />;
+    case "notebook":
+      return <NotebookView path={doc.path} />;
     case "message":
       return (
         <div className="file-preview__message" role="status">
@@ -267,6 +272,7 @@ export function FilePreviewView({ docId }: { docId: string }) {
   if (!doc) {
     return <div className="file-preview file-preview__empty">This preview is no longer open.</div>;
   }
+  if (doc.model?.type === "notebook") return <NotebookView path={doc.path} />;
   return (
     <section className="file-preview" aria-label={`Preview of ${doc.name}`}>
       <Toolbar doc={doc} />

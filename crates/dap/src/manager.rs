@@ -22,7 +22,7 @@ use crate::adapter::{adapter_spawn, transport, Interpreter, Transport};
 use crate::error::DapError;
 use crate::protocol::{
     disconnect_arguments, initialize_arguments, is_allowed_ui_request, parse_stopped,
-    set_breakpoints_arguments, thread_arguments, Control, Stopped,
+    set_breakpoints_arguments, thread_arguments, Capabilities, Control, SourceBreakpoint, Stopped,
 };
 use crate::session::{Session, SessionEvents};
 use crate::target::{LaunchConfig, Target};
@@ -58,6 +58,8 @@ pub struct RunSnapshot {
     pub state: RunState,
     pub program: String,
     pub pid: Option<u32>,
+    /// What the adapter can do (conditions, logpoints, loaded sources, modules).
+    pub capabilities: Capabilities,
 }
 
 /// What the manager reports to the app around it.
@@ -77,8 +79,8 @@ pub struct StartRequest {
     pub adapter_cwd: PathBuf,
     pub path_prepend: Vec<PathBuf>,
     pub vars: Vec<(String, String)>,
-    /// File -> lines.
-    pub breakpoints: HashMap<String, Vec<u32>>,
+    /// File -> its breakpoints.
+    pub breakpoints: HashMap<String, Vec<SourceBreakpoint>>,
 }
 
 struct Entry {
@@ -98,7 +100,8 @@ struct Run {
     sessions: Mutex<Vec<Arc<Entry>>>,
     focus: Mutex<usize>,
     state: Mutex<RunState>,
-    breakpoints: Mutex<HashMap<String, Vec<u32>>>,
+    breakpoints: Mutex<HashMap<String, Vec<SourceBreakpoint>>>,
+    capabilities: Mutex<Capabilities>,
     stopping: AtomicBool,
     finished: AtomicBool,
     events: Arc<dyn DapEvents>,
@@ -140,6 +143,7 @@ impl Run {
             state: lock(&self.state).clone(),
             program: self.config.program.clone(),
             pid: self.pid,
+            capabilities: lock(&self.capabilities).clone(),
         }
     }
 
@@ -313,21 +317,22 @@ fn drive(
     arguments: &Value,
 ) -> Result<(), DapError> {
     let session = &entry.session;
-    session.request(
+    let answer = session.request(
         "initialize",
         &initialize_arguments(adapter_id),
         READ_TIMEOUT,
     )?;
+    lock(&run.capabilities).merge(&Capabilities::from_initialize(&answer));
     let launch = session.send(command, arguments)?;
     initialized
         .recv_timeout(STEP_TIMEOUT)
         .map_err(|_| DapError::Timeout)?;
     if entry.owns_breakpoints {
         let breakpoints = lock(&run.breakpoints).clone();
-        for (path, lines) in breakpoints {
+        for (path, list) in breakpoints {
             if let Err(err) = session.request(
                 "setBreakpoints",
-                &set_breakpoints_arguments(&path, &lines),
+                &set_breakpoints_arguments(&path, &list),
                 READ_TIMEOUT,
             ) {
                 run.events
@@ -465,6 +470,7 @@ impl DapManager {
             focus: Mutex::new(0),
             state: Mutex::new(RunState::Starting),
             breakpoints: Mutex::new(request.breakpoints.clone()),
+            capabilities: Mutex::new(Capabilities::default()),
             stopping: AtomicBool::new(false),
             finished: AtomicBool::new(false),
             events: Arc::clone(&self.events),
@@ -550,7 +556,7 @@ impl DapManager {
     }
 
     /// Sets the lines of one file (an empty list clears it); applied at once when a run is active.
-    pub fn set_breakpoints(&self, path: &str, lines: &[u32]) -> Result<(), DapError> {
+    pub fn set_breakpoints(&self, path: &str, lines: &[SourceBreakpoint]) -> Result<(), DapError> {
         let Some(run) = self.current().filter(|run| lock(&run.state).is_active()) else {
             return Ok(());
         };
@@ -640,6 +646,7 @@ mod tests {
             interpreter: Interpreter {
                 path: root.join("python.exe"),
                 portable: true,
+                project: false,
             },
             adapter_dir: root.join("debugpy"),
             adapter_cwd: root.to_path_buf(),
@@ -664,7 +671,9 @@ mod tests {
         ));
         manager.stop();
         // Breakpoints set with no run are just remembered by the app; nothing is sent.
-        assert!(manager.set_breakpoints("C:/My Site/a.py", &[3]).is_ok());
+        assert!(manager
+            .set_breakpoints("C:/My Site/a.py", &[SourceBreakpoint::at(3)])
+            .is_ok());
     }
 
     #[test]

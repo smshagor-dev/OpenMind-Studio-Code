@@ -27,7 +27,7 @@ impl ShellKind {
         }
     }
 
-    fn executable(self) -> Option<PathBuf> {
+    pub fn executable(self) -> Option<PathBuf> {
         match self {
             ShellKind::PowerShell => {
                 find_on_path("pwsh.exe").or_else(|| find_on_path("powershell.exe"))

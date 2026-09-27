@@ -272,6 +272,52 @@ describe("starting a debug session", () => {
   });
 });
 
+describe("launch.json configurations", () => {
+  it("a chosen configuration that can't run blocks Start with its reason; a runnable one starts its own program", async () => {
+    const r = await rig();
+    const cpp = {
+      name: "C++",
+      source: "C:/w/.vscode/launch.json",
+      typeName: "cppdbg",
+      request: "launch",
+      config: null,
+      problem: 'The debugger type "cppdbg" is not supported.',
+      notes: [],
+    };
+    const app = {
+      ...cpp,
+      name: "App",
+      typeName: "debugpy",
+      problem: null,
+      config: { name: "App", target: "python" as const, program: "C:/w/app.py", cwd: "C:/w", args: [], stopOnEntry: false, env: { A: "1" } },
+    };
+    vi.mocked(r.ipc.debugConfigurations).mockResolvedValue({
+      files: [{ path: "C:/w/.vscode/launch.json", error: null, configurations: [cpp, app], compounds: [] }],
+      extensionDebuggers: [],
+    });
+    const configs = new DebugConfigurationService(r.ipc);
+    const saveAll = vi.fn(() => Promise.resolve());
+    const debug = new DebugService(r.ipc, r.events, r.breakpoints, configs, r.console, {
+      activeFile: () => null,
+      saveIfDirty: () => Promise.resolve(true),
+      workspacePath: () => "C:/w",
+      showConsole: () => undefined,
+      log: () => undefined,
+      saveAll,
+    });
+    await debug.refreshStatus();
+    await configs.refresh(null);
+    configs.choose("C:/w/.vscode/launch.json::C++");
+    expect(debug.startState()).toEqual({ enabled: false, reason: 'C++: The debugger type "cppdbg" is not supported.' });
+    configs.choose("C:/w/.vscode/launch.json::App");
+    expect(debug.startState().enabled).toBe(true);
+    expect(await debug.start()).toBe(true);
+    expect(saveAll).toHaveBeenCalled();
+    expect(r.ipc.debugStart).toHaveBeenCalledWith(expect.objectContaining({ program: "C:/w/app.py", env: { A: "1" } }), []);
+    expect(configs.entries(null, "C:/w")[0]?.name).toBe("App");
+  });
+});
+
 describe("a paused program", () => {
   let r: Rig;
   beforeEach(async () => {

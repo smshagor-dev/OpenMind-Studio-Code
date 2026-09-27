@@ -75,7 +75,7 @@ export function MarkdownText({ text, onLink }: { text: string } & LinkProps) {
   );
 }
 
-function BlockList({ blocks, onLink }: { blocks: Block[] } & LinkProps) {
+export function BlockList({ blocks, onLink }: { blocks: Block[] } & LinkProps) {
   return (
     <>
       {blocks.map((block, index) => (

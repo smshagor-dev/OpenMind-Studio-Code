@@ -15,11 +15,15 @@ use crate::target::Target;
 pub struct Interpreter {
     pub path: PathBuf,
     pub portable: bool,
+    /// The project's own virtual environment (`.venv` / `venv`).
+    pub project: bool,
 }
 
 impl Interpreter {
     pub fn label(&self, target: Target) -> String {
-        if self.portable {
+        if self.project {
+            format!("Project {} at {}", target.label(), self.path.display())
+        } else if self.portable {
             format!("OpenMind portable {}", target.label())
         } else {
             format!("System {} at {}", target.label(), self.path.display())
@@ -43,6 +47,29 @@ fn find_in<'a>(name: &str, dirs: impl IntoIterator<Item = &'a Path>) -> Option<P
         .find(|candidate| candidate.is_file())
 }
 
+/// The project's own Python: `.venv` or `venv` in the open folder (Python only).
+pub fn project_interpreter(target: Target, workspace: Option<&Path>) -> Option<Interpreter> {
+    if target != Target::Python {
+        return None;
+    }
+    let workspace = workspace?;
+    let relative: &[&str] = if cfg!(windows) {
+        &["Scripts", "python.exe"]
+    } else {
+        &["bin", "python3"]
+    };
+    [".venv", "venv"].iter().find_map(|env| {
+        let path = relative
+            .iter()
+            .fold(workspace.join(env), |path, part| path.join(part));
+        path.is_file().then_some(Interpreter {
+            path,
+            portable: false,
+            project: true,
+        })
+    })
+}
+
 /// Portable first (the Runtime Manager's folders), then the system PATH.
 pub fn resolve_interpreter(
     target: Target,
@@ -54,6 +81,7 @@ pub fn resolve_interpreter(
         return Some(Interpreter {
             path,
             portable: true,
+            project: false,
         });
     }
     let system: Vec<PathBuf> = system_path
@@ -62,6 +90,7 @@ pub fn resolve_interpreter(
     find_in(name, system.iter().map(PathBuf::as_path)).map(|path| Interpreter {
         path,
         portable: false,
+        project: false,
     })
 }
 
@@ -232,6 +261,7 @@ mod tests {
         let python = Interpreter {
             path: PathBuf::from("C:/py/python.exe"),
             portable: true,
+            project: false,
         };
         let none = readiness(Target::Python, None, None);
         assert_eq!(
@@ -264,6 +294,7 @@ mod tests {
         let node = Interpreter {
             path: PathBuf::from("C:/n/node.exe"),
             portable: false,
+            project: false,
         };
         assert_eq!(
             readiness(Target::Node, None, None).problem.as_deref(),
@@ -288,6 +319,7 @@ mod tests {
         let python = Interpreter {
             path: PathBuf::from("C:/My Runtimes/python.exe"),
             portable: true,
+            project: false,
         };
         let spec = adapter_spawn(
             Target::Python,
@@ -315,6 +347,7 @@ mod tests {
         let node = Interpreter {
             path: PathBuf::from("C:/n/node.exe"),
             portable: true,
+            project: false,
         };
         let spec = adapter_spawn(
             Target::Node,
@@ -339,5 +372,27 @@ mod tests {
             vec![]
         )
         .is_none());
+    }
+
+    #[test]
+    fn a_project_virtual_environment_comes_first_for_python_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let scripts = if cfg!(windows) {
+            dir.path().join(".venv").join("Scripts")
+        } else {
+            dir.path().join(".venv").join("bin")
+        };
+        std::fs::create_dir_all(&scripts).expect("mkdir");
+        let exe = scripts.join(if cfg!(windows) {
+            "python.exe"
+        } else {
+            "python3"
+        });
+        std::fs::write(&exe, "").expect("file");
+        let found = project_interpreter(Target::Python, Some(dir.path())).expect("project python");
+        assert_eq!(found.path, exe);
+        assert!(found.project && found.label(Target::Python).starts_with("Project Python at"));
+        assert!(project_interpreter(Target::Node, Some(dir.path())).is_none());
+        assert!(project_interpreter(Target::Python, None).is_none());
     }
 }

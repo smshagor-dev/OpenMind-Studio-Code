@@ -8,6 +8,7 @@ import { type ExtensionsIpc, tauriExtensionsIpc } from "./extensionsIpc";
 import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
 import { type AiIpc, tauriAiIpc } from "./ai/aiIpc";
 import { type FormattingIpc, tauriFormattingIpc } from "./formatting/formattingIpc";
+import { type SourceBreakpoint, tauriWorkflowIpc, type WorkflowIpc } from "./workflowIpc";
 import { type LanguageIpc, tauriLanguageIpc } from "./language/languageIpc";
 import { type ProfilesIpc, tauriProfilesIpc } from "./profiles/profilesIpc";
 import { type ToolchainIpc, tauriToolchainIpc } from "./toolchains/toolchainIpc";
@@ -252,6 +253,10 @@ export interface LaunchConfig {
   cwd?: string | null;
   args: string[];
   stopOnEntry: boolean;
+  /** Variables set for the program (launch.json `env`). */
+  env?: Record<string, string>;
+  /** Python only: false steps into library code too. */
+  justMyCode?: boolean | null;
 }
 
 export interface DebugStopped {
@@ -275,6 +280,8 @@ export interface DebugRun {
   error?: string | null;
   program: string;
   pid: number | null;
+  /** What the adapter can do (known once it answered `initialize`). */
+  capabilities?: import("./workflowIpc").DebugCapabilities;
 }
 
 export interface DebugStatus {
@@ -299,6 +306,12 @@ export interface BreakpointRow {
   filePath: string;
   line: number;
   enabled: boolean;
+  /** Stop only when this expression is true. */
+  condition?: string | null;
+  /** Stop only on this hit count ("3", ">= 5"). */
+  hitCondition?: string | null;
+  /** A logpoint: print this (with {expressions}) instead of stopping. */
+  logMessage?: string | null;
 }
 
 // Mirrors openmind_workspace::RecentFileInfo (camelCase).
@@ -432,7 +445,8 @@ export interface IpcClient
     LanguageIpc,
     ToolchainIpc,
     FormattingIpc,
-    ProfilesIpc {
+    ProfilesIpc,
+    WorkflowIpc {
   // Dialogs
   openDocumentDialog: () => Promise<string | null>;
   saveDocumentDialog: (defaultPath: string | undefined) => Promise<string | null>;
@@ -593,7 +607,7 @@ export interface IpcClient
   debugStop: () => Promise<void>;
   debugControl: (action: string) => Promise<void>;
   debugRequest: (command: string, args: unknown) => Promise<unknown>;
-  debugSetBreakpoints: (path: string, lines: number[]) => Promise<void>;
+  debugSetBreakpoints: (path: string, breakpoints: SourceBreakpoint[]) => Promise<void>;
   breakpointsLoad: () => Promise<BreakpointRow[]>;
   breakpointsSave: (rows: BreakpointRow[]) => Promise<void>;
   onDebugEvent: (handler: (event: DebugEventPayload) => void) => Promise<() => void>;
@@ -972,6 +986,7 @@ export const tauriIpcClient: IpcClient = {
   ...tauriAiIpc,
   ...tauriLanguageIpc,
   ...tauriFormattingIpc,
+  ...tauriWorkflowIpc,
   ...tauriProfilesIpc,
   ...tauriToolchainIpc,
   async openDocumentDialog() {
@@ -1156,7 +1171,7 @@ export const tauriIpcClient: IpcClient = {
   debugStop: () => invoke("debug_stop"),
   debugControl: (action) => invoke("debug_control", { action }),
   debugRequest: (command, args) => invoke("debug_request", { command, arguments: args }),
-  debugSetBreakpoints: (path, lines) => invoke("debug_set_breakpoints", { path, lines }),
+  debugSetBreakpoints: (path, breakpoints) => invoke("debug_set_breakpoints", { path, breakpoints }),
   breakpointsLoad: () => invoke<BreakpointRow[]>("breakpoints_load"),
   breakpointsSave: (rows) => invoke("breakpoints_save", { rows }),
   onDebugEvent: (handler) =>

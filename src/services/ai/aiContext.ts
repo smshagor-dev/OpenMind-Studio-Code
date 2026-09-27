@@ -104,5 +104,7 @@ export function previewText(doc: FilePreviewDoc): PreviewText {
       return { text: null, reason: "This preview has no text to summarize." };
     case "virtualText":
       return { text: model.text, reason: null };
+    case "notebook":
+      return { text: null, reason: "Notebooks are not summarized yet: select code in a cell instead." };
   }
 }

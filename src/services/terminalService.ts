@@ -58,6 +58,10 @@ export class TerminalService {
   private state: TerminalState = EMPTY_STATE;
   private readonly listeners = new Set<() => void>();
   private readonly sinks = new Map<string, TerminalSink>();
+  /** Listeners of a session's raw output (a task's problem matchers read it). */
+  private readonly taps = new Map<string, Set<(data: Uint8Array) => void>>();
+  /** Callers waiting for a session to end (a task chain waits for each step). */
+  private readonly exitWaiters = new Map<string, ((code: number | null) => void)[]>();
   private readonly pending = new Map<string, Uint8Array[]>();
   /** Sessions the user closed, so late output from their dying process is dropped, not buffered. */
   private readonly closedIds = new Set<string>();
@@ -166,6 +170,65 @@ export class TerminalService {
     return session.id;
   }
 
+  /**
+   * A terminal that runs one task step as its own program (started by `start`, which asks the backend). It shows
+   * the panel only when `show` is true (the user just confirmed the task). Returns the session id, or null.
+   */
+  async createTaskTerminal(
+    title: string,
+    start: (cols: number, rows: number) => Promise<{ id: string; shell: ShellKind; cwd: string }>,
+    show: boolean,
+  ): Promise<string | null> {
+    let info: { id: string; shell: ShellKind; cwd: string };
+    try {
+      info = await start(INITIAL_COLS, INITIAL_ROWS);
+    } catch (error) {
+      this.events.emit("appError", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+    const session: TerminalSession = {
+      id: info.id,
+      shell: info.shell,
+      title,
+      cwd: info.cwd,
+      exited: false,
+      exitCode: null,
+    };
+    this.update({ sessions: [...this.state.sessions, session], activeId: session.id });
+    this.log(`Started ${title} in ${session.cwd}`);
+    if (show) await this.panel.show("terminal");
+    return session.id;
+  }
+
+  /** Listens to a session's raw output. */
+  onOutput(id: string, listener: (data: Uint8Array) => void): () => void {
+    const set = this.taps.get(id) ?? new Set<(data: Uint8Array) => void>();
+    set.add(listener);
+    this.taps.set(id, set);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) this.taps.delete(id);
+    };
+  }
+
+  /** Resolves with the exit code when the session ends (or null when it is closed or unknown). */
+  waitForExit(id: string): Promise<number | null> {
+    const session = this.state.sessions.find((candidate) => candidate.id === id);
+    if (!session) return Promise.resolve(null);
+    if (session.exited) return Promise.resolve(session.exitCode);
+    return new Promise((resolve) => {
+      this.exitWaiters.set(id, [...(this.exitWaiters.get(id) ?? []), resolve]);
+    });
+  }
+
+  private settle(id: string, code: number | null): void {
+    const waiters = this.exitWaiters.get(id) ?? [];
+    this.exitWaiters.delete(id);
+    for (const resolve of waiters) resolve(code);
+  }
+
   /** Kills that terminal's process tree and removes it; closing the last one hides the panel. */
   async closeTerminal(id: string): Promise<void> {
     const index = this.state.sessions.findIndex((session) => session.id === id);
@@ -180,7 +243,9 @@ export class TerminalService {
     this.log(`Closed ${this.state.sessions[index]?.title ?? "terminal"}`);
     this.sinks.delete(id);
     this.pending.delete(id);
+    this.taps.delete(id);
     this.closedIds.add(id);
+    this.settle(id, null);
     this.update({ sessions, activeId });
     await safely(this.events, () => this.ipc.terminalClose(id), "close the terminal", undefined);
     if (sessions.length === 0 && this.panel.getState().activeTab === "terminal") {
@@ -297,6 +362,7 @@ export class TerminalService {
   }
 
   private handleOutput(id: string, data: Uint8Array): void {
+    for (const tap of this.taps.get(id) ?? []) tap(data);
     const sink = this.sinks.get(id);
     if (sink) {
       sink.write(data);
@@ -320,6 +386,7 @@ export class TerminalService {
         session.id === id ? { ...session, exited: true, exitCode: code } : session,
       ),
     });
+    this.settle(id, code);
   }
 
   private update(patch: Partial<TerminalState>): void {

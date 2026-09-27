@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Breakpoint } from "../services/breakpointService";
+import { DebugConfigurationService } from "../services/debugConfigurationService";
 import { breakpointDecorations, currentLineDecoration } from "../services/debugEditorBinding";
 import { controlAvailability, startAvailability, type DebugFrame } from "../services/debugModel";
 import type { ConsoleLine } from "../services/debugConsoleService";
@@ -22,6 +23,7 @@ import { DebugStatusItem } from "./DebugStatusItem";
 import { DebugToolbar } from "./DebugToolbar";
 import { RunDebugView } from "./RunDebugView";
 
+const NO_EXTRAS = { condition: null, hitCondition: null, logMessage: null };
 const nullState = { run: null };
 const stoppedState = { run: null as DebugRun | null };
 const endedState = { run: null as DebugRun | null };
@@ -72,6 +74,7 @@ interface ViewRig {
   path: string | null;
   status: DebugStatus | null;
   run: DebugRun | null;
+  configs?: DebugConfigurationService;
 }
 
 function setViewContainer(input: ViewRig) {
@@ -90,11 +93,7 @@ function setViewContainer(input: ViewRig) {
   harness.current = {
     keybindings: { labelFor: () => undefined },
     debug,
-    debugConfigs: {
-      configsFor: (path: string | null) =>
-        path?.endsWith(".py") ? [{ name: "Python: Current File" }] : [],
-      choose: vi.fn(),
-    },
+    debugConfigs: input.configs ?? new DebugConfigurationService(),
     workspace: {
       subscribe: noop,
       getState: () => workspaceState,
@@ -416,17 +415,19 @@ describe("variables, call stack, watch and breakpoints panes", () => {
     const remove = vi.fn();
     const removeAll = vi.fn();
     const list: Breakpoint[] = [
-      { id: "bp-1", path: "C:/My Site/tool.py", line: 4, enabled: true, stale: false },
-      { id: "bp-2", path: "C:/My Site/gone.py", line: 9, enabled: true, stale: true },
+      { id: "bp-1", path: "C:/My Site/tool.py", line: 4, enabled: true, stale: false, ...NO_EXTRAS },
+      { id: "bp-2", path: "C:/My Site/gone.py", line: 9, enabled: true, stale: true, ...NO_EXTRAS },
     ];
     harness.current = {
       workspace: { openPathAt: vi.fn() },
+      debug: store({ run: null }),
       breakpoints: {
         ...store({ breakpoints: list }),
         setEnabled,
         remove,
         removeAll,
         setAllEnabled: vi.fn(),
+        startEditing: vi.fn(),
       },
     };
     render(<BreakpointsPane />);
@@ -442,9 +443,44 @@ describe("variables, call stack, watch and breakpoints panes", () => {
   });
 
   it("breakpoints: empty state explains the gutter", () => {
-    harness.current = { breakpoints: store({ breakpoints: [] }) };
+    harness.current = { breakpoints: store({ breakpoints: [] }), debug: store({ run: null }) };
     render(<BreakpointsPane />);
     expect(screen.getByText(/Click the gutter/)).toBeInTheDocument();
+  });
+
+  it("breakpoints: the edit form sets a condition, hit count and log message; the adapter's limits are named", () => {
+    const setOptions = vi.fn();
+    const stopEditing = vi.fn();
+    const startEditing = vi.fn();
+    const bp: Breakpoint = { id: "bp-1", path: "C:/My Site/tool.py", line: 4, enabled: true, stale: false,
+      condition: "x > 1", hitCondition: null, logMessage: null };
+    const running = run("running", {
+      capabilities: { conditionalBreakpoints: true, hitConditionalBreakpoints: false, logPoints: false, loadedSources: false, modules: false },
+    });
+    harness.current = {
+      workspace: { openPathAt: vi.fn() },
+      debug: store({ run: running }),
+      breakpoints: { ...store({ breakpoints: [bp], editing: null }), startEditing, stopEditing, setOptions,
+        setEnabled: vi.fn(), remove: vi.fn(), removeAll: vi.fn(), setAllEnabled: vi.fn() },
+    };
+    const { unmount } = render(<BreakpointsPane />);
+    expect(screen.getByText("if x > 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit breakpoint tool.py:4" }));
+    expect(startEditing).toHaveBeenCalledWith("bp-1");
+    unmount();
+    harness.current = {
+      workspace: { openPathAt: vi.fn() },
+      debug: store({ run: running }),
+      breakpoints: { ...store({ breakpoints: [bp], editing: "bp-1" }), startEditing, stopEditing, setOptions,
+        setEnabled: vi.fn(), remove: vi.fn(), removeAll: vi.fn(), setAllEnabled: vi.fn() },
+    };
+    render(<BreakpointsPane />);
+    const form = within(screen.getByRole("form", { name: "Edit breakpoint line 4" }));
+    expect(form.getByText("The running debugger doesn't support breakpoint hit counts, logpoints.")).toBeInTheDocument();
+    fireEvent.change(form.getByRole("textbox", { name: "Log message" }), { target: { value: "x is {x}" } });
+    fireEvent.click(form.getByRole("button", { name: "Save" }));
+    expect(setOptions).toHaveBeenCalledWith("bp-1", { condition: "x > 1", hitCondition: "", logMessage: "x is {x}" });
+    expect(stopEditing).toHaveBeenCalled();
   });
 });
 
@@ -521,6 +557,7 @@ describe("breakpoint gutter model", () => {
     line,
     enabled: true,
     stale: false,
+    ...NO_EXTRAS,
     ...patch,
   });
 

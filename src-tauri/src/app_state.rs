@@ -69,6 +69,8 @@ pub struct AppState {
     pub extensions: crate::commands::extensions::ExtensionsRuntime,
     /// AI providers, their conversations and the requests in flight (nothing runs until the user asks).
     pub ai: crate::commands::ai::AiRuntime,
+    /// Notebook kernels (started by the user, one per notebook, stopped on app close).
+    pub notebooks: crate::commands::notebook::NotebookRuntime,
     /// Geometry of secondary windows (the PHP Server window).
     pub window_states: openmind_settings::WindowStateService,
 }

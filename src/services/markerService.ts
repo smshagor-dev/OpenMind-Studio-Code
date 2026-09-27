@@ -54,6 +54,8 @@ export class MarkerService {
   private resolver: ResourceResolver = () => null;
   private readonly listeners = new Set<() => void>();
   private subscription: monaco.IDisposable | null = null;
+  /** Problems that don't come from Monaco markers (a task's problem matchers), by owner. */
+  private readonly external = new Map<string, ProblemFile[]>();
 
   getCounts(): ProblemCounts {
     return this.counts;
@@ -62,6 +64,22 @@ export class MarkerService {
   /** Problems grouped by document, files with errors first. */
   getProblemFiles(): readonly ProblemFile[] {
     return this.files;
+  }
+
+  /** Replaces an owner's problems for files that may not be open (`[]` clears them). */
+  setExternal(owner: string, files: { path: string; title: string; problems: Problem[] }[]): void {
+    if (files.length === 0) this.external.delete(owner);
+    else
+      this.external.set(
+        owner,
+        files.map((file) => ({
+          uri: `external:${owner}:${file.path}`,
+          title: file.title,
+          path: file.path,
+          problems: file.problems,
+        })),
+      );
+    this.recount();
   }
 
   setResourceResolver(resolver: ResourceResolver): void {
@@ -113,6 +131,13 @@ export class MarkerService {
         endLine: marker.endLineNumber,
         endColumn: marker.endColumn,
       });
+    }
+    for (const file of [...this.external.values()].flat()) {
+      for (const problem of file.problems) {
+        if (problem.severity === "error") errors += 1;
+        else if (problem.severity === "warning") warnings += 1;
+      }
+      byFile.set(file.uri, { ...file, problems: [...file.problems] });
     }
     const files = [...byFile.values()].map((file) => ({
       ...file,

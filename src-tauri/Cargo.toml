@@ -22,6 +22,8 @@ openmind-dap = { version = "0.1.0", path = "../crates/dap" }
 openmind-language = { version = "0.1.0", path = "../crates/language" }
 openmind-format = { version = "0.1.0", path = "../crates/format" }
 openmind-lsp = { version = "0.1.0", path = "../crates/lsp" }
+openmind-notebook = { version = "0.1.0", path = "../crates/notebook" }
+openmind-tasks = { version = "0.1.0", path = "../crates/tasks" }
 openmind-extensions = { version = "0.1.0", path = "../crates/extensions" }
 openmind-git = { version = "0.1.0", path = "../crates/git" }
 openmind-fs = { version = "0.1.0", path = "../crates/fs" }

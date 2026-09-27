@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use openmind_dap::{
-    adapter_for, readiness, resolve_interpreter, Control, DapEvents, DapManager, LaunchConfig,
-    Readiness, RunSnapshot, StartRequest, Target,
+    adapter_for, parse_launch, project_interpreter, readiness, resolve_interpreter, Control,
+    DapEvents, DapManager, Interpreter, LaunchConfig, LaunchFile, Readiness, RunSnapshot,
+    SourceBreakpoint, StartRequest, Target, LAUNCH_FILES,
 };
 use openmind_db::{BreakpointRow, BreakpointsRepository};
 use openmind_lsp::LogLevel;
@@ -105,8 +106,23 @@ async fn adapter_dir(state: &AppState, runtime_kind: &str) -> Option<PathBuf> {
     state.runtime.installed_dir(runtime_kind).await
 }
 
-async fn target_readiness(state: &AppState, target: Target, prepend: &[PathBuf]) -> Readiness {
-    let interpreter = resolve_interpreter(target, prepend, std::env::var_os("PATH"));
+/// The interpreter a target runs on: the project's own (`.venv`), then OpenMind's portable runtime, then the system's.
+fn interpreter_for(
+    target: Target,
+    prepend: &[PathBuf],
+    workspace: Option<&Path>,
+) -> Option<Interpreter> {
+    project_interpreter(target, workspace)
+        .or_else(|| resolve_interpreter(target, prepend, std::env::var_os("PATH")))
+}
+
+async fn target_readiness(
+    state: &AppState,
+    target: Target,
+    prepend: &[PathBuf],
+    workspace: Option<&Path>,
+) -> Readiness {
+    let interpreter = interpreter_for(target, prepend, workspace);
     let dir = match adapter_for(target) {
         Some(adapter) => adapter_dir(state, adapter.runtime_kind).await,
         None => None,
@@ -117,14 +133,15 @@ async fn target_readiness(state: &AppState, target: Target, prepend: &[PathBuf])
 #[tauri::command]
 pub async fn debug_status(state: State<'_, AppState>) -> Result<DebugStatus, String> {
     let environment = environment(&state).await;
+    let workspace = workspace_path(&state).await;
+    let folder = workspace.as_deref();
+    let prepend = &environment.path_prepend;
     Ok(DebugStatus {
-        workspace: workspace_path(&state)
-            .await
-            .map(|path| path.display().to_string()),
+        workspace: workspace.as_ref().map(|path| path.display().to_string()),
         run: state.dap.snapshot(),
-        python: target_readiness(&state, Target::Python, &environment.path_prepend).await,
-        node: target_readiness(&state, Target::Node, &environment.path_prepend).await,
-        php: target_readiness(&state, Target::Php, &environment.path_prepend).await,
+        python: target_readiness(&state, Target::Python, prepend, folder).await,
+        node: target_readiness(&state, Target::Node, prepend, folder).await,
+        php: target_readiness(&state, Target::Php, prepend, folder).await,
     })
 }
 
@@ -137,8 +154,8 @@ pub async fn debug_start(
 ) -> Result<RunSnapshot, String> {
     let target = config.target;
     let environment = environment(&state).await;
-    let interpreter =
-        resolve_interpreter(target, &environment.path_prepend, std::env::var_os("PATH"));
+    let workspace = workspace_path(&state).await;
+    let interpreter = interpreter_for(target, &environment.path_prepend, workspace.as_deref());
     let adapter = adapter_for(target);
     let adapter_dir = match adapter {
         Some(adapter) => adapter_dir(&state, adapter.runtime_kind).await,
@@ -161,12 +178,17 @@ pub async fn debug_start(
                 .parent()
                 .map_or_else(|| state.app_root.clone(), Path::to_path_buf)
         });
-    let mut lines: HashMap<String, Vec<u32>> = HashMap::new();
-    for breakpoint in breakpoints.iter().filter(|bp| bp.enabled) {
+    let mut lines: HashMap<String, Vec<SourceBreakpoint>> = HashMap::new();
+    for breakpoint in breakpoints.into_iter().filter(|bp| bp.enabled) {
         lines
-            .entry(breakpoint.file_path.clone())
+            .entry(breakpoint.file_path)
             .or_default()
-            .push(breakpoint.line);
+            .push(SourceBreakpoint {
+                line: breakpoint.line,
+                condition: breakpoint.condition,
+                hit_condition: breakpoint.hit_condition,
+                log_message: breakpoint.log_message,
+            });
     }
     let request = StartRequest {
         config,
@@ -221,11 +243,11 @@ pub async fn debug_request(
 #[tauri::command]
 pub async fn debug_set_breakpoints(
     path: String,
-    lines: Vec<u32>,
+    breakpoints: Vec<SourceBreakpoint>,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let manager = state.dap.clone();
-    tokio::task::spawn_blocking(move || manager.set_breakpoints(&path, &lines))
+    tokio::task::spawn_blocking(move || manager.set_breakpoints(&path, &breakpoints))
         .await
         .map_err(|err| err.to_string())?
         .map_err(|err| err.to_string())
@@ -248,4 +270,86 @@ pub async fn breakpoints_save(
         .replace_all(&rows)
         .await
         .map_err(|err| err.to_string())
+}
+
+/// A debugger type an enabled extension declares (it can't be run yet; its configurations say so).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionDebugger {
+    kind: String,
+    label: Option<String>,
+    extension: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DebugConfigurations {
+    files: Vec<LaunchFile>,
+    extension_debuggers: Vec<ExtensionDebugger>,
+}
+
+fn extension_debuggers(state: &AppState) -> Vec<ExtensionDebugger> {
+    state
+        .extensions
+        .store
+        .list()
+        .extensions
+        .into_iter()
+        .filter(|extension| extension.enabled)
+        .flat_map(|extension| {
+            let id = extension.id.clone();
+            extension
+                .manifest
+                .contributes
+                .debuggers
+                .into_iter()
+                .map(move |debugger| ExtensionDebugger {
+                    kind: debugger.kind,
+                    label: debugger.label,
+                    extension: id.clone(),
+                })
+        })
+        .collect()
+}
+
+/// The launch configurations of the window's folder (`.openmind/launch.json`, `.vscode/launch.json`), with
+/// variables expanded for the file in front. Only reads files; nothing starts.
+#[tauri::command]
+pub async fn debug_configurations(
+    active_file: Option<String>,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<DebugConfigurations, String> {
+    let debuggers = extension_debuggers(&state);
+    let folder = crate::windows::window_workspace(&state, window.label())
+        .await?
+        .map(|workspace| PathBuf::from(workspace.path));
+    let Some(folder) = folder else {
+        return Ok(DebugConfigurations {
+            files: Vec::new(),
+            extension_debuggers: debuggers,
+        });
+    };
+    let context = openmind_core::vars::VarContext {
+        workspace_folder: Some(folder.display().to_string().replace('\\', "/")),
+        file: active_file.filter(|file| !file.contains('\0')),
+    };
+    let types = debuggers
+        .iter()
+        .map(|d| (d.kind.clone(), d.extension.clone()))
+        .collect();
+    let mut files = Vec::new();
+    for relative in LAUNCH_FILES {
+        let path = folder.join(relative);
+        if !path.is_file() {
+            continue;
+        }
+        let display = path.display().to_string().replace('\\', "/");
+        let text = std::fs::read_to_string(&path).map_err(|err| format!("{display}: {err}"))?;
+        files.push(parse_launch(&display, &text, &context, &types));
+    }
+    Ok(DebugConfigurations {
+        files,
+        extension_debuggers: debuggers,
+    })
 }

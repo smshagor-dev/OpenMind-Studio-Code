@@ -13,6 +13,12 @@ export interface DebugCommandDeps {
   events: EventBus<AppEvents>;
   /** The saved text file in front and the cursor line of its editor. */
   activeFile: () => { path: string; docId: string } | null;
+  /** Shows the Run and Debug view (where the breakpoint form opens). */
+  showDebugView?: () => void;
+  /** Opens (or creates) the folder's launch.json; `null` when no folder is open. */
+  openLaunchJson?: (() => Promise<unknown>) | null;
+  /** Whether a folder is open (launch.json lives in it). */
+  hasFolder?: () => boolean;
 }
 
 /**
@@ -115,6 +121,33 @@ export function registerDebugCommands(deps: DebugCommandDeps): void {
     },
     any,
   );
+
+  // Conditional breakpoints, logpoints and editing: a breakpoint at the cursor with its form open in Run and Debug.
+  const editHere = () => {
+    const file = activeFile();
+    const line = editor.getStatus()?.line;
+    if (file && line !== undefined) {
+      breakpoints.editAt(file.path, line);
+      deps.showDebugView?.();
+    }
+  };
+  const editable = () =>
+    activeFile() !== null && editor.hasEditor()
+      ? { enabled: true }
+      : { enabled: false, reason: "Save the file to set a breakpoint in it." };
+  for (const id of [
+    "debug.newConditionalBreakpoint",
+    "debug.newLogpoint",
+    "debug.editBreakpoint",
+  ]) {
+    guarded(id, editHere, editable);
+  }
+  const launchState = () =>
+    deps.openLaunchJson && deps.hasFolder?.()
+      ? { enabled: true }
+      : { enabled: false, reason: "Open a folder: launch.json belongs to a folder." };
+  guarded("debug.openConfigurations", () => deps.openLaunchJson?.(), launchState);
+  guarded("debug.addConfiguration", () => deps.openLaunchJson?.(), launchState);
 
   // "Install Additional Debuggers…" opens the Runtime Manager, where the Python and Node.js debuggers install.
   commands.register("debug.installDebuggers", () => {

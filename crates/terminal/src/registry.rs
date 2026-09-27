@@ -44,6 +44,10 @@ pub struct CreateTerminalRequest {
     /// spawned shell sees the change — this process's and the system's PATH
     /// are never modified.
     pub path_prepend: Vec<PathBuf>,
+    /// Runs this program in the terminal instead of the interactive shell (a task: the terminal ends when it
+    /// ends, and its exit code is the program's). `shell` still names the shell family for the tab.
+    pub program: Option<PathBuf>,
+    pub args: Vec<String>,
 }
 
 /// Environment variables every terminal gets on top of the inherited
@@ -121,7 +125,10 @@ impl TerminalRegistry {
         on_exit: impl FnOnce(Option<i32>) + Send + 'static,
     ) -> Result<TerminalSessionInfo, TerminalError> {
         let shell = request.shell.unwrap_or_else(default_shell);
-        let executable = resolve_executable(shell)?;
+        let executable = match &request.program {
+            Some(program) => program.clone(),
+            None => resolve_executable(shell)?,
+        };
         let cwd = resolve_cwd(request.cwd.as_deref(), fallback_cwd);
 
         let pty_system = native_pty_system();
@@ -135,6 +142,7 @@ impl TerminalRegistry {
             .map_err(TerminalError::Spawn)?;
 
         let mut cmd = CommandBuilder::new(&executable);
+        cmd.args(&request.args);
         cmd.cwd(&cwd);
         for (key, value) in &request.env {
             cmd.env(key, value);
@@ -413,6 +421,7 @@ mod tests {
                     rows: 24,
                     env: default_environment(),
                     path_prepend: Vec::new(),
+                    ..Default::default()
                 },
                 &fallback,
                 |_| {},
@@ -584,6 +593,42 @@ mod tests {
         output
             .map(|out| String::from_utf8_lossy(&out.stdout).contains(&pid.to_string()))
             .unwrap_or(false)
+    }
+
+    /// A task runs as the terminal's own program: its output is the terminal's, and its exit code is reported.
+    #[cfg(windows)]
+    #[test]
+    fn a_program_runs_in_place_of_the_shell_and_its_exit_code_is_reported() {
+        let registry = std::sync::Arc::new(TerminalRegistry::new());
+        let (tx, rx) = std::sync::mpsc::channel();
+        let cmd = crate::shell::ShellKind::Cmd.executable().expect("cmd.exe");
+        let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = std::sync::Arc::clone(&output);
+        create_answering(
+            &registry,
+            CreateTerminalRequest {
+                shell: Some(ShellKind::Cmd),
+                cols: 80,
+                rows: 24,
+                program: Some(cmd),
+                args: vec![
+                    "/d".into(),
+                    "/c".into(),
+                    "echo task-output && exit 3".into(),
+                ],
+                ..Default::default()
+            },
+            move |chunk| sink.lock().expect("lock").extend_from_slice(chunk),
+            move |code| {
+                let _ = tx.send(code);
+            },
+        );
+        let code = rx
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the exit was never reported");
+        assert_eq!(code, Some(3));
+        let text = String::from_utf8_lossy(&output.lock().expect("lock")).to_string();
+        assert!(text.contains("task-output"), "{text}");
     }
 
     /// Regression: on Windows the pty's output pipe never reports EOF while

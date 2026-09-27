@@ -410,6 +410,7 @@ function terminalMenu(shells: { kind: string; label: string }[]): TopLevelMenu {
       SEPARATOR,
       cmd("Run Task...", "tasks.run"),
       cmd("Run Build Task...", "tasks.runBuild"),
+      cmd("Run Test Task...", "tasks.runTest"),
       cmd("Show Running Tasks...", "tasks.showRunning"),
       cmd("Restart Running Task...", "tasks.restartRunning"),
       cmd("Terminate Task...", "tasks.terminate"),
@@ -520,8 +521,8 @@ const UNBUILT: [RegExp, string][] = [
     "Developer tools and the process explorer aren't available in this build.",
   ],
   [
-    /^tasks\./,
-    "Tasks (tasks.json) aren't built yet. Use Run Code, the Project Run Commands or the terminal.",
+    /^tasks\.configureDefaultBuild$/,
+    'Mark the build task in tasks.json with "group": {"kind": "build", "isDefault": true} (Configure Tasks... opens it).',
   ],
   [
     /^workspace\./,
@@ -537,12 +538,8 @@ const UNBUILT: [RegExp, string][] = [
     "User snippet files aren't built yet (extensions can contribute snippets).",
   ],
   [
-    /^debug\.(newConditionalBreakpoint|newLogpoint|newFunctionBreakpoint|newInlineBreakpoint|newTriggeredBreakpoint|editBreakpoint)$/,
-    "The debugger supports plain line breakpoints only for now.",
-  ],
-  [
-    /^debug\.(openConfigurations|addConfiguration)$/,
-    "launch.json isn't supported yet: OpenMind starts Python and Node.js sessions with built-in configurations.",
+    /^debug\.(newFunctionBreakpoint|newInlineBreakpoint|newTriggeredBreakpoint)$/,
+    "Line breakpoints (with conditions, hit counts and logpoints) are supported; function, inline and triggered breakpoints aren't yet.",
   ],
   [
     /^editorLayout\./,

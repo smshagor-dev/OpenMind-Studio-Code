@@ -1,0 +1,187 @@
+/* The notebook editor (Milestone 19). Colours are theme tokens only. */
+.notebook {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--editor-bg);
+  color: var(--fg);
+}
+
+.notebook__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+}
+
+.notebook__toolbar button,
+.notebook__cell-actions button,
+.notebook__add button,
+.notebook__banner button,
+.notebook__done,
+.notebook__expand {
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.notebook__toolbar button:disabled,
+.notebook__run:disabled {
+  color: var(--fg-disabled);
+  cursor: default;
+}
+
+.notebook__kernel,
+.notebook__dirty {
+  color: var(--fg-muted);
+  font-size: 12px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebook__trust {
+  padding: 1px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: var(--warning-bg-soft);
+  color: var(--warning-fg);
+}
+
+.notebook__trust--on {
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+}
+
+.notebook__banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: var(--warning-bg-soft);
+  color: var(--fg);
+}
+
+.notebook__banner p {
+  margin: 0;
+  flex: 1 1 320px;
+}
+
+.notebook__cells {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 8px 12px 24px;
+}
+
+.notebook__cell {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.notebook__gutter {
+  flex: 0 0 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding-top: 4px;
+}
+
+.notebook__run {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.notebook__count {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.notebook__body {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.notebook__cell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.notebook__cell-actions select {
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+}
+
+.notebook__editor {
+  width: 100%;
+  min-height: 38px;
+}
+
+.notebook__markdown {
+  padding: 4px 8px;
+  cursor: text;
+}
+
+.notebook__outputs {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.notebook__text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
+.notebook__text--stderr {
+  color: var(--warning-fg);
+}
+
+.notebook__error {
+  color: var(--error-fg);
+}
+
+.notebook__image {
+  max-width: 100%;
+}
+
+.notebook__blocked {
+  color: var(--fg-muted);
+  font-style: italic;
+  margin: 2px 0;
+}
+
+.notebook__add {
+  display: flex;
+  gap: 6px;
+  padding-left: 62px;
+}

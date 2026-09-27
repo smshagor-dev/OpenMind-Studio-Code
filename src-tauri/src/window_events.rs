@@ -140,6 +140,7 @@ pub async fn shutdown(app: AppHandle) {
         tokio::task::spawn_blocking(move || {
             crate::commands::watch::stop_on_exit(&stopper);
             crate::commands::debug::stop_debug(&stopper);
+            stopper.state::<AppState>().notebooks.stop_all();
             crate::commands::lsp::stop_lsp(&stopper);
             crate::commands::extension_host::stop_host(&stopper);
             crate::commands::git::stop_git(&stopper);

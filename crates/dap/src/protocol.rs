@@ -3,7 +3,7 @@
 //! output). Everything is parsed defensively — an adapter that leaves a field out gives a
 //! plain default, never a panic.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// The client capabilities announced to the adapter.
@@ -25,13 +25,68 @@ pub fn initialize_arguments(adapter_id: &str) -> Value {
     })
 }
 
-pub fn set_breakpoints_arguments(path: &str, lines: &[u32]) -> Value {
+/// A breakpoint as the UI keeps it: a line, and optionally a condition, a hit count or a log message (a logpoint).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceBreakpoint {
+    pub line: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hit_condition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_message: Option<String>,
+}
+
+impl SourceBreakpoint {
+    pub fn at(line: u32) -> Self {
+        Self {
+            line,
+            ..Self::default()
+        }
+    }
+}
+
+pub fn set_breakpoints_arguments(path: &str, breakpoints: &[SourceBreakpoint]) -> Value {
     json!({
         "source": { "path": path },
-        "breakpoints": lines.iter().map(|line| json!({ "line": line })).collect::<Vec<_>>(),
-        "lines": lines,
+        "breakpoints": breakpoints,
+        "lines": breakpoints.iter().map(|b| b.line).collect::<Vec<_>>(),
         "sourceModified": false
     })
+}
+
+/// What the adapter said it can do (its `initialize` answer), as far as the UI needs it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Capabilities {
+    pub conditional_breakpoints: bool,
+    pub hit_conditional_breakpoints: bool,
+    pub log_points: bool,
+    pub loaded_sources: bool,
+    pub modules: bool,
+}
+
+impl Capabilities {
+    pub fn from_initialize(body: &Value) -> Self {
+        let flag = |key: &str| body.get(key).and_then(Value::as_bool).unwrap_or(false);
+        Self {
+            conditional_breakpoints: flag("supportsConditionalBreakpoints"),
+            hit_conditional_breakpoints: flag("supportsHitConditionalBreakpoints"),
+            log_points: flag("supportsLogPoints"),
+            loaded_sources: flag("supportsLoadedSourcesRequest"),
+            modules: flag("supportsModulesRequest"),
+        }
+    }
+
+    /// Both sessions' abilities (js-debug's child session reports what its launcher doesn't).
+    pub fn merge(&mut self, other: &Self) {
+        self.conditional_breakpoints |= other.conditional_breakpoints;
+        self.hit_conditional_breakpoints |= other.hit_conditional_breakpoints;
+        self.log_points |= other.log_points;
+        self.loaded_sources |= other.loaded_sources;
+        self.modules |= other.modules;
+    }
 }
 
 pub fn thread_arguments(thread_id: i64) -> Value {
@@ -77,8 +132,15 @@ impl Control {
 }
 
 /// The requests the UI may send while a session runs — only reads about the paused program.
-pub const ALLOWED_UI_REQUESTS: &[&str] =
-    &["threads", "stackTrace", "scopes", "variables", "evaluate"];
+pub const ALLOWED_UI_REQUESTS: &[&str] = &[
+    "threads",
+    "stackTrace",
+    "scopes",
+    "variables",
+    "evaluate",
+    "loadedSources",
+    "modules",
+];
 
 pub fn is_allowed_ui_request(command: &str) -> bool {
     ALLOWED_UI_REQUESTS.contains(&command)
@@ -281,15 +343,43 @@ mod tests {
 
     #[test]
     fn breakpoints_go_out_as_lines_of_one_source() {
-        let args = set_breakpoints_arguments("C:/My Site/app.py", &[3, 10]);
+        let logpoint = SourceBreakpoint {
+            line: 10,
+            condition: Some("x > 1".into()),
+            hit_condition: None,
+            log_message: Some("x is {x}".into()),
+        };
+        let args =
+            set_breakpoints_arguments("C:/My Site/app.py", &[SourceBreakpoint::at(3), logpoint]);
         assert_eq!(args["source"]["path"], "C:/My Site/app.py");
         assert_eq!(args["breakpoints"][1]["line"], 10);
+        assert_eq!(args["breakpoints"][1]["condition"], "x > 1");
+        assert_eq!(args["breakpoints"][1]["logMessage"], "x is {x}");
+        assert!(args["breakpoints"][0].get("condition").is_none());
+        assert!(args["breakpoints"][1].get("hitCondition").is_none());
         assert_eq!(args["lines"], json!([3, 10]));
         // No breakpoints for a file = an empty list, which clears it in the adapter.
         assert_eq!(
             set_breakpoints_arguments("a.py", &[])["breakpoints"],
             json!([])
         );
+    }
+
+    #[test]
+    fn capabilities_come_from_the_initialize_answer() {
+        let debugpy = Capabilities::from_initialize(&json!({
+            "supportsConditionalBreakpoints": true, "supportsHitConditionalBreakpoints": true,
+            "supportsLogPoints": true, "supportsModulesRequest": true
+        }));
+        assert!(debugpy.log_points && debugpy.modules && !debugpy.loaded_sources);
+        let mut merged = Capabilities::default();
+        merged.merge(&debugpy);
+        merged.merge(&Capabilities::from_initialize(
+            &json!({"supportsLoadedSourcesRequest": true}),
+        ));
+        assert!(merged.loaded_sources && merged.conditional_breakpoints);
+        assert!(is_allowed_ui_request("loadedSources") && is_allowed_ui_request("modules"));
+        assert!(!is_allowed_ui_request("launch"));
     }
 
     #[test]
