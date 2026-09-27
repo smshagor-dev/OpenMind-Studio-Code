@@ -101,13 +101,10 @@ pub const KNOWN: &[Known] = &[
     tool("debugpy", "Python debugger (debugpy)", Debugger, "Debug adapter for Python.",
         "debugpy is the debug adapter behind Run and Debug for Python. It runs on the active Python (OpenMind's portable Python first). Several versions can be kept; the active one is used when you start debugging. Nothing is downloaded when you debug: if no version is present the Run and Debug view says so and offers the Runtime Manager install.",
         &["Python"], "debugpy", NOT_SHIPPED),
-    tool("pyright", "Pyright", LanguageServer, "Python type checker and language server.", "Pyright gives Python completions, hover, go to definition and diagnostics.", &["Python"], "pyright", NOT_SHIPPED),
     tool("ruff", "Ruff", Linter, "Fast Python linter and formatter.", "Ruff lints Python and can format it. A project-local Ruff (in .venv) wins over this one.", &["Python"], "ruff", NOT_SHIPPED),
     tool("black", "Black", Formatter, "Python code formatter.", "Black formats Python files. A project-local Black wins over this one.", &["Python"], "black", NOT_SHIPPED),
     tool("isort", "isort", Formatter, "Sorts Python imports.", "isort orders Python import statements.", &["Python"], "isort", NOT_SHIPPED),
     tool("pytest", "pytest", HelperTool, "Python test runner.", "pytest runs a Python project's tests. It is normally installed in the project's own environment.", &["Python"], "pytest", NOT_SHIPPED),
-    tool("typescript-language-server", "TypeScript language server", LanguageServer, "TypeScript and JavaScript language features.", "typescript-language-server with the typescript package (tsserver). OpenMind's own Language Tools installer manages the six built-in servers; a bundled copy is used when present.", &["TypeScript", "JavaScript"], "typescript-language-server", NOT_SHIPPED),
-    tool("vscode-langservers-extracted", "HTML / CSS / JSON servers", LanguageServer, "Language servers for HTML, CSS and JSON.", "The vscode-langservers-extracted package: HTML, CSS/SCSS/Less and JSON language servers.", &["HTML", "CSS", "JSON"], "vscode-json-language-server", NOT_SHIPPED),
     tool("eslint", "ESLint", Linter, "JavaScript and TypeScript linter.", "ESLint lints JavaScript and TypeScript. A project-local ESLint wins over a bundled one.", &["JavaScript", "TypeScript"], "eslint", NOT_SHIPPED),
     tool("prettier", "Prettier", Formatter, "Code formatter for web languages.", "Prettier formats JavaScript, TypeScript, CSS, HTML, JSON, Markdown and more. A project-local Prettier wins over a bundled one.", &["JavaScript", "TypeScript", "CSS", "HTML", "JSON", "Markdown"], "prettier", NOT_SHIPPED),
     tool("biome", "Biome", Formatter, "Formatter and linter for web languages.", "Biome formats and lints JavaScript, TypeScript, JSON and CSS.", &["JavaScript", "TypeScript", "JSON"], "biome", NOT_SHIPPED),
@@ -119,11 +116,7 @@ pub const KNOWN: &[Known] = &[
     tool("phpactor", "Phpactor", LanguageServer, "Open-source PHP language server.", "Phpactor is an open-source PHP language server.", &["PHP"], "phpactor", NOT_SHIPPED),
     tool("php-cs-fixer", "PHP CS Fixer", Formatter, "PHP code style fixer.", "PHP CS Fixer formats PHP to a coding standard.", &["PHP"], "php-cs-fixer", NOT_SHIPPED),
     tool("pint", "Laravel Pint", Formatter, "Laravel code style fixer.", "Pint is normally a project dependency (vendor/bin/pint); a project-local copy wins.", &["Laravel", "PHP"], "pint", NOT_SHIPPED),
-    tool("rust-analyzer", "rust-analyzer", LanguageServer, "Rust language server.", "rust-analyzer. OpenMind can find it but cannot start it yet.", &["Rust"], "rust-analyzer", NOT_SHIPPED),
     tool("gopls", "gopls", LanguageServer, "Go language server.", "gopls, the Go language server. OpenMind can find it but cannot start it yet.", &["Go"], "gopls", NOT_SHIPPED),
-    tool("clangd", "clangd", LanguageServer, "C and C++ language server.", "clangd is large; it is not bundled by default. Install LLVM and OpenMind will find it.", &["C", "C++"], "clangd", "Install LLVM (it includes clangd) — OpenMind doesn't bundle it."),
-    tool("yaml-language-server", "YAML language server", LanguageServer, "YAML schemas and validation.", "The YAML language server.", &["YAML"], "yaml-language-server", NOT_SHIPPED),
-    tool("dockerfile-language-server", "Dockerfile language server", LanguageServer, "Dockerfile language features.", "The Dockerfile language server (dockerfile-language-server-nodejs).", &["Docker"], "docker-langserver", NOT_SHIPPED),
     tool("graphql-language-service", "GraphQL language service", LanguageServer, "GraphQL language features.", "graphql-language-service-cli.", &["GraphQL"], "graphql-lsp", NOT_SHIPPED),
     tool("sql-language-server", "SQL language server", LanguageServer, "SQL completions and validation.", "sql-language-server.", &["SQL"], "sql-language-server", NOT_SHIPPED),
     external("rust-toolchain", "Rust toolchain", Runtime, "rustc, cargo, rustfmt and clippy.", "Install Rust with rustup. OpenMind detects cargo, rustc, rustfmt and clippy on your PATH; it does not bundle the toolchain.", &["Rust", "Tauri"], "cargo", "Install Rust (rustup) — OpenMind doesn't install it."),
@@ -178,10 +171,24 @@ mod tests {
         ] {
             assert!(known(id).expect(id).external, "{id}");
         }
-        for id in [
-            "git", "composer", "debugpy", "prettier", "eslint", "pyright",
-        ] {
+        for id in ["git", "composer", "debugpy", "prettier", "eslint", "black"] {
             assert!(!known(id).expect(id).external, "{id}");
+        }
+    }
+
+    #[test]
+    fn servers_of_the_offline_lsp_bundle_are_not_tool_packs() {
+        // They live in `lsp/` and are shown by Language Tools; listing them here too would show them "Missing".
+        for id in [
+            "pyright",
+            "typescript-language-server",
+            "vscode-langservers-extracted",
+            "rust-analyzer",
+            "clangd",
+            "yaml-language-server",
+            "dockerfile-language-server",
+        ] {
+            assert!(known(id).is_none(), "{id}");
         }
     }
 }

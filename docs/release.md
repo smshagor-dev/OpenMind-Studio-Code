@@ -13,7 +13,8 @@ PATH, and the app keeps all its data next to its own executable.
 
 ```powershell
 pnpm install
-pnpm release:build            # tauri build --bundles nsis,msi  (release profile: slow, LTO)
+pnpm lsp:bundle               # the offline language servers -> lsp-bundle/ (the only step that downloads; see docs/lsp-bundle.md)
+pnpm release:build            # checks lsp-bundle/, then tauri build --bundles nsis,msi  (release profile: slow, LTO)
 pnpm package:portable         # optional: OpenMindStudio-<version>-portable-win-x64.zip
 pnpm release:collect -- --portable "<path to the portable zip>"   # copies, signs (if configured), checksums, report
 ```

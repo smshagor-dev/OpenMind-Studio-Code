@@ -17,3 +17,12 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## Offline language server bundle (release builds)
+
+Release builds ship language servers and Node.js in `lsp/` (see `docs/lsp-bundle.md`): typescript-language-server and
+TypeScript (Apache-2.0), Pyright (MIT), vscode-langservers-extracted (MIT), yaml-language-server (MIT), bash-language-server
+(MIT), dockerfile-language-server-nodejs (MIT), rust-analyzer (MIT OR Apache-2.0), clangd (Apache-2.0 WITH LLVM-exception) and
+Node.js (MIT), with their dependencies. The complete list of components and licences is generated into
+`lsp/THIRD-PARTY-NOTICES.txt`; each component's licence text travels inside its pack and next to `node.exe`. Intelephense is
+not redistributed (its licence doesn't allow it).

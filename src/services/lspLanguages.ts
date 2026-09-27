@@ -24,10 +24,28 @@ const BY_EXTENSION: Record<string, string> = {
   less: "less",
   html: "html",
   htm: "html",
+  yaml: "yaml",
+  yml: "yaml",
+  sh: "shellscript",
+  bash: "shellscript",
+  dockerfile: "dockerfile",
+  rs: "rust",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cc: "cpp",
+  cxx: "cpp",
+  hpp: "cpp",
+  hh: "cpp",
+  hxx: "cpp",
 };
 
 export function lspLanguageId(path: string): string | null {
   const name = path.split(/[\\/]/).pop() ?? path;
+  const lower = name.toLowerCase();
+  if (lower === "dockerfile" || lower === "containerfile" || lower.startsWith("dockerfile.")) {
+    return "dockerfile";
+  }
   const dot = name.lastIndexOf(".");
   if (dot < 0) return null;
   return BY_EXTENSION[name.slice(dot + 1).toLowerCase()] ?? null;
@@ -44,6 +62,12 @@ export const LSP_MONACO_LANGUAGES = [
   "scss",
   "less",
   "html",
+  "yaml",
+  "shell",
+  "dockerfile",
+  "rust",
+  "c",
+  "cpp",
 ] as const;
 
 /** Monaco's language id for an LSP language id (`typescriptreact` is TypeScript to Monaco). */
@@ -55,6 +79,8 @@ export function monacoLanguageFor(lspLanguage: string): string {
       return "javascript";
     case "jsonc":
       return "json";
+    case "shellscript":
+      return "shell";
     default:
       return lspLanguage;
   }

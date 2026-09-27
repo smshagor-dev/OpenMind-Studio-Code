@@ -382,7 +382,10 @@ export class LspService {
     return path === null ? null : (this.serverForPath(path)?.id ?? null);
   }
 
-  /** Downloads and installs a server (only ever on the user's request), then starts telling it about open files. */
+  /**
+   * Makes a server ready on the user's request — unpacked from the offline bundle when the app carries it,
+   * otherwise downloaded from npm — then starts telling it about open files.
+   */
   async install(serverId: string): Promise<boolean> {
     const server = this.servers().find((entry) => entry.id === serverId);
     if (!server?.canInstall) return false;
@@ -395,7 +398,11 @@ export class LspService {
       await this.refresh();
       return false;
     }
-    this.events.emit("appNotice", { message: `${server.name} installed.` });
+    this.events.emit("appNotice", {
+      message: server.bundled
+        ? `${server.name} is ready (unpacked from the offline bundle).`
+        : `${server.name} installed.`,
+    });
     this.reported.delete(serverId);
     await this.refresh();
     await this.resyncAll(server.languages);

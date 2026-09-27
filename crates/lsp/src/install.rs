@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::error::LspError;
 use crate::node::NodeExecutable;
 use crate::process::{run_to_end, SpawnSpec};
-use crate::registry::{Package, ServerDef, SERVERS};
+use crate::registry::{Package, ServerDef, Source, SERVERS};
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
@@ -60,6 +60,16 @@ pub fn install(
     node: &NodeExecutable,
     log: impl Fn(&str) + Send + Sync + Clone + 'static,
 ) -> Result<(), LspError> {
+    let Source::Npm {
+        package_json,
+        package_lock,
+    } = package.source
+    else {
+        return Err(LspError::InstallFailed(format!(
+            "{} is only shipped in OpenMind Studio's LSP bundle and can't be downloaded here.",
+            package.contents
+        )));
+    };
     let npm_cli = node.npm_cli().ok_or_else(|| {
         LspError::InstallFailed(
             "npm was not found next to Node.js. Repair the Node.js runtime.".into(),
@@ -70,7 +80,8 @@ pub fn install(
         std::fs::remove_dir_all(&staging).map_err(io_err)?;
     }
     std::fs::create_dir_all(&staging).map_err(io_err)?;
-    let outcome = install_into(&staging, app_root, package, node, &npm_cli, log);
+    let lock = (package_json, package_lock);
+    let outcome = install_into(&staging, app_root, package, lock, node, &npm_cli, log);
     if outcome.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
         return outcome;
@@ -88,12 +99,13 @@ fn install_into(
     staging: &Path,
     app_root: &Path,
     package: &Package,
+    (package_json, package_lock): (&str, &str),
     node: &NodeExecutable,
     npm_cli: &Path,
     log: impl Fn(&str) + Send + Sync + Clone + 'static,
 ) -> Result<(), LspError> {
-    std::fs::write(staging.join("package.json"), package.package_json).map_err(io_err)?;
-    std::fs::write(staging.join("package-lock.json"), package.package_lock).map_err(io_err)?;
+    std::fs::write(staging.join("package.json"), package_json).map_err(io_err)?;
+    std::fs::write(staging.join("package-lock.json"), package_lock).map_err(io_err)?;
     let spec = SpawnSpec {
         program: node.path.clone(),
         args: npm_args(npm_cli),
@@ -198,6 +210,19 @@ mod tests {
         };
         let err = install(root.path(), package, &node, |_| {}).expect_err("no npm");
         assert!(matches!(err, LspError::InstallFailed(text) if text.contains("npm")));
+        assert!(!root.path().join("language-servers").exists());
+    }
+
+    #[test]
+    fn a_native_package_can_only_come_from_the_bundle() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let package = package_by_id("rust").expect("package");
+        let node = NodeExecutable {
+            path: root.path().join("node.exe"),
+            source: crate::node::NodeSource::Portable,
+        };
+        let err = install(root.path(), package, &node, |_| {}).expect_err("native");
+        assert!(err.to_string().contains("LSP bundle"), "{err}");
         assert!(!root.path().join("language-servers").exists());
     }
 

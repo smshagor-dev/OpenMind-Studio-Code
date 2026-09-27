@@ -79,6 +79,20 @@ if (existsSync(join(bundle, "toolchains.json"))) {
   console.log("No tools-bundle/ found: the package carries no bundled tools.");
 }
 
+// The offline language servers (pnpm lsp:bundle). Checked (sizes and SHA256) before they are copied; without them the
+// package still works, but language servers must then be installed from npm.
+const lspBundle = join(root, "lsp-bundle");
+if (existsSync(join(lspBundle, "bundle.json"))) {
+  execFileSync(process.execPath, [join(root, "scripts", "prepare-lsp-bundle.mjs"), "--check"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  cpSync(lspBundle, join(staging, "lsp"), { recursive: true });
+  console.log("Copied lsp-bundle/ into the package as lsp/.");
+} else {
+  console.log("No lsp-bundle/ found (run pnpm lsp:bundle): the package carries no offline language servers.");
+}
+
 const zip = join(outDir, zipName(version));
 rmSync(zip, { force: true });
 execFileSync(

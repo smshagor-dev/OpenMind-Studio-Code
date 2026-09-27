@@ -1,22 +1,49 @@
-//! The language servers OpenMind knows, as data. Each is an npm package that
-//! is installed from a pinned, integrity-checked lockfile (embedded here) into
-//! `language-servers/<package>/<revision>/` and run by Node.js.
+//! The language servers OpenMind knows, as data. Most are npm packages pinned by
+//! a lockfile (embedded here) and run by Node.js; a few are native programs. A
+//! release build carries every package pre-built in its LSP bundle (see
+//! `bundle`), which is unpacked into `language-servers/<package>/<revision>/`
+//! the first time a server is needed; an npm package can also be installed
+//! from its lockfile on request (`install`).
 
 use serde::Serialize;
 
 use crate::language::language_id;
 
-/// An npm package installed once, holding one or more servers.
+/// Where a package comes from.
+#[derive(Debug, Clone, Copy)]
+pub enum Source {
+    /// An npm package pinned by `package-lock.json` (every file checked against an integrity hash).
+    Npm {
+        package_json: &'static str,
+        package_lock: &'static str,
+    },
+    /// A native program that only the LSP bundle carries (pinned by SHA256 in `servers/bundle-sources.json`).
+    Native,
+}
+
+/// A package installed once, holding one or more servers.
 #[derive(Debug, Clone, Copy)]
 pub struct Package {
     pub id: &'static str,
-    /// Bumped whenever the pinned lockfile changes, so an app update installs
+    /// Bumped whenever the pinned contents change, so an app update installs
     /// into a fresh folder instead of trusting an older one.
     pub revision: &'static str,
-    /// What gets downloaded, for the UI ("typescript-language-server 5.1.3, typescript 5.9.3").
+    /// What it holds, for the UI ("typescript-language-server 5.1.3, typescript 5.9.3").
     pub contents: &'static str,
-    pub package_json: &'static str,
-    pub package_lock: &'static str,
+    pub source: Source,
+    /// Whether its licence lets OpenMind ship it in the offline bundle. When it
+    /// doesn't, the user installs it themselves (from npm, on request).
+    pub redistributable: bool,
+}
+
+/// What runs a server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Runtime {
+    /// `node <entry> <args>`.
+    Node,
+    /// `<entry> <args>`: the entry is the program itself.
+    Native,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -24,43 +51,72 @@ pub struct ServerDef {
     pub id: &'static str,
     pub name: &'static str,
     pub package: &'static str,
-    /// The script Node runs, relative to the installed package folder.
+    /// The script Node runs, or the program itself, relative to the installed package folder.
     pub entry: &'static str,
     pub args: &'static [&'static str],
+    pub runtime: Runtime,
     /// The language ids (see `language_id`) this server handles.
     pub languages: &'static [&'static str],
-    /// A note the UI shows next to the server (licence limits, ...).
+    /// A note the UI shows next to the server (licence limits, what else it needs, ...).
     pub note: Option<&'static str>,
+    /// `initializationOptions` as JSON text: what keeps the server offline and quiet.
+    pub init_options: &'static str,
+    /// Notifications sent right after `initialized` (no parameters).
+    pub after_initialized: &'static [&'static str],
+    /// Extra environment for the server process only.
+    pub env: &'static [(&'static str, &'static str)],
+}
+
+/// The defaults for the three offline/behaviour fields.
+const PLAIN: (&str, &[&str], &[(&str, &str)]) = ("{}", &[], &[]);
+
+macro_rules! npm {
+    ($id:literal, $revision:literal, $contents:literal, $redistributable:literal) => {
+        Package {
+            id: $id,
+            revision: $revision,
+            contents: $contents,
+            redistributable: $redistributable,
+            source: Source::Npm {
+                package_json: include_str!(concat!("../servers/", $id, "/package.json")),
+                package_lock: include_str!(concat!("../servers/", $id, "/package-lock.json")),
+            },
+        }
+    };
 }
 
 pub const PACKAGES: &[Package] = &[
+    npm!(
+        "typescript",
+        "1",
+        "typescript-language-server 5.1.3, typescript 5.9.3",
+        true
+    ),
+    npm!("python", "1", "pyright 1.1.414", true),
+    // Intelephense's licence forbids redistribution: never in the bundle, installed by the user on request.
+    npm!("php", "1", "intelephense 1.18.5", false),
+    npm!("web", "1", "vscode-langservers-extracted 4.10.0", true),
+    npm!("yaml", "1", "yaml-language-server 1.24.0", true),
+    npm!("bash", "1", "bash-language-server 5.8.1", true),
+    npm!(
+        "dockerfile",
+        "1",
+        "dockerfile-language-server-nodejs 0.15.0",
+        true
+    ),
     Package {
-        id: "typescript",
+        id: "rust",
         revision: "1",
-        contents: "typescript-language-server 5.1.3, typescript 5.9.3",
-        package_json: include_str!("../servers/typescript/package.json"),
-        package_lock: include_str!("../servers/typescript/package-lock.json"),
+        contents: "rust-analyzer 2026-09-21",
+        source: Source::Native,
+        redistributable: true,
     },
     Package {
-        id: "python",
+        id: "clangd",
         revision: "1",
-        contents: "pyright 1.1.414",
-        package_json: include_str!("../servers/python/package.json"),
-        package_lock: include_str!("../servers/python/package-lock.json"),
-    },
-    Package {
-        id: "php",
-        revision: "1",
-        contents: "intelephense 1.18.5",
-        package_json: include_str!("../servers/php/package.json"),
-        package_lock: include_str!("../servers/php/package-lock.json"),
-    },
-    Package {
-        id: "web",
-        revision: "1",
-        contents: "vscode-langservers-extracted 4.10.0",
-        package_json: include_str!("../servers/web/package.json"),
-        package_lock: include_str!("../servers/web/package-lock.json"),
+        contents: "clangd 22.1.6",
+        source: Source::Native,
+        redistributable: true,
     },
 ];
 
@@ -71,6 +127,7 @@ pub const SERVERS: &[ServerDef] = &[
         package: "typescript",
         entry: "node_modules/typescript-language-server/lib/cli.mjs",
         args: &["--stdio"],
+        runtime: Runtime::Node,
         languages: &[
             "typescript",
             "typescriptreact",
@@ -78,6 +135,10 @@ pub const SERVERS: &[ServerDef] = &[
             "javascriptreact",
         ],
         note: None,
+        // No automatic type acquisition: it would download @types packages with npm.
+        init_options: r#"{"disableAutomaticTypingAcquisition":true}"#,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
     },
     ServerDef {
         id: "python",
@@ -85,8 +146,12 @@ pub const SERVERS: &[ServerDef] = &[
         package: "python",
         entry: "node_modules/pyright/langserver.index.js",
         args: &["--stdio"],
+        runtime: Runtime::Node,
         languages: &["python"],
         note: None,
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
     },
     ServerDef {
         id: "php",
@@ -94,8 +159,12 @@ pub const SERVERS: &[ServerDef] = &[
         package: "php",
         entry: "node_modules/intelephense/lib/intelephense.js",
         args: &["--stdio"],
+        runtime: Runtime::Node,
         languages: &["php"],
-        note: Some("Free tier: rename and some other features need an Intelephense licence."),
+        note: Some("Not bundled (its licence doesn't allow redistribution): Install downloads it from npm. Free tier: rename and some other features need an Intelephense licence."),
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
     },
     ServerDef {
         id: "json",
@@ -103,8 +172,13 @@ pub const SERVERS: &[ServerDef] = &[
         package: "web",
         entry: "node_modules/vscode-langservers-extracted/bin/vscode-json-language-server",
         args: &["--stdio"],
+        runtime: Runtime::Node,
         languages: &["json", "jsonc"],
         note: None,
+        // `$schema` URLs are not fetched by the server itself: only `file:` schemas load.
+        init_options: r#"{"handledSchemaProtocols":["file"],"provideFormatter":true}"#,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
     },
     ServerDef {
         id: "css",
@@ -112,8 +186,12 @@ pub const SERVERS: &[ServerDef] = &[
         package: "web",
         entry: "node_modules/vscode-langservers-extracted/bin/vscode-css-language-server",
         args: &["--stdio"],
+        runtime: Runtime::Node,
         languages: &["css", "scss", "less"],
         note: None,
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
     },
     ServerDef {
         id: "html",
@@ -121,8 +199,80 @@ pub const SERVERS: &[ServerDef] = &[
         package: "web",
         entry: "node_modules/vscode-langservers-extracted/bin/vscode-html-language-server",
         args: &["--stdio"],
+        runtime: Runtime::Node,
         languages: &["html"],
         note: None,
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
+    },
+    ServerDef {
+        id: "yaml",
+        name: "YAML Language Server",
+        package: "yaml",
+        entry: "node_modules/yaml-language-server/bin/yaml-language-server",
+        args: &["--stdio"],
+        runtime: Runtime::Node,
+        languages: &["yaml"],
+        note: Some("No schemas are downloaded: validation uses only schemas inside the project."),
+        init_options: PLAIN.0,
+        // Remote schemas are asked of the client (which refuses) instead of being downloaded.
+        after_initialized: &["yaml/registerContentRequest"],
+        env: PLAIN.2,
+    },
+    ServerDef {
+        id: "bash",
+        name: "Bash Language Server",
+        package: "bash",
+        entry: "node_modules/bash-language-server/out/cli.js",
+        args: &["start"],
+        runtime: Runtime::Node,
+        languages: &["shellscript"],
+        note: Some("ShellCheck diagnostics appear only when shellcheck is on the PATH."),
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
+    },
+    ServerDef {
+        id: "dockerfile",
+        name: "Dockerfile Language Server",
+        package: "dockerfile",
+        entry: "node_modules/dockerfile-language-server-nodejs/lib/server.js",
+        args: &["--stdio"],
+        runtime: Runtime::Node,
+        languages: &["dockerfile"],
+        note: None,
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
+    },
+    ServerDef {
+        id: "rust",
+        name: "rust-analyzer",
+        package: "rust",
+        entry: "rust-analyzer.exe",
+        args: &[],
+        runtime: Runtime::Native,
+        languages: &["rust"],
+        note: Some("Project analysis needs the Rust toolchain (cargo, rustup) on this computer; OpenMind doesn't install it."),
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        // cargo (run by rust-analyzer for project metadata) works from its local cache only.
+        env: &[("CARGO_NET_OFFLINE", "true")],
+    },
+    ServerDef {
+        id: "clangd",
+        name: "clangd",
+        package: "clangd",
+        entry: "bin/clangd.exe",
+        // No background index: it would write a `.cache/clangd` folder into the project.
+        args: &["--background-index=false"],
+        runtime: Runtime::Native,
+        languages: &["c", "cpp"],
+        note: Some("Best with a compile_commands.json in the project; system headers need a C/C++ toolchain."),
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
     },
 ];
 
@@ -151,6 +301,9 @@ pub struct ServerSummary {
     pub languages: Vec<&'static str>,
     pub note: Option<&'static str>,
     pub contents: &'static str,
+    pub runtime: Runtime,
+    /// Only the LSP bundle carries it (no "Install" from npm).
+    pub bundle_only: bool,
 }
 
 pub fn summaries() -> Vec<ServerSummary> {
@@ -162,6 +315,9 @@ pub fn summaries() -> Vec<ServerSummary> {
             languages: server.languages.to_vec(),
             note: server.note,
             contents: package_by_id(server.package).map_or("", |package| package.contents),
+            runtime: server.runtime,
+            bundle_only: package_by_id(server.package)
+                .is_some_and(|package| matches!(package.source, Source::Native)),
         })
         .collect()
 }
@@ -175,7 +331,17 @@ mod tests {
         for server in SERVERS {
             assert!(package_by_id(server.package).is_some(), "{}", server.id);
             assert!(!server.languages.is_empty());
-            assert!(server.entry.starts_with("node_modules/"));
+            let package = package_by_id(server.package).expect("package");
+            match (server.runtime, package.source) {
+                (Runtime::Node, Source::Npm { .. }) => {
+                    assert!(server.entry.starts_with("node_modules/"), "{}", server.id);
+                }
+                (Runtime::Native, Source::Native) => {
+                    assert!(server.entry.ends_with(".exe"), "{}", server.id);
+                }
+                _ => panic!("{}: runtime and package source disagree", server.id),
+            }
+            assert!(!server.entry.contains(".."), "{}", server.id);
         }
     }
 
@@ -191,6 +357,15 @@ mod tests {
         assert_eq!(server_for_path("m.py").map(|s| s.id), Some("python"));
         assert_eq!(server_for_path("i.php").map(|s| s.id), Some("php"));
         assert_eq!(server_for_path("a.scss").map(|s| s.id), Some("css"));
+        assert_eq!(server_for_path("ci.yml").map(|s| s.id), Some("yaml"));
+        assert_eq!(server_for_path("run.sh").map(|s| s.id), Some("bash"));
+        assert_eq!(
+            server_for_path("C:/p/Dockerfile").map(|s| s.id),
+            Some("dockerfile")
+        );
+        assert_eq!(server_for_path("main.rs").map(|s| s.id), Some("rust"));
+        assert_eq!(server_for_path("a.cpp").map(|s| s.id), Some("clangd"));
+        assert_eq!(server_for_path("a.h").map(|s| s.id), Some("clangd"));
         assert!(server_for_path("notes.txt").is_none());
     }
 
@@ -210,12 +385,51 @@ mod tests {
     #[test]
     fn lockfiles_pin_integrity_hashes() {
         for package in PACKAGES {
-            assert!(
-                package.package_lock.contains("\"integrity\""),
-                "{}",
-                package.id
-            );
-            assert!(package.package_json.contains("\"dependencies\""));
+            if let Source::Npm {
+                package_json,
+                package_lock,
+            } = package.source
+            {
+                assert!(package_lock.contains("\"integrity\""), "{}", package.id);
+                assert!(package_json.contains("\"dependencies\""));
+            }
+        }
+    }
+
+    #[test]
+    fn native_packages_are_redistributable_and_intelephense_is_not() {
+        for package in PACKAGES {
+            if matches!(package.source, Source::Native) {
+                assert!(package.redistributable, "{}", package.id);
+            }
+        }
+        assert!(!package_by_id("php").expect("php").redistributable);
+    }
+
+    #[test]
+    fn native_packages_match_the_pinned_bundle_sources() {
+        let sources: serde_json::Value =
+            serde_json::from_str(include_str!("../servers/bundle-sources.json")).expect("json");
+        let native = sources["native"].as_array().expect("native list");
+        let pinned: Vec<(&str, &str)> = native
+            .iter()
+            .map(|entry| {
+                assert_eq!(entry["sha256"].as_str().map(str::len), Some(64));
+                (
+                    entry["package"].as_str().expect("package"),
+                    entry["revision"].as_str().expect("revision"),
+                )
+            })
+            .collect();
+        let registry: Vec<(&str, &str)> = PACKAGES
+            .iter()
+            .filter(|package| matches!(package.source, Source::Native))
+            .map(|package| (package.id, package.revision))
+            .collect();
+        assert_eq!(pinned, registry);
+        for entry in native {
+            let package = package_by_id(entry["package"].as_str().expect("id")).expect("known");
+            assert_eq!(entry["contents"].as_str(), Some(package.contents));
         }
     }
 }

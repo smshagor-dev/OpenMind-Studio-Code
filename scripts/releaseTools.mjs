@@ -163,7 +163,8 @@ export function checkWixSource(wxs) {
 
 /**
  * Checks the installer configuration (`tauri.conf.json`) for the licence agreement: the licence file is packaged,
- * both installers are built, the NSIS installer runs per user (no administrator rights). Returns problems.
+ * both installers are built, the NSIS installer runs per user (no administrator rights), and the offline language
+ * server bundle is copied next to the executable. Returns problems.
  */
 export function checkInstallerConfig(tauri, licenseText) {
   const problems = [];
@@ -181,5 +182,8 @@ export function checkInstallerConfig(tauri, licenseText) {
     problems.push("LICENSE is not the Apache License 2.0 text.");
   }
   if (!licenseText.includes("END OF TERMS AND CONDITIONS")) problems.push("LICENSE is incomplete.");
+  if (bundle.resources?.["../lsp-bundle/"] !== "lsp/") {
+    problems.push('bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).');
+  }
   return problems;
 }

@@ -13,9 +13,10 @@
     "test": "vitest run",
     "lint": "eslint .",
     "tauri": "tauri",
+    "lsp:bundle": "node scripts/prepare-lsp-bundle.mjs",
     "package:portable": "node scripts/package-portable.mjs",
-    "package:installer": "tauri build --bundles nsis",
-    "release:build": "tauri build --bundles nsis,msi",
+    "package:installer": "node scripts/prepare-lsp-bundle.mjs --check && tauri build --bundles nsis",
+    "release:build": "node scripts/prepare-lsp-bundle.mjs --check && tauri build --bundles nsis,msi",
     "release:collect": "node scripts/release.mjs"
   },
   "dependencies": {

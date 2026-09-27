@@ -1,0 +1,34 @@
+{
+  "format": "openmind-lsp-bundle-sources",
+  "version": 1,
+  "platform": "windows-x64",
+  "node": {
+    "version": "24.21.0",
+    "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip",
+    "sha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
+    "license": "MIT (Node.js; bundled third-party licences are in LICENSE)",
+    "keep": ["node-v24.21.0-win-x64/node.exe", "node-v24.21.0-win-x64/LICENSE"]
+  },
+  "native": [
+    {
+      "package": "rust",
+      "revision": "1",
+      "contents": "rust-analyzer 2026-09-21",
+      "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-09-21/rust-analyzer-x86_64-pc-windows-msvc.zip",
+      "sha256": "f62a18aad35568fd9205006a62f97613eac8c4f2ec5fe43c830dde09684e5e6f",
+      "license": "MIT OR Apache-2.0 (https://github.com/rust-lang/rust-analyzer)",
+      "stripComponents": 0,
+      "skip": ["rust_analyzer.pdb"]
+    },
+    {
+      "package": "clangd",
+      "revision": "1",
+      "contents": "clangd 22.1.6",
+      "url": "https://github.com/clangd/clangd/releases/download/22.1.6/clangd-windows-22.1.6.zip",
+      "sha256": "ce54f16e0b4fd76d450eeda9664420b195360b73febcfe40e661108fa57f2ce1",
+      "license": "Apache-2.0 WITH LLVM-exception (https://llvm.org/LICENSE.txt)",
+      "stripComponents": 1,
+      "skip": []
+    }
+  ]
+}

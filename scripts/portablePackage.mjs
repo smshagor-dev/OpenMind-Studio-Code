@@ -41,6 +41,8 @@ export function readmeText(version) {
     "  runtimes\\    portable Node.js, Python, Git, PHP, MariaDB ... you install from the Runtime Manager",
     "  cache\\       downloads and package caches",
     "  logs\\        the app's and the language servers' logs",
+    "  lsp\\         the offline language servers shipped with the app (never downloaded, never on PATH)",
+    "  language-servers\\  those servers, unpacked the first time a file of their language is opened",
     "",
     "Move or copy the whole folder anywhere (a USB drive, a path with spaces) and it keeps working.",
     "To remove the app, close it and delete the folder.",

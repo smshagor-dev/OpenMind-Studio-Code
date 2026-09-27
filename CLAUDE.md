@@ -338,6 +338,28 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   close_document/request/stop/stop_all/set_verbose`) picks the server by extension, refuses files outside the workspace,
   pushes `lsp:diagnostics`/`lsp:log`/`lsp:changed` and writes `logs/lsp/<server>.log` (rotated at 2 MB). Ignored real-network
   tests (`crates/lsp/tests/real_server.rs`) install and drive the real TypeScript, Pyright and Intelephense servers.
+  **Offline LSP bundle (Milestone 17)** — see `docs/lsp-bundle.md`. `registry::Package` gained `source` (`Npm` with the embedded
+  lockfile, or `Native`: a program only the bundle carries) and `redistributable`; `ServerDef` gained `runtime` (`Node` | `Native`),
+  `init_options` (JSON), `after_initialized` (notifications) and `env`. Servers now: the six above plus YAML (yaml-language-server),
+  Bash (bash-language-server), Dockerfile (dockerfile-language-server-nodejs), **rust-analyzer** and **clangd** (native). `language_id`
+  also matches whole names (`Dockerfile`, `Dockerfile.*`, `Containerfile`). `bundle` reads `<app>/lsp/bundle.json` (format
+  `openmind-lsp-bundle` v1, platform `windows-x64`, a Node.js entry and one pack per package with SHA256/size/licence; paths must stay
+  inside `lsp/`; a damaged/foreign file is reported and ignored; a pack is used only for the app's revision and never for a package
+  that isn't `redistributable`; the bundled `node.exe` only with its recorded size; only on 64-bit Windows). `unpack` checks the
+  pack's SHA256 before writing, extracts with safe names (no `..`/absolute/drive, links refused, 1 GiB / 60 000-entry caps) into
+  `language-servers/<id>/.unpacking`, requires every server's entry, writes a `.openmind-bundle` marker (the pack SHA256) and renames it
+  into `language-servers/<id>/<revision>/` — the same folder an npm install uses; `is_current` re-unpacks a folder from another pack
+  (an npm-installed folder has no marker and counts as current). `pack::create_pack` + `examples/bundle_tool.rs` (`pack`/`extract`/
+  `packages`) are the build side. `LspManager::prepare_bundled` (per-package gate, members show `installing`, never replaces a
+  running server's files); `resolve_lsp_node` = bundled Node (`NodeSource::Bundled`, "OpenMind bundled Node.js", no npm) > portable >
+  system. `StartContext.node` is optional (native servers need none). **Offline switches**: TypeScript `disableAutomaticTypingAcquisition`,
+  JSON `handledSchemaProtocols: ["file"]`, YAML section `schemaStore.enable: false` + `yaml/registerContentRequest`, `vscode/content`
+  refused with "remote schemas are not downloaded (OpenMind Studio's language servers work offline)", rust-analyzer
+  `CARGO_NET_OFFLINE=true`, clangd `--background-index=false`. `commands::lsp`: `lsp_sync_document` unpacks from the bundle when
+  needed (offline), `lsp_install` unpacks when the bundle carries the server and otherwise uses npm with a Node that has npm,
+  `lsp_status` adds `runtime`, `bundled`, `installSource` and `bundle` (present/problem/nodeVersion/packs). **Intelephense is not in
+  the bundle** — its licence forbids redistribution; it stays an npm install on request. `tests/bundled_servers.rs` (ignored,
+  `OPENMIND_LSP_BUNDLE=<repo>/lsp-bundle`) unpacks and runs all ten bundled servers with a PATH of only System32.
 - **Editor windows (File > New Window, Ctrl+Shift+N)** — `src-tauri/src/windows.rs`. One process, several editor
   windows: `main` plus `window-2`, `window-3`, ... (`window_new`; the capability lists `window-*`; `main.tsx` shows
   `App` for them). Each window has its own open folder: `windows::window_workspace(state, label)` gives `main` the
@@ -438,8 +460,9 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   no support is not offered; one whose tool or platform is missing is offered disabled with the reason (`iOS builds require macOS and Xcode.`, `A Windows build needs Windows.`,
   `Cargo not found. Install Rust (rustup) — OpenMind doesn't install it.`). `format` finds formatters/linters (Prettier, Biome, ESLint, Stylelint, Black, Ruff, isort, PHP CS Fixer,
   Pint, rustfmt, clippy, gofmt, golangci-lint, clang-format, dotnet format, ktlint, dart) and builds their exact argument list (project's own first); `lsp` lists language server
-  candidates per language and says which are OpenMind's own (with their live state supplied by the app) and which are only *found* — **OpenMind cannot start rust-analyzer,
-  gopls, clangd, JDT LS, OmniSharp, Vue/Svelte/Astro/Tailwind/YAML/Docker/SQL/GraphQL servers yet, and says so** (detection only, no fake diagnostics). `service` assembles
+  candidates per language and says which are OpenMind's own (with their live state supplied by the app) and which are only *found* — **OpenMind cannot start
+  gopls, JDT LS, OmniSharp, Vue/Svelte/Astro/Tailwind/SQL/GraphQL servers yet, and says so** (detection only, no fake diagnostics; since Milestone 17 YAML, Bash,
+  Dockerfile, rust-analyzer and clangd are OpenMind's own and those languages have the `lsp` level). `service` assembles
   `WorkspaceStatus` (projects with tool status, per-command availability and a one-sentence summary such as "Detected Tauri + React. Found: Node.js, pnpm, Cargo. Dev: pnpm tauri dev.")
   and `FileStatus`; `shell::typed_line` renders an argument list for PowerShell/cmd/Git Bash (plain words stay plain, anything else is quoted, a line that can't be quoted safely
   is refused). `src-tauri/src/commands/language.rs`: `language_registry`, `language_workspace_status` (the asking window's folder, portable runtimes from the Runtime Manager first),
@@ -463,6 +486,8 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   `<v>/debugpy/adapter/__main__.py` — is the adapter folder before the Runtime Manager's) and `composer_run` (an active bundled `composer.phar` before the Runtime Manager's Composer). Git needs no change:
   its resolver takes the first folder that has `git.exe`. **What is physically bundled in this build: nothing** — the system, manifest, detection, selection, Verify, UI and packaging check are built and tested
   against fixture folders; every tool shows Missing (or External) until real files are added. Do not claim "last five versions" shipped until they are.
+  Since Milestone 17 the servers of the offline LSP bundle (Pyright, typescript-language-server, vscode-langservers-extracted, rust-analyzer, clangd, YAML, Dockerfile)
+  are no longer tool-pack entries in `catalog` (they live in `lsp/` and Language Tools; listing them here showed them "Missing"; a test keeps them out).
 
 - `openmind-format` (Milestone 15.2) — the formatting backend, Tauri-agnostic. It formats **text** (the editor's in-memory buffer, never a file on disk). `json` = the **built-in JSON / JSONC
   formatter** (own lexer + checker + printer: comments and trailing commas are accepted and kept, structure is validated with a line/column, strings and numbers are copied verbatim, key order is kept, every member
@@ -1085,7 +1110,8 @@ OpenMind Studio/
     runtimes/                 installed portable runtimes (future milestone)
     extensions/               installed/, disabled/, cache/, storage/, logs/extension-host.log (Milestone 10)
     themes/                   on-disk theme/icon-theme assets (future milestone)
-    language-servers/         npm-installed language servers, one folder per package revision (Milestone 7)
+    language-servers/         language servers, one folder per package revision: unpacked from lsp/ or npm-installed (Milestone 7/17)
+    lsp/                      the offline language server bundle shipped with release builds, read-only (Milestone 17)
     settings/                 settings.json and keybindings.json (Milestone 9; edited by hand or from the Settings page)
     data/ai/                  providers.json (no secrets) and conversations.sqlite, created only when AI is used (Milestone 13)
     data/search-index/        the workspace search index, one SQLite file per folder (Milestone 12)
@@ -1162,6 +1188,10 @@ Windows x64 editions (portable ZIP, per-user NSIS setup, and — since Milestone
   `["nsis"]`). Both editions were built for real in Milestone 9 (release exe 16.6 MB, portable zip 8.8 MB, installer 7.5 MB) and the
   portable one was run from a copied folder with a space in its path; the installer was built but **not installed** during
   verification.
+- **Offline language servers (Milestone 17).** Every edition carries `lsp/` (built by `pnpm lsp:bundle`, checked by `--check`; see
+  `docs/lsp-bundle.md`), which makes the installers larger: NSIS setup 104 MB, MSI 121 MB, portable ZIP 120 MB (was 7.5 / — / 8.8 MB).
+  A `tauri build`/`tauri dev` copies `lsp-bundle/` next to the exe too (`bundle.resources`); a fresh clone has only its README there, so
+  development builds simply have no bundle and fall back to npm installs.
 - **WebView2 profile.** The webview's own profile (cache, local storage, cookies) used to live in
   `%LOCALAPPDATA%\com.openmindstudio.app\EBWebView` (247 MB after a few weeks) — found in Milestone 9 by watching that folder while
   running the portable copy. Every window is now built with `data_directory(<app>/data/webview)` (the main window is described in
@@ -2045,7 +2075,31 @@ right after start-up (the extension list marks it "Activates at every start-up (
   WebView2 is missing its installer would download Microsoft's bootstrapper (installer-time, not the app). **Known limitations**: unsigned; MSI needs admin and was not installed here; no auto-update; the NSIS uninstaller keeps user data; the portable
   zip was built from the same release exe and not re-run; extension icon themes, Electron icon, cloud sync, profile-aware keybindings/extensions/runtimes are not built; a profile switch does not reload extensions. Left on disk: `C:\omfmt`, `E:\Code Editor\release`
   (git-ignored), `C:\Users\smsha\.cargo-target`.
-- [ ] Milestone 17 — to be scoped (icon/product themes from extensions, profile-aware keybindings, signing with a real certificate, auto-update).
+- [x] **Milestone 17** — Offline bundled Language Server Protocol pack (`feat: bundle offline language servers`). See the "Offline LSP bundle" paragraph under
+  `openmind-lsp` and `docs/lsp-bundle.md`. **Shipped in the installers** (`lsp/`, 167 MB; packs are zips unpacked on first use): TypeScript/JavaScript, Pyright,
+  JSON/CSS/HTML, YAML, Bash, Dockerfile, rust-analyzer, clangd, and Node.js 24.21.0 (`node.exe` only) to run the Node-based ones. **Not shipped**: Intelephense (its licence
+  forbids redistribution — found while building the bundle; still an npm install on request), gopls/JDT LS/OmniSharp (need toolchains). Build side: `pnpm lsp:bundle`
+  (`scripts/prepare-lsp-bundle.mjs` + pure `scripts/lspBundle.mjs`: npm ci from the pinned lockfiles, Node/native from `crates/lsp/servers/bundle-sources.json` with
+  SHA256, packs via `bundle_tool`, `THIRD-PARTY-NOTICES.txt`, `--check`), `tauri.conf.json` `bundle.resources` `../lsp-bundle/` -> `lsp/`, `release:build` and
+  `package:installer` refuse to run until `--check` passes, `package:portable` copies it after `--check`, `checkInstallerConfig` requires the resource mapping.
+  Frontend: Language Tools shows the bundle line, "Bundled" badges, "Unpack Now" (no download), "Contains … · runs on Node.js / its own program"; availability
+  treats a bundled-not-yet-unpacked server as usable; `lspLanguages` mirrors the new languages (Monaco `yaml`, `shell`, `dockerfile`, `rust`, `c`, `cpp`);
+  `openmind-language` marks YAML/Docker Compose/Dockerfile/Shell/Rust/C/C++ with the `lsp` level. **Fixed on the way**: since Milestone 15 the Language Tools
+  dialog showed none of its notes (the compact Runtime Manager CSS hides `.runtime-card__notes` in every `.modal--runtimes`; the dialog now has
+  `modal--lsp-tools`); the release test's secret scan failed on its own fixture password. **Verified**: `bundled_servers` runs all ten servers from the real bundle
+  with PATH = System32 only (each gave a real diagnostic/hover/symbol answer); by hand in a debug build (fresh copy `E:\omlsp17\OpenMind Studio`, workspace
+  `My Workspace` with a space): nothing unpacked or started at launch; opening each file unpacked only its pack and started the server — every Node-based one on
+  `lsp
+ode
+ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from TypeScript, Pyright, JSON, CSS, YAML, Dockerfile, clangd and rust-analyzer
+  (`mismatched types`), HTML hover and Bash document symbols through `lsp_request`, PHP "Language server is not installed yet."; a remote `$schema` in JSON and YAML
+  was refused and no process of the app's tree connected anywhere; a normal close left 0 processes; User/Machine PATH identical. Release: NSIS setup **104 MB**
+  (installed silently per user into a folder with spaces: `lsp\` beside the exe, TypeScript and clangd ran from it with diagnostics, Language Tools showed the
+  bundle, silent uninstall removed the program and `lsp\` but kept the data folders), MSI **121 MB** (built, WiX lists every bundle file, no `<Environment>`; not
+  installed — needs admin), portable ZIP **120 MB**. **Limits**: Windows x64 only (32-bit/ARM64 accepted but untested); the NSIS uninstaller keeps
+  `language-servers\` (~317 MB when all servers were used); the per-machine MSI can't unpack into Program Files without admin; rust-analyzer runs the machine's
+  cargo (creates `target/`/`Cargo.lock`, offline); no server auto-update. Left on disk: `E:\omlsp17` (test copies, installer test folder, portable output).
+- [ ] Milestone 18 — to be scoped (icon/product themes from extensions, profile-aware keybindings, signing with a real certificate, auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

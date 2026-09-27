@@ -267,6 +267,7 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       workspace: null,
       node: null,
       nodeProblem: "Node.js runtime is not installed yet.",
+      bundle: { present: false, problem: null, nodeVersion: null, packs: 0 },
       verbose: false,
       servers: [],
     }),

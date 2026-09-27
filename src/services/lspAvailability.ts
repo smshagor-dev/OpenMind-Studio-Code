@@ -59,6 +59,12 @@ export interface Availability {
   reason?: string;
 }
 
+function preparingText(server: LspServerInfo): string {
+  return server.bundled
+    ? "The language server is being unpacked from the offline bundle."
+    : "The language server is being installed.";
+}
+
 /** Why this file has no language features right now, or `null` when a server is running for it. */
 export function fileProblem(file: FileLspStatus): string | null {
   if (file.path === null) return "Save the file to use language features.";
@@ -81,8 +87,8 @@ export function fileProblem(file: FileLspStatus): string | null {
   }
   const server = file.server;
   if (server === null) return "Language server status is not known yet.";
-  if (!server.installed) return "Language server is not installed yet.";
-  if (server.state === "installing") return "The language server is being installed.";
+  if (!server.installed && !server.bundled) return "Language server is not installed yet.";
+  if (server.state === "installing") return preparingText(server);
   if (server.state === "error") return server.message ?? "The language server stopped.";
   if (server.state !== "running") return "The language server isn't running.";
   return null;
@@ -111,11 +117,11 @@ export function restartAvailability(file: FileLspStatus): Availability {
   if (file.server === null) {
     return { enabled: false, reason: "Language server status is not known yet." };
   }
-  if (!file.server.installed) {
+  if (!file.server.installed && !file.server.bundled) {
     return { enabled: false, reason: "Language server is not installed yet." };
   }
   if (file.server.state === "installing") {
-    return { enabled: false, reason: "The language server is being installed." };
+    return { enabled: false, reason: preparingText(file.server) };
   }
   return { enabled: true };
 }

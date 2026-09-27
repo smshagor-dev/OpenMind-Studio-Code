@@ -179,9 +179,15 @@ export interface LspServerInfo {
   name: string;
   languages: string[];
   note: string | null;
-  /** What installing downloads ("pyright 1.1.414"). */
+  /** What the server package holds ("pyright 1.1.414"). */
   contents: string;
+  /** `node`: runs on Node.js; `native`: its own program (rust-analyzer, clangd). */
+  runtime: "node" | "native";
   installed: boolean;
+  /** The offline LSP bundle shipped with the app carries it: unpacked on first use, never downloaded. */
+  bundled: boolean;
+  /** Where the installed files came from (null while not installed). */
+  installSource: "bundle" | "download" | null;
   state: LspServerState;
   /** The reason, when `state` is "error". */
   message?: string;
@@ -196,10 +202,20 @@ export interface LspServerInfo {
   logExists: boolean;
 }
 
+/** The offline LSP bundle (`lsp/` next to the executable). */
+export interface LspBundleInfo {
+  present: boolean;
+  /** Why an `lsp/bundle.json` that exists can't be used. */
+  problem: string | null;
+  nodeVersion: string | null;
+  packs: number;
+}
+
 export interface LspSnapshot {
   workspace: string | null;
   node: string | null;
   nodeProblem: string | null;
+  bundle: LspBundleInfo;
   verbose: boolean;
   servers: LspServerInfo[];
 }

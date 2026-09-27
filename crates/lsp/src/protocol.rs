@@ -31,8 +31,18 @@ pub fn is_allowed_request(method: &str) -> bool {
     ALLOWED_REQUESTS.contains(&method)
 }
 
-/// The `initialize` request parameters for a workspace folder.
-pub fn initialize_params(process_id: u32, root_uri: &str, root_name: &str) -> Value {
+/// The `initialize` request parameters for a workspace folder. `initialization_options`
+/// is the server's own JSON (see `ServerDef::init_options`); invalid JSON becomes `{}`.
+pub fn initialize_params(
+    process_id: u32,
+    root_uri: &str,
+    root_name: &str,
+    initialization_options: &str,
+) -> Value {
+    let options = serde_json::from_str::<Value>(initialization_options)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}));
     json!({
         "processId": process_id,
         "clientInfo": { "name": "OpenMind Studio", "version": env!("CARGO_PKG_VERSION") },
@@ -40,7 +50,7 @@ pub fn initialize_params(process_id: u32, root_uri: &str, root_name: &str) -> Va
         "rootUri": root_uri,
         "workspaceFolders": [{ "uri": root_uri, "name": root_name }],
         "capabilities": client_capabilities(),
-        "initializationOptions": {},
+        "initializationOptions": options,
     })
 }
 
@@ -215,6 +225,17 @@ const OBJECT_SECTIONS: &[&str] = &["css", "scss", "less", "html", "json", "http"
 
 fn configuration_section(item: &Value) -> Value {
     let section = item.get("section").and_then(Value::as_str).unwrap_or("");
+    if section == "yaml" {
+        // Offline: no SchemaStore catalogue download; schemas come only from the project.
+        return json!({
+            "validate": true,
+            "hover": true,
+            "completion": true,
+            "format": { "enable": true },
+            "schemaStore": { "enable": false, "url": "" },
+            "schemas": {},
+        });
+    }
     if OBJECT_SECTIONS.contains(&section) {
         Value::Object(serde_json::Map::new())
     } else {
@@ -246,6 +267,13 @@ pub fn reply_to_server_request(
         | "client/unregisterCapability"
         | "window/showMessageRequest"
         | "window/showDocument" => Ok(Value::Null),
+        // JSON/YAML servers ask the client for remote schemas (`handledSchemaProtocols`, `yaml/registerContentRequest`):
+        // the servers are offline, so nothing is downloaded and the reason reads plainly in the problem.
+        "vscode/content" => Err((
+            -32803,
+            "remote schemas are not downloaded (OpenMind Studio's language servers work offline)"
+                .to_string(),
+        )),
         "workspace/applyEdit" => Ok(json!({
             "applied": false,
             "failureReason": "OpenMind Studio doesn't apply server-initiated edits."
@@ -259,8 +287,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_server_gets_its_own_initialization_options_and_bad_json_is_ignored() {
+        let params = initialize_params(
+            1,
+            "file:///r",
+            "r",
+            r#"{"handledSchemaProtocols":["file"]}"#,
+        );
+        assert_eq!(
+            params["initializationOptions"]["handledSchemaProtocols"][0],
+            "file"
+        );
+        let params = initialize_params(1, "file:///r", "r", "not json");
+        assert_eq!(params["initializationOptions"], json!({}));
+    }
+
+    #[test]
+    fn a_remote_schema_request_is_refused_with_a_plain_reason() {
+        let err = reply_to_server_request(
+            "vscode/content",
+            &json!(["https://json.schemastore.org/package.json"]),
+            "file:///r",
+            "r",
+        )
+        .expect_err("refused");
+        assert!(err.1.contains("offline"), "{}", err.1);
+    }
+
+    #[test]
+    fn the_yaml_section_turns_the_schema_store_download_off() {
+        let cfg = reply_to_server_request(
+            "workspace/configuration",
+            &json!({ "items": [{"section": "yaml"}] }),
+            "file:///r",
+            "r",
+        )
+        .expect("cfg");
+        assert_eq!(cfg[0]["schemaStore"]["enable"], false);
+        assert_eq!(cfg[0]["validate"], true);
+    }
+
+    #[test]
     fn initialize_carries_the_root_and_a_capability_set() {
-        let params = initialize_params(42, "file:///C:/My%20Site", "My Site");
+        let params = initialize_params(42, "file:///C:/My%20Site", "My Site", "{}");
         assert_eq!(params["processId"], 42);
         assert_eq!(params["rootUri"], "file:///C:/My%20Site");
         assert_eq!(params["workspaceFolders"][0]["name"], "My Site");

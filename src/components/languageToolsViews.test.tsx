@@ -1,3 +1,7 @@
+/// <reference types="node" />
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +30,9 @@ function server(patch: Partial<LspServerInfo> = {}): LspServerInfo {
     note: null,
     contents: "typescript-language-server 5.1.3, typescript 5.9.3",
     installed: false,
+    runtime: "node",
+    bundled: false,
+    installSource: null,
     state: "stopped",
     workspace: "C:/My Site",
     node: null,
@@ -45,6 +52,7 @@ function snapshot(servers: LspServerInfo[], patch: Partial<LspSnapshot> = {}): L
     workspace: "C:/My Site",
     node: "OpenMind portable Node.js",
     nodeProblem: null,
+    bundle: { present: false, problem: null, nodeVersion: null, packs: 0 },
     verbose: false,
     servers,
     ...patch,
@@ -86,6 +94,65 @@ describe("Language Tools dialog", () => {
     expect(card.getByRole("button", { name: "Open Logs" })).toBeDisabled();
     fireEvent.click(card.getByRole("button", { name: "Install" }));
     expect(lsp.install).toHaveBeenCalledWith("typescript");
+  });
+
+  it("a bundled server is ready offline: no Missing badge, and Unpack Now needs no download", () => {
+    const bundled = server({ bundled: true });
+    const lsp = fakeLsp(
+      snapshot([bundled], {
+        bundle: { present: true, problem: null, nodeVersion: "24.21.0", packs: 8 },
+        node: "OpenMind bundled Node.js",
+      }),
+    );
+    harness.current = { lsp, run: vi.fn() };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    expect(screen.getByTestId("lsp-bundle")).toHaveTextContent(
+      "Offline bundle: 8 language server packages and Node.js 24.21.0",
+    );
+    expect(screen.getByTestId("lsp-bundle")).toHaveTextContent("nothing is downloaded");
+    const card = within(screen.getByRole("region", { name: "TypeScript Language Server" }));
+    expect(card.getByText("Bundled")).toBeInTheDocument();
+    expect(card.queryByText("Missing")).toBeNull();
+    expect(card.getByText(/unpacked from the offline bundle/)).toBeInTheDocument();
+    expect(card.getByText(/Contains: typescript-language-server/)).toBeInTheDocument();
+    expect(card.getByRole("button", { name: "Restart" })).toBeEnabled();
+    const unpack = card.getByRole("button", { name: "Unpack Now" });
+    expect(unpack).toHaveAttribute("title", expect.stringContaining("no download"));
+    fireEvent.click(unpack);
+    expect(lsp.install).toHaveBeenCalledWith("typescript");
+  });
+
+  it("keeps its notes visible although it reuses the compact runtime cards (which hide theirs)", () => {
+    harness.current = { lsp: fakeLsp(snapshot([server()])), run: vi.fn() };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    expect(screen.getByRole("dialog")).toHaveClass("modal--lsp-tools");
+    const css = readFileSync(join(process.cwd(), "src/styles/toolchains.css"), "utf8");
+    expect(css).toMatch(
+      /\.modal--runtimes\.modal--lsp-tools \.runtime-card__notes \{\s*display: block;/,
+    );
+  });
+
+  it("a copy without the bundle says so, and a native server without it says why it can't install", () => {
+    const native = server({
+      id: "rust",
+      name: "rust-analyzer",
+      runtime: "native",
+      contents: "rust-analyzer 2026-09-21",
+      canInstall: false,
+      installBlocked:
+        "rust-analyzer ships only in OpenMind Studio's offline LSP bundle, which this copy doesn't have.",
+    });
+    harness.current = { lsp: fakeLsp(snapshot([native])), run: vi.fn() };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    expect(screen.getByTestId("lsp-bundle")).toHaveTextContent(
+      "This copy has no offline language server bundle.",
+    );
+    const card = within(screen.getByRole("region", { name: "rust-analyzer" }));
+    expect(card.getByText(/runs on its own program/)).toBeInTheDocument();
+    expect(
+      card.getByText(/ships only in OpenMind Studio's offline LSP bundle/),
+    ).toBeInTheDocument();
+    expect(card.getByRole("button", { name: "Install" })).toBeDisabled();
   });
 
   it("without Node.js, Install is disabled and the reason is written out", () => {

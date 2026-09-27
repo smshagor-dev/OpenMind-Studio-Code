@@ -11,6 +11,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+sha2 = "0.11.0"
+zip = { version = "7.2.0", default-features = false, features = ["deflate"] }
 
 [target."cfg(windows)".dependencies]
 openmind-process = { version = "0.1.0", path = "../process" }

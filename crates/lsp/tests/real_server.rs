@@ -70,7 +70,7 @@ fn the_typescript_server_installs_starts_and_answers() {
     let context = StartContext {
         app_root: app_root.clone(),
         workspace: workspace.clone(),
-        node,
+        node: Some(node),
         path_prepend: vec![],
         vars: vec![],
     };
@@ -185,7 +185,7 @@ fn diagnoses(server_id: &str, file_name: &str, source: &str, expect: &str, hover
     let context = StartContext {
         app_root,
         workspace,
-        node,
+        node: Some(node),
         path_prepend: vec![],
         vars: vec![],
     };

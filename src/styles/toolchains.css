@@ -506,6 +506,12 @@ ul.tc-banner {
   display: none;
 }
 
+/* Language Tools reuses the runtime cards but has no Details dialog: its notes (bundle, Node.js, why Install is
+   disabled) are the only place those reasons are written, so they stay visible. */
+.modal--runtimes.modal--lsp-tools .runtime-card__notes {
+  display: block;
+}
+
 /* Runtime details */
 
 .rm-details p {

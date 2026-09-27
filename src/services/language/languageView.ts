@@ -77,7 +77,12 @@ export function lspLine(candidate: LspCandidate, servers: readonly LspServerInfo
       return {
         label: server.name,
         tone: "warn",
-        detail: server.state === "installing" ? "Installing…" : "Starting…",
+        detail:
+          server.state === "installing"
+            ? server.bundled
+              ? "Unpacking from the offline bundle…"
+              : "Installing…"
+            : "Starting…",
       };
     case "error":
       return {
@@ -86,6 +91,14 @@ export function lspLine(candidate: LspCandidate, servers: readonly LspServerInfo
         detail: server.message ?? "The server stopped with an error.",
       };
     case "stopped":
+      if (!server.installed && server.bundled) {
+        return {
+          label: server.name,
+          tone: "ok",
+          detail:
+            "Bundled with OpenMind: it is unpacked and started, offline, when a file it handles is opened.",
+        };
+      }
       return server.installed
         ? {
             label: server.name,

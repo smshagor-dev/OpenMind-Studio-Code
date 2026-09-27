@@ -52,6 +52,9 @@ function server(patch: Partial<LspServerInfo> = {}): LspServerInfo {
     note: null,
     contents: "pyright 1.1.414",
     installed: true,
+    runtime: "node",
+    bundled: false,
+    installSource: null,
     state: "running",
     workspace: "C:/My Site",
     node: "OpenMind portable Node.js",
@@ -71,6 +74,7 @@ function snapshot(servers: LspServerInfo[]): LspSnapshot {
     workspace: "C:/My Site",
     node: "OpenMind portable Node.js",
     nodeProblem: null,
+    bundle: { present: false, problem: null, nodeVersion: null, packs: 0 },
     verbose: false,
     servers,
   };
@@ -433,6 +437,17 @@ describe("availability: every disabled action says why", () => {
     expect(
       fileProblem(file({ server: server({ state: "error", message: "It died." }), outcome: null })),
     ).toBe("It died.");
+  });
+
+  it("a bundled server that isn't unpacked yet is not 'missing': it starts on the next sync", () => {
+    const bundled = server({ installed: false, bundled: true, state: "stopped" });
+    expect(fileProblem(file({ server: bundled, outcome: null }))).toBe(
+      "The language server isn't running.",
+    );
+    expect(
+      fileProblem(file({ server: server({ bundled: true, state: "installing" }), outcome: null })),
+    ).toBe("The language server is being unpacked from the offline bundle.");
+    expect(restartAvailability(file({ server: bundled }))).toEqual({ enabled: true });
   });
 
   it("restart needs an installed server for the file", () => {

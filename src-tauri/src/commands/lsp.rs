@@ -1,18 +1,21 @@
 //! Language server commands. Servers run only for files inside the open
 //! workspace: the UI sends a file path and its text, the backend decides which
-//! server (by extension), whether the file is inside the workspace, whether the
-//! server is installed and whether Node.js is available, then starts it on
-//! first use. Nothing is downloaded without an explicit `lsp_install`.
+//! server (by name/extension), whether the file is inside the workspace, whether
+//! the server is installed — unpacking it from the offline LSP bundle shipped in
+//! `lsp/` when it isn't yet — and whether Node.js is available (the bundle's own
+//! Node first), then starts it on first use. Nothing is downloaded without an
+//! explicit `lsp_install` of a server the bundle doesn't carry.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use openmind_lsp::bundle::{self, Bundle};
 use openmind_lsp::{
-    install, package_by_id, resolve_node, server_by_id, server_for_path, summaries, Capabilities,
-    LogLevel, LspError, LspEvents, LspManager, NodeExecutable, PublishedDiagnostics, ServerState,
-    StartContext,
+    install, package_by_id, resolve_lsp_node, resolve_node, server_by_id, server_for_path,
+    summaries, unpack, Capabilities, LogLevel, LspError, LspEvents, LspManager, NodeExecutable,
+    PublishedDiagnostics, Runtime, ServerDef, ServerState, StartContext,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -122,17 +125,68 @@ async fn workspace_path(state: &AppState) -> Option<PathBuf> {
 }
 
 struct Resolved {
+    /// The Node the servers run on: the bundle's, else portable, else system.
     node: Result<NodeExecutable, LspError>,
+    /// A Node with npm next to it, for installing from npm (the bundled Node has none).
+    npm_node: Result<NodeExecutable, LspError>,
+    bundle: Option<Bundle>,
+    bundle_problem: Option<String>,
     path_prepend: Vec<PathBuf>,
     vars: Vec<(String, String)>,
 }
 
 async fn resolve(state: &AppState) -> Resolved {
     let environment = environment(state).await;
+    let (bundle, bundle_problem) = match bundle::load(&state.app_root) {
+        Ok(bundle) => (bundle, None),
+        Err(problem) => {
+            tracing::warn!(%problem, "LSP bundle not used");
+            (None, Some(problem))
+        }
+    };
+    let system = std::env::var_os("PATH");
     Resolved {
-        node: resolve_node(&environment.path_prepend, std::env::var_os("PATH")),
+        node: resolve_lsp_node(
+            bundle.as_ref().and_then(Bundle::node_path),
+            &environment.path_prepend,
+            system.clone(),
+        ),
+        npm_node: resolve_node(&environment.path_prepend, system),
+        bundle,
+        bundle_problem,
         path_prepend: environment.path_prepend,
         vars: environment.vars,
+    }
+}
+
+/// Whether the bundle carries `def`'s package (for this app's revision).
+fn bundled(resolved: &Resolved, def: &ServerDef) -> bool {
+    let package = package_by_id(def.package);
+    matches!((&resolved.bundle, package), (Some(bundle), Some(package)) if bundle.pack_for(package).is_some())
+}
+
+/// Why "Install" can't run for `def` right now, if it can't.
+fn install_blocked(resolved: &Resolved, def: &ServerDef, live: &ServerState) -> Option<String> {
+    if *live == ServerState::Installing {
+        return Some("It is already installing.".to_string());
+    }
+    if bundled(resolved, def) {
+        return None;
+    }
+    let bundle_only = package_by_id(def.package)
+        .is_some_and(|package| matches!(package.source, openmind_lsp::Source::Native));
+    if bundle_only {
+        return Some(format!(
+            "{} ships only in OpenMind Studio's offline LSP bundle, which this copy doesn't have.",
+            def.name
+        ));
+    }
+    match &resolved.npm_node {
+        Err(err) => Some(err.to_string()),
+        Ok(node) if node.npm_cli().is_none() => {
+            Some("npm was not found next to Node.js. Repair the Node.js runtime.".to_string())
+        }
+        Ok(_) => None,
     }
 }
 
@@ -144,6 +198,16 @@ fn log_path(state: &AppState, server: &str) -> PathBuf {
         .join(format!("{server}.log"))
 }
 
+/// Where an installed server's files came from.
+#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum InstallSource {
+    /// Unpacked from the offline bundle shipped with the app.
+    Bundle,
+    /// Installed from npm on the user's request.
+    Download,
+}
+
 /// One server as the Language Tools list shows it.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -153,7 +217,11 @@ pub struct ServerInfo {
     languages: Vec<&'static str>,
     note: Option<&'static str>,
     contents: &'static str,
+    runtime: Runtime,
     installed: bool,
+    /// The offline bundle carries it: it is unpacked the first time it is needed, with no download.
+    bundled: bool,
+    install_source: Option<InstallSource>,
     #[serde(flatten)]
     state: ServerState,
     workspace: Option<String>,
@@ -168,23 +236,68 @@ pub struct ServerInfo {
     log_exists: bool,
 }
 
+/// What the offline LSP bundle holds, for the Language Tools header.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BundleInfo {
+    present: bool,
+    /// Why a `lsp/bundle.json` that exists can't be used.
+    problem: Option<String>,
+    node_version: Option<String>,
+    packs: usize,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LspSnapshot {
     workspace: Option<String>,
-    /// Which Node.js language servers would run on, or why there is none.
+    /// Which Node.js the Node-based servers would run on, or why there is none.
     node: Option<String>,
     node_problem: Option<String>,
+    bundle: BundleInfo,
     verbose: bool,
     servers: Vec<ServerInfo>,
+}
+
+fn install_source(root: &Path, def: &ServerDef, installed: bool) -> Option<InstallSource> {
+    let package = package_by_id(def.package)?;
+    installed.then(|| match unpack::unpacked_from(root, package) {
+        Some(_) => InstallSource::Bundle,
+        None => InstallSource::Download,
+    })
+}
+
+fn bundle_info(resolved: &Resolved) -> BundleInfo {
+    let usable = resolved
+        .bundle
+        .as_ref()
+        .filter(|bundle| bundle.platform_supported());
+    let foreign = resolved
+        .bundle
+        .as_ref()
+        .filter(|bundle| !bundle.platform_supported())
+        .map(|bundle| {
+            format!(
+                "The LSP bundle is built for {}, not this computer.",
+                bundle.platform
+            )
+        });
+    BundleInfo {
+        present: usable.is_some(),
+        problem: resolved.bundle_problem.clone().or(foreign),
+        node_version: usable
+            .filter(|bundle| bundle.node_path().is_some())
+            .and_then(|bundle| bundle.node.as_ref().map(|node| node.version.clone())),
+        packs: usable.map_or(0, |bundle| bundle.packs.len()),
+    }
 }
 
 #[tauri::command]
 pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, String> {
     let resolved = resolve(&state).await;
-    let (node_label, node_problem, npm_ok) = match &resolved.node {
-        Ok(node) => (Some(node.label()), None, node.npm_cli().is_some()),
-        Err(err) => (None, Some(err.to_string()), false),
+    let (node_label, node_problem) = match &resolved.node {
+        Ok(node) => (Some(node.label()), None),
+        Err(err) => (None, Some(err.to_string())),
     };
     let servers = summaries()
         .into_iter()
@@ -193,15 +306,7 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
             let package = package_by_id(def.package)?;
             let installed = install::is_installed(&state.app_root, def, package);
             let live = state.lsp.status(def.id);
-            let blocked = if node_problem.is_some() {
-                node_problem.clone()
-            } else if !npm_ok {
-                Some("npm was not found next to Node.js. Repair the Node.js runtime.".to_string())
-            } else if live.state == ServerState::Installing {
-                Some("It is already installing.".to_string())
-            } else {
-                None
-            };
+            let blocked = install_blocked(&resolved, def, &live.state);
             let path = log_path(&state, def.id);
             Some(ServerInfo {
                 id: summary.id,
@@ -209,7 +314,10 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
                 languages: summary.languages,
                 note: summary.note,
                 contents: summary.contents,
+                runtime: summary.runtime,
                 installed,
+                bundled: bundled(&resolved, def),
+                install_source: install_source(&state.app_root, def, installed),
                 state: live.state,
                 workspace: live.workspace,
                 node: live.node,
@@ -229,18 +337,29 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
             .map(|path| path.display().to_string()),
         node: node_label,
         node_problem,
+        bundle: bundle_info(&resolved),
         verbose: state.lsp.verbose(),
         servers,
     })
 }
 
-/// Installs the server's package from its pinned lockfile. Only ever runs on the user's request.
+/// Makes the server ready: from the offline bundle when it carries it (no network), otherwise
+/// from npm with its pinned lockfile. Only ever runs on the user's request.
 #[tauri::command]
 pub async fn lsp_install(server: String, state: State<'_, AppState>) -> Result<(), String> {
     let def = server_by_id(&server).ok_or("Unknown language server.")?;
-    let node = resolve(&state).await.node.map_err(|err| err.to_string())?;
+    let resolved = resolve(&state).await;
     let manager: LspManager = state.lsp.clone();
     let root = state.app_root.clone();
+    let carried = bundled(&resolved, def);
+    if let Some(bundle) = resolved.bundle.filter(|_| carried) {
+        return tokio::task::spawn_blocking(move || manager.prepare_bundled(def, &root, &bundle))
+            .await
+            .map_err(|err| format!("Unpacking stopped unexpectedly: {err}"))?
+            .map(|_| ())
+            .map_err(|err| err.to_string());
+    }
+    let node = resolved.npm_node.map_err(|err| err.to_string())?;
     tokio::task::spawn_blocking(move || manager.install_package(def, &root, &node))
         .await
         .map_err(|err| format!("The installer stopped unexpectedly: {err}"))?
@@ -267,6 +386,31 @@ pub enum SyncOutcome {
     },
 }
 
+/// Unpacks `def`'s package from the bundle when the bundle carries it and it isn't
+/// installed yet (or came from another pack). Offline; a failure is the sync's answer.
+async fn prepare_from_bundle(
+    state: &AppState,
+    def: &'static ServerDef,
+    bundle: Option<Bundle>,
+) -> Result<(), SyncOutcome> {
+    let Some(bundle) = bundle else {
+        return Ok(());
+    };
+    let manager = state.lsp.clone();
+    let root = state.app_root.clone();
+    tokio::task::spawn_blocking(move || manager.prepare_bundled(def, &root, &bundle))
+        .await
+        .map_err(|err| SyncOutcome::Failed {
+            server: def.id,
+            message: format!("Unpacking stopped unexpectedly: {err}"),
+        })?
+        .map(|_| ())
+        .map_err(|err| SyncOutcome::Failed {
+            server: def.id,
+            message: err.to_string(),
+        })
+}
+
 /// Gives the server the editor's current text of `path` (starting the server if needed).
 #[tauri::command]
 pub async fn lsp_sync_document(
@@ -284,12 +428,18 @@ pub async fn lsp_sync_document(
         return Ok(SyncOutcome::OutsideWorkspace);
     }
     let package = package_by_id(def.package).ok_or("Unknown language server package.")?;
+    let resolved = resolve(&state).await;
+    if state.lsp.status(def.id).pid.is_none() {
+        if let Err(outcome) = prepare_from_bundle(&state, def, resolved.bundle.clone()).await {
+            return Ok(outcome);
+        }
+    }
     if !install::is_installed(&state.app_root, def, package) {
         return Ok(SyncOutcome::NotInstalled { server: def.id });
     }
-    let resolved = resolve(&state).await;
-    let Ok(node) = resolved.node else {
-        return Ok(SyncOutcome::NodeMissing);
+    let node = match (def.runtime, resolved.node) {
+        (Runtime::Node, Err(_)) => return Ok(SyncOutcome::NodeMissing),
+        (_, node) => node.ok(),
     };
     let context = StartContext {
         app_root: state.app_root.clone(),

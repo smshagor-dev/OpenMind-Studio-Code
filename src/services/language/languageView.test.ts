@@ -14,6 +14,9 @@ function server(overrides: Partial<LspServerInfo> = {}): LspServerInfo {
     note: null,
     contents: "typescript-language-server",
     installed: false,
+    runtime: "node",
+    bundled: false,
+    installSource: null,
     state: "stopped",
     workspace: null,
     node: null,
@@ -78,6 +81,16 @@ describe("lspLine", () => {
       "crashed",
     );
     expect(lspLine(builtin, []).detail).toContain("LSP not configured");
+  });
+
+  it("says a bundled server needs no download and is unpacked on first use", () => {
+    const line = lspLine(builtin, [server({ bundled: true })]);
+    expect(line.tone).toBe("ok");
+    expect(line.detail).toContain("Bundled with OpenMind");
+    expect(line.detail).toContain("offline");
+    expect(lspLine(builtin, [server({ bundled: true, state: "installing" })]).detail).toBe(
+      "Unpacking from the offline bundle…",
+    );
   });
 
   it("never claims a server OpenMind can't start, found or not", () => {

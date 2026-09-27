@@ -254,7 +254,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["yaml-language-server"],
         [],
-        [Hl, Format]
+        [Hl, Lsp, Format]
     ),
     lang!(
         "toml",
@@ -408,7 +408,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         ["cargo"],
         ["rust-analyzer"],
         ["cargo"],
-        [Hl, Format, Lint, Build, Test]
+        [Hl, Lsp, Format, Lint, Build, Test]
     ),
     lang!(
         "java",
@@ -529,7 +529,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["clangd"],
         ["gcc", "clang", "cmake", "make"],
-        [Hl, Format, Build]
+        [Hl, Lsp, Format, Build]
     ),
     lang!(
         "cpp",
@@ -544,7 +544,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["clangd"],
         ["gcc", "clang", "cmake", "make"],
-        [Hl, Format, Build]
+        [Hl, Lsp, Format, Build]
     ),
     // Shell / scripting
     lang!(
@@ -558,9 +558,9 @@ pub const LANGUAGES: &[LanguageDef] = &[
         Exact,
         [],
         [],
-        [],
+        ["bash-language-server"],
         ["bash"],
-        [Hl]
+        [Hl, Lsp]
     ),
     lang!(
         "powershell",
@@ -666,7 +666,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["docker-langserver"],
         ["docker"],
-        [Hl, Build]
+        [Hl, Lsp, Build]
     ),
     lang!(
         "dockercompose",
@@ -688,7 +688,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["yaml-language-server"],
         ["docker"],
-        [Hl, Build]
+        [Hl, Lsp, Build]
     ),
     lang!(
         "sql",
@@ -1018,20 +1018,23 @@ mod tests {
             .filter(|l| l.levels.contains(&Level::Lsp))
             .map(|l| l.id)
             .collect();
-        for expected in ["typescript", "python", "php", "json", "css", "html"] {
-            assert!(lsp.contains(&expected), "{expected}");
-        }
-        for not_yet in [
-            "rust",
-            "go",
-            "java",
-            "c",
-            "cpp",
-            "csharp",
-            "vue",
+        for expected in [
+            "typescript",
+            "python",
+            "php",
+            "json",
+            "css",
+            "html",
             "yaml",
             "dockerfile",
+            "shellscript",
+            "rust",
+            "c",
+            "cpp",
         ] {
+            assert!(lsp.contains(&expected), "{expected}");
+        }
+        for not_yet in ["go", "java", "csharp", "vue", "kotlin", "dart", "sql"] {
             assert!(!lsp.contains(&not_yet), "{not_yet} has no built-in server");
         }
         // The debugger supports Python and JavaScript only.

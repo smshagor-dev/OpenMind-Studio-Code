@@ -1,6 +1,7 @@
-//! Language server candidates per language. OpenMind starts only the servers it installs itself (TypeScript, Python,
-//! PHP, HTML, CSS, JSON); every other candidate is *looked for* so the status can say what is on the computer and what
-//! isn't — with the plain statement that OpenMind cannot start it yet. Nothing here launches or installs a server.
+//! Language server candidates per language. OpenMind starts only its own servers (TypeScript, Python, PHP, HTML, CSS,
+//! JSON, YAML, Bash, Dockerfile, Rust, C/C++ — see `openmind_lsp::registry`; all but PHP ship in the offline bundle);
+//! every other candidate is *looked for* so the status can say what is on the computer and what isn't — with the plain
+//! statement that OpenMind cannot start it yet. Nothing here launches or installs a server.
 
 use serde::Serialize;
 
@@ -15,6 +16,11 @@ pub fn builtin_server(tool_id: &str) -> Option<&'static str> {
         "vscode-html-language-server" => Some("html"),
         "vscode-css-language-server" => Some("css"),
         "vscode-json-language-server" => Some("json"),
+        "yaml-language-server" => Some("yaml"),
+        "bash-language-server" => Some("bash"),
+        "docker-langserver" => Some("dockerfile"),
+        "rust-analyzer" => Some("rust"),
+        "clangd" => Some("clangd"),
         _ => None,
     }
 }
@@ -24,7 +30,7 @@ pub fn builtin_server(tool_id: &str) -> Option<&'static str> {
 pub struct LspCandidate {
     pub tool: String,
     pub name: String,
-    /// OpenMind's own server id (`typescript`, `python`, `php`, `html`, `css`, `json`); the app adds its install/running state.
+    /// OpenMind's own server id (`typescript`, `python`, `rust`, ...); the app adds its install/running state.
     pub builtin: Option<String>,
     /// For a server OpenMind doesn't start: where the executable was found, if anywhere.
     pub found: Option<Found>,
@@ -40,7 +46,7 @@ pub fn candidates(server_ids: &[&str], env: &ToolEnv) -> Vec<LspCandidate> {
             let builtin = builtin_server(id).map(str::to_string);
             let note = match (&builtin, &status.found) {
                 (Some(_), _) => {
-                    "OpenMind installs and starts this server from Language Tools.".to_string()
+                    "OpenMind starts this server itself (from its offline bundle, or installed from Language Tools).".to_string()
                 }
                 (None, Some(_)) => "Found on this computer, but OpenMind can't start this language server yet, so there are no completions or diagnostics from it.".to_string(),
                 (None, None) => format!(
@@ -82,27 +88,36 @@ mod tests {
         let dir = tempfile::tempdir().expect("tmp");
         std::fs::write(dir.path().join("gopls"), "").expect("file");
         let e = env(dir.path());
-        let list = candidates(
-            &["typescript-language-server", "gopls", "rust-analyzer"],
-            &e,
-        );
+        let list = candidates(&["typescript-language-server", "gopls", "jdtls"], &e);
         assert_eq!(list[0].builtin.as_deref(), Some("typescript"));
         assert!(list[0].found.is_none());
         assert!(list[1].found.is_some());
         assert!(list[1].note.contains("can't start"));
         assert!(list[2].found.is_none());
-        assert!(list[2].note.contains("rustup") && list[2].note.contains("can't start"));
+        assert!(list[2].note.contains("Eclipse") && list[2].note.contains("can't start"));
     }
 
     #[test]
-    fn only_six_builtin_servers_exist() {
+    fn the_builtin_servers_are_exactly_openmind_s_own() {
         let all: std::collections::BTreeSet<&str> = crate::tools::TOOLS
             .iter()
             .filter_map(|t| builtin_server(t.id))
             .collect();
         assert_eq!(
             all.into_iter().collect::<Vec<_>>(),
-            ["css", "html", "json", "php", "python", "typescript"]
+            [
+                "bash",
+                "clangd",
+                "css",
+                "dockerfile",
+                "html",
+                "json",
+                "php",
+                "python",
+                "rust",
+                "typescript",
+                "yaml"
+            ]
         );
     }
 }

@@ -11,6 +11,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::bundle::Bundle;
 use crate::docs::DocumentSync;
 use crate::error::LspError;
 use crate::install;
@@ -21,8 +22,9 @@ use crate::protocol::{
     initialize_params, is_allowed_request, parse_capabilities, parse_diagnostics, Capabilities,
     PublishedDiagnostics,
 };
-use crate::registry::{package_by_id, ServerDef, SERVERS};
+use crate::registry::{package_by_id, Runtime, ServerDef, PACKAGES, SERVERS};
 use crate::session::{Session, SessionEvents, Workspace};
+use crate::unpack;
 use crate::uri::path_to_uri;
 
 const INITIALIZE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -49,7 +51,8 @@ pub trait LspEvents: Send + Sync + 'static {
 pub struct StartContext {
     pub app_root: PathBuf,
     pub workspace: PathBuf,
-    pub node: NodeExecutable,
+    /// The Node.js for Node-based servers (`None`: only native servers can start).
+    pub node: Option<NodeExecutable>,
     /// The Runtime Manager's folders, put first on the *server's* PATH only.
     pub path_prepend: Vec<PathBuf>,
     pub vars: Vec<(String, String)>,
@@ -98,6 +101,8 @@ struct Inner {
     slots: Mutex<HashMap<&'static str, Slot>>,
     /// One start/stop at a time per server, so concurrent first opens start it once.
     gates: HashMap<&'static str, Mutex<()>>,
+    /// One unpack at a time per package (JSON, CSS and HTML share one).
+    unpack_gates: HashMap<&'static str, Mutex<()>>,
     events: Arc<dyn LspEvents>,
     verbose: AtomicBool,
 }
@@ -131,10 +136,15 @@ impl LspManager {
             .iter()
             .map(|server| (server.id, Mutex::new(())))
             .collect();
+        let unpack_gates = PACKAGES
+            .iter()
+            .map(|package| (package.id, Mutex::new(())))
+            .collect();
         Self {
             inner: Arc::new(Inner {
                 slots: Mutex::new(slots),
                 gates,
+                unpack_gates,
                 events,
                 verbose: AtomicBool::new(false),
             }),
@@ -240,20 +250,34 @@ impl LspManager {
         let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
         let entry =
             install::entry_path(&context.app_root, def, package).ok_or(LspError::NotInstalled)?;
-        let mut args = vec![entry.display().to_string()];
+        let (program, mut args, mut path_prepend, runtime_label) = match def.runtime {
+            Runtime::Node => {
+                let node = context.node.as_ref().ok_or(LspError::NodeMissing)?;
+                (
+                    node.path.clone(),
+                    vec![entry.display().to_string()],
+                    node.path
+                        .parent()
+                        .map(|dir| vec![dir.to_path_buf()])
+                        .unwrap_or_default(),
+                    node.label(),
+                )
+            }
+            Runtime::Native => (entry, Vec::new(), Vec::new(), "native program".to_string()),
+        };
         args.extend(def.args.iter().map(|arg| (*arg).to_string()));
-        let mut path_prepend: Vec<PathBuf> = context
-            .node
-            .path
-            .parent()
-            .map(|dir| vec![dir.to_path_buf()])
-            .unwrap_or_default();
         path_prepend.extend(context.path_prepend.iter().cloned());
+        let mut vars = context.vars.clone();
+        vars.extend(
+            def.env
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string())),
+        );
         let spawned = spawn(&SpawnSpec {
-            program: context.node.path.clone(),
+            program,
             args,
             cwd: context.workspace.clone(),
-            vars: context.vars.clone(),
+            vars,
             path_prepend,
         })?;
         let pid = spawned.process.id();
@@ -284,7 +308,12 @@ impl LspManager {
         let mut process = spawned.process;
         let init = session.request(
             "initialize",
-            &initialize_params(std::process::id(), &root_uri, &workspace_name),
+            &initialize_params(
+                std::process::id(),
+                &root_uri,
+                &workspace_name,
+                def.init_options,
+            ),
             INITIALIZE_TIMEOUT,
         );
         let capabilities = match init {
@@ -305,13 +334,16 @@ impl LspManager {
                 "the server closed right after initialize".into(),
             ));
         }
+        for method in def.after_initialized {
+            let _ = session.notify(method, &Value::Null);
+        }
         Ok(Arc::new(Running {
             session,
             process: Mutex::new(process),
             docs: Mutex::new(DocumentSync::default()),
             capabilities,
             workspace: context.workspace.clone(),
-            node_label: context.node.label(),
+            node_label: runtime_label,
             pid,
             stopping,
         }))
@@ -400,6 +432,69 @@ impl LspManager {
             .values()
             .filter(|slot| slot.running.is_some())
             .count()
+    }
+
+    /// Makes `def`'s package ready from the offline bundle when it isn't installed
+    /// (or was unpacked from a different pack). Returns whether it unpacked anything.
+    /// Every server of the package shows "installing" meanwhile.
+    pub fn prepare_bundled(
+        &self,
+        def: &'static ServerDef,
+        app_root: &std::path::Path,
+        bundle: &Bundle,
+    ) -> Result<bool, LspError> {
+        let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
+        let Some(pack) = bundle.pack_for(package) else {
+            return Ok(false);
+        };
+        let gate = self
+            .inner
+            .unpack_gates
+            .get(package.id)
+            .ok_or(LspError::Unsupported)?;
+        let _guard = lock(gate);
+        if install::is_installed(app_root, def, package)
+            && unpack::is_current(app_root, package, pack)
+        {
+            return Ok(false);
+        }
+        if self.running_of(def.id).is_some() {
+            // Never replace the files of a server that is running.
+            return Ok(false);
+        }
+        let members: Vec<&'static str> = SERVERS
+            .iter()
+            .filter(|server| server.package == package.id)
+            .map(|server| server.id)
+            .collect();
+        for id in &members {
+            self.set_state(id, ServerState::Installing);
+        }
+        self.log(
+            def.id,
+            LogLevel::Info,
+            &format!("Unpacking the bundled {} (offline)…", package.contents),
+        );
+        let outcome = unpack::unpack(app_root, bundle, pack, package);
+        let next = match &outcome {
+            Ok(()) => ServerState::Stopped,
+            Err(err) => ServerState::Error {
+                message: err.to_string(),
+            },
+        };
+        for id in &members {
+            self.set_state(id, next.clone());
+        }
+        match outcome {
+            Ok(()) => {
+                self.log(def.id, LogLevel::Info, "Ready.");
+                Ok(true)
+            }
+            Err(err) => {
+                self.log(def.id, LogLevel::Error, &err.to_string());
+                Err(err)
+            }
+        }
     }
 
     /// Installs the package `def` belongs to. Every server in it shows "installing" meanwhile.
@@ -552,10 +647,10 @@ mod tests {
         StartContext {
             app_root: root.to_path_buf(),
             workspace: root.join("My Site"),
-            node: NodeExecutable {
+            node: Some(NodeExecutable {
                 path: root.join("node.exe"),
                 source: crate::node::NodeSource::Portable,
-            },
+            }),
             path_prepend: vec![],
             vars: vec![],
         }
@@ -643,12 +738,70 @@ mod tests {
         assert!(manager.verbose());
     }
 
+    /// A bundle in `root/lsp` whose `yaml` pack holds `files`.
+    fn yaml_bundle(root: &std::path::Path, files: &[&str]) -> Bundle {
+        let src = root.join("pack source");
+        for name in files {
+            let path = src.join(name);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, "// server").expect("write");
+        }
+        let packs = crate::bundle::bundle_dir(root).join("packs");
+        std::fs::create_dir_all(&packs).expect("mkdir");
+        let zip = packs.join("yaml-1.zip");
+        crate::pack::create_pack(&src, &zip).expect("pack");
+        let json = format!(
+            r#"{{"format":"openmind-lsp-bundle","version":1,"platform":"windows-x64",
+            "packs":[{{"package":"yaml","revision":"1","contents":"yaml","file":"packs/yaml-1.zip",
+            "sha256":"{}","size":{}}}]}}"#,
+            unpack::sha256_file(&zip).expect("sha"),
+            std::fs::metadata(&zip).expect("meta").len()
+        );
+        std::fs::write(crate::bundle::bundle_dir(root).join("bundle.json"), json).expect("json");
+        crate::bundle::load(root).expect("ok").expect("bundle")
+    }
+
+    #[test]
+    fn a_bundled_server_is_unpacked_once_and_a_bad_pack_is_an_error_state() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let def = server_by_id("yaml").expect("server");
+        let events = Arc::new(Recorder::default());
+        let manager = LspManager::new(events.clone());
+        let bundle = yaml_bundle(root.path(), &[def.entry]);
+        if !bundle.platform_supported() {
+            return; // The bundle is Windows x64 only.
+        }
+        assert!(manager
+            .prepare_bundled(def, root.path(), &bundle)
+            .expect("unpack"));
+        assert_eq!(manager.status("yaml").state, ServerState::Stopped);
+        assert!(!manager
+            .prepare_bundled(def, root.path(), &bundle)
+            .expect("ready"));
+        assert!(lock(&events.logs)
+            .iter()
+            .any(|(_, _, text)| text.contains("offline")));
+        // A server whose package the bundle doesn't carry is left alone.
+        let css = server_by_id("css").expect("css");
+        assert!(!manager
+            .prepare_bundled(css, root.path(), &bundle)
+            .expect("no pack"));
+
+        let other = tempfile::tempdir().expect("tempdir");
+        let broken = yaml_bundle(other.path(), &["readme.txt"]);
+        assert!(manager.prepare_bundled(def, other.path(), &broken).is_err());
+        assert!(matches!(
+            manager.status("yaml").state,
+            ServerState::Error { .. }
+        ));
+    }
+
     #[test]
     fn installing_without_npm_is_an_error_state_and_can_be_retried() {
         let root = tempfile::tempdir().expect("tempdir");
         let def = server_by_id("php").expect("server");
         let manager = LspManager::new(Arc::new(Recorder::default()));
-        let node = context(root.path()).node;
+        let node = context(root.path()).node.expect("node");
         assert!(manager.install_package(def, root.path(), &node).is_err());
         assert!(matches!(
             manager.status("php").state,

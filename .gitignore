@@ -44,4 +44,8 @@ pnpm-debug.log*
 
 # Developer-populated tool bundle copied into the portable package (see docs/toolchains.md)
 /tools-bundle/
+# The offline language server bundle (pnpm lsp:bundle); only its README is committed
+/lsp-bundle/*
+!/lsp-bundle/README.txt
+/.lsp-bundle-cache/
 /release/
