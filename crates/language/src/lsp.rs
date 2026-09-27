@@ -78,6 +78,7 @@ mod tests {
             bundled_dirs: vec![],
             portable_dirs: vec![],
             system_dirs: vec![dir.to_path_buf()],
+            launchers: Default::default(),
             pathext: vec![],
             vars: HashMap::new(),
         }

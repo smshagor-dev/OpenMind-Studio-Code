@@ -265,11 +265,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "#",
         "ini",
         Approx,
+        ["prettier"],
         [],
         [],
         [],
-        [],
-        [Hl]
+        [Hl, Format]
     ),
     lang!(
         "markdown",
@@ -298,11 +298,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "<!-- -->",
         "xml",
         Exact,
+        ["prettier"],
         [],
         [],
         [],
-        [],
-        [Hl]
+        [Hl, Format]
     ),
     lang!(
         "vue",
@@ -374,7 +374,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "//",
         "php",
         Exact,
-        ["pint", "php-cs-fixer"],
+        ["pint", "php-cs-fixer", "prettier"],
         [],
         ["intelephense", "phpactor"],
         ["php", "composer"],
@@ -419,11 +419,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "//",
         "java",
         Exact,
-        [],
+        ["prettier", "clang-format"],
         [],
         ["jdtls"],
         ["java", "javac", "mvn", "gradle"],
-        [Hl, Build, Test]
+        [Hl, Format, Build, Test]
     ),
     lang!(
         "kotlin",
@@ -449,7 +449,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "//",
         "csharp",
         Exact,
-        ["dotnet"],
+        ["dotnet", "clang-format"],
         [],
         ["omnisharp"],
         ["dotnet"],
@@ -556,11 +556,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "#",
         "shell",
         Exact,
-        [],
+        ["prettier"],
         [],
         ["bash-language-server"],
         ["bash"],
-        [Hl, Lsp]
+        [Hl, Lsp, Format]
     ),
     lang!(
         "powershell",
@@ -601,11 +601,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "--",
         "lua",
         Exact,
+        ["stylua"],
         [],
         [],
         [],
-        [],
-        [Hl]
+        [Hl, Format]
     ),
     lang!(
         "perl",
@@ -662,11 +662,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "#",
         "dockerfile",
         Exact,
-        [],
+        ["prettier"],
         [],
         ["docker-langserver"],
         ["docker"],
-        [Hl, Lsp, Build]
+        [Hl, Lsp, Format, Build]
     ),
     lang!(
         "dockercompose",
@@ -699,11 +699,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "--",
         "sql",
         Exact,
-        [],
+        ["prettier"],
         [],
         ["sql-language-server"],
         [],
-        [Hl]
+        [Hl, Format]
     ),
     lang!(
         "prisma",
@@ -744,11 +744,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "#",
         "ini",
         Approx,
+        ["prettier"],
         [],
         [],
         [],
-        [],
-        [Hl]
+        [Hl, Format]
     ),
     lang!(
         "ini",
@@ -774,11 +774,11 @@ pub const LANGUAGES: &[LanguageDef] = &[
         "#",
         "ini",
         Approx,
+        ["prettier"],
         [],
         [],
         [],
-        [],
-        [Hl]
+        [Hl, Format]
     ),
     lang!(
         "gradle",

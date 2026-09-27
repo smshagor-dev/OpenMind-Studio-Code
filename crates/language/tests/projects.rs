@@ -50,6 +50,7 @@ fn env(os: Os, tools: &[&str]) -> (tempfile::TempDir, ToolEnv) {
         bundled_dirs: vec![],
         portable_dirs: vec![],
         system_dirs: vec![bin.path().to_path_buf()],
+        launchers: Default::default(),
         pathext: if os == Os::Windows {
             vec![".exe".into()]
         } else {

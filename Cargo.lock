@@ -2915,6 +2915,7 @@ name = "openmind-format"
 version = "0.1.0"
 dependencies = [
  "openmind-language",
+ "openmind-lsp",
  "openmind-process",
  "serde",
  "tempfile",

@@ -7,7 +7,10 @@
     "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip",
     "sha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
     "license": "MIT (Node.js; bundled third-party licences are in LICENSE)",
-    "keep": ["node-v24.21.0-win-x64/node.exe", "node-v24.21.0-win-x64/LICENSE"]
+    "keep": [
+      "node-v24.21.0-win-x64/node.exe",
+      "node-v24.21.0-win-x64/LICENSE"
+    ]
   },
   "native": [
     {
@@ -18,7 +21,9 @@
       "sha256": "f62a18aad35568fd9205006a62f97613eac8c4f2ec5fe43c830dde09684e5e6f",
       "license": "MIT OR Apache-2.0 (https://github.com/rust-lang/rust-analyzer)",
       "stripComponents": 0,
-      "skip": ["rust_analyzer.pdb"]
+      "skip": [
+        "rust_analyzer.pdb"
+      ]
     },
     {
       "package": "clangd",
@@ -28,6 +33,55 @@
       "sha256": "ce54f16e0b4fd76d450eeda9664420b195360b73febcfe40e661108fa57f2ce1",
       "license": "Apache-2.0 WITH LLVM-exception (https://llvm.org/LICENSE.txt)",
       "stripComponents": 1,
+      "skip": []
+    },
+    {
+      "package": "ruff",
+      "revision": "1",
+      "contents": "Ruff 0.16.9 (Python formatter)",
+      "url": "https://github.com/astral-sh/ruff/releases/download/0.16.9/ruff-x86_64-pc-windows-msvc.zip",
+      "sha256": "fe5eb06b2f185b0d8035e17df9df0c831e59b3c98f11170206500650218a0b76",
+      "license": "MIT (https://github.com/astral-sh/ruff)",
+      "stripComponents": 0,
+      "skip": []
+    },
+    {
+      "package": "gofmt",
+      "revision": "1",
+      "contents": "gofmt from Go 1.27.1",
+      "url": "https://go.dev/dl/go1.27.1.windows-amd64.zip",
+      "sha256": "a3911b5e0e1b1053f25ed0675f4c1c6aad1e2bfcf253df2b9be4caabd2edd95d",
+      "license": "BSD-3-Clause (Go, https://go.dev/LICENSE)",
+      "stripComponents": 1,
+      "skip": [],
+      "only": [
+        "bin/gofmt.exe",
+        "LICENSE"
+      ]
+    },
+    {
+      "package": "clang-format",
+      "revision": "1",
+      "contents": "clang-format 23.1.1",
+      "url": "https://files.pythonhosted.org/packages/4e/98/bcf1d46d62b63f92e8ee513dc2c3caa5c3168206af3785ada76ce994c96b/clang_format-23.1.1-py2.py3-none-win_amd64.whl",
+      "sha256": "eaf3075d7e2bf477c150c6d53bfff040eca851365c0429a06b9bec0de65186d5",
+      "license": "Apache-2.0 WITH LLVM-exception (https://llvm.org/LICENSE.txt)",
+      "stripComponents": 0,
+      "skip": [],
+      "only": [
+        "clang_format/data/bin/clang-format.exe",
+        "clang_format-23.1.1.dist-info/licenses/LICENSE.md",
+        "clang_format-23.1.1.dist-info/licenses/COPYING.md"
+      ]
+    },
+    {
+      "package": "stylua",
+      "revision": "1",
+      "contents": "StyLua 2.5.2 (Lua formatter)",
+      "url": "https://github.com/JohnnyMorganz/StyLua/releases/download/v2.5.2/stylua-windows-x86_64.zip",
+      "sha256": "e77d0ea1226b8b389b43f702240091249a96eea25857281f90ea24d0eb9eb969",
+      "license": "MPL-2.0 (https://github.com/JohnnyMorganz/StyLua)",
+      "stripComponents": 0,
       "skip": []
     }
   ]

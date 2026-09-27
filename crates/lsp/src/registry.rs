@@ -118,6 +118,101 @@ pub const PACKAGES: &[Package] = &[
         source: Source::Native,
         redistributable: true,
     },
+    // Formatters (Milestone 18): they ride in the same offline bundle and unpack the same way.
+    npm!(
+        "prettier",
+        "1",
+        "Prettier 3.9.9 with plugins for PHP, shell/Dockerfile, XML, SQL, TOML, Java, Svelte and Astro",
+        true
+    ),
+    Package {
+        id: "ruff",
+        revision: "1",
+        contents: "Ruff 0.16.9 (Python formatter)",
+        source: Source::Native,
+        redistributable: true,
+    },
+    Package {
+        id: "gofmt",
+        revision: "1",
+        contents: "gofmt from Go 1.27.1",
+        source: Source::Native,
+        redistributable: true,
+    },
+    Package {
+        id: "clang-format",
+        revision: "1",
+        contents: "clang-format 23.1.1",
+        source: Source::Native,
+        redistributable: true,
+    },
+    Package {
+        id: "stylua",
+        revision: "1",
+        contents: "StyLua 2.5.2 (Lua formatter)",
+        source: Source::Native,
+        redistributable: true,
+    },
+];
+
+/// A formatter (or other command-line tool) the offline bundle carries. `tool` is the
+/// `openmind-language` tool id it stands in for, so the formatter lookup finds it as a bundled tool.
+#[derive(Debug, Clone, Copy)]
+pub struct BundledTool {
+    pub tool: &'static str,
+    pub package: &'static str,
+    /// The program (`Native`) or the script Node runs (`Node`), relative to the unpacked package folder.
+    pub entry: &'static str,
+    pub runtime: Runtime,
+    /// Plugin files, relative to the package folder, passed as `--plugin=<absolute path>` (Prettier).
+    pub plugins: &'static [&'static str],
+}
+
+pub const BUNDLED_TOOLS: &[BundledTool] = &[
+    BundledTool {
+        tool: "prettier",
+        package: "prettier",
+        entry: "node_modules/prettier/bin/prettier.cjs",
+        runtime: Runtime::Node,
+        plugins: &[
+            "node_modules/@prettier/plugin-php/src/index.mjs",
+            "node_modules/@prettier/plugin-xml/src/plugin.js",
+            "node_modules/prettier-plugin-sh/lib/index.cjs",
+            "node_modules/prettier-plugin-sql/lib/index.cjs",
+            "node_modules/prettier-plugin-toml/lib/index.cjs",
+            "node_modules/prettier-plugin-java/dist/index.mjs",
+            "node_modules/prettier-plugin-svelte/plugin.js",
+            "node_modules/prettier-plugin-astro/dist/index.js",
+        ],
+    },
+    BundledTool {
+        tool: "ruff",
+        package: "ruff",
+        entry: "ruff.exe",
+        runtime: Runtime::Native,
+        plugins: &[],
+    },
+    BundledTool {
+        tool: "gofmt",
+        package: "gofmt",
+        entry: "bin/gofmt.exe",
+        runtime: Runtime::Native,
+        plugins: &[],
+    },
+    BundledTool {
+        tool: "clang-format",
+        package: "clang-format",
+        entry: "clang_format/data/bin/clang-format.exe",
+        runtime: Runtime::Native,
+        plugins: &[],
+    },
+    BundledTool {
+        tool: "stylua",
+        package: "stylua",
+        entry: "stylua.exe",
+        runtime: Runtime::Native,
+        plugins: &[],
+    },
 ];
 
 pub const SERVERS: &[ServerDef] = &[
@@ -392,6 +487,29 @@ mod tests {
             {
                 assert!(package_lock.contains("\"integrity\""), "{}", package.id);
                 assert!(package_json.contains("\"dependencies\""));
+            }
+        }
+    }
+
+    #[test]
+    fn every_bundled_tool_has_its_package_and_a_safe_entry() {
+        for tool in BUNDLED_TOOLS {
+            let package = package_by_id(tool.package).expect("package");
+            assert!(package.redistributable, "{}", tool.tool);
+            assert!(
+                !SERVERS.iter().any(|server| server.package == tool.package),
+                "{}: a formatter package holds no language server",
+                tool.tool
+            );
+            for path in std::iter::once(tool.entry).chain(tool.plugins.iter().copied()) {
+                assert!(!path.contains("..") && !path.starts_with('/'), "{path}");
+            }
+            match (tool.runtime, package.source) {
+                (Runtime::Node, Source::Npm { .. }) => {
+                    assert!(tool.entry.starts_with("node_modules/"))
+                }
+                (Runtime::Native, Source::Native) => assert!(tool.entry.ends_with(".exe")),
+                _ => panic!("{}: runtime and package source disagree", tool.tool),
             }
         }
     }

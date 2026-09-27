@@ -2099,7 +2099,28 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   installed — needs admin), portable ZIP **120 MB**. **Limits**: Windows x64 only (32-bit/ARM64 accepted but untested); the NSIS uninstaller keeps
   `language-servers\` (~317 MB when all servers were used); the per-machine MSI can't unpack into Program Files without admin; rust-analyzer runs the machine's
   cargo (creates `target/`/`Cargo.lock`, offline); no server auto-update. Left on disk: `E:\omlsp17` (test copies, installer test folder, portable output).
-- [ ] Milestone 18 — to be scoped (icon/product themes from extensions, profile-aware keybindings, signing with a real certificate, auto-update).
+- [x] **Milestone 18** — Bundled offline formatters (`feat: bundle offline formatters for every supported language`). A user asked for a formatter that
+  works in every language with nothing to install ("No formatter available for HTML. Prettier not found." was the trigger). The offline bundle (`lsp/`)
+  now also carries **Prettier 3.9.9 with plugins** (PHP, shell + Dockerfile + `.properties` + `.env`, XML, SQL, TOML, Java, Svelte, Astro — plus
+  its own HTML/CSS/JS/TS/JSON/Markdown/YAML/GraphQL/Vue), **Ruff 0.16.9** (Python), **gofmt** (only `gofmt.exe` from Go 1.27.1), **clang-format
+  23.1.1** (from the official PyPI wheel; C/C++/Objective-C/C#, Java after Prettier) and **StyLua 2.5.2** (Lua), each SHA256-pinned in
+  `bundle-sources.json` (new native option `only`: keep just those files) or by the Prettier lockfile. `openmind-lsp`: formatter `PACKAGES`,
+  `registry::BUNDLED_TOOLS` (tool id, package, entry, runtime, Prettier's plugin files), `tools.rs` (`ensure_unpacked` — all formatter packs at once,
+  process-wide gate — and `ready_tools`: a native tool's folder, or Prettier's launcher `node <prettier.cjs> --plugin=<absolute path>...`; no Node,
+  no Prettier), unpack/`bundle_tool` also check tool entries. `openmind-language`: `ToolEnv.launchers` (tool id -> program + leading args, looked at
+  right after the project's own copy), `Found.args` + `Found::command()`, StyLua tool + recipe, formatters added for PHP, shell, Dockerfile, XML, SQL,
+  TOML, Java, C#, Lua, `.properties`, `.env` (with the Format level). `openmind-format`: a launcher is named after its script in messages, the shown path
+  is the script. App: `commands::language::tool_env` adds the unpacked bundle tools (after the user's `tools/` packs); `commands::format::prepare` first
+  calls `unpack_offline_formatters` (so the first format/format status after install unpacks, offline, ~a few seconds; nothing at launch). Prettier and
+  Ruff left the `tools/` catalog (they would show "Missing"). Order stays: user default > project's own tool > **bundled** > built-in JSON > portable >
+  system. **Not bundled** (need a toolchain): rustfmt, `dotnet format`, ktlint, `dart format`, Ruby, PowerShell. Sizes: formatter packs +42 MB (bundle
+  209 MB), unpacked 177 MB. Tests: `crates/format/tests/bundled_formatters.rs` (ignored; 21 files — HTML, CSS, TS, TSX, JSON, Markdown, YAML, PHP,
+  shell, Dockerfile, XML, SQL, TOML, Java, Svelte, Python, Go, C, C++, C#, Lua — each formatted by a *bundled* tool with an empty system PATH), unit tests
+  for the launcher order, ready tools, labels, registry. Verified by hand (debug build, fresh copy `E:\omfmt18`, workspace with a space): nothing
+  unpacked at launch; Edit > Format Document formatted HTML ("HTML — Prettier (bundled with OpenMind)"), PHP, Python (Ruff), Go (gofmt), Lua (StyLua),
+  SQL, shell and C++ (clang-format); no formatter process stayed, no connection from the app's processes; close left 0 processes. Rust 927 passed,
+  frontend 1590. Built on branch `milestone-18` in the clean worktree `E:\wt-release`.
+- [ ] Milestone 19 — to be scoped (icon/product themes from extensions, profile-aware keybindings, signing with a real certificate, auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.
