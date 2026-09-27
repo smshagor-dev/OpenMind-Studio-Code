@@ -3,6 +3,7 @@
 //! trigram full-text index, symbols), which answers without touching the workspace.
 
 pub mod error;
+pub mod find;
 pub mod index;
 pub mod matcher;
 pub mod query;

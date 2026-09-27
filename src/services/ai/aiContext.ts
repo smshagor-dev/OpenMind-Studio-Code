@@ -102,5 +102,7 @@ export function previewText(doc: FilePreviewDoc): PreviewText {
       return { text: null, reason: "Spreadsheet previews are not summarized." };
     case "message":
       return { text: null, reason: "This preview has no text to summarize." };
+    case "virtualText":
+      return { text: model.text, reason: null };
   }
 }

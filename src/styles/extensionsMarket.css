@@ -568,3 +568,24 @@
     flex-basis: auto;
   }
 }
+
+/* Milestone 18: installed-extension update check. */
+.ext-updates {
+  padding: 2px 12px 6px 20px;
+  font-size: 12px;
+}
+
+.ext-updates__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ext-updates li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 2px 0;
+}

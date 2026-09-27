@@ -73,12 +73,13 @@ function rig(installed: InstalledExtension[] = [tasksExtension()], folder = fals
   });
   const extReadIcon = vi.fn().mockResolvedValue("data:image/svg+xml;base64,PHN2Zy8+");
   const activateFor = vi.fn().mockResolvedValue([]);
+  const hostRequest = vi.fn().mockResolvedValue({ id: "openmind-samples.tasks#wvv-1" });
   const run = vi.fn();
   const errors: string[] = [];
   const views = new ExtensionViewsService({
     ipc: { extHostRequest, extReadIcon },
     registry: { all: () => installed, subscribe: () => () => undefined },
-    host: { activateFor },
+    host: { activateFor, request: hostRequest },
     run,
     onError: (message) => errors.push(message),
     context: () => ({
@@ -86,7 +87,7 @@ function rig(installed: InstalledExtension[] = [tasksExtension()], folder = fals
       workspaceFolderCount: folder ? 1 : 0,
     }),
   });
-  return { views, extHostRequest, extReadIcon, activateFor, run, errors, tree };
+  return { views, extHostRequest, extReadIcon, activateFor, hostRequest, run, errors, tree };
 }
 
 const KEY = containerKey("openmind-samples.tasks", "tasks");
@@ -124,11 +125,14 @@ describe("ExtensionViewsService", () => {
     expect(extReadIcon).toHaveBeenCalledTimes(1);
   });
 
-  it("showing a container wakes its tree views (onView) and loads them once a provider exists", async () => {
-    const { views, activateFor, extHostRequest } = rig();
+  it("showing a container wakes its views (onView) and loads them once a provider exists", async () => {
+    const { views, activateFor, extHostRequest, hostRequest } = rig();
     await views.show(KEY);
     expect(activateFor).toHaveBeenCalledWith({ kind: "view", view: "tasks.list" });
-    expect(activateFor).toHaveBeenCalledTimes(1); // the webview view is not activated
+    expect(activateFor).toHaveBeenCalledWith({ kind: "view", view: "tasks.board" });
+    // The webview view's provider fills it only now that it is shown (Milestone 18).
+    expect(hostRequest).toHaveBeenCalledWith("host/resolveWebviewView", { view: "tasks.board" });
+    expect(views.view("tasks.board").registered).toBe(true);
     expect(views.view("tasks.list").registered).toBe(false);
 
     views.handleEvent("views/registered", { view: "tasks.list" });

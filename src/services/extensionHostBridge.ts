@@ -1,5 +1,7 @@
 import type { ExtensionPromptService } from "./extensionPromptService";
 import type { ExtensionEditorService } from "./extensionEditorService";
+import type { ExtensionTaskService } from "./extensionTasks";
+import type { ExtensionTerminalService } from "./extensionTerminals";
 import type { OutputService } from "./outputService";
 
 /** The document as the host wants it (0-based lines are the host's business, not part of this). */
@@ -11,19 +13,34 @@ export interface HostDocument {
   isDirty: boolean;
 }
 
-/** A language feature an extension registered (completion, hover, definition). */
+/** A language feature an extension registered (completion, hover, definition, formatting). */
 export interface ProviderRegistration {
   handle: string;
-  kind: "completion" | "hover" | "definition";
+  kind: "completion" | "hover" | "definition" | "formatting" | "rangeFormatting";
   extension: string;
   selector: { language?: string; scheme?: string; pattern?: string }[];
   triggerCharacters?: string[];
+  /** The extension's name, for a formatter ("Format Document With..."). */
+  displayName?: string;
 }
 
 export type ProviderInvoke = (payload: {
   path: string;
-  position: { line: number; character: number };
+  position?: { line: number; character: number };
+  range?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+  options?: { tabSize: number; insertSpaces: boolean };
 }) => Promise<unknown>;
+
+/** A custom-scheme document an extension opens (`window.showTextDocument`, read-only in the app). */
+export interface VirtualDocumentRequest {
+  extension: string;
+  uri: string;
+  scheme: string;
+  path: string;
+  text: string;
+  languageId: string;
+  readonly: boolean;
+}
 
 /** A problem an extension reports for a file (host coordinates: 0-based). */
 export interface HostDiagnostic {
@@ -59,6 +76,19 @@ export interface BridgeDeps {
   onStatusBarEvent?: (method: string, params: Record<string, unknown>) => void;
   /** `webview/*` notifications (panels), and `webview/reset` when the host went away. */
   onWebviewEvent?: (method: string, params: Record<string, unknown>) => void;
+  /** Extension terminals (`terminal/*`, Milestone 18). */
+  terminals?: ExtensionTerminalService;
+  /** Extension tasks (`tasks/execute`, `tasks/terminate`). */
+  tasks?: ExtensionTaskService;
+  /** Opens a file in a tab (`window.showTextDocument`). */
+  showTextDocument?: (path: string, preserveFocus: boolean) => Promise<void>;
+  /** Opens a custom-scheme document read-only in a tab. */
+  showVirtualDocument?: (request: VirtualDocumentRequest) => Promise<void>;
+  /** Saves an open document / every open document (`TextDocument.save`, `workspace.saveAll`). */
+  saveDocument?: (path: string) => Promise<boolean>;
+  saveAll?: () => Promise<boolean>;
+  /** A document formatting provider (offered by the formatter, never used by itself). */
+  registerFormatter?: (registration: ProviderRegistration, invoke: ProviderInvoke) => () => void;
 }
 
 /** Every channel an extension creates shows up under this suffix when it would clash with a built-in one. */
@@ -102,7 +132,12 @@ export class HostBridge {
   private readonly hostCommands = new Set<string>();
   private readonly providers = new Map<string, () => void>();
 
-  constructor(private readonly deps: BridgeDeps) {}
+  constructor(private deps: BridgeDeps) {}
+
+  /** Adds the services built after the bridge (terminals, tasks, documents, formatters: Milestone 18). */
+  connect(extra: Partial<BridgeDeps>): void {
+    this.deps = { ...this.deps, ...extra };
+  }
 
   registeredCommands(): ReadonlySet<string> {
     return this.hostCommands;
@@ -156,6 +191,30 @@ export class HostBridge {
         return this.deps.runCommand(text(p.command), Array.isArray(p.args) ? p.args : []);
       case "commands/getCommands":
         return this.deps.knownCommands();
+      case "terminal/create":
+        return this.need(this.deps.terminals, "Terminals").create(p);
+      case "terminal/sendText":
+        return this.need(this.deps.terminals, "Terminals").sendText(p);
+      case "tasks/execute":
+        return this.need(this.deps.tasks, "Tasks").execute(p);
+      case "ui/showTextDocument":
+        await this.need(this.deps.showTextDocument, "Opening documents")(text(p.path), p.preserveFocus === true);
+        return { ok: true };
+      case "ui/showVirtualDocument":
+        await this.need(this.deps.showVirtualDocument, "Opening documents")({
+          extension: text(p.extension),
+          uri: text(p.uri),
+          scheme: text(p.scheme),
+          path: text(p.path),
+          text: text(p.text),
+          languageId: text(p.languageId) || "plaintext",
+          readonly: p.readonly !== false,
+        });
+        return { ok: true };
+      case "workspace/saveDocument":
+        return { saved: await this.need(this.deps.saveDocument, "Saving")(text(p.path)) };
+      case "workspace/saveAll":
+        return { saved: await this.need(this.deps.saveAll, "Saving")() };
       default:
         throw new Error(`Not an allowed extension host request: ${method}`);
     }
@@ -204,11 +263,25 @@ export class HostBridge {
       case "editor/revealRange":
         this.deps.editorApi?.revealRange(p);
         return;
+      case "terminal/show":
+        this.deps.terminals?.show(p);
+        return;
+      case "terminal/dispose":
+        void this.deps.terminals?.dispose(p);
+        return;
+      case "tasks/terminate":
+        void this.deps.tasks?.terminate(p);
+        return;
       default:
         if (method.startsWith("views/")) this.deps.onViewEvent?.(method, p);
         else if (method.startsWith("statusBar/")) this.deps.onStatusBarEvent?.(method, p);
         else if (method.startsWith("webview/")) this.deps.onWebviewEvent?.(method, p);
     }
+  }
+
+  private need<T>(value: T | undefined, what: string): T {
+    if (value === undefined) throw new Error(`${what} isn't available here.`);
+    return value;
   }
 
   private editorApi(): ExtensionEditorService {
@@ -222,6 +295,7 @@ export class HostBridge {
     this.providers.clear();
     this.hostCommands.clear();
     this.deps.prompts.dismissAll();
+    this.deps.terminals?.reset();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});
@@ -245,9 +319,14 @@ export class HostBridge {
   }
 
   private registerProvider(registration: ProviderRegistration): void {
-    const dispose = this.deps.registerProvider(registration, (payload) =>
-      this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload }),
-    );
+    const invoke: ProviderInvoke = (payload) =>
+      this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload });
+    const formatting = registration.kind === "formatting" || registration.kind === "rangeFormatting";
+    if (formatting && !this.deps.registerFormatter) return;
+    const dispose =
+      formatting && this.deps.registerFormatter
+        ? this.deps.registerFormatter(registration, invoke)
+        : this.deps.registerProvider(registration, invoke);
     this.providers.set(registration.handle, dispose);
   }
 }

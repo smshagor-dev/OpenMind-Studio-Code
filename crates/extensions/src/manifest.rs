@@ -35,6 +35,9 @@ pub struct Manifest {
 /// Publisher used when a package has none (allowed by `vsce` for local packages).
 pub const NO_PUBLISHER: &str = "local";
 
+/// The command the app activates task providers with when the user opens Terminal > Run Task... (VS Code's name).
+pub const RUN_TASK_COMMAND: &str = "workbench.action.tasks.runTask";
+
 /// When an extension's code starts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "camelCase")]
@@ -294,7 +297,8 @@ impl Manifest {
     }
 
     /// The activation events in force: the declared ones plus, like VS Code, an `onCommand` for each
-    /// contributed command and an `onLanguage` for each contributed language.
+    /// contributed command, an `onLanguage` for each contributed language, an `onView` for each view and, for an
+    /// extension with `taskDefinitions`, `onCommand:workbench.action.tasks.runTask`.
     pub fn effective_activation(&self) -> Vec<ActivationEvent> {
         let mut events = self.activation_events.clone();
         for command in &self.contributes.commands {
@@ -305,6 +309,13 @@ impl Manifest {
         }
         for language in &self.contributes.languages {
             let event = ActivationEvent::OnLanguage(language.id.clone());
+            if !events.contains(&event) {
+                events.push(event);
+            }
+        }
+        // A task provider is woken when the user opens the task list (Terminal > Run Task...).
+        if !self.contributes.task_definitions.is_empty() {
+            let event = ActivationEvent::OnCommand(RUN_TASK_COMMAND.to_string());
             if !events.contains(&event) {
                 events.push(event);
             }

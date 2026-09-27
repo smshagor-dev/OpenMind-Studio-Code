@@ -324,12 +324,18 @@ fn unsupported_webview_features_fail_with_the_clear_message_and_a_bad_message_is
         ("commandUris", "WebviewOptions.enableCommandUris"),
         ("portMapping", "WebviewOptions.portMapping"),
         ("serializer", "window.registerWebviewPanelSerializer"),
-        ("webviewView", "window.registerWebviewViewProvider"),
     ] {
         let expected =
             format!("{label}: VS Code API '{api}' is not supported by OpenMind Studio yet.");
         assert!(lines.contains(&expected), "{expected} not in {lines:?}");
     }
+    // Since Milestone 18 webview views are supported, but only for a view the extension contributes.
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("webviewView: View 'a' is not a webview view contributed by")),
+        "{lines:?}"
+    );
     assert!(
         lines
             .iter()

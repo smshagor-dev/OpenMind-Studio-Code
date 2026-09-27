@@ -1,0 +1,12 @@
+{
+  "iconDefinitions": {
+    "file": { "iconPath": "./file.svg" },
+    "folder": { "iconPath": "./folder.svg" },
+    "folderOpen": { "iconPath": "./folder-open.svg" },
+    "md": { "iconPath": "./md.svg" }
+  },
+  "file": "file",
+  "folder": "folder",
+  "folderExpanded": "folderOpen",
+  "fileExtensions": { "md": "md" }
+}

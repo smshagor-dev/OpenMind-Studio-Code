@@ -116,8 +116,15 @@ export class TerminalService {
     if (this.disposed) this.dispose();
   }
 
-  /** Opens a new terminal (in the open workspace folder, if any) and shows the panel. */
-  async createTerminal(shell?: ShellKind, cwdOverride?: string | null): Promise<string | null> {
+  /**
+   * Opens a new terminal (in the open workspace folder, if any) and shows the panel. `options.show: false` keeps the
+   * panel as it is (an extension's terminal: the panel never opens by itself); `options.title` names the tab.
+   */
+  async createTerminal(
+    shell?: ShellKind,
+    cwdOverride?: string | null,
+    options: { title?: string; show?: boolean } = {},
+  ): Promise<string | null> {
     if (shell !== undefined && !this.state.shells.some((candidate) => candidate.kind === shell)) {
       // Only shells found on this machine are ever offered, so this is a stale or foreign request.
       this.events.emit("appError", {
@@ -141,7 +148,9 @@ export class TerminalService {
     const session: TerminalSession = {
       id: info.id,
       shell: info.shell,
-      title: sameShell === 0 ? (label ?? info.shell) : `${label ?? info.shell} (${sameShell + 1})`,
+      title:
+        options.title ??
+        (sameShell === 0 ? (label ?? info.shell) : `${label ?? info.shell} (${sameShell + 1})`),
       cwd: info.cwd,
       exited: false,
       exitCode: null,
@@ -152,7 +161,7 @@ export class TerminalService {
       lastShell: info.shell,
     });
     this.log(`Started ${session.title} in ${session.cwd}`);
-    await this.panel.show("terminal");
+    if (options.show !== false) await this.panel.show("terminal");
     await this.persist();
     return session.id;
   }

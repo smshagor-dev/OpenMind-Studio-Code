@@ -190,6 +190,18 @@ export class WorkspaceService {
     return tab.id;
   }
 
+  /** Opens an extension's custom-scheme document (`memfs:/a.txt`) in a read-only tab (Milestone 18). */
+  openVirtualDocument(request: {
+    uri: string;
+    text: string;
+    language: string;
+    extension: string;
+    readonly: boolean;
+  }): string {
+    const docId = this.filePreviews.openVirtual(request);
+    return this.showDocument(docId, "filePreview", {}).id;
+  }
+
   /** Why the text document `docId` has no file preview (or Markdown preview), or null when it has one. */
   filePreviewUnavailableReason(docId: string | null): string | null {
     if (docId === null) return "There is no editor open.";

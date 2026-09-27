@@ -3,6 +3,7 @@ pub mod ai;
 pub mod database;
 pub mod debug;
 pub mod document;
+pub mod extension_api;
 pub mod extension_host;
 pub mod extension_manage;
 pub mod extensions;

@@ -60,6 +60,13 @@ export function moreActionsMenu(): PopupItem[] {
     },
     {
       kind: "item",
+      label: "Check for Extension Updates",
+      enabled: !marketplace.getState().checkingUpdates,
+      reason: "Already checking.",
+      onSelect: () => void marketplace.checkUpdates(),
+    },
+    {
+      kind: "item",
       label: "Restart Extension Host",
       enabled: reload.enabled,
       reason: reload.reason,

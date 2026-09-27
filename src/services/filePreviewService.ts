@@ -14,7 +14,9 @@ export type PreviewModel =
   | { type: "markdown"; text: string }
   | { type: "html"; text: string }
   | { type: "latex"; outline: LatexOutline }
-  | { type: "message"; message: string };
+  | { type: "message"; message: string }
+  /** A document an extension's file system provider served (a custom scheme): shown read-only (Milestone 18). */
+  | { type: "virtualText"; text: string; language: string; extension: string; readonly: boolean };
 
 export type PreviewStatus = "loading" | "ready" | "error";
 export type ZoomMode = "fit" | "actual" | "zoom";
@@ -183,6 +185,55 @@ export class FilePreviewService {
     return id;
   }
 
+  /**
+   * Opens (or refreshes) a read-only tab for a custom-scheme document an extension served (`memfs:/a.txt`). The text
+   * comes from the extension; nothing is read from disk, and the tab can't be edited or saved.
+   */
+  openVirtual(request: { uri: string; text: string; language: string; extension: string; readonly: boolean }): string {
+    const key = `virtual:${request.uri}`;
+    const model: PreviewModel = {
+      type: "virtualText",
+      text: request.text,
+      language: request.language,
+      extension: request.extension,
+      readonly: request.readonly,
+    };
+    const existing = this.byPath.get(key);
+    if (existing !== undefined && this.has(existing)) {
+      this.patch(existing, { model, status: "ready", error: null, loadSeq: (this.get(existing)?.loadSeq ?? 0) + 1 });
+      return existing;
+    }
+    const id = `pv:${String(this.next)}`;
+    this.next += 1;
+    this.byPath.set(key, id);
+    const name = request.uri.split("/").pop() || request.uri;
+    this.set({
+      ...this.state.docs,
+      [id]: {
+        id,
+        path: request.uri,
+        name,
+        info: null,
+        status: "ready",
+        error: null,
+        model,
+        zoomMode: "fit",
+        zoom: 1,
+        page: 1,
+        pageCount: 0,
+        sheet: 0,
+        dimensions: null,
+        loadSeq: 1,
+      },
+    });
+    return id;
+  }
+
+  /** Whether this preview shows an extension's custom-scheme document (it has no file to reload). */
+  isVirtual(id: string): boolean {
+    return this.state.docs[id]?.model?.type === "virtualText";
+  }
+
   /** Whether the file can be inspected at all (used before restoring a saved tab). */
   async exists(path: string): Promise<boolean> {
     try {
@@ -196,12 +247,13 @@ export class FilePreviewService {
   release(id: string): void {
     const doc = this.state.docs[id];
     if (!doc) return;
-    this.byPath.delete(normalizeKey(doc.path));
+    this.byPath.delete(doc.model?.type === "virtualText" ? `virtual:${doc.path}` : normalizeKey(doc.path));
     this.set(Object.fromEntries(Object.entries(this.state.docs).filter(([key]) => key !== id)));
   }
 
   /** Loads the file again from disk (Reload Preview), keeping zoom, page and sheet. */
   async reload(id: string): Promise<void> {
+    if (this.isVirtual(id)) return; // its text comes from the extension, not from a file
     await this.load(id);
   }
 

@@ -359,3 +359,40 @@
   font-size: 12px;
   color: var(--fg-muted);
 }
+
+/* Confirmation before an extension's terminal command or task (Milestone 18). */
+.ext-confirm {
+  max-width: 560px;
+}
+
+.ext-confirm__from {
+  margin: 0 0 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.ext-confirm__details {
+  margin: 0 0 8px;
+}
+
+.ext-confirm__details > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.ext-confirm__details dt {
+  color: var(--fg-muted);
+}
+
+.ext-confirm__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ext-confirm__note {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+}

@@ -9,6 +9,7 @@ import { createFormattingProvider } from "../lspProviders";
 import { formatSelection, formatSelectionReason } from "./formatSelection";
 import type { SettingsService } from "../settingsService";
 import type { WorkspaceService } from "../workspaceService";
+import { type ExtensionFormatterRegistry, toEditorEdits } from "../extensionFormatters";
 import {
   FormattingService,
   type FormatTarget,
@@ -26,6 +27,8 @@ export interface FormattingWiringDeps {
   lsp: LspService;
   settings: SettingsService;
   log: (line: string) => void;
+  /** Formatters extensions registered (Milestone 18). */
+  extensionFormatters?: ExtensionFormatterRegistry;
 }
 
 const NO_EDITOR = "Open a text file first.";
@@ -92,6 +95,23 @@ function makeHost(deps: FormattingWiringDeps): FormattingHost {
           return edits === null || edits === undefined ? null : documents.textWithEdits(id, edits);
         },
       };
+    },
+    extensionFormatters(id) {
+      const registry = deps.extensionFormatters;
+      const target = targetOf(id);
+      // An extension formats a saved file it knows by its path; an unsaved one isn't offered.
+      if (registry === undefined || target === null || target.path === null) return [];
+      const path = target.path;
+      const indent = target.indent;
+      const options = { tabSize: indent === "\t" ? 4 : indent.length, insertSpaces: indent !== "\t" };
+      return registry.forLanguage(target.language).map((formatter) => ({
+        id: formatter.id,
+        name: formatter.name,
+        run: async () => {
+          const edits = await formatter.format(path, options);
+          return documents.textWithEdits(id, toEditorEdits(edits));
+        },
+      }));
     },
   };
 }

@@ -29,12 +29,28 @@ export interface InputPrompt {
   title: string | null;
 }
 
-export type ExtensionPrompt = MessagePrompt | QuickPickPrompt | InputPrompt;
+/**
+ * A question the app asks on an extension's behalf before something consequential happens (a command line in a
+ * terminal, a task). Drawn as a modal: it is only answered by a button (or Escape = cancel), never by a stray click.
+ */
+export interface ConfirmPrompt {
+  kind: "confirm";
+  id: number;
+  extension: string;
+  title: string;
+  /** What will happen, as labelled lines (Command, Folder, Environment ...). */
+  details: { label: string; value: string }[];
+  notes: string[];
+  /** The buttons besides Cancel; the answer is the chosen label (`null` = cancelled). */
+  buttons: string[];
+}
+
+export type ExtensionPrompt = MessagePrompt | QuickPickPrompt | InputPrompt | ConfirmPrompt;
 
 export interface ExtensionPromptState {
   // Messages stack up; a quick pick or input box takes the whole attention, one at a time.
   messages: MessagePrompt[];
-  dialog: QuickPickPrompt | InputPrompt | null;
+  dialog: QuickPickPrompt | InputPrompt | ConfirmPrompt | null;
 }
 
 /** A message without buttons disappears after this long. */
@@ -49,7 +65,7 @@ type Resolver = (value: unknown) => void;
 export class ExtensionPromptService {
   private nextId = 1;
   private state: ExtensionPromptState = { messages: [], dialog: null };
-  private queued: (QuickPickPrompt | InputPrompt)[] = [];
+  private queued: (QuickPickPrompt | InputPrompt | ConfirmPrompt)[] = [];
   private readonly resolvers = new Map<number, Resolver>();
   private readonly listeners = new Set<() => void>();
 
@@ -89,6 +105,12 @@ export class ExtensionPromptService {
     return this.enqueue<string | null>(prompt);
   }
 
+  /** Resolves with the chosen button's label, or `null` when the user cancelled. */
+  confirm(request: Omit<ConfirmPrompt, "kind" | "id">): Promise<string | null> {
+    const prompt: ConfirmPrompt = { kind: "confirm", id: this.nextId++, ...request };
+    return this.enqueue<string | null>(prompt);
+  }
+
   /** The user's answer to a prompt (a button label, indexes, text). */
   answer(id: number, value: unknown): void {
     this.finish(id, value);
@@ -113,7 +135,7 @@ export class ExtensionPromptService {
     });
   }
 
-  private enqueue<T>(prompt: QuickPickPrompt | InputPrompt): Promise<T> {
+  private enqueue<T>(prompt: QuickPickPrompt | InputPrompt | ConfirmPrompt): Promise<T> {
     const promise = this.wait<T>(prompt.id);
     if (this.state.dialog === null) {
       this.state = { ...this.state, dialog: prompt };

@@ -61,7 +61,9 @@ interface Rig {
   log: string[];
 }
 
-function rig(options: { lsp?: { available: boolean; text?: string | null } } = {}): Rig {
+function rig(
+  options: { lsp?: { available: boolean; text?: string | null }; extension?: { text: string | null } } = {},
+): Rig {
   const ipc = createFakeIpc({
     formatOptions: vi.fn().mockResolvedValue(answer([BUILTIN, PRETTIER_MISSING])),
     formatRun: vi.fn().mockResolvedValue({
@@ -98,6 +100,17 @@ function rig(options: { lsp?: { available: boolean; text?: string | null } } = {
       reason: options.lsp?.available ? null : "No language server for JSON.",
       run: () => Promise.resolve(options.lsp?.text ?? null),
     }),
+    ...(options.extension
+      ? {
+          extensionFormatters: () => [
+            {
+              id: "ext:pub.fmt",
+              name: "Fmt (extension)",
+              run: () => Promise.resolve(options.extension?.text ?? null),
+            },
+          ],
+        }
+      : {}),
   };
   const events = new EventBus<AppEvents>();
   const errors: string[] = [];
@@ -375,5 +388,29 @@ describe("status", () => {
     r.host.focus.value = "Open a text file first.";
     await r.service.refreshStatus();
     expect(r.service.getState().status).toBeNull();
+  });
+});
+
+describe("extension formatters (Milestone 18)", () => {
+  it("are offered but never chosen ahead of the built-in or tool formatters", async () => {
+    const x = rig({ extension: { text: "FROM EXTENSION" } });
+    const outcome = await x.service.formatActive();
+    expect(outcome).toEqual({ kind: "formatted", formatter: "Built-in JSON formatter" });
+    expect(x.host.texts.get("d1")).toBe(PRETTY);
+  });
+
+  it("run when the user picks one explicitly", async () => {
+    const x = rig({ extension: { text: "FROM EXTENSION" } });
+    const outcome = await x.service.formatActive("ext:pub.fmt");
+    expect(outcome).toEqual({ kind: "formatted", formatter: "Fmt (extension)" });
+    expect(x.host.texts.get("d1")).toBe("FROM EXTENSION");
+    expect(x.ipc.formatRun).not.toHaveBeenCalled();
+  });
+
+  it("are the last resort when nothing else can format the file", async () => {
+    const x = rig({ extension: { text: "FROM EXTENSION" } });
+    vi.mocked(x.ipc.formatOptions).mockResolvedValue(answer([PRETTIER_MISSING]));
+    const outcome = await x.service.formatActive();
+    expect(outcome).toEqual({ kind: "formatted", formatter: "Fmt (extension)" });
   });
 });

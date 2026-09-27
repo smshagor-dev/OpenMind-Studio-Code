@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react
 
 import { container } from "../services/container";
 import { displayName, hostStateText, runtimeStatus } from "../services/extensionModel";
-import { marketId } from "../services/extensionMarketplaceService";
+import { isNewerVersion, marketId } from "../services/extensionMarketplaceService";
 import type { InstalledExtension } from "../services/extensionsIpc";
 import type { MarketItem } from "../services/marketplaceIpc";
 import "../styles/extensions.css";
@@ -154,6 +154,64 @@ function MarketRow(props: {
             }
       }
     />
+  );
+}
+
+/**
+ * Update check of installed extensions (Milestone 18): only on a click (or when the view opens with auto-load on);
+ * each update names its source and both versions, and Update goes through the normal verified install + trust dialog.
+ */
+function Updates() {
+  const { market } = useExtensionsState();
+  const { marketplace, registry } = container.extensions;
+  // An update that was installed since the check (or the extension removed) is no longer offered.
+  const updates = market.updates.filter((update) => {
+    const installed = registry.find(update.id);
+    return installed !== undefined && isNewerVersion(update.latest, installed.manifest.version);
+  });
+  return (
+    <div className="ext-updates" aria-label="Extension updates">
+      <div className="ext-updates__bar">
+        <button
+          type="button"
+          className="ext-link"
+          disabled={market.checkingUpdates}
+          onClick={() => void marketplace.checkUpdates()}
+        >
+          {market.checkingUpdates ? "Checking for updates…" : "Check for Updates"}
+        </button>
+        {market.updatesCheckedAt !== null && !market.checkingUpdates && market.updateError === null ? (
+          <span className="ext-note">
+            {updates.length === 0
+              ? `No updates on Open VSX (checked ${market.updatesCheckedAt}).`
+              : `${String(updates.length)} update${updates.length === 1 ? "" : "s"} on Open VSX.`}
+          </span>
+        ) : null}
+      </div>
+      {market.updateError !== null ? <p className="ext-note">{market.updateError}</p> : null}
+      {updates.length > 0 ? (
+        <ul className="ext-plain-list" aria-label="Available updates">
+          {updates.map((update) => {
+            const busy = market.installing[marketId(update.namespace, update.name)] ?? null;
+            return (
+              <li key={update.id}>
+                <span>
+                  {update.id}: {update.current} → {update.latest} (Open VSX)
+                </span>{" "}
+                <button
+                  type="button"
+                  className="ext-button"
+                  disabled={busy !== null}
+                  onClick={() => void marketplace.install(update.namespace, update.name)}
+                >
+                  {busy ?? "Update"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -383,6 +441,7 @@ export function ExtensionsView() {
       <Notices />
       {installedOnly || query === "" ? (
         <Section title="Installed" count={installedShown.length} grow={installedOnly}>
+          {installed.length > 0 ? <Updates /> : null}
           {registryState.snapshot === null && registryState.error === null ? (
             <p className="ext-empty">Loading extensions…</p>
           ) : installedShown.length === 0 ? (

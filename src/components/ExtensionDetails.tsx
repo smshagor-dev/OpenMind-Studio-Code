@@ -14,6 +14,7 @@ import {
   runtimeStatus,
 } from "../services/extensionModel";
 import type { InstalledExtension } from "../services/extensionsIpc";
+import { ExtensionContributes } from "./ExtensionContributes";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -50,6 +51,9 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
         </button>
       </header>
       <dl>
+        <Field label="Extension ID">
+          <code>{extension.id}</code>
+        </Field>
         <Field label="Name">{extension.manifest.name}</Field>
         <Field label="Display name">{extension.manifest.displayName ?? "—"}</Field>
         <Field label="Publisher">{extension.manifest.publisher}</Field>
@@ -120,6 +124,7 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
         </p>
       ) : null}
       <p className="ext-note">{PERMISSION_LIMITS_NOTE}</p>
+      <ExtensionContributes extension={extension} activity={activity} />
       <h4>Contribution points</h4>
       {lines.length === 0 ? (
         <p className="ext-note">This extension contributes nothing.</p>

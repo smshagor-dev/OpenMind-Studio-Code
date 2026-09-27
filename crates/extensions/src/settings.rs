@@ -1,5 +1,6 @@
 //! What enabled extensions add to the Settings: their configuration properties (in a category named after
-//! the extension) and their colour themes (extra choices of the Color Theme setting).
+//! the extension), their colour themes (extra choices of the Color Theme setting) and their icon themes (extra choices
+//! of the File Icon Theme setting, Milestone 18).
 
 use openmind_settings::{EnumOption, Extras, SettingDef, SettingKind, SettingScope};
 
@@ -11,7 +12,7 @@ pub fn theme_value(extension_id: &str, label: &str) -> String {
     format!("extension:{extension_id}/{label}")
 }
 
-/// Settings and themes of the enabled extensions, in a stable order.
+/// Settings, colour themes and icon themes of the enabled extensions, in a stable order.
 pub fn extras_for(extensions: &[InstalledExtension]) -> Extras {
     let mut enabled: Vec<&InstalledExtension> = extensions
         .iter()
@@ -27,6 +28,16 @@ pub fn extras_for(extensions: &[InstalledExtension]) -> Extras {
             .unwrap_or_else(|| extension.manifest.name.clone());
         for property in &extension.manifest.contributes.configuration {
             extras.settings.push(setting(property, &category));
+        }
+        for icons in &extension.manifest.contributes.icon_themes {
+            extras.icon_themes.push(EnumOption {
+                value: theme_value(&extension.id, &icons.id),
+                label: if icons.label.is_empty() {
+                    icons.id.clone()
+                } else {
+                    icons.label.clone()
+                },
+            });
         }
         for theme in &extension.manifest.contributes.themes {
             extras.themes.push(EnumOption {
@@ -107,7 +118,8 @@ mod tests {
             "sampleConfig.maxLineLength":{"type":"integer","default":80,"minimum":10,"maximum":200},
             "sampleConfig.mode":{"type":"string","enum":["a","b"],"default":"a"},
             "sampleConfig.on":{"type":"boolean","default":true}}},
-          "themes":[{"label":"Night","uiTheme":"vs-dark","path":"./t.json"}]}}"#;
+          "themes":[{"label":"Night","uiTheme":"vs-dark","path":"./t.json"}],
+          "iconThemes":[{"id":"crisp","label":"Crisp Icons","path":"./icons.json"},{"id":"bare","path":"./bare.json"}]}}"#;
 
     #[test]
     fn humanize_makes_readable_titles() {
@@ -158,9 +170,28 @@ mod tests {
     }
 
     #[test]
+    fn icon_themes_are_offered_as_extension_values_with_their_label_or_id() {
+        let extras = extras_for(&[extension(CONFIG, true)]);
+        assert_eq!(
+            extras.icon_themes,
+            vec![
+                EnumOption {
+                    value: "extension:acme.cfg/crisp".to_string(),
+                    label: "Crisp Icons".to_string()
+                },
+                EnumOption {
+                    value: "extension:acme.cfg/bare".to_string(),
+                    label: "bare".to_string()
+                }
+            ]
+        );
+    }
+
+    #[test]
     fn disabled_extensions_add_nothing() {
         let extras = extras_for(&[extension(CONFIG, false)]);
         assert!(extras.settings.is_empty());
         assert!(extras.themes.is_empty());
+        assert!(extras.icon_themes.is_empty());
     }
 }

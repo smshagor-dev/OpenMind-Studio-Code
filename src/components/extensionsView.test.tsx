@@ -37,6 +37,13 @@ async function mount(
     install: (path) => r.service.inspect(path),
     onError: (message) => r.errors.push(message),
     autoFetch: () => autoFetch,
+    installed: () =>
+      r.registry.all().map((e) => ({
+        id: e.id,
+        publisher: e.manifest.publisher,
+        name: e.manifest.name,
+        version: e.manifest.version,
+      })),
   });
   harness.current = {
     extensions: {
@@ -432,3 +439,26 @@ describe("ExtensionsView", () => {
     expect(screen.getByRole("button", { name: "Restart Extension Host" })).toBeTruthy();
   });
 });
+
+describe("installed extension updates (Milestone 18)", () => {
+  it("offer a newer Open VSX version with both versions, and drop it once that version is installed", async () => {
+    const base = testExtension().manifest;
+    const old = testExtension({ manifest: { ...base, publisher: "redhat", name: "vscode-yaml", version: "1.0.0" } });
+    const r = await mount([old], {}, {
+      details: vi.fn().mockResolvedValue({ ...marketItem({ namespace: "redhat", name: "vscode-yaml" }), version: "1.2.0" }),
+    }, false);
+    expect(r.api.details).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Check for Updates" }));
+    const list = await screen.findByRole("list", { name: "Available updates" });
+    expect(within(list).getByText(/redhat\.vscode-yaml: 1\.0\.0 → 1\.2\.0 \(Open VSX\)/)).toBeTruthy();
+    expect(r.api.download).not.toHaveBeenCalled();
+    // The newer version was installed (the registry now reports it): the update is no longer offered.
+    const updated = testExtension({ manifest: { ...old.manifest, version: "1.2.0" } });
+    vi.mocked(r.ipc.extList).mockResolvedValue({ ...emptyExtensionsSnapshot(), extensions: [updated] });
+    await r.registry.refresh();
+    await waitFor(() => {
+      expect(screen.queryByRole("list", { name: "Available updates" })).toBeNull();
+    });
+  });
+});
+

@@ -28,7 +28,7 @@ import type { KeybindingsManager } from "./keybindingsManager";
 import { type OutputService, stamped } from "./outputService";
 import type { SettingsService } from "./settingsService";
 import { StatusBarItemsService } from "./statusBarItemsService";
-import { WebviewService } from "./webviewService";
+import { panelsOf, WebviewService } from "./webviewService";
 import type { ThemeService } from "./themeService";
 
 export interface ExtensionsWiringDeps {
@@ -86,6 +86,14 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       events.emit("appError", { message });
     },
     autoFetch: () => settings.bool("extensions.marketplace.autoFetch", true),
+    installed: () =>
+      registry.all().map((extension) => ({
+        id: extension.id,
+        publisher: extension.manifest.publisher,
+        name: extension.manifest.name,
+        version: extension.manifest.version,
+      })),
+    startupFinished: () => startupFinished,
   });
   // Problems an extension reported for files that aren't open yet are kept until they are.
   const pendingDiagnostics = new Map<string, Map<string, MarkerInput[]>>();
@@ -129,7 +137,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     currentActiveId: () => deps.activeTabId(),
     editorsCovered: () => {
       const state = webviews.getState();
-      return state.overlay && state.panels.length > 0;
+      return state.overlay && panelsOf(state).length > 0;
     },
   });
   /** An app command, or one an extension registered in the host. */

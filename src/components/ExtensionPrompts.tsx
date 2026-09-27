@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type {
+  ConfirmPrompt,
   InputPrompt,
   MessagePrompt,
   QuickPickPrompt,
@@ -176,7 +177,70 @@ function InputBox({ prompt }: { prompt: InputPrompt }) {
   );
 }
 
-/** What extensions ask the user: messages (with buttons), a quick pick, an input box. UI only. */
+/** A confirmation before a consequential action: explicit buttons only, Cancel has the focus. */
+function ConfirmBox({ prompt }: { prompt: ConfirmPrompt }) {
+  const prompts = container.extensions.prompts;
+  const cancel = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    cancel.current?.focus();
+  }, []);
+  return (
+    <div className="modal-overlay">
+      <div
+        className="modal ext-confirm"
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={prompt.title}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") prompts.dismiss(prompt.id);
+        }}
+      >
+        <h2>{prompt.title}</h2>
+        <p className="ext-confirm__from">Requested by {prompt.extension}</p>
+        <dl className="ext-confirm__details">
+          {prompt.details.map((line) => (
+            <div key={line.label}>
+              <dt>{line.label}</dt>
+              <dd>
+                <code>{line.value}</code>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {prompt.notes.map((note) => (
+          <p key={note} className="ext-confirm__note">
+            {note}
+          </p>
+        ))}
+        <div className="modal__actions">
+          {prompt.buttons.map((label, index) => (
+            <button
+              key={label}
+              type="button"
+              className={index === 0 ? "modal__confirm--primary" : undefined}
+              onClick={() => {
+                prompts.answer(prompt.id, label);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            ref={cancel}
+            type="button"
+            onClick={() => {
+              prompts.dismiss(prompt.id);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** What extensions ask the user: messages (with buttons), a quick pick, an input box, a confirmation. UI only. */
 export function ExtensionPrompts() {
   const prompts = container.extensions.prompts;
   const state = useSyncExternalStore(
@@ -194,6 +258,7 @@ export function ExtensionPrompts() {
       ) : null}
       {state.dialog?.kind === "quickPick" ? <QuickPick prompt={state.dialog} /> : null}
       {state.dialog?.kind === "input" ? <InputBox prompt={state.dialog} /> : null}
+      {state.dialog?.kind === "confirm" ? <ConfirmBox prompt={state.dialog} /> : null}
     </>
   );
 }

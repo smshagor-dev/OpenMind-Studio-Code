@@ -45,6 +45,8 @@ export class DocumentService {
   private nextId = 0;
   private languageResolver: ((path: string) => string | null) | null = null;
   private beforeSave: ((id: string) => Promise<void>) | null = null;
+  /** Opens still reading the file: a second open of the same path waits for the first instead of making a second document. */
+  private readonly opening = new Map<string, Promise<string>>();
 
   constructor(
     private readonly ipc: IpcClient,
@@ -72,13 +74,22 @@ export class DocumentService {
     return id;
   }
 
-  /** Opens `path`, reusing the existing document id if already open. */
+  /** Opens `path`, reusing the existing document id if already open (or still opening). */
   async openFromPath(path: string): Promise<string> {
     const existing = [...this.documents.entries()].find(([, doc]) => doc.path === path);
     if (existing) {
       return existing[0];
     }
+    const pending = this.opening.get(path);
+    if (pending) return pending;
+    const opening = this.load(path).finally(() => {
+      this.opening.delete(path);
+    });
+    this.opening.set(path, opening);
+    return opening;
+  }
 
+  private async load(path: string): Promise<string> {
     const opened = await this.ipc.documentOpen(path);
     const id = `doc-${++this.nextId}`;
     this.documents.set(id, {

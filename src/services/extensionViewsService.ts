@@ -98,7 +98,7 @@ export function parseWelcome(text: string): WelcomeLine[] {
 export interface ExtensionViewsDeps {
   ipc: Pick<ExtensionsIpc, "extHostRequest" | "extReadIcon">;
   registry: Pick<ExtensionRegistryService, "all" | "subscribe">;
-  host: Pick<ExtensionHostService, "activateFor">;
+  host: Pick<ExtensionHostService, "activateFor" | "request">;
   /** Runs a command (a welcome button, a `command:` link). */
   run: (command: string) => void;
   onError: (message: string) => void;
@@ -109,8 +109,8 @@ export interface ExtensionViewsDeps {
 /**
  * Extension views, VS Code style: every enabled extension's `viewsContainers.activitybar` entry is an
  * activity bar icon; opening it wakes the extension (`onView:<id>`) and shows its tree views, whose items
- * come from the extension's `TreeDataProvider` in the host (`host/tree`). Webview views are listed as
- * unsupported. UI-free.
+ * come from the extension's `TreeDataProvider` in the host (`host/tree`). Webview views (Milestone 18) are filled by
+ * the extension's `WebviewViewProvider` when first shown and drawn in a sandboxed frame. UI-free.
  */
 export class ExtensionViewsService {
   private views = new Map<string, TreeViewState>();
@@ -196,7 +196,6 @@ export class ExtensionViewsService {
     this.failures.delete(key);
     // One extension owns every view here: once its activation failed, don't try again per view.
     for (const view of entry.container.views) {
-      if (view.kind !== "tree") continue;
       const results = await this.deps.host.activateFor({ kind: "view", view: view.id });
       const failed = results.find((result) => !result.ok);
       if (failed) {
@@ -205,11 +204,32 @@ export class ExtensionViewsService {
         return;
       }
     }
-    await Promise.all(
-      entry.container.views
+    await Promise.all([
+      ...entry.container.views
         .filter((view) => view.kind === "tree" && this.view(view.id).registered)
         .map((view) => this.loadRoots(view.id)),
-    );
+      ...entry.container.views
+        .filter((view) => view.kind === "webview")
+        .map((view) => this.resolveWebview(view.id)),
+    ]);
+  }
+
+  /**
+   * A webview view is shown: its provider fills it now (`host/resolveWebviewView`), never before. A view nobody
+   * provides stays empty with a note; a failing provider shows its error.
+   */
+  private async resolveWebview(viewId: string): Promise<void> {
+    try {
+      const answer = (await this.deps.host.request("host/resolveWebviewView", { view: viewId })) as {
+        id?: string | null;
+      } | null;
+      this.patch(viewId, {
+        registered: typeof answer?.id === "string",
+        error: null,
+      });
+    } catch (error) {
+      this.patch(viewId, { error: String(error).replace(/^Error: /, "") });
+    }
   }
 
   /** Why the extension behind `key` couldn't start, from the last time the container was shown. */

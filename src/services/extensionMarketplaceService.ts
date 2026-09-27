@@ -15,6 +15,38 @@ export function marketId(namespace: string, name: string): string {
   return `${namespace}.${name}`.toLowerCase();
 }
 
+/** Whether `latest` is a newer version than `current` (numeric dotted parts; a pre-release is older than its release). */
+export function isNewerVersion(latest: string, current: string): boolean {
+  const split = (version: string) => {
+    const [core = "", pre] = version.trim().replace(/^v/i, "").split("-", 2);
+    return { parts: core.split(".").map((part) => Number.parseInt(part, 10) || 0), pre: pre ?? null };
+  };
+  const a = split(latest);
+  const b = split(current);
+  for (let i = 0; i < Math.max(a.parts.length, b.parts.length); i += 1) {
+    const diff = (a.parts[i] ?? 0) - (b.parts[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return a.pre === null && b.pre !== null;
+}
+
+/** An installed extension Open VSX has a newer version of. */
+export interface UpdateInfo {
+  id: string;
+  namespace: string;
+  name: string;
+  current: string;
+  latest: string;
+}
+
+/** What the update check needs to know about an installed extension. */
+export interface InstalledForUpdate {
+  id: string;
+  publisher: string;
+  name: string;
+  version: string;
+}
+
 export type ExtensionPageTab = "details" | "features" | "changelog";
 
 /** The extension page shown over the editor area (VS Code's extension editor). */
@@ -47,6 +79,12 @@ export interface MarketplaceState {
   page: ExtensionPage | null;
   /** Whether the user has asked the marketplace for anything yet (nothing is fetched before that). */
   requested: boolean;
+  /** Installed extensions with a newer version on Open VSX (after a check). */
+  updates: UpdateInfo[];
+  checkingUpdates: boolean;
+  /** When updates were last checked (null: never in this session). */
+  updatesCheckedAt: string | null;
+  updateError: string | null;
 }
 
 const PAGE_SIZE = 30;
@@ -63,6 +101,10 @@ const INITIAL: MarketplaceState = {
   installing: {},
   page: null,
   requested: false,
+  updates: [],
+  checkingUpdates: false,
+  updatesCheckedAt: null,
+  updateError: null,
 };
 
 export interface MarketplaceHooks {
@@ -71,6 +113,10 @@ export interface MarketplaceHooks {
   onError: (message: string) => void;
   /** `extensions.marketplace.autoFetch`: load Popular when the view shows. On by default; the user can turn it off. */
   autoFetch?: () => boolean;
+  /** The installed extensions, for the update check (Milestone 18). */
+  installed?: () => InstalledForUpdate[];
+  /** False while the app is still starting: a view shown then (restored) doesn't auto-load anything. */
+  startupFinished?: () => boolean;
 }
 
 /**
@@ -105,13 +151,64 @@ export class ExtensionMarketplaceService {
   }
 
   /**
-   * The first time the view shows. Nothing is fetched (no network call) unless the user turned on
-   * `extensions.marketplace.autoFetch`; otherwise the view offers "Load Popular".
+   * The first time the user opens the view after start-up. Nothing is fetched (no network call) unless
+   * `extensions.marketplace.autoFetch` is on, and never for a view restored at launch; otherwise the view offers "Load Popular".
    */
   start(): void {
     if (this.started) return;
+    // A view restored at launch waits for the user (Load Popular / Check for Updates): nothing is fetched at start-up.
+    if (this.hooks.startupFinished?.() === false) return;
     this.started = true;
-    if (this.hooks.autoFetch?.() === true) void this.refresh();
+    if (this.hooks.autoFetch?.() === true) {
+      void this.refresh();
+      void this.checkUpdates();
+    }
+  }
+
+  /**
+   * Asks Open VSX for the newest version of every installed extension that came from a publisher (a local `.vsix`
+   * without one is skipped). Only on the user's request or when the Extensions view opens with auto-load on — never at
+   * launch, and nothing is downloaded: Update goes through the normal install (checksum, trust dialog).
+   */
+  async checkUpdates(): Promise<void> {
+    if (this.state.checkingUpdates) return;
+    const candidates = (this.hooks.installed?.() ?? []).filter(
+      (extension) => extension.publisher !== "" && extension.publisher.toLowerCase() !== "local",
+    );
+    this.set({ checkingUpdates: true, updateError: null });
+    const updates: UpdateInfo[] = [];
+    let failures = 0;
+    for (const extension of candidates) {
+      try {
+        const details = await this.api.details(extension.publisher, extension.name);
+        if (isNewerVersion(details.version, extension.version)) {
+          updates.push({
+            id: extension.id,
+            namespace: details.namespace,
+            name: details.name,
+            current: extension.version,
+            latest: details.version,
+          });
+        }
+      } catch {
+        // Not on Open VSX (or a network error): no update for it.
+        failures += 1;
+      }
+    }
+    this.set({
+      checkingUpdates: false,
+      updates,
+      updatesCheckedAt: new Date().toLocaleTimeString(),
+      updateError:
+        candidates.length > 0 && failures === candidates.length
+          ? "Open VSX couldn't be reached, or none of the installed extensions are published there."
+          : null,
+    });
+  }
+
+  /** The update of an installed extension, if the last check found one. */
+  updateFor(id: string): UpdateInfo | undefined {
+    return this.state.updates.find((update) => update.id === id.toLowerCase() || update.id === id);
   }
 
   /** The user's explicit "Load Popular" / "Browse Open VSX". */

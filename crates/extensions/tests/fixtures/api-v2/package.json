@@ -1,0 +1,39 @@
+{
+  "name": "sample-api-v2",
+  "displayName": "Sample API v2",
+  "description": "Exercises the Milestone 18 APIs: webview views, terminals, tasks, file systems, secrets, workspace and formatting.",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "main": "./extension.js",
+  "openmindPermissions": ["terminal", "workspaceRead", "workspaceWrite", "languages"],
+  "activationEvents": ["onView:sampleV2.panel", "onCommand:workbench.action.tasks.runTask"],
+  "contributes": {
+    "commands": [
+      { "command": "sampleV2.openTerminal", "title": "Sample v2: Open Terminal" },
+      { "command": "sampleV2.echo", "title": "Sample v2: Echo in Terminal" },
+      { "command": "sampleV2.terminalInfo", "title": "Sample v2: Terminal Info" },
+      { "command": "sampleV2.badTerminal", "title": "Sample v2: Terminal with a Shell" },
+      { "command": "sampleV2.runTask", "title": "Sample v2: Run Build Task" },
+      { "command": "sampleV2.customTask", "title": "Sample v2: Custom Execution" },
+      { "command": "sampleV2.secretStore", "title": "Sample v2: Store Secret" },
+      { "command": "sampleV2.secretGet", "title": "Sample v2: Read Secret" },
+      { "command": "sampleV2.secretDelete", "title": "Sample v2: Delete Secret" },
+      { "command": "sampleV2.findFiles", "title": "Sample v2: Find Files" },
+      { "command": "sampleV2.readMem", "title": "Sample v2: Read memfs" },
+      { "command": "sampleV2.writeMem", "title": "Sample v2: Write memfs" },
+      { "command": "sampleV2.openMem", "title": "Sample v2: Open memfs File" },
+      { "command": "sampleV2.watch", "title": "Sample v2: Watch Files" },
+      { "command": "sampleV2.watched", "title": "Sample v2: Watched Events" },
+      { "command": "sampleV2.shout", "title": "Sample v2: Shout Selection" },
+      { "command": "sampleV2.events", "title": "Sample v2: Events Seen" }
+    ],
+    "taskDefinitions": [{ "type": "samplev2", "required": ["script"], "properties": { "script": { "type": "string" } } }],
+    "viewsContainers": {
+      "activitybar": [{ "id": "sampleV2", "title": "Sample v2", "icon": "media/panel.svg" }]
+    },
+    "views": {
+      "sampleV2": [{ "id": "sampleV2.panel", "name": "Board", "type": "webview" }]
+    }
+  }
+}

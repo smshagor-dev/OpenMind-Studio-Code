@@ -15,6 +15,7 @@ import { ImagePreview } from "./filePreview/ImagePreview";
 import { LatexPreview } from "./filePreview/LatexPreview";
 import { PdfPreview } from "./filePreview/PdfPreview";
 import { SheetPreview } from "./filePreview/SheetPreview";
+import { VirtualTextPreview } from "./filePreview/VirtualTextPreview";
 import { MarkdownText } from "./MarkdownPreview";
 
 const KIND_LABEL: Record<PreviewKind, string> = {
@@ -159,7 +160,9 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
       <span className="file-preview__name" title={doc.path}>
         {doc.name}
       </span>
-      <span className="file-preview__meta">{meta.join(" · ")}</span>
+      <span className="file-preview__meta">
+        {model?.type === "virtualText" ? `Served by ${model.extension} · read-only` : meta.join(" · ")}
+      </span>
       <span className="file-preview__badge" title="Previews never change the file.">
         Read-only preview
       </span>
@@ -170,9 +173,11 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
         label="Open as Text"
         disabled={!textSafe}
         reason={
-          info === null
-            ? "The file is still loading."
-            : "This file isn't text, or is too large to open as text."
+          model?.type === "virtualText"
+            ? "An extension's document can only be viewed here (it isn't a file on disk)."
+            : info === null
+              ? "The file is still loading."
+              : "This file isn't text, or is too large to open as text."
         }
         onClick={() => {
           void workspace.openAsText(doc.id);
@@ -182,6 +187,8 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
       </ToolButton>
       <ToolButton
         label="Reload Preview"
+        disabled={model?.type === "virtualText"}
+        reason="Ask the extension to open the document again to refresh it."
         onClick={() => {
           void filePreviews.reload(doc.id);
         }}
@@ -230,6 +237,8 @@ function Body({ doc, model }: { doc: FilePreviewDoc; model: PreviewModel }) {
       return <HtmlPreview text={model.text} />;
     case "latex":
       return <LatexPreview outline={model.outline} />;
+    case "virtualText":
+      return <VirtualTextPreview text={model.text} language={model.language} />;
     case "message":
       return (
         <div className="file-preview__message" role="status">

@@ -10,9 +10,7 @@ const EndOfLine = Object.freeze({ LF: 1, CRLF: 2 });
 const TextEditorRevealType = Object.freeze({ Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 });
 const TextEditorSelectionChangeKind = Object.freeze({ Keyboard: 1, Mouse: 2, Command: 3 });
 
-function unsupportedMessage(name) {
-  return `VS Code API '${name}' is not supported by OpenMind Studio yet.`;
-}
+const { unsupportedError } = require('./unsupported.js');
 
 /** Where every line starts and ends, counting the real line break characters (CRLF is two). */
 function indexText(text) {
@@ -80,7 +78,8 @@ function createEditing(types) {
     };
     const doc = {
       get uri() {
-        return Uri.file(filePath);
+        // A custom-scheme document (a file system provider's) is keyed by its Uri text.
+        return /^[a-z][a-z0-9+.-]+:\/\//.test(filePath) ? Uri.parse(filePath) : Uri.file(filePath);
       },
       get fileName() {
         return filePath;
@@ -180,7 +179,7 @@ function createEditing(types) {
       this._add(location, '');
     }
     setEndOfLine() {
-      throw new Error(unsupportedMessage('TextEditorEdit.setEndOfLine'));
+      throw unsupportedError('TextEditorEdit.setEndOfLine');
     }
     _finish() {
       this._closed = true;
@@ -243,13 +242,13 @@ function createEditing(types) {
       return this._files.size;
     }
     createFile() {
-      throw new Error(unsupportedMessage('WorkspaceEdit.createFile'));
+      throw unsupportedError('WorkspaceEdit.createFile');
     }
     deleteFile() {
-      throw new Error(unsupportedMessage('WorkspaceEdit.deleteFile'));
+      throw unsupportedError('WorkspaceEdit.deleteFile');
     }
     renameFile() {
-      throw new Error(unsupportedMessage('WorkspaceEdit.renameFile'));
+      throw unsupportedError('WorkspaceEdit.renameFile');
     }
   }
 
@@ -283,7 +282,18 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
   function document(data) {
     if (!data) return undefined;
     const key = data.path;
-    if (!documents.has(key)) documents.set(key, editing.makeDocument(key, () => state.documents.get(key), data));
+    if (!documents.has(key)) {
+      const doc = editing.makeDocument(key, () => state.documents.get(key), data);
+      /** Saves the open document (`workspaceWrite`); a custom-scheme document can't be saved from here. */
+      doc.save = async () => {
+        need('workspaceWrite');
+        const current = state.documents.get(key);
+        if (!current || current.virtual) return false;
+        const answer = await request('workspace/saveDocument', { extension: ext.id, path: key });
+        return !!(answer && answer.saved);
+      };
+      documents.set(key, doc);
+    }
     return documents.get(key);
   }
 

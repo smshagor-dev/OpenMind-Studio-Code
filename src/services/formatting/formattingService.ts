@@ -38,6 +38,11 @@ export interface FormattingHost {
   apply(id: string, text: string): void;
   /** The language server's formatting for this document, when a running server supports it. */
   lsp(id: string): { available: boolean; reason: string | null; run: () => Promise<string | null> };
+  /**
+   * Formatters extensions registered for this document (Milestone 18), `ext:<extension id>`: offered as choices, used
+   * by themselves only when nothing else can format the file.
+   */
+  extensionFormatters?(id: string): { id: string; name: string; run: () => Promise<string | null> }[];
 }
 
 export interface FormattingSettings {
@@ -46,7 +51,7 @@ export interface FormattingSettings {
   string: (id: string, fallback: string) => string;
 }
 
-export type ChoiceSource = FormatterSourceName | "languageServer";
+export type ChoiceSource = FormatterSourceName | "languageServer" | "extension";
 
 export interface FormatterChoice {
   id: string;
@@ -95,6 +100,7 @@ const SOURCE_LABEL: Record<ChoiceSource, string> = {
   portable: "from OpenMind's runtimes",
   system: "from the system PATH",
   languageServer: "language server",
+  extension: "from an extension",
 };
 
 export function sourceLabel(source: ChoiceSource | null): string {
@@ -241,17 +247,33 @@ export class FormattingService {
         path: null,
       });
     }
+    const extensionChoices = (this.host.extensionFormatters?.(target.id) ?? []).map(
+      (formatter): FormatterChoice => ({
+        id: formatter.id,
+        name: formatter.name,
+        source: "extension",
+        available: true,
+        reason: null,
+        path: null,
+      }),
+    );
+    choices.push(...extensionChoices);
     const preferred = this.preferredFor(target.language);
     const backend = choices.find((c) => c.id === answer.selected) ?? null;
     let selected: FormatterChoice | null = null;
     let reason = answer.reason;
-    if (preferred === LSP_FORMATTER_ID && lsp.available) {
+    const preferredExtension = extensionChoices.find((c) => c.id === preferred) ?? null;
+    if (preferredExtension !== null) {
+      selected = preferredExtension;
+    } else if (preferred === LSP_FORMATTER_ID && lsp.available) {
       selected = choices.find((c) => c.id === LSP_FORMATTER_ID) ?? null;
     } else if (backend !== null) {
       selected = backend;
     } else if (lsp.available && (preferred === null || !choices.some((c) => c.id === preferred))) {
       selected = choices.find((c) => c.id === LSP_FORMATTER_ID) ?? null;
     }
+    // An extension's formatter is the last resort: only when nothing else can format the file.
+    if (selected === null && extensionChoices.length > 0) selected = extensionChoices[0] ?? null;
     if (selected !== null) reason = null;
     return {
       targetId: target.id,
@@ -364,8 +386,12 @@ export class FormattingService {
     if ("message" in chosen) return { kind: "none", message: chosen.message };
     let formatted: string | null;
     try {
-      formatted =
-        chosen.choice.id === LSP_FORMATTER_ID
+      const extension = chosen.choice.id.startsWith("ext:")
+        ? this.host.extensionFormatters?.(target.id).find((f) => f.id === chosen.choice.id)
+        : undefined;
+      formatted = extension
+        ? await extension.run()
+        : chosen.choice.id === LSP_FORMATTER_ID
           ? await this.host.lsp(target.id).run()
           : (
               await this.ipc.formatRun({

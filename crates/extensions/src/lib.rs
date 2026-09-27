@@ -12,6 +12,7 @@ pub mod paths;
 pub mod permissions;
 pub mod settings;
 pub mod store;
+pub mod tasks;
 pub mod views;
 pub mod vsix;
 pub mod webview;

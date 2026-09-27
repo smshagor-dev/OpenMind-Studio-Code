@@ -9,29 +9,28 @@ const { createTreeApi, TreeItem, TreeItemCollapsibleState, ThemeIcon } = require
 const { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind } = require('./editors.js');
 const { createStatusBarApi, StatusBarAlignment, ThemeColor } = require('./statusbar.js');
 const { createWebviewApi } = require('./webviews.js');
+const { createTerminalApi } = require('./terminals.js');
+const tasksModule = require('./tasks.js');
+const { createWorkspaceApi, RelativePattern } = require('./workspace.js');
+const { createLanguagesApi, TextEdit } = require('./languages.js');
+const { FileType, FileSystemError } = require('./fsprovider.js');
 
 // Called with the message whenever an unsupported API is used (the host logs it, attributed to the extension).
-let unsupportedReporter = null;
-function setUnsupportedReporter(fn) {
-  unsupportedReporter = fn;
-}
+const { setReporter: setUnsupportedReporter, unsupportedError } = require('./unsupported.js');
 
 const IGNORED = new Set(['__esModule', 'then', 'toJSON', 'inspect', 'constructor', 'prototype', 'valueOf', 'toString']);
 
 function unsupported(name) {
-  const message = `VS Code API '${name}' is not supported by OpenMind Studio yet.`;
   return new Proxy(function unsupportedApi() {}, {
     get(_target, prop) {
       if (typeof prop === 'symbol' || IGNORED.has(prop)) return undefined;
       return unsupported(name ? `${name}.${prop}` : String(prop));
     },
     apply() {
-      if (unsupportedReporter) unsupportedReporter(message);
-      throw new Error(message);
+      throw unsupportedError(name);
     },
     construct() {
-      if (unsupportedReporter) unsupportedReporter(message);
-      throw new Error(message);
+      throw unsupportedError(name);
     },
   });
 }
@@ -350,25 +349,6 @@ function createApi(host, ext) {
   });
   const { document, editor } = editors;
 
-  const event = (name) => (listener, thisArg, disposables) =>
-    track(host.events.on(name)(asExtension(listener), thisArg, disposables));
-  const documentEvent = (name) => (listener, thisArg, disposables) => {
-    need('workspaceRead');
-    return track(
-      host.events.on(name)(
-        asExtension((data) =>
-          listener(
-            name === 'documentChanged'
-              ? { document: document(state.documents.get(data.path) || data), contentChanges: [] }
-              : document(state.documents.get(data.path) || data),
-          ),
-        ),
-        thisArg,
-        disposables,
-      ),
-    );
-  };
-
   // -- commands
   const commands = namespace('commands', {
     registerCommand(command, callback) {
@@ -389,6 +369,21 @@ function createApi(host, ext) {
           notify('commands/unregistered', { command });
         }
       }));
+    },
+    /** Runs with the active text editor and an edit builder; the edits are one undoable change. */
+    registerTextEditorCommand(command, callback) {
+      return commands.registerCommand(command, async (...args) => {
+        const active = editors.activeEditor();
+        if (!active) {
+          console.error(`Command '${command}' needs an active text editor.`);
+          return undefined;
+        }
+        let result;
+        await active.edit((builder) => {
+          result = callback(active, builder, ...args);
+        });
+        return result;
+      });
     },
     async executeCommand(command, ...args) {
       need('commands');
@@ -463,6 +458,21 @@ function createApi(host, ext) {
     return channel;
   }
 
+  // -- workspace and languages (their own modules)
+  const workspace = createWorkspaceApi({ host, ext, need, track, asExtension, Disposable, EventEmitter, Uri, editors, namespace, toPath });
+  const languages = createLanguagesApi({
+    host,
+    ext,
+    need,
+    track,
+    Disposable,
+    namespace,
+    editors,
+    toPath,
+    types: { Position, Range, SnippetString, CancellationTokenSource, Uri },
+  });
+  const { tasks } = tasksModule.createTaskApi({ host, ext, need, track, Disposable, EventEmitter, namespace, asExtension });
+
   const trees = createTreeApi({
     host,
     ext,
@@ -473,6 +483,7 @@ function createApi(host, ext) {
   });
   const statusBar = createStatusBarApi({ host, ext, track, Disposable });
   const webviews = createWebviewApi({ host, ext, need, track, Disposable, EventEmitter, Uri, namespace, asExtension });
+  const terminals = createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, namespace, asExtension });
   const window = namespace('window', {
     registerTreeDataProvider: trees.registerTreeDataProvider,
     createTreeView: trees.createTreeView,
@@ -480,9 +491,35 @@ function createApi(host, ext) {
     showWarningMessage: message('warning'),
     showErrorMessage: message('error'),
     createOutputChannel: outputChannel,
-    createTerminal() {
-      need('terminal');
-      throw new Error("VS Code API 'window.createTerminal' is not supported by OpenMind Studio yet.");
+    createTerminal: terminals.createTerminal,
+    get terminals() {
+      return terminals.terminals;
+    },
+    get activeTerminal() {
+      return undefined;
+    },
+    onDidOpenTerminal: terminals.onDidOpenTerminal,
+    onDidCloseTerminal: terminals.onDidCloseTerminal,
+    registerWebviewViewProvider: webviews.registerWebviewViewProvider,
+    /** Opens a document in an editor tab: a file (`workspaceRead`) or a custom-scheme document (read-only). */
+    async showTextDocument(target, options) {
+      const doc = target && target.getText ? target : await workspace.openTextDocument(target);
+      const uri = doc.uri;
+      if (uri.scheme === 'file') {
+        await request('ui/showTextDocument', { extension: ext.id, path: uri.fsPath, preserveFocus: !!(options && options.preserveFocus) });
+        return editors.activeEditor();
+      }
+      const data = state.documents.get(uri.toString());
+      await request('ui/showVirtualDocument', {
+        extension: ext.id,
+        uri: uri.toString(),
+        scheme: uri.scheme,
+        path: uri.path,
+        text: doc.getText(),
+        languageId: doc.languageId,
+        readonly: !data || data.readonly !== false,
+      });
+      return undefined;
     },
     async showQuickPick(items, options = {}) {
       const list = await Promise.resolve(items);
@@ -522,195 +559,6 @@ function createApi(host, ext) {
       track(editors.selectionEvent(listener, thisArg, disposables)),
     createStatusBarItem: statusBar.createStatusBarItem,
     createWebviewPanel: webviews.createWebviewPanel,
-  });
-
-  // -- workspace
-  function configuration(section) {
-    const prefix = section ? `${section}.` : '';
-    const lookup = (key) => {
-      const full = prefix + key;
-      if (full in state.configuration) return state.configuration[full];
-      const nested = {};
-      let found = false;
-      for (const name of Object.keys(state.configuration)) {
-        if (name.startsWith(`${full}.`)) {
-          nested[name.slice(full.length + 1)] = state.configuration[name];
-          found = true;
-        }
-      }
-      return found ? nested : undefined;
-    };
-    return {
-      get(key, fallback) {
-        const value = lookup(key);
-        return value === undefined ? fallback : value;
-      },
-      has: (key) => lookup(key) !== undefined,
-      inspect: (key) => ({ key: prefix + key, globalValue: lookup(key) }),
-      async update(key, value, target) {
-        await request('workspace/updateConfiguration', { key: prefix + key, value: value === undefined ? null : value, target: target === ConfigurationTarget.Workspace || target === false ? 'workspace' : 'user' });
-      },
-    };
-  }
-
-  const workspace = namespace('workspace', {
-    get workspaceFolders() {
-      const folders = state.workspaceFolders;
-      if (!folders.length) return undefined;
-      return folders.map((folder, index) => ({ uri: Uri.file(folder.path), name: folder.name, index }));
-    },
-    get name() {
-      return state.workspaceFolders[0] ? state.workspaceFolders[0].name : undefined;
-    },
-    get rootPath() {
-      return state.workspaceFolders[0] ? state.workspaceFolders[0].path : undefined;
-    },
-    getWorkspaceFolder(uri) {
-      const target = toPath(uri);
-      const folder = state.workspaceFolders.find((item) => target && (target === item.path || target.startsWith(item.path + path.sep)));
-      return folder ? { uri: Uri.file(folder.path), name: folder.name, index: state.workspaceFolders.indexOf(folder) } : undefined;
-    },
-    asRelativePath(value) {
-      const target = toPath(value);
-      const folder = state.workspaceFolders.find((item) => target && target.startsWith(item.path + path.sep));
-      return folder ? target.slice(folder.path.length + 1).replace(/\\/g, '/') : target;
-    },
-    getConfiguration(section) {
-      need('settings');
-      return configuration(section);
-    },
-    onDidChangeConfiguration: (listener, thisArg, disposables) => {
-      need('settings');
-      return track(host.events.on('configuration')(
-        asExtension((data) =>
-          listener({
-            affectsConfiguration: (section) => data.changed.some((key) => key === section || key.startsWith(`${section}.`) || section.startsWith(`${key}.`)),
-          })),
-        thisArg,
-        disposables,
-      ));
-    },
-    onDidChangeWorkspaceFolders: event('workspaceFolders'),
-    get textDocuments() {
-      need('workspaceRead');
-      return [...state.documents.values()].map(document);
-    },
-    async openTextDocument(target) {
-      const file = toPath(target);
-      if (!file) throw new Error('openTextDocument needs a file path or a file Uri.');
-      need(state.workspaceFolders.some((folder) => within(folder.path, file)) ? 'workspaceRead' : 'filesystemOutsideWorkspace');
-      const known = state.documents.get(file);
-      if (known) return document(known);
-      const data = await request('workspace/openTextDocument', { path: file });
-      state.documents.set(file, data);
-      return document(data);
-    },
-    applyEdit: (edit) => editors.applyEdit(edit),
-    onDidOpenTextDocument: documentEvent('documentOpened'),
-    onDidCloseTextDocument: documentEvent('documentClosed'),
-    onDidChangeTextDocument: documentEvent('documentChanged'),
-    onDidSaveTextDocument: documentEvent('documentSaved'),
-  });
-
-  // -- languages
-  function selectors(selector) {
-    const list = Array.isArray(selector) ? selector : [selector];
-    return list.map((item) => (typeof item === 'string' ? { language: item } : { language: item.language, scheme: item.scheme, pattern: typeof item.pattern === 'string' ? item.pattern : undefined }));
-  }
-
-  function register(kind, selector, invoke, extra) {
-    handleCounter += 1;
-    const handle = `${ext.id}:${kind}:${handleCounter}`;
-    state.providers.set(handle, { kind, extension: ext.id, invoke });
-    notify('languages/registered', { handle, kind, extension: ext.id, selector: selectors(selector), ...extra });
-    return track(new Disposable(() => {
-      if (state.providers.delete(handle)) notify('languages/unregistered', { handle });
-    }));
-  }
-
-  const cancelled = new CancellationTokenSource().token;
-  const text = (value) => (value === undefined || value === null ? undefined : typeof value === 'string' ? value : value.value !== undefined ? { value: value.value } : String(value));
-  const rangeOut = (range) => range && { startLine: range.start.line, startColumn: range.start.character, endLine: range.end.line, endColumn: range.end.character };
-
-  const languages = namespace('languages', {
-    getLanguages: async () => request('workspace/getLanguages', {}),
-    registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
-      need('languages');
-      return register(
-        'completion',
-        selector,
-        async ({ path: file, position }) => {
-          const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), cancelled, { triggerKind: 0 });
-          const items = Array.isArray(result) ? result : result ? result.items : [];
-          return (items || []).map((item) => ({
-            label: typeof item.label === 'string' ? item.label : item.label.label,
-            kind: item.kind,
-            detail: item.detail,
-            documentation: text(item.documentation),
-            insertText: item.insertText instanceof SnippetString ? { snippet: item.insertText.value } : item.insertText === undefined ? undefined : String(item.insertText),
-            sortText: item.sortText,
-            filterText: item.filterText,
-          }));
-        },
-        { triggerCharacters },
-      );
-    },
-    registerHoverProvider(selector, provider) {
-      need('languages');
-      return register('hover', selector, async ({ path: file, position }) => {
-        const result = await provider.provideHover(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
-        if (!result) return null;
-        return { contents: result.contents.map(text).filter((entry) => entry !== undefined), range: rangeOut(result.range) };
-      });
-    },
-    registerDefinitionProvider(selector, provider) {
-      need('languages');
-      return register('definition', selector, async ({ path: file, position }) => {
-        const result = await provider.provideDefinition(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
-        const list = Array.isArray(result) ? result : result ? [result] : [];
-        return list.map((item) => ({ path: toPath(item.uri || item.targetUri), range: rangeOut(item.range || item.targetRange) }));
-      });
-    },
-    createDiagnosticCollection(name = `collection-${(handleCounter += 1)}`) {
-      need('languages');
-      const collection = `${ext.id}:${name}`;
-      const stored = new Map();
-      const push = (file, list) =>
-        notify('diagnostics/set', {
-          collection,
-          path: file,
-          diagnostics: list.map((item) => ({ range: rangeOut(item.range), message: item.message, severity: item.severity, source: item.source, code: item.code === undefined ? undefined : String(item.code && item.code.value !== undefined ? item.code.value : item.code) })),
-        });
-      return track({
-        name,
-        set(target, diagnostics) {
-          if (Array.isArray(target)) {
-            for (const [uri, list] of target) this.set(uri, list);
-            return;
-          }
-          const file = toPath(target);
-          stored.set(file, diagnostics || []);
-          push(file, diagnostics || []);
-        },
-        get: (uri) => stored.get(toPath(uri)),
-        has: (uri) => stored.has(toPath(uri)),
-        delete(uri) {
-          const file = toPath(uri);
-          stored.delete(file);
-          push(file, []);
-        },
-        clear() {
-          for (const file of stored.keys()) push(file, []);
-          stored.clear();
-        },
-        forEach(callback) {
-          for (const [file, list] of stored) callback(Uri.file(file), list, this);
-        },
-        dispose() {
-          this.clear();
-        },
-      });
-    },
   });
 
   const extensions = namespace('extensions', {
@@ -791,6 +639,19 @@ function createApi(host, ext) {
     StatusBarAlignment,
     ThemeColor,
     WorkspaceEdit: editors.WorkspaceEdit,
+    TextEdit,
+    RelativePattern,
+    FileType,
+    FileSystemError,
+    Task: tasksModule.Task,
+    ShellExecution: tasksModule.ShellExecution,
+    ProcessExecution: tasksModule.ProcessExecution,
+    CustomExecution: tasksModule.CustomExecution,
+    TaskGroup: tasksModule.TaskGroup,
+    TaskScope: tasksModule.TaskScope,
+    TaskRevealKind: tasksModule.TaskRevealKind,
+    TaskPanelKind: tasksModule.TaskPanelKind,
+    tasks,
     TreeItem,
     TreeItemCollapsibleState,
     ThemeIcon,

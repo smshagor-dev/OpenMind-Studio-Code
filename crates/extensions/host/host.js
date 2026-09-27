@@ -3,10 +3,13 @@
 // Rust process. It talks to OpenMind Studio over JSON-RPC 2.0 on stdio (Content-Length framing, like LSP).
 //
 // Application -> host requests:  host/init, host/activate, host/deactivate, host/executeCommand,
-//                                host/provide, host/tree, host/shutdown
+//                                host/provide, host/tree, host/resolveWebviewView, host/provideTasks, host/fs,
+//                                host/shutdown
 // Application -> host notifications: host/configurationChanged, host/document*, host/activeEditorChanged,
-//                                host/workspaceFoldersChanged
-// Host -> application requests:  ui/*, workspace/*, commands/execute, commands/getCommands
+//                                host/workspaceFoldersChanged, host/terminalClosed, host/filesChanged,
+//                                host/taskStarted, host/taskEnded, host/webview*
+// Host -> application requests:  ui/*, workspace/*, commands/execute, commands/getCommands, terminal/*,
+//                                tasks/execute, secrets/* (answered by the Rust side, never by the window)
 // Host -> application notifications: log/output, commands/registered, commands/unregistered,
 //                                languages/registered, languages/unregistered, diagnostics/set,
 //                                views/registered, views/unregistered, views/changed, views/message, views/title
@@ -18,6 +21,10 @@ const { AsyncLocalStorage } = require('async_hooks');
 const { createApi, disposeApi, setUnsupportedReporter } = require('./vscode.js');
 const { createGuard, permissionError, modulePermission } = require('./guard.js');
 const { handleTreeRequest } = require('./treeviews.js');
+const { resolveWebviewView } = require('./webviews.js');
+const { terminalClosed } = require('./terminals.js');
+const { provideAll, taskEvent } = require('./tasks.js');
+const { handleFsRequest } = require('./fsprovider.js');
 
 // Which extension is running the current code, across awaits: what it logs, and what it may do, is decided by it.
 const als = new AsyncLocalStorage();
@@ -231,6 +238,11 @@ const handlers = {
     return als.run(tree ? tree.extension : 'host', () => handleTreeRequest(state, params));
   },
 
+  // Milestone 18
+  'host/resolveWebviewView': async (params) => resolveWebviewView(host, params),
+  'host/provideTasks': async (params) => ({ tasks: await provideAll(host, params.type || null) }),
+  'host/fs': async (params) => handleFsRequest(host, params, require('./vscode.js').Uri),
+
   'host/shutdown': async () => {
     for (const id of [...state.running.keys()]) await deactivate(id);
     setImmediate(() => realExit(0));
@@ -262,6 +274,7 @@ async function activate(params) {
       globalState: memento(path.join(descriptor.globalStorage, 'globalState.json')),
       workspaceState: memento(path.join(descriptor.workspaceStorage || descriptor.globalStorage, 'workspaceState.json')),
       asAbsolutePath: (relative) => path.join(descriptor.path, relative),
+      secrets: secretStorage(descriptor.id),
     };
     const api = createApi(host, descriptor);
     const run = { module: null, context, api, subscriptions };
@@ -283,6 +296,39 @@ async function activate(params) {
     return { activated: true };
   }
 
+}
+
+/**
+ * `context.secrets`: strings kept for this extension only. The app's Rust side stores them encrypted (Windows DPAPI)
+ * under this extension's id; they never reach the app's window, logs or diagnostics.
+ */
+function secretStorage(extensionId) {
+  const changed = new (require('./vscode.js').EventEmitter)();
+  const checkKey = (key) => {
+    if (typeof key !== 'string' || key === '' || key.length > 256) throw new Error('A secret key must be a string of 1 to 256 characters.');
+    return key;
+  };
+  return {
+    async get(key) {
+      const answer = await request('secrets/get', { extension: extensionId, key: checkKey(key) });
+      return answer && typeof answer.value === 'string' ? answer.value : undefined;
+    },
+    async store(key, value) {
+      if (typeof value !== 'string') throw new Error('A secret value must be a string.');
+      if (value.length > 64 * 1024) throw new Error('A secret value may not be longer than 64 KB.');
+      await request('secrets/store', { extension: extensionId, key: checkKey(key), value });
+      changed.fire({ key });
+    },
+    async delete(key) {
+      await request('secrets/delete', { extension: extensionId, key: checkKey(key) });
+      changed.fire({ key });
+    },
+    async keys() {
+      const answer = await request('secrets/keys', { extension: extensionId });
+      return Array.isArray(answer && answer.keys) ? answer.keys : [];
+    },
+    onDidChange: changed.event,
+  };
 }
 
 function cleanup(run) {
@@ -359,6 +405,10 @@ const notifications = {
   'host/webviewMessage': (params) => events.fire('webviewMessage', params),
   'host/webviewDisposed': (params) => events.fire('webviewDisposed', params),
   'host/webviewViewState': (params) => events.fire('webviewViewState', params),
+  'host/terminalClosed': (params) => terminalClosed(host, params),
+  'host/filesChanged': (params) => events.fire('filesChanged', params),
+  'host/taskStarted': (params) => taskEvent(host, 'host/taskStarted', params),
+  'host/taskEnded': (params) => taskEvent(host, 'host/taskEnded', params),
   'host/activeEditorChanged': (params) => {
     state.activeEditor = params.editor || null;
     events.fire('activeEditor', { editor: state.activeEditor });

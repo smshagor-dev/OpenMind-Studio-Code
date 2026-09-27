@@ -1,11 +1,17 @@
 import { RESOURCE_SCHEME } from "./webviewHtml";
 
-/** One webview panel an extension opened. */
+/** One webview an extension opened: a panel over the editors, or a view in its side bar container. */
 export interface WebviewPanelView {
   id: string;
   extension: string;
+  /** `panel` (`createWebviewPanel`) or `view` (a webview view, Milestone 18). */
+  placement: "panel" | "view";
+  /** The contributed view id, for a view. */
+  view: string | null;
   viewType: string;
   title: string;
+  /** A view's description (shown next to its title). */
+  description: string;
   html: string;
   enableScripts: boolean;
   /** Keep the page alive while another tab is shown (`retainContextWhenHidden`). */
@@ -19,7 +25,10 @@ export interface WebviewPanelView {
 }
 
 export interface WebviewState {
+  /** Every webview, panels and views alike (`panelsOf` / `viewFor` pick them). */
   panels: WebviewPanelView[];
+  /** Views whose extension registered a webview view provider. */
+  providers: string[];
   activeId: string | null;
   /** The panels cover the editor area; hidden with "Editors", the panels stay alive. */
   overlay: boolean;
@@ -34,6 +43,13 @@ export interface WebviewDeps {
   readResource: (extension: string, path: string, roots: string[]) => Promise<string>;
   log?: (line: string) => void;
   onError?: (message: string) => void;
+  /** A webview view asked to be shown (`WebviewView.show`): reveal its side bar container. */
+  revealView?: (view: string) => void;
+}
+
+/** The webviews shown over the editors (not the side bar views). */
+export function panelsOf(state: WebviewState): WebviewPanelView[] {
+  return state.panels.filter((panel) => panel.placement === "panel");
 }
 
 /** More panels than this are refused (each one is a page). */
@@ -47,7 +63,7 @@ export const MAX_VIEW_TYPE_LENGTH = 100;
 /** The saved page state (`setState`) of one panel may not be larger than this (JSON text). */
 export const MAX_STATE_BYTES = 1024 * 1024;
 
-const INITIAL: WebviewState = { panels: [], activeId: null, overlay: true, focusSeq: 0 };
+const INITIAL: WebviewState = { panels: [], providers: [], activeId: null, overlay: true, focusSeq: 0 };
 
 function clip(text: string, limit: number): string {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
@@ -90,6 +106,11 @@ export class WebviewService {
 
   constructor(private readonly deps: WebviewDeps) {}
 
+  /** Where `WebviewView.show` goes (the side bar reveals the view's container). */
+  onRevealView(reveal: (view: string) => void): void {
+    this.deps.revealView = reveal;
+  }
+
   getState(): WebviewState {
     return this.state;
   }
@@ -113,12 +134,36 @@ export class WebviewService {
     return this.state.panels.find((panel) => panel.id === id);
   }
 
+  /** The webview of a contributed view, once its provider filled it. */
+  viewFor(view: string): WebviewPanelView | undefined {
+    return this.state.panels.find((panel) => panel.placement === "view" && panel.view === view);
+  }
+
+  /** Whether an activated extension registered a provider for `view`. */
+  hasProvider(view: string): boolean {
+    return this.state.providers.includes(view);
+  }
+
+  /** The side bar shows (or hides) a webview view: its extension hears `onDidChangeVisibility`. */
+  setViewVisible(id: string, visible: boolean): void {
+    const panel = this.find(id);
+    if (panel?.placement !== "view") return;
+    this.deps.notifyHost("host/webviewViewState", { id, visible, active: visible });
+  }
+
   /** The host's `webview/*` notifications, and `webview/reset` when the host went away. */
   handleEvent(method: string, params: Record<string, unknown>): void {
     const id = str(params.id);
     const extension = str(params.extension);
     if (method === "webview/reset") {
       this.reset();
+      return;
+    }
+    if (method === "webview/viewProvider") {
+      const view = str(params.view);
+      if (view === "" || extension === "") return;
+      const others = this.state.providers.filter((known) => known !== view);
+      this.set({ providers: params.registered === true ? [...others, view] : others });
       return;
     }
     if (id === "" || extension === "" || !id.startsWith(`${extension}#`)) return;
@@ -140,6 +185,12 @@ export class WebviewService {
       }
       case "webview/title":
         this.patch(id, { title: clip(str(params.title), MAX_TITLE_LENGTH) });
+        return;
+      case "webview/description":
+        this.patch(id, { description: clip(str(params.description), MAX_TITLE_LENGTH) });
+        return;
+      case "webview/revealView":
+        if (panel.view !== null) this.deps.revealView?.(panel.view);
         return;
       case "webview/options":
         this.patch(id, {
@@ -163,7 +214,10 @@ export class WebviewService {
 
   private create(id: string, extension: string, params: Record<string, unknown>): void {
     if (this.find(id)) return;
-    if (this.state.panels.length >= MAX_PANELS) {
+    const placement = params.placement === "view" ? "view" : "panel";
+    const view = placement === "view" ? str(params.view) : null;
+    if (placement === "view" && (view === "" || this.viewFor(view ?? ""))) return;
+    if (placement === "panel" && panelsOf(this.state).length >= MAX_PANELS) {
       this.deps.onError?.(
         `${extension} tried to open more than ${String(MAX_PANELS)} webview panels.`,
       );
@@ -173,8 +227,11 @@ export class WebviewService {
     const panel: WebviewPanelView = {
       id,
       extension,
+      placement,
+      view,
       viewType: clip(str(params.viewType), MAX_VIEW_TYPE_LENGTH),
       title: clip(str(params.title), MAX_TITLE_LENGTH),
+      description: "",
       html: "",
       enableScripts: params.enableScripts === true,
       retain: params.retain === true,
@@ -182,6 +239,11 @@ export class WebviewService {
       state: null,
       blocked: [],
     };
+    if (placement === "view") {
+      // A view lives in the side bar: it never covers the editors or takes the panel tabs' focus.
+      this.set({ panels: [...this.state.panels, panel] });
+      return;
+    }
     this.set({ panels: [...this.state.panels, panel], overlay: true });
     if (params.preserveFocus !== true || this.state.activeId === null) this.setActive(id);
     else this.deps.notifyHost("host/webviewViewState", { id, visible: false, active: false });
@@ -195,15 +257,16 @@ export class WebviewService {
   private remove(id: string, tellHost: boolean): void {
     if (!this.find(id)) return;
     const panels = this.state.panels.filter((panel) => panel.id !== id);
+    const remaining = panels.filter((panel) => panel.placement === "panel");
     const activeId =
-      this.state.activeId === id ? (panels[panels.length - 1]?.id ?? null) : this.state.activeId;
+      this.state.activeId === id ? (remaining[remaining.length - 1]?.id ?? null) : this.state.activeId;
     this.set({ panels, activeId });
     if (tellHost) this.deps.notifyHost("host/webviewDisposed", { id });
     if (activeId !== null) this.announce(activeId);
   }
 
   setActive(id: string): void {
-    if (!this.find(id)) return;
+    if (this.find(id)?.placement !== "panel") return;
     const previous = this.state.activeId;
     this.set({ activeId: id, overlay: true, focusSeq: this.state.focusSeq + 1 });
     if (previous !== null && previous !== id && this.find(previous)) {
@@ -231,7 +294,7 @@ export class WebviewService {
   /** "Editors" hides the panels without closing them; a panel comes back with `setActive` or `showOverlay`. */
   hideOverlay(): void {
     this.set({ overlay: false });
-    for (const panel of this.state.panels) {
+    for (const panel of panelsOf(this.state)) {
       this.deps.notifyHost("host/webviewViewState", {
         id: panel.id,
         visible: false,
@@ -241,7 +304,7 @@ export class WebviewService {
   }
 
   showOverlay(): void {
-    if (this.state.panels.length === 0) return;
+    if (panelsOf(this.state).length === 0) return;
     this.set({ overlay: true });
     if (this.state.activeId !== null) this.announce(this.state.activeId);
   }
@@ -298,16 +361,19 @@ export class WebviewService {
   keepOnly(enabledExtensions: ReadonlySet<string>): void {
     const keep = this.state.panels.filter((panel) => enabledExtensions.has(panel.extension));
     if (keep.length === this.state.panels.length) return;
-    const activeId = keep.some((p) => p.id === this.state.activeId)
+    const keptPanels = keep.filter((panel) => panel.placement === "panel");
+    const activeId = keptPanels.some((p) => p.id === this.state.activeId)
       ? this.state.activeId
-      : (keep[keep.length - 1]?.id ?? null);
+      : (keptPanels[keptPanels.length - 1]?.id ?? null);
     this.set({ panels: keep, activeId });
   }
 
   /** The host went away (stopped, crashed, restarting): every panel it made is gone with it. */
   reset(): void {
-    if (this.state.panels.length === 0 && this.state.activeId === null) return;
-    this.set({ panels: [], activeId: null });
+    if (this.state.panels.length === 0 && this.state.activeId === null && this.state.providers.length === 0) {
+      return;
+    }
+    this.set({ panels: [], activeId: null, providers: [] });
   }
 
   private patch(id: string, change: Partial<WebviewPanelView>): void {

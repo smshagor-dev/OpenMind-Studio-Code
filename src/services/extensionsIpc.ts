@@ -114,6 +114,8 @@ export interface ExtensionContributions {
   snippets: ExtensionSnippetContribution[];
   themes: ExtensionThemeContribution[];
   iconThemes: { id: string; label: string; path: string }[];
+  /** Task types the extension's task provider serves (Milestone 18). */
+  taskDefinitions: { type: string; required: string[] }[];
   debuggers: { kind: string; label: string | null }[];
   problemMatchers: string[];
   views: ExtensionViews;
@@ -186,6 +188,8 @@ export interface ExtensionActivity {
   /** How many times it was activated since the app started. */
   activationCount: number;
   lastActivation: string | null;
+  /** VS Code APIs it called that OpenMind Studio doesn't support (Milestone 18). */
+  unsupportedApis?: string[];
 }
 
 export type ExtensionHostState =
@@ -255,6 +259,10 @@ export interface ExtensionsIpc {
   extReadFile: (id: string, path: string) => Promise<string>;
   /** An `.svg`/`.png` inside the extension as a `data:` URL. */
   extReadIcon: (id: string, path: string) => Promise<string>;
+  /** How many secrets an extension keeps (`context.secrets`); never their values. */
+  extSecretsCount: (id: string) => Promise<number>;
+  /** Forgets every secret of an extension. */
+  extSecretsClear: (id: string) => Promise<void>;
   extHostLog: () => Promise<string>;
   extHostStart: (initial: unknown) => Promise<ExtensionHostStatus>;
   extHostStop: () => Promise<void>;
@@ -281,6 +289,8 @@ export const tauriExtensionsIpc: ExtensionsIpc = {
     invoke<InstalledExtension>("ext_grant_permission", { id, permission }),
   extReadFile: (id, path) => invoke<string>("ext_read_file", { id, path }),
   extReadIcon: (id, path) => invoke<string>("ext_read_icon", { id, path }),
+  extSecretsCount: (id) => invoke<number>("ext_secrets_count", { id }),
+  extSecretsClear: (id) => invoke("ext_secrets_clear", { id }),
   extHostLog: () => invoke<string>("ext_host_log"),
   extHostStart: (initial) => invoke<ExtensionHostStatus>("ext_host_start", { initial }),
   extHostStop: () => invoke("ext_host_stop"),

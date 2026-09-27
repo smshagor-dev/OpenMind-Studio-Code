@@ -141,7 +141,7 @@ describe("extension model", () => {
   it("describes activation events and the exact trust and marketplace texts", () => {
     expect(describeActivation("*")).toContain("slow");
     expect(describeActivation("onCommand:x.y")).toBe('When the command "x.y" runs');
-    expect(describeActivation("onView:v")).toContain("never triggers");
+    expect(describeActivation("onView:v")).toBe(`When the view "v" is shown`);
     expect(describeActivation("onDebug")).toContain("not supported yet");
     expect(TRUST_WARNING).toBe("Extensions can run code on your computer. Install only from trusted sources.");
     expect(MARKETPLACE_UNAVAILABLE).toBe("Online extension marketplace is not available yet.");

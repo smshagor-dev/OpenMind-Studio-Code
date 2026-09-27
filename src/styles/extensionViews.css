@@ -167,3 +167,18 @@
   margin: 0;
   color: var(--warning-fg);
 }
+
+/* A webview view (Milestone 18): the page fills the view's section. */
+.ext-webview-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 160px;
+}
+
+.ext-webview-view .webview-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 160px;
+  border: 0;
+}

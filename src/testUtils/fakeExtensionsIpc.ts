@@ -21,6 +21,7 @@ export function emptyContributions(): ExtensionContributions {
     snippets: [],
     themes: [],
     iconThemes: [],
+    taskDefinitions: [],
     debuggers: [],
     problemMatchers: [],
     views: { containers: [], elsewhere: 0, otherContainers: 0 },
@@ -94,6 +95,8 @@ export function createFakeExtensionsIpc(): ExtensionsIpc {
     extWebviewReadResource: vi.fn().mockResolvedValue("data:image/png;base64,AAAA"),
     extReadFile: vi.fn().mockResolvedValue("{}"),
     extReadIcon: vi.fn().mockResolvedValue("data:image/svg+xml;base64,PHN2Zy8+"),
+    extSecretsCount: vi.fn().mockResolvedValue(0),
+    extSecretsClear: vi.fn().mockResolvedValue(undefined),
     extHostLog: vi.fn().mockResolvedValue(""),
     extHostStart: vi
       .fn()

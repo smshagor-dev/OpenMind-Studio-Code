@@ -34,6 +34,17 @@ pub struct Activity {
     /// How many times it was activated since the app started (a host restart activates it again).
     pub activation_count: u32,
     pub last_activation: Option<String>,
+    /// VS Code APIs it called that OpenMind Studio doesn't support (seen in the host's log, at most 30).
+    pub unsupported_apis: Vec<String>,
+}
+
+/// The API name in a host log line "VS Code API 'x.y' is not supported by OpenMind Studio yet.", if it is one.
+pub(crate) fn unsupported_api_in(text: &str) -> Option<String> {
+    let start = text.find("VS Code API '")? + "VS Code API '".len();
+    let rest = &text[start..];
+    let end = rest.find("' is not supported")?;
+    let name = &rest[..end];
+    (!name.is_empty() && name.len() <= 120).then(|| name.to_string())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -102,6 +113,18 @@ impl ExtensionsRuntime {
         }
     }
 
+    /// Remembers an unsupported VS Code API an extension called (shown on its details page).
+    /// Remembers an unsupported API an extension used; true when it is new (the details page is then refreshed).
+    pub(crate) fn record_unsupported(&self, id: &str, api: String) -> bool {
+        let mut activity = lock(&self.activity);
+        let entry = activity.entry(id.to_string()).or_default();
+        if !entry.unsupported_apis.contains(&api) && entry.unsupported_apis.len() < 30 {
+            entry.unsupported_apis.push(api);
+            return true;
+        }
+        false
+    }
+
     pub(crate) fn record_activation(&self, id: &str, result: &Result<(), String>) {
         let mut activity = lock(&self.activity);
         let entry = activity.entry(id.to_string()).or_default();
@@ -140,6 +163,16 @@ impl Sink {
 
 impl HostEvents for Sink {
     fn request(&self, id: Value, method: &str, params: Value) {
+        // Secrets and file searches are answered here: they never reach the window.
+        if crate::commands::extension_api::handled_here(method) {
+            crate::commands::extension_api::answer(
+                self.app.clone(),
+                id,
+                method.to_string(),
+                params,
+            );
+            return;
+        }
         self.emit(
             "ext:host-request",
             json!({ "id": id, "method": method, "params": params }),
@@ -147,6 +180,26 @@ impl HostEvents for Sink {
     }
 
     fn notification(&self, method: &str, params: Value) {
+        if method == "log/output" {
+            let text = params
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            let extension = params
+                .get("extension")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            if let Some(api) = unsupported_api_in(text).filter(|_| extension.contains('.')) {
+                let new = self
+                    .app
+                    .state::<AppState>()
+                    .extensions
+                    .record_unsupported(extension, api);
+                if new {
+                    self.emit("ext:changed", Value::Null);
+                }
+            }
+        }
         self.emit(
             "ext:host-notification",
             json!({ "method": method, "params": params }),

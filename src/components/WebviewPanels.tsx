@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent }
 
 import { container } from "../services/container";
 import { prepareWebviewHtml } from "../services/webviewHtml";
-import { MAX_MESSAGE_BYTES, type WebviewPanelView } from "../services/webviewService";
+import { MAX_MESSAGE_BYTES, panelsOf, type WebviewPanelView } from "../services/webviewService";
 import "../styles/webview.css";
 import { CloseIcon } from "./icons";
 
@@ -22,7 +22,7 @@ const MAX_PENDING_BYTES = MAX_MESSAGE_BYTES;
  * first), no referrer. Messages go through `postMessage` only: from the page only when the sender is this very
  * frame and carries this frame's token.
  */
-function WebviewFrame({
+export function WebviewFrame({
   panel,
   visible,
   focusSeq,
@@ -154,9 +154,10 @@ export function WebviewPanels() {
     (listener) => webviews.subscribe(listener),
     () => webviews.getState(),
   );
-  if (state.panels.length === 0) return null;
-  const active = state.panels.find((panel) => panel.id === state.activeId) ?? state.panels[0];
-  const ids = state.panels.map((panel) => panel.id);
+  const panels = panelsOf(state);
+  if (panels.length === 0) return null;
+  const active = panels.find((panel) => panel.id === state.activeId) ?? panels[0];
+  const ids = panels.map((panel) => panel.id);
   return (
     <>
       {state.overlay ? null : (
@@ -168,7 +169,7 @@ export function WebviewPanels() {
             webviews.showOverlay();
           }}
         >
-          Webviews ({state.panels.length})
+          Webviews ({panels.length})
         </button>
       )}
       <section className="webview-host" aria-label="Extension webviews" hidden={!state.overlay}>
@@ -183,7 +184,7 @@ export function WebviewPanels() {
           >
             Editors
           </button>
-          {state.panels.map((panel, index) => {
+          {panels.map((panel, index) => {
             const isActive = panel.id === active?.id;
             return (
               <div
@@ -242,7 +243,7 @@ export function WebviewPanels() {
           </div>
         ) : null}
         <div className="webview-host__body">
-          {state.panels.map((panel) => {
+          {panels.map((panel) => {
             const shown = state.overlay && panel.id === active?.id;
             return shown || panel.retain ? (
               <WebviewFrame

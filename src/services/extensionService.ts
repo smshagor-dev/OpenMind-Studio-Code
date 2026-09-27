@@ -264,6 +264,25 @@ export class ExtensionService {
 
   // --- folders, logs, host ---
 
+  /** How many secrets the extension keeps (`context.secrets`); never their values. */
+  async secretCount(id: string): Promise<number> {
+    try {
+      return await this.ipc.extSecretsCount(id);
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Forgets every secret of the extension (its details page, after the user confirmed). */
+  async clearSecrets(id: string): Promise<void> {
+    try {
+      await this.ipc.extSecretsClear(id);
+      this.log(`Cleared the secrets of ${id}.`);
+    } catch (error) {
+      this.set({ error: cleanMessage(error) });
+    }
+  }
+
   openFolder(id: string): void {
     const extension = this.registry.find(id);
     if (extension === undefined) return;

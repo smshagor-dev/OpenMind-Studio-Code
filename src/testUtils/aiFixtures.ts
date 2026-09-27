@@ -62,6 +62,7 @@ export function aiExtension(
         snippets: [],
         themes: [],
         iconThemes: [],
+    taskDefinitions: [],
         debuggers: [],
         problemMatchers: [],
         views: { containers: [], elsewhere: 0, otherContainers: 0 },

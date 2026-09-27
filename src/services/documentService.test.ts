@@ -66,6 +66,29 @@ describe("DocumentService", () => {
     expect(buffers.getValue(id)).toBe(OPENED.content);
   });
 
+  it("two opens of one file while it is still being read make one document (click then double-click)", async () => {
+    let finish: (value: OpenedDocument) => void = () => undefined;
+    const documentOpen = vi.fn(
+      () =>
+        new Promise<OpenedDocument>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const service = new DocumentService(createFakeIpc({ documentOpen }), buffers, events);
+    const first = service.openFromPath(OPENED.path);
+    const second = service.openFromPath(OPENED.path);
+    finish(OPENED);
+    expect(await first).toBe(await second);
+    expect(documentOpen).toHaveBeenCalledTimes(1);
+    // A failed read isn't remembered: the next open tries again.
+    const failing = createFakeIpc({
+      documentOpen: vi.fn().mockRejectedValueOnce(new Error("locked")).mockResolvedValue(OPENED),
+    });
+    const retry = new DocumentService(failing, new BufferManager(), events);
+    await expect(retry.openFromPath(OPENED.path)).rejects.toThrow("locked");
+    await expect(retry.openFromPath(OPENED.path)).resolves.toMatch(/^doc-/);
+  });
+
   it("openFromPath reuses the existing document instead of reopening", async () => {
     const ipc = createFakeIpc({ documentOpen: vi.fn().mockResolvedValue(OPENED) });
     const service = new DocumentService(ipc, buffers, events);

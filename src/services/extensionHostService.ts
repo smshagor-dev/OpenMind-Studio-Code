@@ -225,6 +225,13 @@ export class ExtensionHostService {
     return results;
   }
 
+  /** One of the allow-listed requests to the running host (`host/resolveWebviewView`, `host/provideTasks`, ...). */
+  async request(method: string, params: unknown): Promise<unknown> {
+    if (!this.isRunning()) throw new Error(this.status().error ?? "The extension host isn't running.");
+    this.deps.sync.flush();
+    return this.deps.ipc.extHostRequest(method, params);
+  }
+
   /** Runs a command an extension registered, waking its extension first if needed. */
   async executeCommand(command: string, args: unknown[] = []): Promise<unknown> {
     const results = await this.activateFor({ kind: "command", command }, false);

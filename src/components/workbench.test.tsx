@@ -101,7 +101,7 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
   const views = new ExtensionViewsService({
     ipc: createFakeExtensionsIpc(),
     registry: { all: () => installed, subscribe: () => () => undefined },
-    host: { activateFor: vi.fn().mockResolvedValue([]) },
+    host: { activateFor: vi.fn().mockResolvedValue([]), request: vi.fn().mockResolvedValue({ id: null }) },
     run: vi.fn(),
     onError: vi.fn(),
   });

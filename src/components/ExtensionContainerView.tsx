@@ -10,6 +10,7 @@ import type { ExtensionViewContribution } from "../services/extensionsIpc";
 import "../styles/extensionViews.css";
 import { ChevronIcon, CollapseAllIcon, RefreshIcon } from "./icons";
 import { PaneSection } from "./PaneSection";
+import { WebviewFrame } from "./WebviewPanels";
 
 function useViews() {
   const views = container.extensions.views;
@@ -172,15 +173,55 @@ function Welcome({ text }: { text: string }) {
   );
 }
 
+/**
+ * A webview view: the extension's page in the same sandboxed frame as a webview panel (no same-origin, scripts only
+ * when asked for, CSP first, no remote content). The extension hears when it becomes visible or hidden.
+ */
+function WebviewViewBody({ entry, view }: { entry: ContainerEntry; view: ExtensionViewContribution }) {
+  const { webviews } = container.extensions;
+  const state = useSyncExternalStore(
+    (listener) => webviews.subscribe(listener),
+    () => webviews.getState(),
+  );
+  const page = state.panels.find((panel) => panel.placement === "view" && panel.view === view.id);
+  const pageId = page?.id ?? null;
+  useEffect(() => {
+    if (pageId === null) return undefined;
+    webviews.setViewVisible(pageId, true);
+    return () => {
+      webviews.setViewVisible(pageId, false);
+    };
+  }, [pageId, webviews]);
+  if (!page) {
+    return (
+      <p className="ext-view-note">
+        {state.providers.includes(view.id)
+          ? "Loading…"
+          : `${entry.extensionName} hasn't registered a provider for this view.`}
+      </p>
+    );
+  }
+  return (
+    <div className="ext-webview-view">
+      {page.blocked.length > 0 ? (
+        <p className="ext-view-note" role="status">
+          Some content was blocked (remote content and files outside the view's resource roots are never loaded).
+        </p>
+      ) : null}
+      <WebviewFrame panel={page} visible focusSeq={0} />
+    </div>
+  );
+}
+
 function ViewBody({ entry, view }: { entry: ContainerEntry; view: ExtensionViewContribution }) {
   const views = useViews();
   const state = views.view(view.id);
   const welcome = views.welcomeFor(view);
   if (view.kind === "webview") {
-    return (
-      <p className="ext-view-note">
-        This view uses a webview, which OpenMind Studio doesn't support yet.
-      </p>
+    return state.error !== null ? (
+      <p className="ext-view-note ext-view-note--error">{state.error}</p>
+    ) : (
+      <WebviewViewBody entry={entry} view={view} />
     );
   }
   if (state.error !== null)

@@ -83,6 +83,8 @@ import { WelcomeService } from "./welcomeService";
 import { WorkspaceService } from "./workspaceService";
 import type { ExtensionContributionService } from "./extensionContributionService";
 import { wireExtensions } from "./extensionsWiring";
+import { wireExtensionApis } from "./extensionApiWiring";
+import { ExtensionFormatterRegistry } from "./extensionFormatters";
 import { languageForPath } from "../editor/languageForPath";
 import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
 import * as monaco from "monaco-editor";
@@ -620,8 +622,11 @@ const language = wireLanguage({
   terminal,
   showTerminal: () => panel.show("terminal"),
 });
+/** Formatters extensions register (Milestone 18): one more choice for Format Document, never ahead of the others. */
+const extensionFormatters = new ExtensionFormatterRegistry();
 /** Format Document: built-in / project / bundled / runtime formatters and the language server, run on the editor's text. */
 const formatting = wireFormatting({
+  extensionFormatters,
   ipc: tauriIpcClient,
   events,
   commands,
@@ -632,11 +637,27 @@ const formatting = wireFormatting({
   settings,
   log: log("Formatting"),
 }).service;
+/** Extension API v2: terminals, tasks, documents, custom schemes, webview views, file events (Milestone 18). */
+const extensionApis = wireExtensionApis({
+  extensions,
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  terminal,
+  panel,
+  workspace,
+  documents,
+  layout,
+  output,
+  formatters: extensionFormatters,
+  settings,
+  languageOf: (name) => languageForPath(name),
+});
 editor.setFormatActions([
   { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
   { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: true },
 ]);
-/** The Explorer's icons follow `workbench.iconTheme`. */
+/** The Explorer's icons follow `workbench.iconTheme` (built-in, or an enabled extension's icon theme). */
 followIconTheme(settings);
 commands.register("preferences.fileIconTheme", () => {
   preferencesPage.open("settings", { query: "Icon Theme" });
@@ -797,6 +818,7 @@ export const container = {
   quickOpen: searchWiring.quickOpen,
   ipc: tauriIpcClient,
   extensions,
+  extensionApis,
   ai,
   startAi,
   language,

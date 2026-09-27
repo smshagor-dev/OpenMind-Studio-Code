@@ -313,3 +313,16 @@
 .file-preview__latex-author {
   color: var(--fg-muted);
 }
+
+/* An extension's custom-scheme document (Milestone 18): a read-only editor filling the preview body. */
+.file-preview__virtual {
+  flex: 1 1 auto;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-preview__virtual > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}

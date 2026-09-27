@@ -83,8 +83,24 @@ pub async fn ext_uninstall(
         .uninstall(&id)
         .map_err(|err| err.to_string())?;
     lock(&state.extensions.activity).remove(&id);
+    // Its secrets go with it (unlike its storage folder, which VS Code keeps too).
+    if let Err(err) = crate::commands::extension_api::clear_secrets(&state, &id).await {
+        tracing::warn!(%err, "couldn't remove an uninstalled extension's secrets");
+    }
     changed(&app);
     Ok(())
+}
+
+/// How many secrets an extension keeps (never their values).
+#[tauri::command]
+pub async fn ext_secrets_count(id: String, state: State<'_, AppState>) -> Result<usize, String> {
+    Ok(crate::commands::extension_api::secret_count(&state, &id).await)
+}
+
+/// Forgets every secret of an extension (its details page).
+#[tauri::command]
+pub async fn ext_secrets_clear(id: String, state: State<'_, AppState>) -> Result<(), String> {
+    crate::commands::extension_api::clear_secrets(&state, &id).await
 }
 
 /// A file inside an installed extension (a theme, a snippets file), read as text.

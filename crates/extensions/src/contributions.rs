@@ -25,6 +25,7 @@ pub struct Contributions {
     pub snippets: Vec<SnippetContribution>,
     pub themes: Vec<ThemeContribution>,
     pub icon_themes: Vec<IconThemeContribution>,
+    pub task_definitions: Vec<crate::tasks::TaskDefinitionContribution>,
     pub debuggers: Vec<DebuggerContribution>,
     pub problem_matchers: Vec<String>,
     /// Activity bar containers and their views (see [`crate::views`]).
@@ -508,6 +509,7 @@ impl Contributions {
                 })
             })
             .collect();
+        out.task_definitions = crate::tasks::parse(value);
         out.debuggers = list(value, "debuggers")
             .iter()
             .filter_map(|entry| {
@@ -534,6 +536,7 @@ impl Contributions {
             "snippets",
             "themes",
             "iconThemes",
+            "taskDefinitions",
             "debuggers",
             "problemMatchers",
             "viewsContainers",
@@ -600,8 +603,14 @@ impl Contributions {
         add(
             "iconThemes",
             self.icon_themes.len(),
-            Support::Unsupported,
-            Some("Icon themes aren't supported yet."),
+            Support::Supported,
+            Some("File and folder icons from SVG/PNG files; a font-based icon theme falls back to the built-in icons."),
+        );
+        add(
+            "taskDefinitions",
+            self.task_definitions.len(),
+            Support::Supported,
+            Some("Tasks from a task provider run in the terminal only after the user chooses them (Terminal > Run Task...)."),
         );
         add(
             "debuggers",
@@ -613,7 +622,7 @@ impl Contributions {
             "problemMatchers",
             self.problem_matchers.len(),
             Support::Metadata,
-            Some("Registered as metadata only: problem matchers aren't used yet."),
+            Some("Registered as metadata only: task output isn't parsed into problems yet."),
         );
         add(
             "aiProviders",
@@ -638,8 +647,8 @@ impl Contributions {
         add(
             "views (webview)",
             views.webview_count(),
-            Support::Unsupported,
-            Some("Webview views aren't supported yet."),
+            Support::Supported,
+            Some("Drawn in a sandboxed frame in the extension's side bar container; remote content is blocked."),
         );
         add(
             "views outside the extension's own containers",
@@ -830,6 +839,7 @@ mod tests {
             "commands": [{"command": "a.b", "title": "A"}],
             "grammars": [{"language": "x", "scopeName": "s", "path": "p"}],
             "iconThemes": [{"id": "i", "path": "p"}],
+            "taskDefinitions": [{"type": "npmx", "required": ["script"]}],
             "debuggers": [{"type": "d"}],
             "menus": {"view/title": []},
             "customThing": {"a": 1, "b": 2}
@@ -843,7 +853,9 @@ mod tests {
         };
         assert_eq!(support("commands"), Some(Support::Supported));
         assert_eq!(support("grammars"), Some(Support::Unsupported));
-        assert_eq!(support("iconThemes"), Some(Support::Unsupported));
+        assert_eq!(support("iconThemes"), Some(Support::Supported));
+        assert_eq!(support("taskDefinitions"), Some(Support::Supported));
+        assert_eq!(c.task_definitions.len(), 1);
         assert_eq!(support("debuggers"), Some(Support::Metadata));
         assert_eq!(support("menus: view/title"), Some(Support::Unsupported));
         assert_eq!(support("customThing"), Some(Support::Unsupported));

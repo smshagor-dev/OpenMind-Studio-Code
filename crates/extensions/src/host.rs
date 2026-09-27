@@ -29,6 +29,12 @@ const TREEVIEWS_JS: &str = include_str!("../host/treeviews.js");
 const EDITORS_JS: &str = include_str!("../host/editors.js");
 const STATUSBAR_JS: &str = include_str!("../host/statusbar.js");
 const WEBVIEWS_JS: &str = include_str!("../host/webviews.js");
+const TERMINALS_JS: &str = include_str!("../host/terminals.js");
+const UNSUPPORTED_JS: &str = include_str!("../host/unsupported.js");
+const TASKS_JS: &str = include_str!("../host/tasks.js");
+const FSPROVIDER_JS: &str = include_str!("../host/fsprovider.js");
+const WORKSPACE_JS: &str = include_str!("../host/workspace.js");
+const LANGUAGES_JS: &str = include_str!("../host/languages.js");
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -318,6 +324,12 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
         ("editors.js", EDITORS_JS),
         ("statusbar.js", STATUSBAR_JS),
         ("webviews.js", WEBVIEWS_JS),
+        ("terminals.js", TERMINALS_JS),
+        ("unsupported.js", UNSUPPORTED_JS),
+        ("tasks.js", TASKS_JS),
+        ("fsprovider.js", FSPROVIDER_JS),
+        ("workspace.js", WORKSPACE_JS),
+        ("languages.js", LANGUAGES_JS),
     ] {
         let file = paths.host_dir.join(name);
         if std::fs::read_to_string(&file).is_ok_and(|current| current == content) {

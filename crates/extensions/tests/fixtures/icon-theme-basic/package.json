@@ -1,0 +1,11 @@
+{
+  "name": "sample-icon-theme",
+  "displayName": "Sample Icon Theme",
+  "description": "A tiny SVG file icon theme (Milestone 18 sample).",
+  "version": "1.0.0",
+  "publisher": "openmind-samples",
+  "engines": { "vscode": "^1.85.0" },
+  "contributes": {
+    "iconThemes": [{ "id": "sample-squares", "label": "Sample Squares", "path": "./icons/theme.json" }]
+  }
+}

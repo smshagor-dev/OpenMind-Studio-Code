@@ -89,7 +89,7 @@ export function describeActivation(event: string): string {
     case "workspaceContains":
       return `When the folder contains ${value}`;
     case "onView":
-      return `When the view "${value}" opens (views aren't supported yet, so this never triggers)`;
+      return `When the view "${value}" is shown`;
     default:
       return `${event} (not supported yet, never triggers)`;
   }
