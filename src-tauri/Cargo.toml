@@ -50,4 +50,5 @@ thiserror.workspace = true
 winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi"] }
 
 [dev-dependencies]
+sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "migrate"] }
 tempfile = "3.27.0"

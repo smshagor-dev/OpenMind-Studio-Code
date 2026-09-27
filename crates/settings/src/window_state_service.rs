@@ -53,7 +53,8 @@ impl WindowStateService {
         Ok(())
     }
 
-    fn default_state(label: &str) -> WindowState {
+    /// The size a window gets when nothing (readable) was saved for it.
+    pub fn default_state(label: &str) -> WindowState {
         WindowState {
             label: label.to_string(),
             width: DEFAULT_WIDTH,

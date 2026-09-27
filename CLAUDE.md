@@ -77,7 +77,12 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   logging init. No I/O beyond what's needed for path/logging setup. Everything else depends on
   this; this depends on nothing else in the workspace.
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
-  and thin repository types for each persisted concern.
+  and thin repository types for each persisted concern. Since Milestone 20.0: `migrations::MIGRATOR` (the embedded
+  migrations; `build.rs` + `migration_inputs.rs` print `cargo:rerun-if-changed` for the folder and every `.sql`, so a
+  cached build never keeps old SQL), `migrations::repair_line_ending_checksums` (see "Persistence") and
+  `DbError::kind()` -> `FailureKind` (checksum mismatch, migration from a newer build, half-applied migration, failed
+  migration, locked, corrupt, read-only, can't open, disk full, can't create the folder, other). A failed `Db::connect`
+  closes its connections and leaves the file as it was.
 - `openmind-settings` — business logic over `openmind-db` (window state, the legacy `theme` row) and, since Milestone 9,
   the user-facing settings and keyboard shortcuts. `schema` is the one list of settings as **data** (id, category, title,
   description, kind bool/int-range/text/enum, default, scope `user` or `both`) plus `validate`, so the Settings page, the JSON
@@ -1177,6 +1182,23 @@ running unnoticed in the background — see the WebView2-orphan known issue abov
 against an in-progress edit of `0002_workspace_explorer.sql`): before editing an unshipped
 migration file, check for stray running instances first, not just after something breaks.
 
+**Line endings (Milestone 20.0).** sqlx checksums the migration *bytes*, and this machine's `core.autocrlf=true`
+checked the files out as LF in one working tree and CRLF in another, so a database made by one build stopped another
+build at start-up. `.gitattributes` now pins `*.sql` (and `crates/db/migrations/*.sql`) to `eol=lf`; the files in
+the repository were always LF. For databases made before that, `Db::connect` first compares each applied migration's
+stored checksum with this build's: when the stored one is exactly the SHA-384 of the same SQL with LF or CRLF
+endings, only that checksum is updated (a `WARN openmind_db::migrations` log line names the version and both
+checksums); any other difference is left for sqlx to refuse. **A database that still can't be opened no longer
+panics** (it used to exit with 101 and no window): `src-tauri/src/startup_error.rs` opens a `startup-error` window
+(its own capability, `capabilities/startup-error.json`: `core:default` + clipboard write) instead of the
+workbench. `main.tsx` shows `StartupErrorPage` for that label and imports the workbench / PHP window only for their
+own windows, so no service starts. The page shows the category, a plain explanation ending in "Your data was not
+deleted.", the database path, next steps and the error details, with Open Data Folder, Copy Error Details (six fixed
+lines: version, category, path, error chain — nothing read from the database or settings) and Exit (exit code 0).
+**Back Up and Start Fresh…** (only when the file exists, after its own confirmation) moves the `.db`/`-wal`/`-shm`/
+`-journal` files into `data/db-backup-<unix seconds>` (refuses if that folder exists, deletes nothing) and offers a
+restart. Nothing resets or moves the database automatically.
+
 ## Branding
 
 - Product name: **OpenMind Studio** — this exact capitalization everywhere in UI text, docs, and
@@ -2216,7 +2238,29 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   interrupt = restart, Python only, one runner per notebook; tasks: no `inputs`, `options.shell`, parallel `dependsOrder` (runs in order), background readiness patterns, problem
   matchers beyond the listed subset, Configure Default Build Task (edit the file); debug: see above; a task's problems appear in the Problems panel but not as squiggles in the editor;
   `container.ts`, `ipc.ts`, `dap/manager.rs` and `terminal/registry.rs` were over 700 lines before this milestone and still are. Left on disk: `C:\omm19`.
-- [ ] Milestone 20 — to be scoped (profile-aware keybindings, signing with a real certificate, auto-update).
+- [x] **Milestone 20.0** — Database migration start-up hardening (`fix: harden database migration startup`). A release-blocking crash found while
+  merging Milestone 19: the migration files were LF in the main checkout and CRLF in the worktrees (`core.autocrlf=true`, no `.gitattributes`),
+  sqlx checksums the bytes, and a database created by one kind of build stopped the other at start-up (`Migrate(VersionMismatch)`, exit 101, no
+  window); also `sqlx::migrate!` wasn't tracked by Cargo, so a shared target folder kept old SQL. Fixed with the `.gitattributes` rule, `crates/db/build.rs`,
+  the line-ending-only checksum repair and the start-up error window (see "Line endings (Milestone 20.0)" under Persistence). The SQL in the repository
+  did not change (the index was LF all along; only working copies were CRLF). Tests: 13 db tests (files and embedded SQL are LF, `.gitattributes` rules,
+  checksum = SHA-384 of the SQL, the build script watches the folder and each file incl. a new one, fresh/existing databases need no repair, a CRLF
+  checksum is repaired and logged with the data kept, a real SQL change — LF or CRLF — is refused with the checksum and data untouched, a newer build's
+  database, a half-applied migration, a non-database file left byte-identical, a folder that can't be created), 6 start-up error tests (the checksum
+  sentence and path, every category has text and a next step, the copied details hold only the fixed lines, a real open failure is a value not a
+  panic, the back-up moves `-wal`/`-shm` and deletes nothing, never overwrites a backup folder) and 9 page tests (render, copy + failure, open
+  folder, exit, back-up only after confirming, cancel, failure, no back-up without a file, Exit when even the details can't be read, `main.tsx`
+  loads no workbench for the error window, labels/capability agree). **Verified by hand** (debug build, fresh copy `C:\omm200`): a fresh database and
+  a reopened one started normally with no repair; a real database made by the Milestone 19 master build (CRLF checksums for all three migrations, copied
+  from `C:\omm19m`) opened with the old session, recent folders and breakpoints, and the log named the three repairs; a random checksum for migration 3
+  (and later 2) showed the error window instead of exit 101 (only WebView2 helpers started, their usual Microsoft connection and none from the app);
+  Copy Error Details put the six lines on the clipboard; Open Data Folder opened Explorer on `data`; Exit ended with code 0 and the database was
+  byte-identical; closing the window also exited; Back Up and Start Fresh moved the file into `data/db-backup-<n>` (same SHA-256) and Restart
+  opened the normal workbench on a new database; every close left no process of the copy; User/Machine PATH identical. **Limitations**: an
+  error before the database (the app folder can't be resolved or created) still ends the process with a panic message; the page is English-only;
+  a database from a *newer* build is refused rather than opened read-only; `C:\omm19`'s database, which mixes CRLF and LF checksums, is repaired the
+  first time a new build opens it. Left on disk: `C:\omm200`.
+- [ ] Milestone 20 — localization / i18n (to be scoped).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

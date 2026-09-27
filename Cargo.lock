@@ -2879,6 +2879,7 @@ name = "openmind-db"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "sha2 0.11.0",
  "sqlx",
  "tempfile",
  "thiserror 2.0.20",
@@ -3092,6 +3093,7 @@ dependencies = [
  "openmind-workspace",
  "serde",
  "serde_json",
+ "sqlx",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

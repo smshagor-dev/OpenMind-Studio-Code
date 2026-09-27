@@ -1,0 +1,4 @@
+# sqlx checksums every migration byte for byte and stores the checksum in the database. With core.autocrlf a
+# checkout could turn LF into CRLF, change the checksum and stop the app at start-up, so SQL is always LF.
+*.sql text eol=lf
+crates/db/migrations/*.sql text eol=lf

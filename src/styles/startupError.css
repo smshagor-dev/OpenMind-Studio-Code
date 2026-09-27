@@ -1,0 +1,137 @@
+/* The start-up error window (shown instead of the workbench when the local database can't be opened). */
+
+.startup-error {
+  height: 100%;
+  overflow: auto;
+  padding: 24px 28px;
+  background: var(--editor-bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.startup-error__heading {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--error-fg);
+}
+
+.startup-error__title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.startup-error h3 {
+  margin: 16px 0 4px;
+  font-size: 13px;
+  color: var(--fg-strong);
+}
+
+.startup-error ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.startup-error__muted {
+  color: var(--fg-muted);
+}
+
+.startup-error__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 12px 0 0;
+}
+
+.startup-error__facts dt {
+  color: var(--fg-muted);
+}
+
+.startup-error__facts dd {
+  margin: 0;
+}
+
+.startup-error__path {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  overflow-wrap: anywhere;
+}
+
+.startup-error__details {
+  margin-top: 16px;
+}
+
+.startup-error__details pre {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+.startup-error__actions,
+.startup-error__backup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.startup-error__backup p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.startup-error button {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.startup-error button:hover {
+  background: var(--button-secondary-hover-bg);
+}
+
+.startup-error button:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.startup-error button.startup-error__primary {
+  border-color: transparent;
+  background: var(--button-bg);
+  color: var(--button-fg);
+}
+
+.startup-error button.startup-error__primary:hover {
+  background: var(--button-hover-bg);
+}
+
+.startup-error button.startup-error__danger {
+  border-color: var(--error-border);
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.startup-error__problem {
+  color: var(--error-fg);
+}
+
+.startup-error__status {
+  min-height: 1.5em;
+  margin: 12px 0 0;
+  color: var(--fg-muted);
+}

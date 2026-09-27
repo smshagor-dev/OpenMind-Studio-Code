@@ -4,6 +4,7 @@ mod app_state;
 mod commands;
 mod secret;
 mod startup;
+mod startup_error;
 mod tray;
 mod window_events;
 mod windows;
@@ -219,6 +220,11 @@ fn main() {
             commands::language::language_file_status,
             commands::language::language_terminal_line,
             startup::startup_report,
+            startup_error::startup_error_info,
+            startup_error::startup_error_open_data_folder,
+            startup_error::startup_error_back_up,
+            startup_error::startup_error_restart,
+            startup_error::startup_error_exit,
             commands::profiles::profiles_list,
             commands::profiles::profile_create,
             commands::profiles::profile_switch,
@@ -252,8 +258,15 @@ fn main() {
             commands::preview::preview_xlsx,
         ])
         .setup(move |app| {
-            let db = tauri::async_runtime::block_on(Db::connect(&app_paths.db_path))
-                .expect("failed to connect to database");
+            // A database that can't be opened (a migration mismatch, a damaged or locked file ...) gets a window
+            // that explains it instead of a panic; the workbench doesn't start and nothing is reset.
+            let db = match tauri::async_runtime::block_on(Db::connect(&app_paths.db_path)) {
+                Ok(db) => db,
+                Err(err) => {
+                    startup_error::show(app, &app_paths, &err)?;
+                    return Ok(());
+                }
+            };
             let window_state_service = WindowStateService::new(db.clone());
 
             // The main window is described in tauri.conf.json (`create: false`) but built here, so its WebView2
@@ -271,7 +284,10 @@ fn main() {
 
             let saved_state =
                 tauri::async_runtime::block_on(window_state_service.load(MAIN_WINDOW_LABEL))
-                    .expect("failed to load window state");
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(error = %err, "couldn't read the saved window size; using the default");
+                        WindowStateService::default_state(MAIN_WINDOW_LABEL)
+                    });
 
             window_events::apply_window_state(&window, &saved_state)?;
             window.show()?;

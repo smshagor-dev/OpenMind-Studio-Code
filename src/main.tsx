@@ -1,21 +1,23 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
-import { App } from "./App";
-import { PHP_WINDOW_LABEL, PhpServerWindow } from "./PhpServerWindow";
 import { installMonacoEnvironment } from "./editor/monacoEnvironment";
+import { StartupErrorPage } from "./startupError/StartupErrorPage";
+import { STARTUP_ERROR_WINDOW_LABEL, tauriStartupErrorApi } from "./startupError/startupErrorApi";
 import "./styles/app.css";
 
 installMonacoEnvironment(self, import.meta.env.BASE_URL);
 
-/** Both windows load this same page; the window's label decides which screen it shows. */
-function isPhpServerWindow(): boolean {
+// Must match `PHP_WINDOW_LABEL` in PhpServerWindow.tsx (not imported: that module pulls in the PHP window's services).
+const PHP_WINDOW_LABEL = "php-server";
+
+function windowLabel(): string | null {
   try {
-    return getCurrentWebviewWindow().label === PHP_WINDOW_LABEL;
+    return getCurrentWebviewWindow().label;
   } catch {
-    return false; // not inside Tauri (tests, a plain browser)
+    return null; // not inside Tauri (tests, a plain browser)
   }
 }
 
@@ -23,7 +25,25 @@ const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("root element not found");
 }
+const root = createRoot(rootElement);
+const render = (screen: ReactNode) => {
+  root.render(<StrictMode>{screen}</StrictMode>);
+};
 
-createRoot(rootElement).render(
-  <StrictMode>{isPhpServerWindow() ? <PhpServerWindow /> : <App />}</StrictMode>,
-);
+/**
+ * Every window loads this same page and its label decides the screen. The workbench and the PHP window are imported
+ * only for their own windows: their modules build services that talk to the backend as soon as they load, which the
+ * start-up error window (no database, no app state) must not do.
+ */
+const label = windowLabel();
+if (label === STARTUP_ERROR_WINDOW_LABEL) {
+  render(<StartupErrorPage api={tauriStartupErrorApi} />);
+} else if (label === PHP_WINDOW_LABEL) {
+  void import("./PhpServerWindow").then(({ PhpServerWindow }) => {
+    render(<PhpServerWindow />);
+  });
+} else {
+  void import("./App").then(({ App }) => {
+    render(<App />);
+  });
+}

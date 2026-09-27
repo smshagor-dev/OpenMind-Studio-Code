@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "startup-error",
+  "description": "The window shown instead of the workbench when the local database can't be opened: it reads its own error, copies it and offers Open Data Folder / Back Up / Exit",
+  "windows": ["startup-error"],
+  "permissions": ["core:default", "clipboard-manager:allow-write-text"]
+}

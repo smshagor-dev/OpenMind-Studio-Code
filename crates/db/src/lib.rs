@@ -3,6 +3,7 @@ pub mod editor_settings;
 pub mod error;
 pub mod explorer_state;
 pub mod installed_runtimes;
+pub mod migrations;
 pub mod notebooks;
 pub mod opened_projects;
 pub mod pinned_folders;
@@ -18,9 +19,10 @@ use sqlx::SqlitePool;
 
 pub use breakpoints::{BreakpointRow, BreakpointsRepository};
 pub use editor_settings::EditorSettingsRepository;
-pub use error::DbError;
+pub use error::{DbError, FailureKind};
 pub use explorer_state::{ExplorerStateRepository, ExplorerStateRow};
 pub use installed_runtimes::{InstalledRuntimeEntry, InstalledRuntimesRepository};
+pub use migrations::ChecksumRepair;
 pub use notebooks::{NotebookRun, NotebooksRepository};
 pub use opened_projects::{OpenedProjectEntry, OpenedProjectsRepository};
 pub use pinned_folders::{PinnedFolderEntry, PinnedFoldersRepository};
@@ -33,11 +35,14 @@ pub use window_state::{WindowState, WindowStateRepository};
 #[derive(Clone)]
 pub struct Db {
     pool: SqlitePool,
+    repairs: Vec<ChecksumRepair>,
 }
 
 impl Db {
     /// Open (creating if missing) the SQLite database at `db_path`, enable
-    /// WAL journaling, and run all embedded migrations.
+    /// WAL journaling, and run all embedded migrations. A failure leaves the
+    /// file as it was (nothing is reset or deleted) and closes the connections,
+    /// so the caller can explain it and the file can be moved or backed up.
     pub async fn connect(db_path: &Path) -> Result<Self, DbError> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|source| DbError::CreateDataDir {
@@ -57,16 +62,29 @@ impl Db {
             .await
             .map_err(DbError::Connect)?;
 
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .map_err(DbError::Migrate)?;
+        let repairs =
+            match migrations::repair_line_ending_checksums(&pool, &migrations::MIGRATOR).await {
+                Ok(repairs) => repairs,
+                Err(err) => {
+                    pool.close().await;
+                    return Err(DbError::Query(err));
+                }
+            };
+        if let Err(err) = migrations::MIGRATOR.run(&pool).await {
+            pool.close().await;
+            return Err(DbError::Migrate(err));
+        }
 
-        Ok(Self { pool })
+        Ok(Self { pool, repairs })
     }
 
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    /// Migrations whose stored checksum was updated at this start because it differed only by line endings.
+    pub fn checksum_repairs(&self) -> &[ChecksumRepair] {
+        &self.repairs
     }
 }
 
