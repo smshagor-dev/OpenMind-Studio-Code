@@ -3,15 +3,16 @@ import { useState, useSyncExternalStore } from "react";
 import { container } from "../../services/container";
 import { PROVIDER_KIND_LABELS, type AiProviderView } from "../../services/ai/aiProviderService";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { t } from "../../i18n";
 
 function statusOf(provider: AiProviderView): string {
-  if (!provider.available) return provider.unavailableReason ?? "Unavailable.";
-  return container.ai.providers.configIssue(provider) ?? "Ready.";
+  if (!provider.available) return provider.unavailableReason ?? t("ai.unavailable");
+  return container.ai.providers.configIssue(provider) ?? t("ai.ready");
 }
 
 function keyState(provider: AiProviderView): string {
-  if (provider.hasKey) return "API key saved";
-  return provider.needsKey ? "No API key" : "No API key needed";
+  if (provider.hasKey) return t("ai.keySaved");
+  return provider.needsKey ? t("ai.noKey") : t("ai.noKeyNeeded");
 }
 
 /** Name, Online/Local label, kind, key state, status and the last connection test of one provider. */
@@ -28,13 +29,15 @@ function ProviderSummary({
       <div className="ai-provider__head">
         <strong className="ai-provider__name">{provider.name}</strong>
         <span className={provider.local ? "ai-badge ai-badge--local" : "ai-badge ai-badge--online"}>
-          {provider.local ? "Local" : "Online"} · {provider.host}
+          {provider.local ? t("ai.local") : t("ai.online")} · {provider.host}
         </span>
-        {isDefault ? <span className="ai-badge">Default</span> : null}
+        {isDefault ? <span className="ai-badge">{t("keys.source.default")}</span> : null}
       </div>
       <p className="ai-provider__meta">
         {PROVIDER_KIND_LABELS[provider.kind]}
-        {provider.sourceName === null ? "" : ` · from extension ${provider.sourceName}`}
+        {provider.sourceName === null
+          ? ""
+          : ` · ${t("ai.fromExtension", { name: provider.sourceName })}`}
         {" · "}
         {keyState(provider)}
       </p>
@@ -46,7 +49,7 @@ function ProviderSummary({
           className={test.status === "failed" ? "ai-note ai-note--error" : "ai-note"}
           role="status"
         >
-          {test.status === "testing" ? "Testing the connection…" : test.message}
+          {test.status === "testing" ? t("ai.testing") : test.message}
         </p>
       ) : null}
     </>
@@ -72,7 +75,7 @@ function ProviderActions({ provider, isDefault, onDelete }: ActionsProps) {
             void providers.setEnabled(provider.id, event.target.checked);
           }}
         />
-        Enabled
+        {t("extDetails.enabled")}
       </label>
       <button
         type="button"
@@ -81,7 +84,7 @@ function ProviderActions({ provider, isDefault, onDelete }: ActionsProps) {
           container.ai.ui.edit(provider.id);
         }}
       >
-        Edit
+        {t("ai.edit")}
       </button>
       <button
         type="button"
@@ -89,27 +92,27 @@ function ProviderActions({ provider, isDefault, onDelete }: ActionsProps) {
         disabled={!provider.available || testing}
         title={
           provider.available
-            ? "Ask the provider for its models to check the address and key"
+            ? t("ai.testTitle")
             : (provider.unavailableReason ?? "")
         }
         onClick={() => {
           void providers.test(provider.id);
         }}
       >
-        Test connection
+        {t("ai.test")}
       </button>
       <button
         type="button"
         className="ai-link"
         disabled={isDefault || !provider.available}
         title={
-          isDefault ? "This is already the default." : "Select this provider first in the AI panel"
+          isDefault ? t("ai.alreadyDefault") : t("ai.defaultTitle")
         }
         onClick={() => {
           void providers.setDefault(provider.id);
         }}
       >
-        Set as default
+        {t("ai.setDefault")}
       </button>
       {provider.source === null || provider.sourceMissing ? (
         <button
@@ -119,10 +122,10 @@ function ProviderActions({ provider, isDefault, onDelete }: ActionsProps) {
             onDelete(provider.id);
           }}
         >
-          Delete
+          {t("runtimes.delete")}
         </button>
       ) : (
-        <span className="ai-provider__hint">Disable or uninstall the extension to remove it.</span>
+        <span className="ai-provider__hint">{t("ai.extensionOwned")}</span>
       )}
     </div>
   );
@@ -148,10 +151,10 @@ function ListButtons({ onClear }: { onClear: () => void }) {
           container.ai.ui.edit("new");
         }}
       >
-        Add provider
+        {t("ai.addProvider")}
       </button>
       <button type="button" onClick={onClear}>
-        Clear AI history
+        {t("ai.clearHistory")}
       </button>
       <button
         type="button"
@@ -159,7 +162,7 @@ function ListButtons({ onClear }: { onClear: () => void }) {
           container.ai.ui.closeManager();
         }}
       >
-        Close
+        {t("common.close")}
       </button>
     </div>
   );
@@ -178,12 +181,10 @@ export function ProviderList() {
   return (
     <>
       <p className="ai-intro">
-        A provider is a service or server you send text to. Nothing is sent until you press Send or
-        run an AI action, and online providers ask first. API keys are stored encrypted on this
-        computer.
+        {t("ai.intro")}
       </p>
       {providers.length === 0 ? (
-        <p className="ai-note">No AI providers yet. Add one to turn on the AI panel.</p>
+        <p className="ai-note">{t("ai.noProviders")}</p>
       ) : (
         <ul className="ai-providers">
           {providers.map((provider) => (
@@ -198,9 +199,9 @@ export function ProviderList() {
       />
       {doomed ? (
         <ConfirmDialog
-          title="Delete provider"
-          message={`Delete ${doomed.name} and its saved API key? This cannot be undone.`}
-          confirmLabel="Delete"
+          title={t("ai.deleteProvider")}
+          message={t("ai.deleteMessage", { name: doomed.name })}
+          confirmLabel={t("runtimes.delete")}
           onConfirm={() => {
             setDeleting(null);
             void container.ai.providers.remove(doomed.id);
@@ -212,9 +213,9 @@ export function ProviderList() {
       ) : null}
       {clearing ? (
         <ConfirmDialog
-          title="Clear AI history"
-          message="Delete every saved AI conversation on this computer? This cannot be undone."
-          confirmLabel="Clear history"
+          title={t("ai.clearHistory")}
+          message={t("ai.clearHistoryMessage")}
+          confirmLabel={t("ai.clearHistoryConfirm")}
           onConfirm={() => {
             setClearing(false);
             void container.ai.chat.clearHistory();

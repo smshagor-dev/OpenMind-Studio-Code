@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { container } from "../../services/container";
 import { DB_USER, LOCAL_HOST, MASKED_PASSWORD } from "../../services/phpConfigModel";
 import { StackButton } from "../PhpStackSections";
+import { t } from "../../i18n";
 
 /**
  * The connection details for MariaDB: host, port, user and the password — masked until the user clicks Reveal.
@@ -19,53 +20,53 @@ export function CredentialsBlock() {
   const revealed = state.passwordVisible && state.password !== null;
   const usable = db.installed() !== null;
   return (
-    <div className="pcfg-credentials" role="group" aria-label="Connection details">
-      <h4>Connection</h4>
+    <div className="pcfg-credentials" role="group" aria-label={t("php.connectionDetails")}>
+      <h4>{t("php.connection")}</h4>
       <dl className="pcfg-facts">
         <div className="pcfg-facts__row">
-          <dt>Host</dt>
+          <dt>{t("php.host")}</dt>
           <dd>{LOCAL_HOST}</dd>
         </div>
         <div className="pcfg-facts__row">
-          <dt>Port</dt>
+          <dt>{t("php.col.port")}</dt>
           <dd>{state.port}</dd>
         </div>
         <div className="pcfg-facts__row">
-          <dt>User</dt>
+          <dt>{t("php.user")}</dt>
           <dd>{DB_USER}</dd>
         </div>
         <div className="pcfg-facts__row">
-          <dt>Password</dt>
+          <dt>{t("php.password")}</dt>
           <dd>
             {revealed ? (
               <code className="php-view__secret">{state.password}</code>
             ) : state.hasPassword ? (
-              <span aria-label="Password hidden">{MASKED_PASSWORD}</span>
+              <span aria-label={t("php.passwordHidden")}>{MASKED_PASSWORD}</span>
             ) : (
-              <span className="pcfg-muted">Not set yet</span>
+              <span className="pcfg-muted">{t("php.notSetYet")}</span>
             )}
           </dd>
         </div>
       </dl>
       <div className="php-view__row">
         <StackButton
-          label={state.passwordVisible ? "Hide Password" : "Reveal Password"}
+          label={state.passwordVisible ? t("php.hidePassword") : t("php.revealPassword")}
           availability={db.passwordState()}
           onClick={() => {
             void db.togglePassword();
           }}
         />
         <StackButton
-          label="Copy Password"
+          label={t("php.copyPassword")}
           availability={db.passwordState()}
           onClick={() => {
             void db.copyPassword();
           }}
         />
         <StackButton
-          label="Copy Connection String"
+          label={t("php.copyConnection")}
           availability={
-            usable ? { enabled: true } : { enabled: false, reason: "Install MariaDB first." }
+            usable ? { enabled: true } : { enabled: false, reason: t("php.installMariaDbFirst") }
           }
           onClick={() => {
             void db.copyConnectionString();
@@ -73,7 +74,7 @@ export function CredentialsBlock() {
         />
       </div>
       <p className="pcfg-muted">
-        {db.passwordStatusLabel()}. The connection string has no password in it.
+        {db.passwordStatusLabel()}. {t("php.noPasswordInString")}
       </p>
     </div>
   );

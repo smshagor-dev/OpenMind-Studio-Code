@@ -9,6 +9,7 @@ import {
   type Chip,
 } from "../../services/phpConfigModel";
 import { Card, Facts, StatusChip } from "./parts";
+import { t } from "../../i18n";
 
 function useStack() {
   useSyncExternalStore(
@@ -63,7 +64,7 @@ function useStackChips(): Chip[] {
 export function ConfigChips() {
   const chips = useStackChips();
   return (
-    <div className="pcfg-chips" role="list" aria-label="Stack status">
+    <div className="pcfg-chips" role="list" aria-label={t("php.stackStatus")}>
       {chips.map((chip) => (
         <span key={chip.label} role="listitem">
           <StatusChip chip={chip} />
@@ -81,42 +82,45 @@ export function StackSummary() {
   const pma = container.phpMyAdmin;
   const dbInstalled = db.installed();
   return (
-    <Card title="Stack Summary" label="Stack Summary">
+    <Card title={t("php.stackSummary")} label={t("php.stackSummary")}>
       <Facts
         rows={[
           {
             label: "PHP",
-            value: php?.activeVersion ?? (php?.installed ? "Installed" : "Not installed"),
+            value:
+              php?.activeVersion ?? (php?.installed ? t("runtimes.installed") : t("runtimes.notInstalled")),
           },
           {
             label: "Composer",
-            value: composer?.activeVersion ?? (composer?.installed ? "Installed" : "Not installed"),
+            value:
+              composer?.activeVersion ??
+              (composer?.installed ? t("runtimes.installed") : t("runtimes.notInstalled")),
           },
           {
             label: "MariaDB",
             value: dbInstalled
-              ? `${dbInstalled.version} — ${db.getState().server ? "Running" : "Stopped"}`
-              : "Not installed",
+              ? `${dbInstalled.version} — ${db.getState().server ? t("php.status.running") : t("php.status.stopped")}`
+              : t("runtimes.notInstalled"),
           },
           {
             label: "phpMyAdmin",
             value:
               pma.installedVersion() === null
-                ? "Not installed"
+                ? t("runtimes.notInstalled")
                 : pma.getState().server
-                  ? "Running"
-                  : "Available",
+                  ? t("php.status.running")
+                  : t("php.available"),
           },
           {
-            label: "Web root",
+            label: t("php.webRoot"),
             value: (
               <code className="pcfg-inline-path" title={state.root ?? undefined}>
-                {state.root ?? "Not set"}
+                {state.root ?? t("php.notSet")}
               </code>
             ),
           },
-          { label: "PHP server", value: state.server?.url ?? "Stopped" },
-          { label: "phpMyAdmin URL", value: pma.url() ?? "None until it runs" },
+          { label: t("php.phpServer"), value: state.server?.url ?? t("php.status.stopped") },
+          { label: t("php.pmaUrl"), value: pma.url() ?? t("php.noneUntilRuns") },
         ]}
       />
     </Card>

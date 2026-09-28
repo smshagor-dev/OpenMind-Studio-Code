@@ -3,7 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { i18n } from "../i18n";
 
 import { StartupErrorPage } from "./StartupErrorPage";
 import {
@@ -151,5 +153,42 @@ describe("start-up database error page", () => {
     );
     const capability = readFileSync(source("src-tauri/capabilities/startup-error.json"), "utf8");
     expect(JSON.parse(capability)).toMatchObject({ windows: [STARTUP_ERROR_WINDOW_LABEL] });
+  });
+});
+
+describe("start-up database error page in the UI language", () => {
+  afterEach(() => {
+    i18n.setLanguage("en");
+  });
+
+  it("explains the failure in Russian by its kind, and copies the English details for reports", async () => {
+    i18n.setLanguage("ru");
+    const api = fakeApi();
+    render(<StartupErrorPage api={api} />);
+    await screen.findByText("Локальная база данных не соответствует этой сборке");
+    expect(screen.getByText("Не удалось запустить OpenMind Studio")).toBeTruthy();
+    expect(screen.getByText(/контрольная сумма миграции 3 не совпадает/)).toBeTruthy();
+    expect(screen.getByText(/Ваши данные не удалены\./)).toBeTruthy();
+    expect(screen.getByText("Несовпадение контрольной суммы миграции")).toBeTruthy();
+    expect(screen.getByText(FAILURE.dbPath)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Копировать сведения об ошибке" }));
+    await screen.findByText("Сведения об ошибке скопированы.");
+    expect(api.copy).toHaveBeenCalledWith(FAILURE.details);
+    expect([...i18n.missing]).toEqual([]);
+  });
+
+  it("shows Bangla, and an unknown kind falls back to the backend's own English", async () => {
+    i18n.setLanguage("bn");
+    render(<StartupErrorPage api={fakeApi()} />);
+    await screen.findByText("লোকাল ডেটাবেস এই বিল্ডের সঙ্গে মেলে না");
+    expect(screen.getByRole("button", { name: "প্রস্থান" })).toBeTruthy();
+  });
+
+  it("a kind this page doesn't know keeps the backend's text", async () => {
+    i18n.setLanguage("ru");
+    const unknown = { ...FAILURE, failure: { kind: "somethingNew" }, title: "Backend title" };
+    render(<StartupErrorPage api={fakeApi({ info: vi.fn(() => Promise.resolve(unknown)) })} />);
+    await screen.findByText("Backend title");
+    expect(screen.getByText(FAILURE.explanation)).toBeTruthy();
   });
 });

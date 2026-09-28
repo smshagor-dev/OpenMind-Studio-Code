@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import { runSummary } from "../services/debugModel";
+import { t } from "../i18n";
 
 /** The status bar's debug indicator: only while a session exists. */
 export function DebugStatusItem() {
@@ -20,7 +21,11 @@ export function DebugStatusItem() {
         container.run("view.showRun");
       }}
     >
-      🐞 {run.state === "stopped" ? "Paused" : run.state === "starting" ? "Starting" : "Debugging"}
+      🐞 {run.state === "stopped"
+        ? t("debug.status.paused")
+        : run.state === "starting"
+          ? t("debug.status.starting")
+          : t("debug.status.debugging")}
     </button>
   );
 }

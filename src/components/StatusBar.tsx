@@ -13,6 +13,7 @@ import { GitBranchIndicator } from "./GitBranchIndicator";
 import { LspStatusItem } from "./LspStatusItem";
 import { ExtensionStatusItems } from "./ExtensionStatusItems";
 import { ErrorIcon, WarningIcon } from "./icons";
+import { t } from "../i18n";
 
 const ENCODING_LABELS: Record<TextEncoding, string> = {
   utf8: "UTF-8",
@@ -66,13 +67,13 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
   return (
     <footer
       className={hasWorkspace ? "statusbar" : "statusbar statusbar--no-folder"}
-      aria-label="Status bar"
+      aria-label={t("status.bar")}
     >
       <div className="statusbar__left">
         <button
           type="button"
           className="statusbar__item"
-          title={`Errors: ${problems.errors}, Warnings: ${problems.warnings}`}
+          title={t("status.problemsTitle", { errors: problems.errors, warnings: problems.warnings })}
           onClick={() => {
             if (container.commands.isEnabled("go.nextProblem")) container.run("go.nextProblem");
           }}
@@ -104,7 +105,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
             <button
               type="button"
               className="statusbar__item"
-              title="Go to Line/Column"
+              title={t("status.goToLine")}
               onClick={() => {
                 container.run("go.toLine");
               }}
@@ -116,17 +117,17 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
                   : ` (${status.selectedChars} selected)`
                 : ""}
             </button>
-            <span className="statusbar__item" title="Indentation">
-              {status.insertSpaces ? "Spaces" : "Tab Size"}: {status.tabSize}
+            <span className="statusbar__item" title={t("status.indentation")}>
+              {status.insertSpaces ? t("status.spaces") : t("status.tabSize")}: {status.tabSize}
             </span>
-            <span className="statusbar__item" title="Encoding">
+            <span className="statusbar__item" title={t("status.encoding")}>
               {ENCODING_LABELS[activeDocument.encoding]}
             </span>
-            <span className="statusbar__item" title="End of Line Sequence">
+            <span className="statusbar__item" title={t("status.eol")}>
               {EOL_LABELS[activeDocument.lineEnding]}
             </span>
             <LspStatusItem />
-            <span className="statusbar__item" title="Language Mode">
+            <span className="statusbar__item" title={t("status.languageMode")}>
               {languageName(status.languageId)}
             </span>
           </>

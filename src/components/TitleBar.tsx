@@ -17,6 +17,7 @@ import {
 } from "./icons";
 import { MenuBar } from "./MenuBar";
 import { withShortcut } from "./shortcutLabel";
+import { t } from "../i18n";
 
 interface TitleBarProps {
   menus: TopLevelMenu[];
@@ -61,10 +62,10 @@ export function TitleBar({
       <MenuBar menus={menus} onMenuOpen={onMenuOpen} />
       <div className="titlebar__drag" data-tauri-drag-region />
       <div className="titlebar__nav">
-        <NavButton command="go.back" label="Go Back (Alt+LeftArrow)" icon={<ArrowLeftIcon />} />
+        <NavButton command="go.back" label={t("titlebar.goBack")} icon={<ArrowLeftIcon />} />
         <NavButton
           command="go.forward"
-          label="Go Forward (Alt+RightArrow)"
+          label={t("titlebar.goForward")}
           icon={<ArrowRightIcon />}
         />
       </div>
@@ -73,8 +74,8 @@ export function TitleBar({
         className="command-center"
         title={
           paletteEnabled
-            ? withShortcut("Show All Commands", "workbench.commandPalette")
-            : withShortcut("Search Files", "search.findInFiles")
+            ? withShortcut(t("titlebar.showAllCommands"), "workbench.commandPalette")
+            : withShortcut(t("titlebar.searchFiles"), "search.findInFiles")
         }
         onClick={() => {
           container.run(paletteEnabled ? "workbench.commandPalette" : "view.showSearch");
@@ -90,8 +91,8 @@ export function TitleBar({
           className={
             sidebarVisible ? "titlebar__action titlebar__action--checked" : "titlebar__action"
           }
-          title="Toggle Primary Side Bar (Ctrl+B)"
-          aria-label="Toggle Primary Side Bar"
+          title={t("titlebar.togglePrimaryTitle")}
+          aria-label={t("titlebar.togglePrimary")}
           aria-pressed={sidebarVisible}
           onClick={() => {
             container.run("view.toggleSidebar");
@@ -104,8 +105,8 @@ export function TitleBar({
           className={
             panel.visible ? "titlebar__action titlebar__action--checked" : "titlebar__action"
           }
-          title="Toggle Panel (Ctrl+J)"
-          aria-label="Toggle Panel"
+          title={t("titlebar.togglePanelTitle")}
+          aria-label={t("titlebar.togglePanel")}
           aria-pressed={panel.visible}
           onClick={() => {
             container.run("view.togglePanel");
@@ -118,8 +119,8 @@ export function TitleBar({
           className={
             secondary.visible ? "titlebar__action titlebar__action--checked" : "titlebar__action"
           }
-          title="Toggle Secondary Side Bar (Ctrl+Alt+B)"
-          aria-label="Toggle Secondary Side Bar"
+          title={t("titlebar.toggleSecondaryTitle")}
+          aria-label={t("titlebar.toggleSecondary")}
           aria-pressed={secondary.visible}
           onClick={() => {
             container.run("view.toggleSecondarySidebar");
@@ -133,7 +134,7 @@ export function TitleBar({
           <button
             type="button"
             className="window-controls__button"
-            aria-label="Minimize"
+            aria-label={t("window.minimize")}
             onClick={() => void container.window.minimize()}
           >
             <ChromeMinimizeIcon />
@@ -141,7 +142,7 @@ export function TitleBar({
           <button
             type="button"
             className="window-controls__button"
-            aria-label={windowState.maximized ? "Restore" : "Maximize"}
+            aria-label={windowState.maximized ? t("window.restore") : t("window.maximize")}
             onClick={() => void container.window.toggleMaximize()}
           >
             {windowState.maximized ? <ChromeRestoreIcon /> : <ChromeMaximizeIcon />}
@@ -149,7 +150,7 @@ export function TitleBar({
           <button
             type="button"
             className="window-controls__button window-controls__button--close"
-            aria-label="Close"
+            aria-label={t("common.close")}
             onClick={() => void container.window.close()}
           >
             <ChromeCloseIcon />

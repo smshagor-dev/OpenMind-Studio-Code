@@ -21,6 +21,7 @@ import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
 import { withShortcut } from "./shortcutLabel";
 import { useDismissOnOutside } from "./useDismissOnOutside";
+import { t } from "../i18n";
 
 interface ViewItem {
   view: SideView;
@@ -31,30 +32,30 @@ interface ViewItem {
 }
 
 const VIEW_ITEMS: readonly ViewItem[] = [
-  { view: "explorer", label: "Explorer", command: "view.showExplorer", icon: <FilesIcon /> },
-  { view: "search", label: "Search", command: "search.findInFiles", icon: <SearchIcon /> },
+  { view: "explorer", label: "view.explorer", command: "view.showExplorer", icon: <FilesIcon /> },
+  { view: "search", label: "view.search", command: "search.findInFiles", icon: <SearchIcon /> },
   {
     view: "scm",
-    label: "Source Control",
+    label: "view.sourceControl",
     command: "view.showSourceControl",
     icon: <SourceControlIcon />,
   },
-  { view: "debug", label: "Run and Debug", command: "view.showRun", icon: <DebugIcon /> },
+  { view: "debug", label: "view.runAndDebug", command: "view.showRun", icon: <DebugIcon /> },
   {
     view: "extensions",
-    label: "Extensions",
+    label: "view.extensions",
     command: "view.showExtensions",
     icon: <ExtensionsIcon />,
   },
 ];
 
-const AI_ITEM: ViewItem = { view: "ai", label: "AI", command: "ai.openChat", icon: <AiIcon /> };
+const AI_ITEM: ViewItem = { view: "ai", label: "view.ai", command: "ai.openChat", icon: <AiIcon /> };
 
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
 const UNAVAILABLE_ITEMS: readonly { label: string; reason: string; icon: ReactNode }[] = [
   {
-    label: "Remote Explorer",
-    reason: "Remote Explorer isn't available yet — remote connections aren't supported.",
+    label: "view.remoteExplorer",
+    reason: "view.remoteExplorerReason",
     icon: <RemoteIcon />,
   },
 ];
@@ -88,7 +89,7 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
   );
 
   return (
-    <nav className="activity-bar" aria-label="Activity bar">
+    <nav className="activity-bar" aria-label={t("activity.bar")}>
       <div className="activity-bar__top">
         {[...VIEW_ITEMS, ...(aiVisible ? [AI_ITEM] : [])].map((item) => {
           const active = sidebarVisible && layout.activeView === item.view;
@@ -99,8 +100,8 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
               className={
                 active ? "activity-bar__item activity-bar__item--active" : "activity-bar__item"
               }
-              title={item.command ? withShortcut(item.label, item.command) : item.label}
-              aria-label={item.label}
+              title={item.command ? withShortcut(t(item.label), item.command) : t(item.label)}
+              aria-label={t(item.label)}
               aria-pressed={active}
               onClick={() => {
                 void container.layout.toggleView(item.view);
@@ -148,8 +149,8 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
             key={item.label}
             type="button"
             className="activity-bar__item"
-            title={item.reason}
-            aria-label={item.label}
+            title={t(item.reason)}
+            aria-label={t(item.label)}
             disabled
           >
             {item.icon}
@@ -158,8 +159,8 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
         <button
           type="button"
           className="activity-bar__item"
-          title="PHP Server (opens in its own window)"
-          aria-label="PHP Server"
+          title={t("activity.phpServerTitle")}
+          aria-label={t("activity.phpServer")}
           onClick={() => {
             container.run("php.openWindow");
           }}
@@ -169,8 +170,8 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
         <button
           type="button"
           className="activity-bar__item"
-          title="Runtime Manager"
-          aria-label="Runtime Manager"
+          title={t("activity.runtimeManager")}
+          aria-label={t("activity.runtimeManager")}
           onClick={() => {
             container.run("runtime.manage");
           }}
@@ -182,8 +183,8 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
         <button
           type="button"
           className="activity-bar__item"
-          title="Manage"
-          aria-label="Manage"
+          title={t("activity.manage")}
+          aria-label={t("activity.manage")}
           aria-haspopup="menu"
           onMouseDown={(event) => {
             event.stopPropagation();
@@ -198,7 +199,7 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
           items={resolveMenuEntries(MANAGE_MENU)}
           x={manageAnchor.right + 2}
           y={manageAnchor.top}
-          ariaLabel="Manage"
+          ariaLabel={t("activity.manage")}
           onClose={closeManage}
         />
       ) : null}

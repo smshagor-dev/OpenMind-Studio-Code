@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { container } from "../../services/container";
 import type { ProfileSummary } from "../../services/profiles/profilesIpc";
 import "../../styles/profiles.css";
+import { t } from "../../i18n";
 
 function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
   const service = container.profiles;
@@ -14,12 +15,12 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
         {editing === null ? (
           <span className="profile__name">
             {profile.name}
-            {profile.active ? <span className="profile__chip">Active</span> : null}
+            {profile.active ? <span className="profile__chip">{t("runtimes.active")}</span> : null}
           </span>
         ) : (
           <input
             className="profile__input"
-            aria-label={`New name for ${profile.name}`}
+            aria-label={t("profiles.newNameFor", { name: profile.name })}
             value={editing}
             autoFocus
             onChange={(event) => {
@@ -39,20 +40,20 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
         )}
         <span className="profile__meta">
           {profile.settingCount === 0
-            ? "every covered setting at its default"
-            : `${String(profile.settingCount)} setting${profile.settingCount === 1 ? "" : "s"}`}
+            ? t("profiles.allDefaults")
+            : t("profiles.settingCount", { count: profile.settingCount })}
         </span>
       </div>
       <div className="profile__actions">
         <button
           type="button"
           disabled={busy || profile.active}
-          title={profile.active ? "This profile is already in use." : undefined}
+          title={profile.active ? t("profiles.inUse") : undefined}
           onClick={() => {
             void service.switchTo(profile.id);
           }}
         >
-          Switch
+          {t("profiles.switch")}
         </button>
         <button
           type="button"
@@ -61,7 +62,7 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
             setEditing(profile.name);
           }}
         >
-          Rename
+          {t("profiles.rename")}
         </button>
         <button
           type="button"
@@ -70,7 +71,7 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
             void service.duplicate(profile.id, `${profile.name} copy`);
           }}
         >
-          Duplicate
+          {t("profiles.duplicate")}
         </button>
         <button
           type="button"
@@ -79,7 +80,7 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
             void service.exportProfile(profile.id);
           }}
         >
-          Export
+          {t("profiles.export")}
         </button>
         <button
           type="button"
@@ -89,7 +90,7 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
             void service.remove(profile.id);
           }}
         >
-          Delete
+          {t("runtimes.delete")}
         </button>
       </div>
     </li>
@@ -136,17 +137,14 @@ export function ProfilesDialog() {
           event.stopPropagation();
         }}
       >
-        <h2 id="profiles-title">Profiles</h2>
+        <h2 id="profiles-title">{t("command.profiles.manage")}</h2>
         <p className="profile__lead">
-          A profile is a set of settings you can switch between. It covers appearance (theme, icon
-          theme), the editor (font, tabs, minimap ...), formatting and Auto Save, search indexing,
-          the AI switch and marketplace auto-load. Keyboard shortcuts, extensions and runtimes are
-          shared by all profiles. Profiles stay on this computer.
+          {t("profiles.lead")}
         </p>
         {list === null ? (
-          <p className="profile__meta">Loading...</p>
+          <p className="profile__meta">{t("profiles.loading")}</p>
         ) : (
-          <ul className="profile__list" aria-label="Profiles">
+          <ul className="profile__list" aria-label={t("command.profiles.manage")}>
             {list.profiles.map((profile) => (
               <Row key={profile.id} profile={profile} busy={busy} />
             ))}
@@ -154,14 +152,14 @@ export function ProfilesDialog() {
         )}
         {list !== null && list.problems.length > 0 ? (
           <p className="profile__problem" role="alert">
-            Skipped damaged profile files (they were left untouched): {list.problems.join("; ")}
+            {t("profiles.skipped", { list: list.problems.join("; ") })}
           </p>
         ) : null}
         <div className="profile__create">
           <input
             className="profile__input"
-            aria-label="New profile name"
-            placeholder="New profile name"
+            aria-label={t("profiles.newName")}
+            placeholder={t("profiles.newName")}
             value={name}
             onChange={(event) => {
               setName(event.target.value);
@@ -178,10 +176,10 @@ export function ProfilesDialog() {
                 setFromCurrent(event.target.checked);
               }}
             />
-            Start from my current settings
+            {t("profiles.fromCurrent")}
           </label>
           <button type="button" disabled={busy || name.trim() === ""} onClick={create}>
-            Create
+            {t("profiles.create")}
           </button>
         </div>
         <div className="modal__actions">
@@ -192,7 +190,7 @@ export function ProfilesDialog() {
               void container.profiles.importProfile();
             }}
           >
-            Import Profile...
+            {t("command.profiles.import")}
           </button>
           <button
             type="button"
@@ -202,7 +200,7 @@ export function ProfilesDialog() {
             }}
             autoFocus
           >
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>

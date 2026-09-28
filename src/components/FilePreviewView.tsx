@@ -18,21 +18,22 @@ import { PdfPreview } from "./filePreview/PdfPreview";
 import { SheetPreview } from "./filePreview/SheetPreview";
 import { VirtualTextPreview } from "./filePreview/VirtualTextPreview";
 import { MarkdownText } from "./MarkdownPreview";
+import { t } from "../i18n";
 
 const KIND_LABEL: Record<PreviewKind, string> = {
-  image: "Image",
-  pdf: "PDF",
-  docx: "Word document",
-  xlsx: "Excel workbook",
-  csv: "CSV",
-  markdown: "Markdown",
-  html: "HTML",
-  latex: "LaTeX source",
-  unsupported: "File",
+  image: "preview.kind.image",
+  pdf: "preview.kind.pdf",
+  docx: "preview.kind.docx",
+  xlsx: "preview.kind.xlsx",
+  csv: "preview.kind.csv",
+  markdown: "preview.kind.markdown",
+  html: "preview.kind.html",
+  latex: "preview.kind.latex",
+  unsupported: "preview.kind.file",
 };
 
 function zoomLabel(doc: FilePreviewDoc): string {
-  if (doc.zoomMode === "fit") return "Fit";
+  if (doc.zoomMode === "fit") return t("preview.fit");
   return `${String(Math.round((doc.zoomMode === "actual" ? 1 : doc.zoom) * 100))}%`;
 }
 
@@ -66,11 +67,11 @@ function ToolButton({
 function PageControls({ doc }: { doc: FilePreviewDoc }) {
   const { filePreviews } = container;
   return (
-    <div className="file-preview__group" role="group" aria-label="Pages">
+    <div className="file-preview__group" role="group" aria-label={t("preview.pages")}>
       <ToolButton
-        label="Previous Page"
+        label={t("preview.previousPage")}
         disabled={doc.page <= 1}
-        reason="This is the first page."
+        reason={t("preview.firstPage")}
         onClick={() => {
           filePreviews.setPage(doc.id, doc.page - 1);
         }}
@@ -80,7 +81,7 @@ function PageControls({ doc }: { doc: FilePreviewDoc }) {
       <span className="file-preview__page">
         <input
           type="number"
-          aria-label="Page number"
+          aria-label={t("preview.pageNumber")}
           min={1}
           max={Math.max(1, doc.pageCount)}
           value={doc.page}
@@ -91,9 +92,9 @@ function PageControls({ doc }: { doc: FilePreviewDoc }) {
         <span>/ {doc.pageCount === 0 ? "…" : doc.pageCount}</span>
       </span>
       <ToolButton
-        label="Next Page"
+        label={t("preview.nextPage")}
         disabled={doc.pageCount === 0 || doc.page >= doc.pageCount}
-        reason="This is the last page."
+        reason={t("preview.lastPage")}
         onClick={() => {
           filePreviews.setPage(doc.id, doc.page + 1);
         }}
@@ -107,9 +108,9 @@ function PageControls({ doc }: { doc: FilePreviewDoc }) {
 function ZoomControls({ doc }: { doc: FilePreviewDoc }) {
   const { filePreviews } = container;
   return (
-    <div className="file-preview__group" role="group" aria-label="Zoom">
+    <div className="file-preview__group" role="group" aria-label={t("preview.zoom")}>
       <ToolButton
-        label="Zoom Out"
+        label={t("command.view.zoomOut")}
         onClick={() => {
           filePreviews.zoomOut(doc.id);
         }}
@@ -120,7 +121,7 @@ function ZoomControls({ doc }: { doc: FilePreviewDoc }) {
         {zoomLabel(doc)}
       </span>
       <ToolButton
-        label="Zoom In"
+        label={t("command.view.zoomIn")}
         onClick={() => {
           filePreviews.zoomIn(doc.id);
         }}
@@ -128,15 +129,15 @@ function ZoomControls({ doc }: { doc: FilePreviewDoc }) {
         +
       </ToolButton>
       <ToolButton
-        label="Fit to Screen"
+        label={t("preview.fitToScreen")}
         onClick={() => {
           filePreviews.fit(doc.id);
         }}
       >
-        Fit
+        {t("preview.fit")}
       </ToolButton>
       <ToolButton
-        label="Actual Size"
+        label={t("preview.actualSize")}
         onClick={() => {
           filePreviews.actualSize(doc.id);
         }}
@@ -152,51 +153,51 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
   const { info, model } = doc;
   const textSafe = info?.textSafe === true;
   const meta = [
-    info ? KIND_LABEL[info.kind] : null,
+    info ? t(KIND_LABEL[info.kind]) : null,
     info ? formatBytes(info.size) : null,
     doc.dimensions ? `${String(doc.dimensions.width)} × ${String(doc.dimensions.height)} px` : null,
   ].filter((part): part is string => part !== null);
   return (
-    <div className="file-preview__toolbar" role="toolbar" aria-label="Preview">
+    <div className="file-preview__toolbar" role="toolbar" aria-label={t("preview.toolbar")}>
       <span className="file-preview__name" title={doc.path}>
         {doc.name}
       </span>
       <span className="file-preview__meta">
         {model?.type === "virtualText"
-          ? `Served by ${model.extension} · read-only`
+          ? t("preview.servedBy", { extension: model.extension })
           : meta.join(" · ")}
       </span>
-      <span className="file-preview__badge" title="Previews never change the file.">
-        Read-only preview
+      <span className="file-preview__badge" title={t("preview.neverChanges")}>
+        {t("preview.readOnly")}
       </span>
       <span className="file-preview__spacer" />
       {model?.type === "pdf" ? <PageControls doc={doc} /> : null}
       {model?.type === "image" || model?.type === "pdf" ? <ZoomControls doc={doc} /> : null}
       <ToolButton
-        label="Open as Text"
+        label={t("preview.openAsText")}
         disabled={!textSafe}
         reason={
           model?.type === "virtualText"
-            ? "An extension's document can only be viewed here (it isn't a file on disk)."
+            ? t("preview.virtualOnly")
             : info === null
-              ? "The file is still loading."
-              : "This file isn't text, or is too large to open as text."
+              ? t("preview.stillLoading")
+              : t("preview.notText")
         }
         onClick={() => {
           void workspace.openAsText(doc.id);
         }}
       >
-        Open as Text
+        {t("preview.openAsText")}
       </ToolButton>
       <ToolButton
-        label="Reload Preview"
+        label={t("preview.reload")}
         disabled={model?.type === "virtualText"}
-        reason="Ask the extension to open the document again to refresh it."
+        reason={t("preview.reloadReason")}
         onClick={() => {
           void filePreviews.reload(doc.id);
         }}
       >
-        Reload
+        {t("preview.reloadShort")}
       </ToolButton>
     </div>
   );
@@ -279,7 +280,7 @@ export function FilePreviewView({ docId }: { docId: string }) {
       <div className="file-preview__body">
         {doc.status === "error" ? (
           <p className="file-preview__error" role="alert">
-            {doc.error ?? "The preview couldn't be shown."}
+            {doc.error ?? t("preview.failed")}
           </p>
         ) : doc.model === null ? (
           <p className="file-preview__empty">Loading preview…</p>

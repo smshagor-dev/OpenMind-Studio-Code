@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import * as monaco from "monaco-editor";
 
 import { MONACO_THEME_MAP } from "../../editor/monacoThemes";
+import { t } from "../../i18n";
 
 let counter = 0;
 
@@ -66,7 +67,7 @@ export function CellEditor({
       }),
       editor.addAction({
         id: "notebook.runCell",
-        label: "Run Cell",
+        label: t("notebook.runCell"),
         keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
         run: () => {
           run.current?.();

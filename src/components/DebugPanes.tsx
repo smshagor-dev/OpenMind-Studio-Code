@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { ScopeNode, VariableNode } from "../services/variablesService";
+import { t } from "../i18n";
 
 /** Variables, Watch, Call Stack and Breakpoints — UI only; the services own the state. */
 
@@ -14,7 +15,7 @@ function VariableRow({ node, depth }: { node: VariableNode; depth: number }) {
           <button
             type="button"
             className="debug-var__twist"
-            aria-label={`${node.expanded ? "Collapse" : "Expand"} ${node.variable.name}`}
+            aria-label={t(node.expanded ? "debug.collapseNamed" : "debug.expandNamed", { name: node.variable.name })}
             aria-expanded={node.expanded}
             onClick={() => {
               void container.variables.toggleVariable(node.key);
@@ -32,7 +33,7 @@ function VariableRow({ node, depth }: { node: VariableNode; depth: number }) {
       </li>
       {node.expanded && node.loading ? (
         <li className="debug-empty" style={{ paddingLeft: 20 + depth * 12 }}>
-          Loading…
+          {t("common.loading")}
         </li>
       ) : null}
       {node.expanded
@@ -78,10 +79,10 @@ export function VariablesPane() {
     () => container.variables.getState(),
   );
   if (state.scopes.length === 0) {
-    return <p className="debug-empty">Variables appear when the program is paused.</p>;
+    return <p className="debug-empty">{t("debug.variablesWhenPaused")}</p>;
   }
   return (
-    <ul className="debug-list" aria-label="Variables">
+    <ul className="debug-list" aria-label={t("debug.pane.variables")}>
       {state.scopes.map((scope) => (
         <ScopeBlock key={scope.key} scope={scope} />
       ))}
@@ -106,8 +107,8 @@ export function WatchPane() {
         }}
       >
         <input
-          aria-label="Add watch expression"
-          placeholder="Add expression"
+          aria-label={t("debug.addWatch")}
+          placeholder={t("debug.addExpression")}
           value={draft}
           onChange={(event) => {
             setDraft(event.target.value);
@@ -115,9 +116,9 @@ export function WatchPane() {
         />
       </form>
       {state.entries.length === 0 ? (
-        <p className="debug-empty">No watch expressions.</p>
+        <p className="debug-empty">{t("debug.noWatches")}</p>
       ) : (
-        <ul className="debug-list" aria-label="Watch">
+        <ul className="debug-list" aria-label={t("debug.pane.watch")}>
           {state.entries.map((entry) => (
             <li key={entry.id} className="debug-var">
               <span className="debug-var__name">{entry.expression}</span>
@@ -126,13 +127,13 @@ export function WatchPane() {
                   entry.error ? "debug-var__value debug-var__value--error" : "debug-var__value"
                 }
               >
-                {entry.error ?? entry.value ?? "not available"}
+                {entry.error ?? entry.value ?? t("debug.notAvailable")}
               </span>
               <button
                 type="button"
                 className="debug-x"
-                aria-label={`Remove watch ${entry.expression}`}
-                title="Remove"
+                aria-label={t("debug.removeWatch", { expression: entry.expression })}
+                title={t("keys.remove")}
                 onClick={() => {
                   container.watches.remove(entry.id);
                 }}
@@ -153,10 +154,10 @@ export function CallStackPane() {
     () => container.callStack.getState(),
   );
   if (state.frames.length === 0) {
-    return <p className="debug-empty">The call stack appears when the program is paused.</p>;
+    return <p className="debug-empty">{t("debug.stackWhenPaused")}</p>;
   }
   return (
-    <ul className="debug-list" aria-label="Call stack">
+    <ul className="debug-list" aria-label={t("debug.pane.callStack")}>
       {state.frames.map((frame) => {
         const file = frame.path?.split(/[\\/]/).pop() ?? null;
         return (
@@ -170,7 +171,7 @@ export function CallStackPane() {
                     ? "debug-frame debug-frame--dim"
                     : "debug-frame"
               }
-              title={frame.path ?? "Runtime internals have no file to open."}
+              title={frame.path ?? t("debug.noFileFrame")}
               onClick={() => {
                 container.callStack.select(frame);
               }}

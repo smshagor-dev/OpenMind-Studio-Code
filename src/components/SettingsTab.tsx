@@ -3,11 +3,13 @@ import { useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { SettingsIssue, SettingsScope } from "../services/ipc";
 import { SettingRow } from "./SettingRow";
+import { categoryLabel } from "../i18n/settingsText";
+import { t } from "../i18n";
 
 function IssueList({ issues, label }: { issues: SettingsIssue[]; label: string }) {
   if (issues.length === 0) return null;
   return (
-    <ul className="prefs-issues" aria-label={`Problems in ${label}`}>
+    <ul className="prefs-issues" aria-label={t("settings.tab.problemsIn", { label })}>
       {issues.map((issue, index) => (
         <li
           key={`${issue.key ?? "file"}-${String(index)}`}
@@ -49,7 +51,7 @@ export function SettingsTab() {
   if (snapshot === null) {
     return (
       <p className="prefs-empty" role="status">
-        {state.loadError ?? "Loading settings…"}
+        {state.loadError ?? t("settings.tab.loading")}
       </p>
     );
   }
@@ -60,21 +62,21 @@ export function SettingsTab() {
     ? scope === "workspace"
       ? (snapshot.workspaceFile ?? "")
       : snapshot.userFile
-    : (container.commands.reasonFor(jsonCommand) ?? "Not available.");
+    : (container.commands.reasonFor(jsonCommand) ?? t("common.notAvailable"));
   return (
     <div className="prefs-settings">
       <div className="prefs-toolbar">
         <input
           type="search"
           className="prefs-search"
-          aria-label="Search settings"
-          placeholder="Search settings"
+          aria-label={t("settings.tab.search")}
+          placeholder={t("settings.tab.search")}
           value={page.query}
           onChange={(event) => {
             container.preferencesPage.setQuery(event.target.value);
           }}
         />
-        <div className="prefs-scope" role="tablist" aria-label="Settings scope">
+        <div className="prefs-scope" role="tablist" aria-label={t("settings.tab.scope")}>
           <button
             type="button"
             role="tab"
@@ -86,7 +88,7 @@ export function SettingsTab() {
               container.preferencesPage.setScope("user");
             }}
           >
-            User
+            {t("settings.scope.user")}
           </button>
           <button
             type="button"
@@ -95,7 +97,7 @@ export function SettingsTab() {
             disabled={!workspace.enabled}
             title={
               workspace.reason ??
-              `Settings of ${folderName ?? "the open folder"}, stored in .openmind/settings.json`
+              t("settings.tab.workspaceTitle", { folder: folderName ?? t("settings.tab.theOpenFolder") })
             }
             className={
               scope === "workspace"
@@ -106,7 +108,7 @@ export function SettingsTab() {
               container.preferencesPage.setScope("workspace");
             }}
           >
-            {folderName ? `Workspace: ${folderName}` : "Workspace"}
+            {folderName ? t("settings.tab.workspaceNamed", { folder: folderName }) : t("settings.scope.workspace")}
           </button>
         </div>
         <button
@@ -118,18 +120,20 @@ export function SettingsTab() {
             container.run(jsonCommand);
           }}
         >
-          Open Settings (JSON)
+          {t("settings.tab.openJson")}
         </button>
       </div>
       {fileError ? (
         <p className="prefs-banner prefs-banner--error" role="alert">
-          The {scope} settings file has a problem, so its values are ignored and it will not be
-          changed: {fileError}
+          {t(scope === "user" ? "settings.tab.userFileProblem" : "settings.tab.workspaceFileProblem", { error: fileError })}
         </p>
       ) : null}
-      <IssueList issues={issues} label={`${scope} settings`} />
+      <IssueList
+        issues={issues}
+        label={scope === "user" ? t("settings.tab.userSettings") : t("settings.tab.workspaceSettings")}
+      />
       <div className="prefs-body">
-        <nav className="prefs-nav" aria-label="Settings categories">
+        <nav className="prefs-nav" aria-label={t("settings.tab.categories")}>
           <button
             type="button"
             className={
@@ -139,7 +143,7 @@ export function SettingsTab() {
               container.preferencesPage.setCategory(null);
             }}
           >
-            All Settings <span className="prefs-nav__count">{total}</span>
+            {t("settings.tab.all")} <span className="prefs-nav__count">{total}</span>
           </button>
           {groups.map((group) => (
             <button
@@ -154,19 +158,19 @@ export function SettingsTab() {
                 container.preferencesPage.setCategory(group.category);
               }}
             >
-              {group.category} <span className="prefs-nav__count">{group.settings.length}</span>
+              {categoryLabel(group.category)} <span className="prefs-nav__count">{group.settings.length}</span>
             </button>
           ))}
         </nav>
-        <div className="prefs-list" role="region" aria-label="Settings">
+        <div className="prefs-list" role="region" aria-label={t("settings.tab.region")}>
           {visible.length === 0 ? (
             <p className="prefs-empty" role="status">
-              No settings match “{page.query}”.
+              {t("settings.tab.noMatch", { query: page.query })}
             </p>
           ) : (
             visible.map((group) => (
-              <section key={group.category} aria-label={group.category}>
-                <h2 className="prefs-group">{group.category}</h2>
+              <section key={group.category} aria-label={categoryLabel(group.category)}>
+                <h2 className="prefs-group">{categoryLabel(group.category)}</h2>
                 {group.settings.map((def) => (
                   <SettingRow
                     key={`${scope}:${def.id}`}

@@ -1,14 +1,9 @@
 import { useEffect, useRef } from "react";
 
 import { container } from "../services/container";
-import {
-  PERMISSION_LIMITS_NOTE,
-  TRUST_WARNING,
-  displayName,
-  permissionLines,
-  pointLines,
-} from "../services/extensionModel";
+import { displayName, permissionLines, pointLines } from "../services/extensionModel";
 import type { PendingInstall } from "../services/extensionService";
+import { t } from "../i18n";
 
 /** The confirmation before a `.vsix` is installed: what it is, what it contributes, and the trust warning. */
 export function ExtensionInstallDialog({ pending }: { pending: PendingInstall }) {
@@ -41,49 +36,50 @@ export function ExtensionInstallDialog({ pending }: { pending: PendingInstall })
         }}
       >
         <h2 id="ext-install-title">
-          Install {displayName(extension)} {extension.manifest.version}?
+          {t("extensions.install.title", { name: displayName(extension), version: extension.manifest.version })}
         </h2>
         <p className="ext-install__warning" role="note">
-          {TRUST_WARNING}
+          {t("extensions.trustWarning")}
         </p>
         <dl className="ext-install__facts">
-          <dt>Name</dt>
+          <dt>{t("extensions.install.name")}</dt>
           <dd>{displayName(extension)}</dd>
-          <dt>Publisher</dt>
+          <dt>{t("extensions.install.publisher")}</dt>
           <dd>{extension.manifest.publisher}</dd>
-          <dt>Version</dt>
+          <dt>{t("extensions.install.version")}</dt>
           <dd>{extension.manifest.version}</dd>
         </dl>
         <p>{extension.manifest.description ?? ""}</p>
         {replaces ? (
           <p>
-            Version {replaces.manifest.version} is installed; installing replaces it
-            {replaces.enabled ? "." : " (it stays disabled)."}
+            {t(replaces.enabled ? "extensions.install.replaces" : "extensions.install.replacesDisabled", {
+              version: replaces.manifest.version,
+            })}
           </p>
         ) : null}
-        <p>{extension.runtimeRequirement ?? "It has no code: it only contributes data."}</p>
-        <h3 className="ext-install__heading">Permissions</h3>
-        <ul className="ext-plain-list" aria-label="Permissions">
+        <p>{extension.runtimeRequirement ?? t("extensions.install.noCode")}</p>
+        <h3 className="ext-install__heading">{t("extensions.install.permissions")}</h3>
+        <ul className="ext-plain-list" aria-label={t("extensions.install.permissions")}>
           {permissionLines(extension).map((line) => (
             <li key={line.name} data-risk={line.highRisk}>
               <strong>{line.label}</strong>
-              {line.highRisk ? <span className="ext-risk"> High risk</span> : null}
+              {line.highRisk ? <span className="ext-risk"> {t("extensions.install.highRisk")}</span> : null}
               <span className="ext-note">
                 {" "}
-                {line.description} ({line.origin === "inferred" ? "implied by what it contributes" : "requested"})
+                {line.description} ({line.origin === "inferred" ? t("extensions.install.implied") : t("extensions.install.requested")})
               </span>
             </li>
           ))}
-          {permissionLines(extension).length === 0 ? <li>None: it needs no permission.</li> : null}
+          {permissionLines(extension).length === 0 ? <li>{t("extensions.install.noPermissions")}</li> : null}
         </ul>
-        <p className="ext-note">{PERMISSION_LIMITS_NOTE}</p>
-        <h3 className="ext-install__heading">Contribution points</h3>
-        <ul className="ext-plain-list" aria-label="Contribution points">
+        <p className="ext-note">{t("extensions.permissionLimits")}</p>
+        <h3 className="ext-install__heading">{t("extensions.install.points")}</h3>
+        <ul className="ext-plain-list" aria-label={t("extensions.install.points")}>
           {pointLines(extension).map((line) => (
             <li key={line.point}>
               {line.point} ({String(line.count)}) — {line.status}
-              {line.status === "Not supported" ? (
-                <span className="ext-note"> This contribution point is not supported yet.</span>
+              {line.support === "unsupported" ? (
+                <span className="ext-note"> {t("extensions.pointUnsupported")}</span>
               ) : null}
             </li>
           ))}
@@ -97,7 +93,7 @@ export function ExtensionInstallDialog({ pending }: { pending: PendingInstall })
               void service.confirmInstall();
             }}
           >
-            Install
+            {t("extensions.installButton")}
           </button>
           <button
             type="button"
@@ -105,7 +101,7 @@ export function ExtensionInstallDialog({ pending }: { pending: PendingInstall })
               service.cancelInstall();
             }}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>

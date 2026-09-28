@@ -1,11 +1,12 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { ExtensionHostService } from "./extensionHostService";
-import { NODE_REQUIRED, OUTSIDE_WORKSPACE, displayName } from "./extensionModel";
+import { OUTSIDE_WORKSPACE, displayName } from "./extensionModel";
 import type { ExtensionRegistryService } from "./extensionRegistryService";
 import type { InstalledExtension } from "./extensionsIpc";
 import type { IpcClient } from "./ipc";
 import type { SettingsService } from "./settingsService";
+import { t } from "../i18n";
 
 /** A `.vsix` chosen and read, waiting for the user to accept the trust warning. */
 export interface PendingInstall {
@@ -339,7 +340,7 @@ export class ExtensionService {
     if (node.portable || (node.system !== null && node.allowSystem)) {
       return snapshot.host.state === "crashed" ? (snapshot.host.error ?? "The extension host stopped.") : null;
     }
-    return NODE_REQUIRED;
+    return t("extensions.nodeRequired");
   }
 }
 

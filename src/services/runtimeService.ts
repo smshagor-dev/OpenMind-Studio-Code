@@ -1,6 +1,7 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
+import { t } from "../i18n";
 
 export type RuntimeOperation = "install" | "repair" | "delete" | "activate";
 
@@ -18,11 +19,11 @@ export interface RuntimeState {
 const EMPTY: RuntimeState = { loaded: false, runtimes: [], progress: {}, working: {}, errors: {} };
 
 const PHASE_LABELS: Record<InstallProgress["phase"], string> = {
-  download: "Downloading",
-  verify: "Verifying checksum",
-  extract: "Extracting",
-  finalize: "Finishing up",
-  done: "Done",
+  download: "runtimes.phase.download",
+  verify: "runtimes.phase.verify",
+  extract: "runtimes.phase.extract",
+  finalize: "runtimes.phase.finalize",
+  done: "runtimes.phase.done",
 };
 
 export interface ProgressView {
@@ -37,7 +38,7 @@ export function describeProgress(progress: InstallProgress): ProgressView {
     progress.total !== null && progress.total > 0
       ? Math.min(100, Math.floor((progress.current / progress.total) * 100))
       : null;
-  const label = PHASE_LABELS[progress.phase];
+  const label = t(PHASE_LABELS[progress.phase]);
   return { label: percent === null ? `${label}…` : `${label} ${String(percent)}%`, percent };
 }
 
@@ -53,12 +54,12 @@ export interface InjectionView {
  */
 export function injectionStatus(entry: InstalledVersion): InjectionView {
   if (!entry.healthy) {
-    return { injected: false, label: "Not in terminal PATH — needs repair" };
+    return { injected: false, label: t("runtimes.injection.needsRepair") };
   }
   if (!entry.active) {
-    return { injected: false, label: "Not in terminal PATH — not the active version" };
+    return { injected: false, label: t("runtimes.injection.notActive") };
   }
-  return { injected: true, label: "In new terminals' PATH" };
+  return { injected: true, label: t("runtimes.injection.injected") };
 }
 
 export interface Availability {
@@ -192,7 +193,7 @@ export class RuntimeService {
       return disabled(`${runtime.displayName} has no download for this platform.`);
     }
     if (version === null || !runtime.availableVersions.includes(version)) {
-      return disabled("Choose a version to install.");
+      return disabled(t("runtimes.reason.chooseVersion"));
     }
     if (runtime.installed.some((installed) => installed.version === version)) {
       return disabled(`${runtime.displayName} ${version} is already installed.`);
@@ -212,7 +213,7 @@ export class RuntimeService {
     }
     const installed = runtime.installed.find((candidate) => candidate.version === version);
     if (installed?.healthy === true) {
-      return disabled("This installation is intact — nothing to repair.");
+      return disabled(t("runtimes.reason.intact"));
     }
     return ENABLED;
   }
@@ -223,10 +224,10 @@ export class RuntimeService {
     }
     const installed = runtime.installed.find((candidate) => candidate.version === version);
     if (installed?.active === true) {
-      return disabled("This is already the active version.");
+      return disabled(t("runtimes.reason.alreadyActive"));
     }
     if (installed?.healthy === false) {
-      return disabled("Repair this installation before making it active.");
+      return disabled(t("runtimes.reason.repairFirst"));
     }
     return ENABLED;
   }

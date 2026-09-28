@@ -4,6 +4,7 @@ import { container } from "../services/container";
 import "../styles/search.css";
 import { Highlighted } from "./search/FileSearchSection";
 import { FileTypeIcon } from "./fileIcons";
+import { t } from "../i18n";
 
 /**
  * Go to File (Ctrl+P) and Go to Symbol in Workspace (Ctrl+T): one query box, the matches below, arrow keys and Enter.
@@ -23,7 +24,7 @@ export function QuickOpen() {
 
   const items = quickOpen.items();
   const empty = quickOpen.emptyMessage();
-  const title = state.mode === "files" ? "Go to File" : "Go to Symbol in Workspace";
+  const title = state.mode === "files" ? t("quickOpen.files") : t("quickOpen.symbols");
   return (
     <div
       className="quick-open__scrim"
@@ -42,8 +43,8 @@ export function QuickOpen() {
           aria-label={title}
           placeholder={
             state.mode === "files"
-              ? "Go to file by name or path (e.g. app.ts, routes, *.php)"
-              : "Go to symbol in workspace (e.g. startServer, UserController)"
+              ? t("quickOpen.filesPlaceholder")
+              : t("quickOpen.symbolsPlaceholder")
           }
           value={quickOpen.query()}
           onChange={(event) => {
@@ -74,7 +75,7 @@ export function QuickOpen() {
             id="quick-open-list"
             className="quick-open__list"
             role="listbox"
-            aria-label={`${title} results`}
+            aria-label={t("quickOpen.results", { title })}
           >
             {items.map((item, index) => (
               <li

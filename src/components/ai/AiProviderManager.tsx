@@ -5,6 +5,7 @@ import "../../styles/ai.css";
 import { container } from "../../services/container";
 import { ProviderForm } from "./ProviderForm";
 import { ProviderList } from "./ProviderList";
+import { t } from "../../i18n";
 
 /** The AI provider manager: add, edit, test, enable/disable, delete providers; clear the history. */
 export function AiProviderManager() {
@@ -39,7 +40,7 @@ export function AiProviderManager() {
           event.stopPropagation();
         }}
       >
-        <h2 id="ai-manager-title">AI Providers</h2>
+        <h2 id="ai-manager-title">{t("ai.providers")}</h2>
         {ui.editing === null ? <ProviderList /> : <ProviderForm key={ui.editing} id={ui.editing} />}
       </div>
     </div>

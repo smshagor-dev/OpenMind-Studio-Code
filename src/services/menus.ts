@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+
 /**
  * The title-bar menu structure, mirroring VS Code's (Windows) menu bar section
  * by section. Entries are pure data referencing command ids. Every VS Code entry is listed; one whose feature
@@ -509,58 +511,56 @@ export function buildMenuBar(
 /** Commands whose entry is hidden (not shown disabled) while nothing registers them. */
 export const HIDDEN_WHEN_UNREGISTERED: ReadonlySet<string> = new Set(["ai.openChat"]);
 
-const NO_ONLINE =
-  "There is no online documentation, feedback or update service set up for OpenMind Studio yet.";
 const UNBUILT: [RegExp, string][] = [
   [
     /^help\.(documentation|releaseNotes|editorPlayground|videoTutorials|tipsAndTricks|featureRequests|reportIssue|privacy|checkForUpdates)$/,
-    NO_ONLINE,
+    "menu.unbuilt.noOnline",
   ],
   [
     /^help\.(toggleDevTools|processExplorer)$/,
-    "Developer tools and the process explorer aren't available in this build.",
+    "menu.unbuilt.devTools",
   ],
   [
     /^tasks\.configureDefaultBuild$/,
-    'Mark the build task in tasks.json with "group": {"kind": "build", "isDefault": true} (Configure Tasks... opens it).',
+    "menu.unbuilt.defaultBuild",
   ],
   [
     /^workspace\./,
-    "Multi-folder workspace files aren't built yet: OpenMind opens one folder per window.",
+    "menu.unbuilt.workspaces",
   ],
   [
     /^preferences\.productIconTheme$/,
-    "Product icon themes aren't built: there is one built-in set of interface icons.",
+    "menu.unbuilt.productIcons",
   ],
-  [/^preferences\.onlineServices$/, "There are no online services to configure."],
+  [/^preferences\.onlineServices$/, "menu.unbuilt.onlineServices"],
   [
     /^preferences\.configureSnippets$/,
-    "User snippet files aren't built yet (extensions can contribute snippets).",
+    "menu.unbuilt.snippets",
   ],
   [
     /^debug\.(newFunctionBreakpoint|newInlineBreakpoint|newTriggeredBreakpoint)$/,
-    "Line breakpoints (with conditions, hit counts and logpoints) are supported; function, inline and triggered breakpoints aren't yet.",
+    "menu.unbuilt.breakpointKinds",
   ],
   [
     /^editorLayout\./,
-    "Editor groups are side by side only for now: use Single, Two Columns, Three Columns or Split Right.",
+    "menu.unbuilt.editorLayout",
   ],
-  [/^go\.(lastEditLocation|nextChange|previousChange)$/, "Not built yet."],
+  [/^go\.(lastEditLocation|nextChange|previousChange)$/, "menu.unbuilt.notBuilt"],
   [
     /^go\.(nextUsedEditor|previousUsedEditor)$/,
-    "Switching by most recently used isn't built yet: use Next Editor / Previous Editor.",
+    "menu.unbuilt.usedEditors",
   ],
   [
     /^search\.replaceInFiles$/,
-    "Replace in Files isn't built yet. Find in Files and the editor's Replace work.",
+    "menu.unbuilt.replaceInFiles",
   ],
-  [/^emmet\./, "Emmet isn't built in. An extension can provide it."],
-  [/^workbench\.openView$/, "Open a view from the activity bar or the View menu."],
+  [/^emmet\./, "menu.unbuilt.emmet"],
+  [/^workbench\.openView$/, "menu.unbuilt.openView"],
 ];
 
-/** Why a menu entry whose command isn't registered is unavailable. */
+/** Why a menu entry whose command isn't registered is unavailable (in the UI language). */
 export function unbuiltReason(command: string): string {
-  return UNBUILT.find(([pattern]) => pattern.test(command))?.[1] ?? "This isn't built yet.";
+  return t(UNBUILT.find(([pattern]) => pattern.test(command))?.[1] ?? "menu.unbuilt.generic");
 }
 
 export function pruneMenuEntries(

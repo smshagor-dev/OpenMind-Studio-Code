@@ -2,13 +2,14 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { LspBundleInfo, LspServerInfo } from "../services/ipc";
+import { t } from "../i18n";
 
 const STATE_LABEL: Record<LspServerInfo["state"], string> = {
-  running: "Running",
-  starting: "Starting…",
-  stopped: "Stopped",
-  installing: "Installing…",
-  error: "Error",
+  running: "lsp.state.running",
+  starting: "lsp.state.starting",
+  stopped: "lsp.state.stopped",
+  installing: "lsp.state.installing",
+  error: "lsp.state.error",
 };
 
 /**
@@ -44,27 +45,24 @@ export function LanguageToolsDialog({ onClose }: { onClose: () => void }) {
           event.stopPropagation();
         }}
       >
-        <h2 id="language-tools-title">Language Tools</h2>
+        <h2 id="language-tools-title">{t("runtimes.tab.tools")}</h2>
         <p className="runtimes__intro">
-          Language servers give the editor completion, hover, diagnostics, go to definition, rename
-          and formatting. They start only for files inside the open folder. Servers in the offline
-          bundle need no download; any other server is installed only when you press Install.
+          {t("lsp.intro")}
         </p>
-        {snapshot === null ? <p className="runtimes__loading">Loading…</p> : null}
+        {snapshot === null ? <p className="runtimes__loading">{t("common.loading")}</p> : null}
         {snapshot ? <BundleLine bundle={snapshot.bundle} /> : null}
         {snapshot?.node ? (
           <p className="runtime-card__notes" data-testid="lsp-node">
-            Node.js: {snapshot.node}
+            {t("lsp.node", { node: snapshot.node })}
           </p>
         ) : null}
         {snapshot?.nodeProblem ? (
           <p className="runtime-card__notes lsp-problem" role="status">
-            {snapshot.nodeProblem} Install Node.js from the Runtime Manager to install or run the
-            Node.js-based language servers.
+            {snapshot.nodeProblem} {t("lsp.installNode")}
           </p>
         ) : null}
         {snapshot !== null && snapshot.workspace === null ? (
-          <p className="runtime-card__notes">Open a folder to start language servers.</p>
+          <p className="runtime-card__notes">{t("lsp.openFolder")}</p>
         ) : null}
         <div className="runtimes__list">
           {snapshot?.servers.map((server) => (
@@ -80,7 +78,7 @@ export function LanguageToolsDialog({ onClose }: { onClose: () => void }) {
                 void container.lsp.setVerbose(event.target.checked);
               }}
             />{" "}
-            Verbose logging (protocol chatter in the LSP output)
+            {t("lsp.verbose")}
           </label>
           <button
             type="button"
@@ -89,12 +87,12 @@ export function LanguageToolsDialog({ onClose }: { onClose: () => void }) {
               onClose();
             }}
           >
-            Open LSP Output
+            {t("lsp.openOutput")}
           </button>
         </div>
         <div className="modal__actions">
           <button type="button" onClick={onClose} autoFocus>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -106,16 +104,15 @@ function BundleLine({ bundle }: { bundle: LspBundleInfo }) {
   if (bundle.present) {
     return (
       <p className="runtime-card__notes" data-testid="lsp-bundle">
-        Offline bundle: {bundle.packs} language server package{bundle.packs === 1 ? "" : "s"}
-        {bundle.nodeVersion ? ` and Node.js ${bundle.nodeVersion}` : ""} ship with this copy of
-        OpenMind Studio. They are unpacked the first time they are needed; nothing is downloaded.
+        {bundle.nodeVersion
+          ? t("lsp.bundleWithNode", { count: bundle.packs, node: bundle.nodeVersion })
+          : t("lsp.bundle", { count: bundle.packs })}
       </p>
     );
   }
   return (
     <p className="runtime-card__notes" data-testid="lsp-bundle">
-      {bundle.problem ?? "This copy has no offline language server bundle."} Servers are installed
-      from npm when you press Install.
+      {bundle.problem ?? t("lsp.noBundle")} {t("lsp.fromNpm")}
     </p>
   );
 }
@@ -123,17 +120,26 @@ function BundleLine({ bundle }: { bundle: LspBundleInfo }) {
 /** The availability badge: ready (and from where), bundled but not unpacked yet, or missing. */
 function availabilityBadge(server: LspServerInfo): { text: string; ready: boolean } {
   if (server.installed) {
-    return { text: server.installSource === "bundle" ? "Bundled" : "Installed", ready: true };
+    return {
+      text: server.installSource === "bundle" ? t("lsp.bundled") : t("runtimes.installed"),
+      ready: true,
+    };
   }
-  return server.bundled ? { text: "Bundled", ready: true } : { text: "Missing", ready: false };
+  return server.bundled
+    ? { text: t("lsp.bundled"), ready: true }
+    : { text: t("lsp.missing"), ready: false };
 }
 
 function ServerCard({ server }: { server: LspServerInfo }) {
   const lsp = container.lsp;
   const busy = server.state === "installing" || server.state === "starting";
-  const preparing = server.bundled ? "Unpacking…" : "Installing…";
+  const preparing = server.bundled ? t("lsp.unpacking") : t("runtimes.installing");
   const installLabel =
-    server.state === "installing" ? preparing : server.bundled ? "Unpack Now" : "Install";
+    server.state === "installing"
+      ? preparing
+      : server.bundled
+        ? t("lsp.unpackNow")
+        : t("extensions.installButton");
   const badge = availabilityBadge(server);
   const usable = server.installed || server.bundled;
   return (
@@ -152,15 +158,17 @@ function ServerCard({ server }: { server: LspServerInfo }) {
                 : "runtime-badge"
           }
         >
-          {server.state === "installing" ? preparing : STATE_LABEL[server.state]}
+          {server.state === "installing" ? preparing : t(STATE_LABEL[server.state])}
         </span>
       </header>
-      <p className="runtime-card__description">Languages: {server.languages.join(", ")}</p>
+      <p className="runtime-card__description">
+        {t("lsp.languages", { list: server.languages.join(", ") })}
+      </p>
       {!server.installed ? (
         <p className="runtime-card__notes">
           {server.bundled
-            ? "Ships with OpenMind: unpacked from the offline bundle when a matching file is opened."
-            : "Language server is not installed yet."}
+            ? t("lsp.shipsWith")
+            : t("lsp.notInstalled")}
         </p>
       ) : null}
       {server.state === "error" && server.message ? (
@@ -168,14 +176,16 @@ function ServerCard({ server }: { server: LspServerInfo }) {
       ) : null}
       {server.state === "running" ? (
         <p className="runtime-card__notes">
-          pid {server.pid ?? "?"} · {server.openDocuments} open file
-          {server.openDocuments === 1 ? "" : "s"} · {server.node}
+          pid {server.pid ?? "?"} · {t("lsp.openFiles", { count: server.openDocuments })} ·{" "}
+          {server.node}
         </p>
       ) : null}
       {server.note ? <p className="runtime-card__notes">{server.note}</p> : null}
       <p className="runtime-card__notes">
-        {server.bundled || server.installSource === "bundle" ? "Contains" : "Installs"}:{" "}
-        {server.contents} · runs on {server.runtime === "native" ? "its own program" : "Node.js"}
+        {t(server.bundled || server.installSource === "bundle" ? "lsp.contains" : "lsp.installs", {
+          contents: server.contents,
+          runtime: server.runtime === "native" ? t("lsp.ownProgram") : "Node.js",
+        })}
       </p>
       {!server.installed && server.installBlocked ? (
         <p className="runtime-card__notes lsp-problem">{server.installBlocked}</p>
@@ -189,8 +199,8 @@ function ServerCard({ server }: { server: LspServerInfo }) {
             title={
               server.installBlocked ??
               (server.bundled
-                ? `Unpack ${server.contents} from the offline bundle now (no download)`
-                : `Download and install ${server.contents}`)
+                ? t("lsp.unpackTitle", { contents: server.contents })
+                : t("lsp.installTitle", { contents: server.contents }))
             }
             onClick={() => {
               void lsp.install(server.id);
@@ -204,36 +214,36 @@ function ServerCard({ server }: { server: LspServerInfo }) {
           disabled={!usable || busy}
           title={
             usable
-              ? "Stop the server and start it again for the open files"
-              : "Language server is not installed yet."
+              ? t("lsp.restartTitle")
+              : t("lsp.notInstalled")
           }
           onClick={() => {
             void lsp.restart(server.id);
           }}
         >
-          Restart
+          {t("lsp.restart")}
         </button>
         <button
           type="button"
           disabled={server.state !== "running"}
           title={
-            server.state === "running" ? "Stop the server" : "The language server isn't running."
+            server.state === "running" ? t("lsp.stopTitle") : t("lsp.notRunning")
           }
           onClick={() => {
             void lsp.stop(server.id);
           }}
         >
-          Stop
+          {t("lsp.stop")}
         </button>
         <button
           type="button"
           disabled={!server.logExists}
-          title={server.logExists ? "Open the server's log file" : "There is no log yet."}
+          title={server.logExists ? t("lsp.openLogTitle") : t("lsp.noLog")}
           onClick={() => {
             void lsp.openLog(server.id);
           }}
         >
-          Open Logs
+          {t("lsp.openLogs")}
         </button>
       </div>
     </section>

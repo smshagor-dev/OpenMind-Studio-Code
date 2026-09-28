@@ -8,12 +8,13 @@ import { IndexBar } from "./search/IndexBar";
 import { ReferencesSection } from "./search/ReferencesSection";
 import { SymbolSearchSection } from "./search/SymbolSearchSection";
 import { TextSearchSection } from "./search/TextSearchSection";
+import { t } from "../i18n";
 
 const TABS: { tab: SearchTab; label: string }[] = [
-  { tab: "text", label: "Text" },
-  { tab: "files", label: "Files" },
-  { tab: "symbols", label: "Symbols" },
-  { tab: "references", label: "References" },
+  { tab: "text", label: "search.tab.text" },
+  { tab: "files", label: "search.tab.files" },
+  { tab: "symbols", label: "search.tab.symbols" },
+  { tab: "references", label: "search.tab.references" },
 ];
 
 /**
@@ -27,7 +28,7 @@ export function SearchView() {
   );
   return (
     <div className="search-view">
-      <div className="search-tabs" role="tablist" aria-label="Search sections">
+      <div className="search-tabs" role="tablist" aria-label={t("search.sections")}>
         {TABS.map((entry) => (
           <button
             key={entry.tab}
@@ -39,7 +40,7 @@ export function SearchView() {
               container.searchPanel.setTab(entry.tab);
             }}
           >
-            {entry.label}
+            {t(entry.label)}
           </button>
         ))}
       </div>

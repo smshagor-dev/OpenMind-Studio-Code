@@ -13,6 +13,8 @@ The first Windows build of OpenMind Studio: a portable, native code editor (Rust
   appears only when a provider is enabled.
 - Profiles (Default, Web Development, Python, PHP / Laravel, Systems, Minimal / Low memory), settings and shortcut pages,
   themes.
+- The UI follows the PC's language: English, Russian and Bangla are bundled (English for anything else); Settings >
+  Display Language chooses another. Nothing is downloaded or translated online.
 - Everything stays in the app folder; nothing changes PATH; nothing is fetched at launch.
 
 ## Installing
@@ -29,4 +31,6 @@ The first Windows build of OpenMind Studio: a portable, native code editor (Rust
   entries are disabled with a reason). Extension icon themes and webview views are unsupported.
 - No tool binaries are bundled (Prettier, language servers ... come from the project, the Runtime Manager or PATH).
 - A project-local formatter runs on save by default: turn off `formatter.useProjectLocalTools` for folders you do not trust.
+- The Russian and Bangla translations have not been reviewed by native speakers; Monaco's own editor widgets, native
+  file dialogs, the installers and some screens (see docs/localization.md) are still English.
 - Memory is dominated by WebView2 (about 200-460 MB in total when idle).

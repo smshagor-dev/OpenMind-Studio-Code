@@ -19,6 +19,7 @@ import { SearchView } from "./SearchView";
 import { SourceControlView } from "./SourceControlView";
 import { ExtensionsView } from "./ExtensionsView";
 import { useDismissOnOutside } from "./useDismissOnOutside";
+import { t } from "../i18n";
 
 interface SideBarProps {
   layout: LayoutState;
@@ -31,12 +32,12 @@ interface SideBarProps {
 }
 
 const VIEW_TITLES: Record<BuiltInView, string> = {
-  explorer: "Explorer",
-  search: "Search",
-  scm: "Source Control",
-  debug: "Run and Debug",
-  extensions: "Extensions",
-  ai: "AI",
+  explorer: "view.explorer",
+  search: "view.search",
+  scm: "view.sourceControl",
+  debug: "view.runAndDebug",
+  extensions: "view.extensions",
+  ai: "view.ai",
 };
 
 /**
@@ -62,7 +63,7 @@ export function SideBar(props: SideBarProps) {
   const aiGone = layout.activeView === "ai" && !container.ai.providers.panelVisible();
   const view: SideView =
     !aiGone && (extension || !isExtensionView(layout.activeView)) ? layout.activeView : "explorer";
-  const title = extension ? extension.container.title : VIEW_TITLES[view as BuiltInView];
+  const title = extension ? extension.container.title : t(VIEW_TITLES[view as BuiltInView]);
 
   const closeViewsMenu = useCallback(() => {
     setViewsMenu(null);
@@ -81,8 +82,8 @@ export function SideBar(props: SideBarProps) {
           <button
             type="button"
             className="sidebar__title-action"
-            title="Views and More Actions..."
-            aria-label="Views and More Actions"
+            title={t("sidebar.moreActionsTitle")}
+            aria-label={t("sidebar.moreActions")}
             onMouseDown={(event) => {
               event.stopPropagation();
               setViewsMenu(viewsMenu ? null : event.currentTarget.getBoundingClientRect());
@@ -101,7 +102,7 @@ export function SideBar(props: SideBarProps) {
           items={resolveMenuEntries(EXPLORER_VIEWS_MENU)}
           x={viewsMenu.left}
           y={viewsMenu.bottom}
-          ariaLabel="Views"
+          ariaLabel={t("sidebar.views")}
           onClose={closeViewsMenu}
         />
       ) : null}
@@ -168,9 +169,9 @@ function toggleFolderSection(): void {
 
 function NoFolderSection({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   return (
-    <PaneSection title="No Folder Opened" expanded={expanded} onToggle={onToggle} grow>
+    <PaneSection title={t("sidebar.noFolder")} expanded={expanded} onToggle={onToggle} grow>
       <div className="no-folder">
-        <p>You have not yet opened a folder.</p>
+        <p>{t("sidebar.noFolderText")}</p>
         <button
           type="button"
           className="button button--primary button--block"

@@ -90,6 +90,7 @@ import { ExtensionFormatterRegistry } from "./extensionFormatters";
 import { languageForPath } from "../editor/languageForPath";
 import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
 import * as monaco from "monaco-editor";
+import { t } from "../i18n";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
@@ -386,7 +387,7 @@ const activeTabIsText = () => {
 };
 const notTextReason = () =>
   hasActiveTab() && !activeTabIsText()
-    ? "A preview is read-only: there is nothing to save."
+    ? t("editor.previewNothingToSave")
     : undefined;
 
 commands.register("file.new", () => {

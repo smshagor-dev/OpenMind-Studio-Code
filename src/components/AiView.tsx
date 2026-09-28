@@ -8,6 +8,7 @@ import { ChatMessages } from "./ai/ChatMessages";
 import { Composer } from "./ai/Composer";
 import { History } from "./ai/History";
 import { ProviderBar } from "./ai/ProviderBar";
+import { t } from "../i18n";
 
 /** Shown instead of a chat while the provider lacks a key or a model: never a broken chat. */
 function ConfigPrompt({ provider, issue }: { provider: AiProviderView; issue: string }) {
@@ -21,7 +22,7 @@ function ConfigPrompt({ provider, issue }: { provider: AiProviderView; issue: st
           container.ai.ui.openManager(provider.id);
         }}
       >
-        Open provider settings
+        {t("ai.openProviderSettings")}
       </button>
     </div>
   );

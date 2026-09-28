@@ -10,6 +10,7 @@ import { MenuPopup } from "./MenuPopup";
 import { type PaneAction, PaneSection } from "./PaneSection";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 import { type PendingConfirm, useExplorerInteractions } from "./useExplorerInteractions";
+import { t } from "../i18n";
 
 interface ExplorerPanelProps {
   activeDocPath: string | null;
@@ -108,35 +109,35 @@ interface FolderPinState {
 function folderActions(actions: ExplorerMenuActions, pin: FolderPinState): PaneAction[] {
   return [
     {
-      label: "New File...",
+      label: t("explorer.newFile"),
       icon: <NewFileIcon />,
       onRun: () => {
         actions.newFile(null);
       },
     },
     {
-      label: "New Folder...",
+      label: t("explorer.newFolder"),
       icon: <NewFolderIcon />,
       onRun: () => {
         actions.newFolder(null);
       },
     },
     {
-      label: "Refresh Explorer",
+      label: t("explorer.refresh"),
       icon: <RefreshIcon />,
       onRun: () => {
         container.run("explorer.refresh");
       },
     },
     {
-      label: "Collapse Folders in Explorer",
+      label: t("explorer.collapse"),
       icon: <CollapseAllIcon />,
       onRun: () => {
         container.run("explorer.collapseAll");
       },
     },
     {
-      label: pin.pinned ? "Unpin Folder" : "Pin Folder",
+      label: pin.pinned ? t("explorer.unpin") : t("explorer.pin"),
       icon: <PinIcon filled={pin.pinned} />,
       onRun: () => {
         if (pin.pinned) {
@@ -203,9 +204,9 @@ function ExplorerConfirm({ confirm, onDone }: { confirm: PendingConfirm; onDone:
   if (confirm.kind === "delete") {
     return (
       <ConfirmDialog
-        title="Delete"
-        message={`Are you sure you want to delete '${node.name}'? You can restore it from the Recycle Bin.`}
-        confirmLabel="Move to Recycle Bin"
+        title={t("explorer.deleteTitle")}
+        message={t("explorer.deleteMessage", { name: node.name })}
+        confirmLabel={t("explorer.moveToRecycleBin")}
         onCancel={onDone}
         onConfirm={() => {
           void container.explorer.deleteEntry(node.parentPath, node.path);
@@ -216,9 +217,9 @@ function ExplorerConfirm({ confirm, onDone }: { confirm: PendingConfirm; onDone:
   }
   return (
     <ConfirmDialog
-      title="Move"
-      message={`Are you sure you want to move '${node.name}' into '${confirm.destName}'?`}
-      confirmLabel="Move"
+      title={t("explorer.move")}
+      message={t("explorer.moveMessage", { name: node.name, target: confirm.destName })}
+      confirmLabel={t("explorer.move")}
       tone="primary"
       onCancel={onDone}
       onConfirm={() => {

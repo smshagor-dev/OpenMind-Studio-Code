@@ -1,4 +1,5 @@
 import { REMAPPABLE_EDITOR_COMMANDS, syncMonacoDefaults } from "../editor/monacoKeys";
+import { applyLanguageSetting, SYSTEM_LANGUAGE } from "../i18n";
 import type { CommandRegistry } from "./commandRegistry";
 import type { DocumentService } from "./documentService";
 import { EDITOR_SETTING_IDS, type EditorService } from "./editorService";
@@ -99,6 +100,12 @@ export function wirePreferences(deps: PreferencesWiringDeps) {
     await settings.initialize();
     await keybindingsManager.initialize();
     applySearchDefaults();
+    // The UI language: the setting (System Default follows the PC). Changing it re-renders the UI at once.
+    const applyLanguage = () => {
+      applyLanguageSetting(settings.string("workbench.language", SYSTEM_LANGUAGE));
+    };
+    applyLanguage();
+    settings.onChange(["workbench.language"], applyLanguage);
     void deps.lsp.setVerbose(settings.bool("lsp.verboseLogging", false));
     settings.onChange(EDITOR_SETTING_IDS, () => {
       editor.refreshFromSettings();

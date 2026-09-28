@@ -15,6 +15,7 @@ import { ExtensionDetails } from "./ExtensionDetails";
 import { ExtensionIcon } from "./ExtensionListItem";
 import { CloseIcon, CloudDownloadIcon, StarIcon, VerifiedIcon } from "./icons";
 import { MarkdownText } from "./MarkdownPreview";
+import { t } from "../i18n";
 
 function openLink(href: string) {
   const target = safeHref(href);
@@ -54,7 +55,7 @@ function Actions({
           title={toggle.enabled ? undefined : toggle.reason}
           onClick={() => void service.setEnabled(installed.id, !installed.enabled)}
         >
-          {installed.enabled ? "Disable" : "Enable"}
+          {installed.enabled ? t("extensions.disable") : t("extensions.enable")}
         </button>
         <button
           type="button"
@@ -65,10 +66,10 @@ function Actions({
             service.requestUninstall(installed.id);
           }}
         >
-          Uninstall
+          {t("extensions.uninstall.confirm")}
         </button>
         {installed.enabled ? null : (
-          <span className="ext-page__state">This extension is disabled.</span>
+          <span className="ext-page__state">{t("extPage.disabled")}</span>
         )}
       </div>
     );
@@ -83,7 +84,7 @@ function Actions({
         disabled={busy !== null}
         onClick={() => void marketplace.install(page.namespace, page.name)}
       >
-        {busy ?? "Install"}
+        {busy ?? t("extensions.installButton")}
       </button>
     </div>
   );
@@ -109,32 +110,32 @@ function Sidebar({
   const updated = d?.lastUpdated ? new Date(d.lastUpdated) : null;
   return (
     <aside className="ext-page__side">
-      <InfoBlock title="Installation">
+      <InfoBlock title={t("extPage.installation")}>
         <dl className="ext-page__facts">
-          <dt>Identifier</dt>
+          <dt>{t("extPage.identifier")}</dt>
           <dd>{installed?.id ?? marketId(page.namespace, page.name)}</dd>
-          <dt>Version</dt>
+          <dt>{t("extensions.install.version")}</dt>
           <dd>{installed?.manifest.version ?? d?.version ?? "—"}</dd>
           {d?.engine ? (
             <>
-              <dt>VS Code API</dt>
+              <dt>{t("extPage.vscodeApi")}</dt>
               <dd>{d.engine}</dd>
             </>
           ) : null}
         </dl>
       </InfoBlock>
       {d ? (
-        <InfoBlock title="Marketplace">
+        <InfoBlock title={t("extensions.marketplace")}>
           <dl className="ext-page__facts">
-            <dt>Last Updated</dt>
+            <dt>{t("extPage.lastUpdated")}</dt>
             <dd>
               {updated && !Number.isNaN(updated.getTime()) ? updated.toLocaleDateString() : "—"}
             </dd>
-            <dt>Downloads</dt>
+            <dt>{t("extPage.downloads")}</dt>
             <dd>{formatCount(d.downloadCount)}</dd>
             {d.license ? (
               <>
-                <dt>License</dt>
+                <dt>{t("extPage.license")}</dt>
                 <dd>{d.license}</dd>
               </>
             ) : null}
@@ -142,7 +143,7 @@ function Sidebar({
         </InfoBlock>
       ) : null}
       {d && d.categories.length > 0 ? (
-        <InfoBlock title="Categories">
+        <InfoBlock title={t("extPage.categories")}>
           <div className="ext-page__chips">
             {d.categories.map((category) => (
               <span key={category} className="ext-page__chip">
@@ -153,7 +154,7 @@ function Sidebar({
         </InfoBlock>
       ) : null}
       {d ? (
-        <InfoBlock title="Resources">
+        <InfoBlock title={t("extPage.resources")}>
           <ul className="ext-page__links">
             <li>
               <button
@@ -163,7 +164,7 @@ function Sidebar({
                   openLink(d.pageUrl);
                 }}
               >
-                Marketplace
+                {t("extensions.marketplace")}
               </button>
             </li>
             {d.repository ? (
@@ -175,7 +176,7 @@ function Sidebar({
                     openLink(d.repository ?? "");
                   }}
                 >
-                  Repository
+                  {t("extPage.repository")}
                 </button>
               </li>
             ) : null}
@@ -188,7 +189,7 @@ function Sidebar({
                     openLink(d.homepage ?? "");
                   }}
                 >
-                  Homepage
+                  {t("extPage.homepage")}
                 </button>
               </li>
             ) : null}
@@ -218,28 +219,28 @@ function Body({
   const text = page.tab === "details" ? page.readme : page.changelog;
   const url = page.tab === "details" ? page.details?.readmeUrl : page.details?.changelogUrl;
   if (page.textError !== null) return <p className="ext-page__note">{page.textError}</p>;
-  if (page.textLoading) return <p className="ext-page__note">Loading…</p>;
+  if (page.textLoading) return <p className="ext-page__note">{t("common.loading")}</p>;
   if (text !== null) return <MarkdownText text={text} onLink={openLink} />;
   if (page.details !== null && url === null) {
     return (
       <p className="ext-page__note">
         {page.tab === "details"
-          ? "This extension has no README."
-          : "This extension has no changelog."}
+          ? t("extPage.noReadme")
+          : t("extPage.noChangelog")}
       </p>
     );
   }
   return (
     <p className="ext-page__note">
-      {installed?.manifest.description ?? "No details are available for this extension."}
+      {installed?.manifest.description ?? t("extPage.noDetails")}
     </p>
   );
 }
 
 const TABS: readonly { tab: ExtensionPageTab; label: string }[] = [
-  { tab: "details", label: "Details" },
-  { tab: "features", label: "Features" },
-  { tab: "changelog", label: "Changelog" },
+  { tab: "details", label: "extPage.tab.details" },
+  { tab: "features", label: "extPage.tab.features" },
+  { tab: "changelog", label: "extPage.tab.changelog" },
 ];
 
 /**
@@ -269,14 +270,14 @@ export function ExtensionEditor() {
     container.extensions.service.select(null);
   };
   return (
-    <section className="ext-page" aria-label={`Extension: ${title}`}>
+    <section className="ext-page" aria-label={t("extPage.title", { name: title })}>
       <div className="ext-page__tabbar">
         <div className="tab tab--active" role="tab" aria-selected="true">
-          <span className="tab__label">Extension: {title}</span>
+          <span className="tab__label">{t("extPage.title", { name: title })}</span>
           <button
             type="button"
             className="tab__close"
-            aria-label="Close extension page"
+            aria-label={t("extPage.close")}
             onClick={close}
           >
             <CloseIcon />
@@ -289,12 +290,12 @@ export function ExtensionEditor() {
           <div className="ext-page__heading">
             <h1 className="ext-page__name">
               {title}
-              {d?.preview ? <span className="ext-page__badge">Preview</span> : null}
+              {d?.preview ? <span className="ext-page__badge">{t("extPage.preview")}</span> : null}
             </h1>
             <div className="ext-page__meta">
               <span className="ext-page__publisher">
                 {d?.verified ? (
-                  <span className="ext-verified" title="Verified publisher">
+                  <span className="ext-verified" title={t("extensions.verified")}>
                     <VerifiedIcon size={14} />
                   </span>
                 ) : null}
@@ -315,13 +316,13 @@ export function ExtensionEditor() {
               {d?.description ?? installed?.manifest.description ?? ""}
             </p>
             <Actions page={page} installed={installed} />
-            {page.loading ? <p className="ext-page__note">Loading from Open VSX…</p> : null}
+            {page.loading ? <p className="ext-page__note">{t("extPage.loadingOpenVsx")}</p> : null}
             {page.error !== null ? (
-              <p className="ext-page__note">Not available on Open VSX: {page.error}</p>
+              <p className="ext-page__note">{t("extPage.notOnOpenVsx", { error: page.error })}</p>
             ) : null}
           </div>
         </header>
-        <nav className="ext-page__tabs" role="tablist" aria-label="Extension page">
+        <nav className="ext-page__tabs" role="tablist" aria-label={t("extPage.tabs")}>
           {TABS.map(({ tab, label }) => (
             <button
               key={tab}
@@ -331,7 +332,7 @@ export function ExtensionEditor() {
               className={page.tab === tab ? "ext-page__tab ext-page__tab--active" : "ext-page__tab"}
               onClick={() => void marketplace.setTab(tab)}
             >
-              {label}
+              {t(label)}
             </button>
           ))}
         </nav>

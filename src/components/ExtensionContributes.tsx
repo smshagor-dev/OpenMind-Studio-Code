@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { container } from "../services/container";
 import type { ExtensionActivity, InstalledExtension } from "../services/extensionsIpc";
 import { contributedLists } from "./extensionContributesModel";
+import { t } from "../i18n";
 
 function List({ label, items }: { label: string; items: string[] }) {
   if (items.length === 0) return null;
@@ -44,24 +45,23 @@ export function ExtensionContributes({
   const unsupported = activity.unsupportedApis ?? [];
   return (
     <>
-      <h4>Contributes</h4>
+      <h4>{t("extContrib.title")}</h4>
       {contributedLists(extension).every((list) => list.items.length === 0) ? (
-        <p className="ext-note">No commands, views, themes, icon themes or task types.</p>
+        <p className="ext-note">{t("extContrib.none")}</p>
       ) : (
         contributedLists(extension).map((list) => (
           <List key={list.label} label={list.label} items={list.items} />
         ))
       )}
-      <h4>Unsupported APIs used</h4>
+      <h4>{t("extContrib.unsupported")}</h4>
       {unsupported.length === 0 ? (
-        <p className="ext-note">None seen so far (they are recorded while the extension runs).</p>
+        <p className="ext-note">{t("extContrib.noneSeen")}</p>
       ) : (
         <>
           <p className="ext-note">
-            These VS Code APIs aren't supported by OpenMind Studio yet; the parts of the extension
-            that use them won't work.
+            {t("extContrib.unsupportedNote")}
           </p>
-          <ul className="ext-plain-list" aria-label="Unsupported APIs used">
+          <ul className="ext-plain-list" aria-label={t("extContrib.unsupported")}>
             {unsupported.map((api) => (
               <li key={api}>
                 <code>{api}</code>
@@ -70,19 +70,19 @@ export function ExtensionContributes({
           </ul>
         </>
       )}
-      <h4>Secrets</h4>
+      <h4>{t("extContrib.secrets")}</h4>
       <p className="ext-note">
         {secrets === null
-          ? "Checking…"
+          ? t("extContrib.checking")
           : secrets === 0
-            ? "It keeps no secrets."
-            : `It keeps ${String(secrets)} secret${secrets === 1 ? "" : "s"}, encrypted for your Windows account. Values are never shown.`}
+            ? t("extContrib.noSecrets")
+            : t("extContrib.secretCount", { count: secrets })}
       </p>
       {secrets !== null && secrets > 0 ? (
         confirming ? (
           <p>
             <span className="ext-note">
-              Forget all of them? The extension may ask you to sign in again.{" "}
+              {t("extContrib.forgetAll")}{" "}
             </span>
             <button
               type="button"
@@ -94,7 +94,7 @@ export function ExtensionContributes({
                 });
               }}
             >
-              Clear Secrets
+              {t("extContrib.clear")}
             </button>{" "}
             <button
               type="button"
@@ -103,7 +103,7 @@ export function ExtensionContributes({
                 setConfirming(false);
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </p>
         ) : (
@@ -115,7 +115,7 @@ export function ExtensionContributes({
                 setConfirming(true);
               }}
             >
-              Clear Secrets…
+              {t("extContrib.clearEllipsis")}
             </button>
           </p>
         )

@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { container } from "../../services/container";
 import { useChat } from "./aiHooks";
+import { t } from "../../i18n";
 
 /** Saved conversations: open one, delete one, or clear them all. (Empty when saving is off.) */
 export function History() {
@@ -18,10 +19,10 @@ export function History() {
           setOpen(!open);
         }}
       >
-        {open ? "Hide history" : "Show history"}
+        {open ? t("ai.hideHistory") : t("ai.showHistory")}
       </button>
       {open && chat.history.length === 0 ? (
-        <p className="ai-note">No saved conversations.</p>
+        <p className="ai-note">{t("ai.noHistory")}</p>
       ) : null}
       {open && chat.history.length > 0 ? (
         <>
@@ -41,12 +42,12 @@ export function History() {
                 <button
                   type="button"
                   className="ai-link"
-                  aria-label={`Delete ${entry.title}`}
+                  aria-label={t("ai.deleteNamed", { name: entry.title })}
                   onClick={() => {
                     void container.ai.chat.deleteConversation(entry.id);
                   }}
                 >
-                  Delete
+                  {t("runtimes.delete")}
                 </button>
               </li>
             ))}
@@ -58,7 +59,7 @@ export function History() {
               void container.ai.chat.clearHistory();
             }}
           >
-            Clear all history
+            {t("ai.clearAllHistory")}
           </button>
         </>
       ) : null}

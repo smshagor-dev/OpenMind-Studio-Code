@@ -12,6 +12,7 @@ import {
   ServerIcon,
   SourceControlIcon,
 } from "./icons";
+import { t } from "../i18n";
 
 /** A card in the right-hand column: a real feature, opened by its command. */
 export interface WelcomeCard {
@@ -88,35 +89,35 @@ export function StartPage(props: StartPageProps) {
       <div className="welcome__inner">
         <header className="welcome__header">
           <h1 className="welcome__title">OpenMind Studio</h1>
-          <p className="welcome__subtitle">Code anywhere</p>
+          <p className="welcome__subtitle">{t("welcome.subtitle")}</p>
         </header>
         <div className="welcome__columns">
           <div className="welcome__column">
             <section className="welcome__section">
-              <h2>Start</h2>
+              <h2>{t("welcome.start")}</h2>
               <ul className="welcome__list">
-                <StartLink icon={<NewFileIcon />} label="New File..." onClick={props.onNewFile} />
-                <StartLink icon={<NewFileIcon />} label="Open File..." onClick={props.onOpenFile} />
+                <StartLink icon={<NewFileIcon />} label={t("explorer.newFile")} onClick={props.onNewFile} />
+                <StartLink icon={<NewFileIcon />} label={t("command.file.open")} onClick={props.onOpenFile} />
                 <StartLink
                   icon={<NewFolderIcon />}
-                  label="Open Folder..."
+                  label={t("command.file.openFolder")}
                   onClick={props.onOpenFolder}
                 />
                 <StartLink
                   icon={<SourceControlIcon />}
-                  label="Clone Git Repository..."
+                  label={t("welcome.clone")}
                   onClick={props.onCloneRepository}
                 />
                 <StartLink
                   icon={<NewWindowIcon />}
-                  label="New Window"
+                  label={t("command.workbench.newWindow")}
                   onClick={props.onNewWindow}
                 />
               </ul>
             </section>
             {props.pinnedFolders.length > 0 ? (
               <section className="welcome__section">
-                <h2>Pinned</h2>
+                <h2>{t("welcome.pinned")}</h2>
                 <ul className="welcome__list">
                   {props.pinnedFolders.map((folder) => (
                     <li key={`pinned:${folder.path}`} className="welcome__recent">
@@ -134,8 +135,8 @@ export function StartPage(props: StartPageProps) {
                       <button
                         type="button"
                         className="welcome__unpin"
-                        title="Unpin Folder"
-                        aria-label="Unpin Folder"
+                        title={t("explorer.unpin")}
+                        aria-label={t("explorer.unpin")}
                         onClick={() => {
                           props.onUnpinFolder(folder.path);
                         }}
@@ -149,7 +150,7 @@ export function StartPage(props: StartPageProps) {
             ) : null}
             {recent.length > 0 ? (
               <section className="welcome__section">
-                <h2>Recent</h2>
+                <h2>{t("welcome.recent")}</h2>
                 <ul className="welcome__list">
                   {shown.map((entry) => (
                     <li key={entry.key} className="welcome__recent">
@@ -173,7 +174,7 @@ export function StartPage(props: StartPageProps) {
                       setAllRecent(!allRecent);
                     }}
                   >
-                    {allRecent ? "Less..." : "More..."}
+                    {allRecent ? t("welcome.less") : t("welcome.more")}
                   </button>
                 ) : null}
               </section>
@@ -181,7 +182,7 @@ export function StartPage(props: StartPageProps) {
           </div>
           <div className="welcome__column">
             <section className="welcome__section">
-              <h2>Get Started</h2>
+              <h2>{t("welcome.getStarted")}</h2>
               <ul className="welcome__cards">
                 {props.cards.map((card) => (
                   <li key={card.id}>
@@ -211,7 +212,7 @@ export function StartPage(props: StartPageProps) {
               props.onShowOnStartupChange(event.target.checked);
             }}
           />
-          Show welcome page on startup
+          {t("welcome.showOnStartup")}
         </label>
       </div>
     </div>

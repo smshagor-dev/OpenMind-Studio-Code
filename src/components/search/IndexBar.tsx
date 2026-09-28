@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { container } from "../../services/container";
+import { t } from "../../i18n";
 
 /** The index's state in the Search view, with the actions that work on it. Every button says why it is off. */
 export function IndexBar() {
@@ -32,7 +33,7 @@ export function IndexBar() {
     );
   };
   return (
-    <div className="index-bar" role="group" aria-label="Search index">
+    <div className="index-bar" role="group" aria-label={t("search.index")}>
       <span
         className={
           status?.state === "error"
@@ -49,20 +50,20 @@ export function IndexBar() {
           className="index-bar__progress"
           max={status.discovered}
           value={status.processed}
-          aria-label="Indexing progress"
+          aria-label={t("search.indexProgress")}
         />
       ) : null}
       {indexing
-        ? button("Cancel", "cancel", () => {
+        ? button(t("common.cancel"), "cancel", () => {
             void index.cancel();
           })
-        : button("Refresh", "start", () => {
+        : button(t("common.refresh"), "start", () => {
             void index.refresh();
           })}
-      {button("Rebuild", "rebuild", () => {
+      {button(t("search.rebuild"), "rebuild", () => {
         void index.rebuild();
       })}
-      {button("Clear", "clear", () => {
+      {button(t("search.clear"), "clear", () => {
         void index.clear();
       })}
       {status?.state === "error" && status.error ? (

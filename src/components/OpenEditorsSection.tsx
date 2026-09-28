@@ -3,6 +3,7 @@ import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseAllIcon, CloseIcon, NewFileIcon, SaveAllIcon } from "./icons";
 import { PaneSection } from "./PaneSection";
+import { t } from "../i18n";
 
 interface OpenEditorsSectionProps {
   /** Every open tab, across all editor groups. */
@@ -37,19 +38,19 @@ export function OpenEditorsSection({
   const anyDirty = tabs.some((tab) => tab.dirty);
   return (
     <PaneSection
-      title="Open Editors"
+      title={t("openEditors.title")}
       expanded={expanded}
       onToggle={onToggle}
       actions={[
         {
-          label: "New Untitled Text File",
+          label: t("openEditors.newUntitled"),
           icon: <NewFileIcon />,
           onRun: () => {
             container.run("file.new");
           },
         },
         {
-          label: "Save All",
+          label: t("openEditors.saveAll"),
           icon: <SaveAllIcon />,
           disabled: !anyDirty,
           onRun: () => {
@@ -57,7 +58,7 @@ export function OpenEditorsSection({
           },
         },
         {
-          label: "Close All Editors",
+          label: t("openEditors.closeAll"),
           icon: <CloseAllIcon />,
           disabled: tabs.length === 0,
           onRun: () => {
@@ -66,7 +67,7 @@ export function OpenEditorsSection({
         },
       ]}
     >
-      <div className="open-editors" role="listbox" aria-label="Open Editors">
+      <div className="open-editors" role="listbox" aria-label={t("openEditors.title")}>
         {tabs.map((tab) => (
           <OpenEditorRow
             key={`${tab.groupId}:${tab.id}`}
@@ -107,7 +108,7 @@ function OpenEditorRow({
         className={
           tab.dirty ? "open-editors__close open-editors__close--dirty" : "open-editors__close"
         }
-        aria-label={`Close ${tab.title}`}
+        aria-label={t("tabs.closeNamed", { name: tab.title })}
         onClick={(event) => {
           event.stopPropagation();
           void container.workspace.closeTab(tab.groupId, tab.id);

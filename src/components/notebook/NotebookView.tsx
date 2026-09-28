@@ -7,44 +7,45 @@ import "../../styles/notebook.css";
 import { BlockList } from "../MarkdownPreview";
 import { CellEditor } from "./CellEditor";
 import { NotebookOutputs } from "./NotebookOutput";
+import { t } from "../../i18n";
 
 function Toolbar({ doc }: { doc: NotebookDoc }) {
   const notebooks = container.notebooks;
   const runAllReason = doc.cells.some((c) => c.kind === "code")
     ? notebooks.runReason(doc.path, doc.cells.find((c) => c.kind === "code")?.key ?? "")
-    : "There are no code cells.";
+    : t("notebook.noCodeCells");
   return (
-    <div className="notebook__toolbar" role="toolbar" aria-label="Notebook">
+    <div className="notebook__toolbar" role="toolbar" aria-label={t("notebook.label")}>
       <button
         type="button"
         disabled={runAllReason !== null}
-        title={runAllReason ?? "Run every code cell (asks first)"}
+        title={runAllReason ?? t("notebook.runAllTitle")}
         onClick={() => void notebooks.runAll(doc.path)}
       >
-        ▶▶ Run All
+        ▶▶ {t("notebook.runAll")}
       </button>
       <button
         type="button"
         disabled={doc.kernel === null}
         title={
           doc.kernel === null
-            ? "No kernel is running."
-            : "Stop the kernel (a running cell ends; variables are lost)"
+            ? t("notebook.noKernelRunning")
+            : t("notebook.stopTitle")
         }
         onClick={() => void notebooks.stopKernel(doc.path)}
       >
-        ■ Stop
+        ■ {t("notebook.stop")}
       </button>
       <button
         type="button"
-        title="Pick the Python that runs this notebook's cells"
+        title={t("notebook.selectKernelTitle")}
         disabled={!doc.trusted}
         onClick={() => void notebooks.selectKernel(doc.path)}
       >
-        Select Kernel
+        {t("notebook.selectKernel")}
       </button>
       <span className="notebook__kernel" title={doc.kernel ?? undefined}>
-        {doc.kernel ?? "Kernel not configured"}
+        {doc.kernel ?? t("notebook.kernelNotConfigured")}
       </span>
       <button
         type="button"
@@ -52,32 +53,32 @@ function Toolbar({ doc }: { doc: NotebookDoc }) {
           notebooks.clearOutputs(doc.path);
         }}
       >
-        Clear Outputs
+        {t("notebook.clearOutputs")}
       </button>
       <button
         type="button"
         disabled={!doc.dirty}
-        title={doc.dirty ? "Save the notebook" : "No unsaved changes"}
+        title={doc.dirty ? t("notebook.saveTitle") : t("notebook.noChanges")}
         onClick={() => void notebooks.save(doc.path, doc.conflict)}
       >
-        {doc.conflict ? "Overwrite on Disk" : "Save"}
+        {doc.conflict ? t("notebook.overwrite") : t("common.save")}
       </button>
       <span
         className={doc.trusted ? "notebook__trust notebook__trust--on" : "notebook__trust"}
         title={
           doc.trusted
-            ? "Trusted: cells may run and HTML output is shown (sanitized)."
-            : "Not trusted: nothing runs and HTML output is hidden."
+            ? t("notebook.trustedTitle")
+            : t("notebook.untrustedTitle")
         }
       >
-        {doc.trusted ? "Trusted" : "Untrusted"}
+        {doc.trusted ? t("notebook.trusted") : t("notebook.untrusted")}
       </span>
       {doc.trusted ? (
         <button type="button" onClick={() => void notebooks.setTrusted(doc.path, false)}>
-          Stop Trusting
+          {t("notebook.stopTrusting")}
         </button>
       ) : null}
-      {doc.dirty ? <span className="notebook__dirty">Unsaved changes</span> : null}
+      {doc.dirty ? <span className="notebook__dirty">{t("notebook.unsaved")}</span> : null}
     </div>
   );
 }
@@ -87,12 +88,10 @@ function TrustBanner({ doc }: { doc: NotebookDoc }) {
   return (
     <div className="notebook__banner" role="note">
       <p>
-        This notebook is not trusted. Nothing in it has run: its cells run only after you trust it
-        and pick a kernel, and its HTML output stays hidden. Trust it only if you know where it
-        comes from.
+        {t("notebook.trustBanner")}
       </p>
       <button type="button" onClick={() => void container.notebooks.setTrusted(doc.path, true)}>
-        Trust Notebook
+        {t("notebook.trust")}
       </button>
     </div>
   );
@@ -106,7 +105,7 @@ function MarkdownCell({ doc, cell }: { doc: NotebookDoc; cell: CellState }) {
         <CellEditor
           source={cell.source}
           language="markdown"
-          label="Markdown cell"
+          label={t("notebook.markdownCell")}
           onChange={(text) => {
             container.notebooks.setSource(doc.path, cell.key, text);
           }}
@@ -118,7 +117,7 @@ function MarkdownCell({ doc, cell }: { doc: NotebookDoc; cell: CellState }) {
             setEditing(false);
           }}
         >
-          Done
+          {t("common.done")}
         </button>
       </>
     );
@@ -126,7 +125,7 @@ function MarkdownCell({ doc, cell }: { doc: NotebookDoc; cell: CellState }) {
   return (
     <div
       className="markdown-preview notebook__markdown"
-      title="Double-click to edit"
+      title={t("notebook.doubleClickToEdit")}
       onDoubleClick={() => {
         setEditing(true);
       }}
@@ -147,15 +146,15 @@ function Cell({ doc, cell, index }: { doc: NotebookDoc; cell: CellState; index: 
   const reason = notebooks.runReason(doc.path, cell.key);
   const running = doc.running === cell.key;
   return (
-    <section className="notebook__cell" aria-label={`Cell ${String(index + 1)} (${cell.kind})`}>
+    <section className="notebook__cell" aria-label={t("notebook.cellLabel", { number: index + 1, kind: cell.kind })}>
       <div className="notebook__gutter">
         {cell.kind === "code" ? (
           <button
             type="button"
             className="notebook__run"
-            aria-label={`Run cell ${String(index + 1)}`}
+            aria-label={t("notebook.runCellNumber", { number: index + 1 })}
             disabled={reason !== null}
-            title={reason ?? "Run Cell (Shift+Enter)"}
+            title={reason ?? t("notebook.runCellTitle")}
             onClick={() => void notebooks.runCell(doc.path, cell.key)}
           >
             {running ? "…" : "▶"}
@@ -170,19 +169,19 @@ function Cell({ doc, cell, index }: { doc: NotebookDoc; cell: CellState; index: 
       <div className="notebook__body">
         <div className="notebook__cell-actions">
           <select
-            aria-label={`Cell ${String(index + 1)} type`}
+            aria-label={t("notebook.cellType", { number: index + 1 })}
             value={cell.kind}
             onChange={(event) => {
               notebooks.setKind(doc.path, cell.key, event.target.value as CellState["kind"]);
             }}
           >
-            <option value="code">Code</option>
-            <option value="markdown">Markdown</option>
-            <option value="raw">Raw</option>
+            <option value="code">{t("notebook.kind.code")}</option>
+            <option value="markdown">{t("notebook.kind.markdown")}</option>
+            <option value="raw">{t("notebook.kind.raw")}</option>
           </select>
           <button
             type="button"
-            title="Move up"
+            title={t("notebook.moveUp")}
             onClick={() => {
               notebooks.moveCell(doc.path, cell.key, -1);
             }}
@@ -191,7 +190,7 @@ function Cell({ doc, cell, index }: { doc: NotebookDoc; cell: CellState; index: 
           </button>
           <button
             type="button"
-            title="Move down"
+            title={t("notebook.moveDown")}
             onClick={() => {
               notebooks.moveCell(doc.path, cell.key, 1);
             }}
@@ -200,26 +199,26 @@ function Cell({ doc, cell, index }: { doc: NotebookDoc; cell: CellState; index: 
           </button>
           <button
             type="button"
-            title="Add a code cell below"
+            title={t("notebook.addCodeBelow")}
             onClick={() => {
               notebooks.addCell(doc.path, cell.key, "code");
             }}
           >
-            + Code
+            + {t("notebook.kind.code")}
           </button>
           <button
             type="button"
-            title="Add a Markdown cell below"
+            title={t("notebook.addMarkdownBelow")}
             onClick={() => {
               notebooks.addCell(doc.path, cell.key, "markdown");
             }}
           >
-            + Markdown
+            + {t("notebook.kind.markdown")}
           </button>
           <button
             type="button"
-            aria-label={`Delete cell ${String(index + 1)}`}
-            title="Delete cell"
+            aria-label={t("notebook.deleteCellNumber", { number: index + 1 })}
+            title={t("notebook.deleteCell")}
             onClick={() => {
               notebooks.deleteCell(doc.path, cell.key);
             }}
@@ -233,7 +232,7 @@ function Cell({ doc, cell, index }: { doc: NotebookDoc; cell: CellState; index: 
           <CellEditor
             source={cell.source}
             language={cell.kind === "code" ? doc.language : "plaintext"}
-            label={`Cell ${String(index + 1)} source`}
+            label={t("notebook.cellSource", { number: index + 1 })}
             onChange={(text) => {
               notebooks.setSource(doc.path, cell.key, text);
             }}
@@ -260,7 +259,7 @@ export function NotebookView({ path }: { path: string }) {
   }, [notebooks, path]);
   const doc = notebooks.get(path);
   if (!doc || doc.status === "loading")
-    return <p className="file-preview__empty">Opening the notebook…</p>;
+    return <p className="file-preview__empty">{t("notebook.opening")}</p>;
   if (doc.status === "error") {
     return (
       <div className="file-preview__empty" role="alert">
@@ -269,13 +268,12 @@ export function NotebookView({ path }: { path: string }) {
     );
   }
   return (
-    <div className="notebook" aria-label="Notebook">
+    <div className="notebook" aria-label={t("notebook.label")}>
       <Toolbar doc={doc} />
       <TrustBanner doc={doc} />
       {doc.language.toLowerCase() !== "python" ? (
         <p className="notebook__banner" role="note">
-          This is a {doc.language} notebook: it can be read and edited, but OpenMind can only run
-          Python cells.
+          {t("notebook.otherLanguage", { language: doc.language })}
         </p>
       ) : null}
       <div className="notebook__cells">
@@ -289,7 +287,7 @@ export function NotebookView({ path }: { path: string }) {
               notebooks.addCell(path, null, "code");
             }}
           >
-            + Code
+            + {t("notebook.kind.code")}
           </button>
           <button
             type="button"
@@ -297,7 +295,7 @@ export function NotebookView({ path }: { path: string }) {
               notebooks.addCell(path, null, "markdown");
             }}
           >
-            + Markdown
+            + {t("notebook.kind.markdown")}
           </button>
         </div>
       </div>

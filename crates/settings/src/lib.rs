@@ -1,5 +1,6 @@
 pub mod error;
 pub mod keybindings;
+pub mod language;
 pub mod profiles;
 pub mod schema;
 pub mod store;

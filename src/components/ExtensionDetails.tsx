@@ -2,11 +2,9 @@ import { useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import {
-  API_SUBSET_NOTE,
   describeActivation,
   canGrantOutsideWorkspace,
   outsideWorkspaceBlock,
-  PERMISSION_LIMITS_NOTE,
   displayName,
   hostStateText,
   permissionLines,
@@ -15,6 +13,7 @@ import {
 } from "../services/extensionModel";
 import type { InstalledExtension } from "../services/extensionsIpc";
 import { ExtensionContributes } from "./ExtensionContributes";
+import { t } from "../i18n";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -47,36 +46,36 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
             service.select(null);
           }}
         >
-          Close
+          {t("common.close")}
         </button>
       </header>
       <dl>
-        <Field label="Extension ID">
+        <Field label={t("extDetails.id")}>
           <code>{extension.id}</code>
         </Field>
-        <Field label="Name">{extension.manifest.name}</Field>
-        <Field label="Display name">{extension.manifest.displayName ?? "—"}</Field>
-        <Field label="Publisher">{extension.manifest.publisher}</Field>
-        <Field label="Version">{extension.manifest.version}</Field>
-        <Field label="Description">{extension.manifest.description ?? "—"}</Field>
-        <Field label="Status">{extension.enabled ? "Enabled" : "Disabled"}</Field>
-        <Field label="Installed path">
+        <Field label={t("extDetails.name")}>{extension.manifest.name}</Field>
+        <Field label={t("extDetails.displayName")}>{extension.manifest.displayName ?? "—"}</Field>
+        <Field label={t("extDetails.publisher")}>{extension.manifest.publisher}</Field>
+        <Field label={t("extDetails.version")}>{extension.manifest.version}</Field>
+        <Field label={t("extDetails.description")}>{extension.manifest.description ?? "—"}</Field>
+        <Field label={t("extDetails.status")}>{extension.enabled ? t("extDetails.enabled") : t("extensions.disabled")}</Field>
+        <Field label={t("extDetails.path")}>
           <span className="ext-path" title={extension.path}>
             {extension.path}
           </span>
         </Field>
-        <Field label="Runtime requirement">
-          {extension.runtimeRequirement ?? "None"}
+        <Field label={t("extDetails.runtime")}>
+          {extension.runtimeRequirement ?? t("common.none")}
           {runtime ? <span className="ext-field__sub"> {runtime.text}</span> : null}
         </Field>
-        <Field label="Extension host">{snapshot ? hostStateText(snapshot.host) : "—"}</Field>
-        <Field label="Activations">{String(activity.activationCount)}</Field>
-        <Field label="Last activation">{activity.lastActivation ?? "Never"}</Field>
-        <Field label="Last error">{activity.lastError ?? "None"}</Field>
+        <Field label={t("extDetails.host")}>{snapshot ? hostStateText(snapshot.host) : "—"}</Field>
+        <Field label={t("extDetails.activations")}>{String(activity.activationCount)}</Field>
+        <Field label={t("extDetails.lastActivation")}>{activity.lastActivation ?? t("common.never")}</Field>
+        <Field label={t("extDetails.lastError")}>{activity.lastError ?? t("common.none")}</Field>
       </dl>
-      <h4>Activation events</h4>
+      <h4>{t("extDetails.activationEvents")}</h4>
       {extension.activationEvents.length === 0 ? (
-        <p className="ext-note">None declared.</p>
+        <p className="ext-note">{t("extDetails.noneDeclared")}</p>
       ) : (
         <ul className="ext-plain-list">
           {extension.activationEvents.map((event) => (
@@ -84,15 +83,15 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
           ))}
         </ul>
       )}
-      <h4>Permissions</h4>
+      <h4>{t("extensions.install.permissions")}</h4>
       {permissionLines(extension).length === 0 ? (
-        <p className="ext-note">None requested or implied.</p>
+        <p className="ext-note">{t("extDetails.noPermissions")}</p>
       ) : (
-        <ul className="ext-plain-list" aria-label="Permissions">
+        <ul className="ext-plain-list" aria-label={t("extensions.install.permissions")}>
           {permissionLines(extension).map((line) => (
             <li key={line.name} data-risk={line.highRisk}>
-              <strong>{line.label}</strong> — {line.accepted ? "granted" : "not granted"}
-              {line.highRisk ? <span className="ext-risk"> High risk</span> : null}
+              <strong>{line.label}</strong> — {line.accepted ? t("extDetails.granted") : t("extDetails.notGranted")}
+              {line.highRisk ? <span className="ext-risk"> {t("extensions.install.highRisk")}</span> : null}
               <span className="ext-note"> {line.description}</span>
             </li>
           ))}
@@ -105,8 +104,7 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
       ) : null}
       {canGrantOutsideWorkspace(extension) ? (
         <p className="ext-note">
-          Files outside the open folder — not granted. By default an extension can't read or change
-          them; if it needs to, it is told so and you can allow it here.
+          {t("extDetails.outsideNotGranted")}
         </p>
       ) : null}
       {canGrantOutsideWorkspace(extension) ? (
@@ -114,24 +112,24 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
           <button
             type="button"
             className="ext-button"
-            title="Off by default. You are asked to confirm first."
+            title={t("extDetails.grantTitle")}
             onClick={() => {
               service.requestGrantOutsideWorkspace(extension.id);
             }}
           >
-            Grant access to files outside the workspace
+            {t("extDetails.grantButton")}
           </button>
         </p>
       ) : null}
-      <p className="ext-note">{PERMISSION_LIMITS_NOTE}</p>
+      <p className="ext-note">{t("extensions.permissionLimits")}</p>
       <ExtensionContributes extension={extension} activity={activity} />
-      <h4>Contribution points</h4>
+      <h4>{t("extensions.install.points")}</h4>
       {lines.length === 0 ? (
-        <p className="ext-note">This extension contributes nothing.</p>
+        <p className="ext-note">{t("extDetails.contributesNothing")}</p>
       ) : (
-        <ul className="ext-plain-list" aria-label="Contribution points">
+        <ul className="ext-plain-list" aria-label={t("extensions.install.points")}>
           {lines.map((line) => (
-            <li key={line.point} data-support={line.status}>
+            <li key={line.point} data-support={line.support}>
               <strong>{line.point}</strong> ({String(line.count)}) — {line.status}
               {line.note ? <span className="ext-note"> {line.note}</span> : null}
             </li>
@@ -140,7 +138,7 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
       )}
       {extension.warnings.length > 0 ? (
         <>
-          <h4>Warnings</h4>
+          <h4>{t("extDetails.warnings")}</h4>
           <ul className="ext-plain-list">
             {extension.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
@@ -148,7 +146,7 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
           </ul>
         </>
       ) : null}
-      <p className="ext-note">{API_SUBSET_NOTE}</p>
+      <p className="ext-note">{t("extDetails.apiSubset")}</p>
       <div className="ext-details__actions">
         <button
           type="button"
@@ -157,7 +155,7 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
             service.openFolder(extension.id);
           }}
         >
-          Open Extension Folder
+          {t("extensions.openExtensionFolder")}
         </button>
         <button
           type="button"
@@ -166,7 +164,7 @@ export function ExtensionDetails({ extension }: { extension: InstalledExtension 
             void service.showLogs();
           }}
         >
-          Show Logs
+          {t("extDetails.showLogs")}
         </button>
       </div>
     </section>

@@ -3,14 +3,15 @@ import { useEffect, useRef } from "react";
 import { container } from "../../services/container";
 import type { ChatMessageView } from "../../services/ai/aiChatService";
 import { splitSegments } from "../../services/ai/aiMessageText";
+import { t } from "../../i18n";
 
 function copy(text: string): void {
   void container.ipc.clipboardWriteText(text).then(
     () => {
-      container.events.emit("appNotice", { message: "Copied." });
+      container.events.emit("appNotice", { message: t("ai.copied") });
     },
     (error: unknown) => {
-      container.events.emit("appError", { message: `Couldn't copy: ${String(error)}` });
+      container.events.emit("appError", { message: t("ai.copyFailed", { error: String(error) }) });
     },
   );
 }
@@ -28,18 +29,18 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
             copy(code);
           }}
         >
-          Copy
+          {t("common.copy")}
         </button>
         <button
           type="button"
           className="ai-link"
           disabled={reason !== null}
-          title={reason ?? "Insert this code at the cursor (it replaces the selection)"}
+          title={reason ?? t("ai.insertTitle")}
           onClick={() => {
             container.ai.actions.insert(code);
           }}
         >
-          Insert
+          {t("ai.insert")}
         </button>
       </div>
       <pre className="ai-code__body">
@@ -63,7 +64,7 @@ function MessageBody({ message }: { message: ChatMessageView }) {
         ),
       )}
       {message.streaming && message.content === "" ? (
-        <p className="ai-message__text ai-message__waiting">Waiting for the answer…</p>
+        <p className="ai-message__text ai-message__waiting">{t("ai.waiting")}</p>
       ) : null}
     </>
   );
@@ -74,7 +75,7 @@ function Message({ message, isLast }: { message: ChatMessageView; isLast: boolea
   return (
     <li className={assistant ? "ai-message ai-message--assistant" : "ai-message ai-message--user"}>
       <div className="ai-message__head">
-        <span className="ai-message__role">{assistant ? "AI" : "You"}</span>
+        <span className="ai-message__role">{assistant ? t("view.ai") : t("ai.you")}</span>
         {message.content !== "" ? (
           <button
             type="button"
@@ -83,12 +84,12 @@ function Message({ message, isLast }: { message: ChatMessageView; isLast: boolea
               copy(message.content);
             }}
           >
-            Copy
+            {t("common.copy")}
           </button>
         ) : null}
       </div>
       <MessageBody message={message} />
-      {message.stopped ? <p className="ai-message__note">Stopped.</p> : null}
+      {message.stopped ? <p className="ai-message__note">{t("ai.stopped")}</p> : null}
       {message.error !== null ? (
         <div className="ai-message__error" role="alert">
           <span>{message.error}</span>
@@ -100,7 +101,7 @@ function Message({ message, isLast }: { message: ChatMessageView; isLast: boolea
                 void container.ai.chat.retry();
               }}
             >
-              Retry
+              {t("common.retry")}
             </button>
           ) : null}
         </div>
@@ -117,10 +118,10 @@ export function ChatMessages({ messages }: { messages: ChatMessageView[] }) {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages.length, last?.content]);
   if (messages.length === 0) {
-    return <p className="ai-empty">Ask a question, or select code and use an action above.</p>;
+    return <p className="ai-empty">{t("ai.empty")}</p>;
   }
   return (
-    <ol className="ai-messages" aria-label="Conversation">
+    <ol className="ai-messages" aria-label={t("ai.conversation")}>
       {messages.map((message, index) => (
         <Message key={message.id} message={message} isLast={index === messages.length - 1} />
       ))}

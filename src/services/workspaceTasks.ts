@@ -1,8 +1,10 @@
+import { translateBackend } from "../i18n/backendText";
 import type { ConfirmPrompt, QuickPickPrompt } from "./extensionPromptService";
 import type { ExtensionTask } from "./extensionTasks";
 import type { IpcClient } from "./ipc";
 import type { Problem } from "./markerService";
 import type { ShellKindName, TaskProblem, TaskStep, WorkspaceTaskInfo } from "./workflowIpc";
+import { t } from "../i18n";
 
 /** What the task runner needs from the terminals. */
 export interface TaskTerminals {
@@ -50,8 +52,11 @@ export interface RunningTask {
   terminalId: string;
 }
 
+/** The confirmation's buttons in English (the dialog shows them in the UI language; see `runTaskLabel`). */
 export const RUN_TASK = "Run Task";
 export const RUN_ALWAYS = "Run and Don't Ask Again for This Task";
+const runTaskLabel = () => t("tasks.confirm.run");
+const runAlwaysLabel = () => t("tasks.confirm.runAlways");
 const RECENT_KEY = "tasks.recent";
 const APPROVED_KEY = "tasks.approved";
 const MAX_OUTPUT = 4 * 1024 * 1024;
@@ -99,34 +104,39 @@ export function confirmationOf(
     const env = Object.entries(step.env);
     return [
       {
-        label: `${prefix}Command`,
-        value: step.commandLine === "" ? "(runs its dependencies only)" : step.commandLine,
+        label: `${prefix}${t("tasks.confirm.command")}`,
+        value: step.commandLine === "" ? t("tasks.confirm.dependenciesOnly") : step.commandLine,
       },
-      { label: `${prefix}Folder`, value: step.cwd },
+      { label: `${prefix}${t("tasks.confirm.folder")}`, value: step.cwd },
       ...(env.length > 0
-        ? [{ label: `${prefix}Environment`, value: env.map(([k, v]) => `${k}=${v}`).join("  ") }]
+        ? [
+            {
+              label: `${prefix}${t("tasks.confirm.environment")}`,
+              value: env.map(([k, v]) => `${k}=${v}`).join("  "),
+            },
+          ]
         : []),
     ];
   });
-  details.push({ label: "From", value: shortPath(task.source) });
+  details.push({ label: t("tasks.confirm.from"), value: shortPath(task.source) });
   const notes = [
     ...new Set([
-      ...steps.flatMap((step) => step.risks),
-      "Each step runs in a new terminal with your rights, like a command you type yourself.",
+      ...steps.flatMap((step) => step.risks.map(translateBackend)),
+      t("tasks.confirm.eachStep"),
       ...steps.flatMap((step) =>
         step.matchers
           .filter((m) => !m.supported)
-          .map((m) => m.reason ?? `${m.name} is not supported.`),
+          .map((m) => m.reason ?? t("tasks.confirm.matcherUnsupported", { name: m.name })),
       ),
       ...steps.flatMap((step) => step.notes),
     ]),
   ];
   return {
     extension: shortPath(task.source),
-    title: `Run the task "${task.label}"?`,
+    title: t("tasks.confirm.title", { label: task.label }),
     details,
     notes,
-    buttons: [RUN_TASK, RUN_ALWAYS],
+    buttons: [runTaskLabel(), runAlwaysLabel()],
   };
 }
 
@@ -165,7 +175,7 @@ export class WorkspaceTaskService {
       }
       return listing.tasks.filter((task) => !task.hide);
     } catch (error) {
-      this.deps.notice(`The tasks couldn't be read: ${String(error)}`);
+      this.deps.notice(t("tasks.unreadable", { error: String(error) }));
       return [];
     }
   }
@@ -202,14 +212,15 @@ export class WorkspaceTaskService {
     if (own.length === 0 && extension.length === 0) {
       this.deps.notice(
         group === undefined
-          ? "No tasks: add a .vscode/tasks.json (Terminal > Configure Tasks...) or install an extension that provides tasks."
-          : `No ${group} task: give a task "group": {"kind": "${group}", "isDefault": true} in tasks.json.`,
+          ? t("tasks.none")
+          : t("tasks.noneInGroup", { group }),
       );
       return;
     }
     const picked = await this.deps.quickPick({
       extension: "OpenMind Studio",
-      placeHolder: group === undefined ? "Select a task to run" : `Select the ${group} task to run`,
+      placeHolder:
+        group === undefined ? t("tasks.pick") : t("tasks.pickInGroup", { group }),
       canPickMany: false,
       items: [
         ...own.map((task) => ({
@@ -217,7 +228,7 @@ export class WorkspaceTaskService {
           description: [
             shortPath(task.source),
             task.group,
-            recent.includes(task.id) ? "recent" : null,
+            recent.includes(task.id) ? t("tasks.recent") : null,
           ]
             .filter(Boolean)
             .join(" · "),
@@ -225,7 +236,7 @@ export class WorkspaceTaskService {
         })),
         ...extension.map((task) => ({
           label: task.name,
-          description: `${task.source} · extension`,
+          description: `${task.source} · ${t("tasks.extension")}`,
           detail: task.detail ?? task.commandLine,
         })),
       ],
@@ -270,7 +281,7 @@ export class WorkspaceTaskService {
     if (!risky && steps.every((step) => approved.includes(step.fingerprint))) return true;
     const answer = await this.deps.confirm(confirmationOf(task, steps));
     if (answer === null) return false;
-    if (answer === RUN_ALWAYS) {
+    if (answer === runAlwaysLabel()) {
       for (const step of steps) await this.remember(APPROVED_KEY, step.fingerprint, 200);
     }
     return true;
@@ -293,10 +304,10 @@ export class WorkspaceTaskService {
       if (code !== 0) {
         const rest = steps.length - index - 1;
         this.deps.notice(
-          `Task "${step.label}" ${code === null ? "was stopped" : `failed with exit code ${String(code)}`}` +
-            (rest > 0
-              ? `; the ${String(rest)} task${rest === 1 ? "" : "s"} after it didn't run.`
-              : "."),
+          (code === null
+            ? t("tasks.stepStopped", { label: step.label })
+            : t("tasks.stepFailed", { label: step.label, code })) +
+            (rest > 0 ? t("tasks.restSkipped", { count: rest }) : "."),
         );
         return false;
       }
@@ -311,7 +322,7 @@ export class WorkspaceTaskService {
   ): Promise<number | null> {
     const shell = this.deps.terminals.lastShell();
     const terminalId = await this.deps.terminals.createTaskTerminal(
-      `Task - ${step.label}`,
+      t("tasks.terminalName", { label: step.label }),
       (cols, rows) =>
         this.deps.ipc.taskRunStep(task.id, step.label, this.deps.activeFile(), shell, cols, rows),
       first,
@@ -347,19 +358,19 @@ export class WorkspaceTaskService {
 
   /** Terminal > Terminate Task...: ends a running task (its terminal closes). */
   async terminate(): Promise<void> {
-    const target = await this.pickRunning("Select the task to stop");
+    const target = await this.pickRunning(t("tasks.pickToStop"));
     if (target) await this.deps.terminals.closeTerminal(target.terminalId);
   }
 
   /** Terminal > Show Running Tasks...: brings a running task's terminal to the front. */
   async showRunning(): Promise<void> {
-    const target = await this.pickRunning("Running tasks");
+    const target = await this.pickRunning(t("tasks.running"));
     if (target) this.deps.terminals.setActive(target.terminalId);
   }
 
   private async pickRunning(placeHolder: string): Promise<RunningTask | null> {
     if (this.running.length === 0) {
-      this.deps.notice("No task is running.");
+      this.deps.notice(t("tasks.noneRunning"));
       return null;
     }
     if (this.running.length === 1) return this.running[0] ?? null;

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { container } from "../../services/container";
 import type { AiProviderKind } from "../../services/ai/aiIpc";
 import { DEFAULT_BASE_URLS, PROVIDER_KIND_LABELS } from "../../services/ai/aiProviderService";
+import { t } from "../../i18n";
 
 const KINDS: AiProviderKind[] = ["openai-compatible", "claude", "gemini", "local"];
 
@@ -49,7 +50,7 @@ function KindField(props: {
   return (
     <>
       <label className="ai-form__label" htmlFor="ai-kind">
-        Type
+        {t("ai.type")}
       </label>
       <select
         id="ai-kind"
@@ -81,28 +82,24 @@ function KeyField(props: {
     <>
       <TextField
         id="ai-key"
-        label="API key"
+        label={t("ai.apiKey")}
         password
         value={props.value}
-        placeholder={props.saved ? "Saved — type a new key to replace it" : "Paste the API key"}
+        placeholder={props.saved ? t("ai.keySavedPlaceholder") : t("ai.pasteKey")}
         onChange={props.onChange}
       />
       <p className="ai-form__hint">
-        Stored encrypted on this computer and only ever sent to the endpoint above. It is never
-        shown again.
+        {t("ai.keyHint")}
       </p>
       {props.saved ? (
         <button type="button" className="ai-link ai-link--danger" onClick={props.onClear}>
-          Clear saved API key
+          {t("ai.clearKey")}
         </button>
       ) : null}
     </>
   );
 }
 
-const LOCAL_HINT =
-  "A local server needs no key. OpenMind does not run models itself: start your own OpenAI-compatible " +
-  "server (for example Ollama or LM Studio) and give its address.";
 
 /** Adds or edits one provider. An extension's provider keeps its name and type (the extension owns them). */
 export function ProviderForm({ id }: { id: string }) {
@@ -138,7 +135,7 @@ export function ProviderForm({ id }: { id: string }) {
   return (
     <form
       className="ai-form"
-      aria-label={existing ? `Edit ${existing.name}` : "Add provider"}
+      aria-label={existing ? t("ai.editNamed", { name: existing.name }) : t("ai.addProvider")}
       onSubmit={(event) => {
         event.preventDefault();
         void save();
@@ -146,7 +143,7 @@ export function ProviderForm({ id }: { id: string }) {
     >
       <TextField
         id="ai-name"
-        label="Name"
+        label={t("extensions.install.name")}
         value={name}
         onChange={setName}
         disabled={fromExtension}
@@ -155,20 +152,20 @@ export function ProviderForm({ id }: { id: string }) {
       <KindField kind={kind} disabled={fromExtension} onChange={setKind} />
       <TextField
         id="ai-url"
-        label="Endpoint address"
+        label={t("ai.endpoint")}
         value={baseUrl}
         onChange={setBaseUrl}
         placeholder={DEFAULT_BASE_URLS[kind]}
       />
       <TextField
         id="ai-model"
-        label="Model"
+        label={t("ai.model")}
         value={model}
         onChange={setModel}
-        placeholder="For example gpt-4o-mini, or use Test connection to list models"
+        placeholder={t("ai.modelPlaceholder")}
       />
       {kind === "local" ? (
-        <p className="ai-form__hint">{LOCAL_HINT}</p>
+        <p className="ai-form__hint">{t("ai.localHint")}</p>
       ) : (
         <KeyField
           value={key}
@@ -185,7 +182,7 @@ export function ProviderForm({ id }: { id: string }) {
             setEnabled(event.target.checked);
           }}
         />
-        Enabled
+        {t("extDetails.enabled")}
       </label>
       {error !== null ? (
         <p className="ai-note ai-note--error" role="alert">
@@ -198,7 +195,7 @@ export function ProviderForm({ id }: { id: string }) {
           className="modal__confirm--primary"
           disabled={busy || name.trim() === ""}
         >
-          Save
+          {t("common.save")}
         </button>
         <button
           type="button"
@@ -206,7 +203,7 @@ export function ProviderForm({ id }: { id: string }) {
             container.ai.ui.edit(null);
           }}
         >
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </form>

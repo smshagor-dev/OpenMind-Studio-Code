@@ -5,6 +5,7 @@ import {
   unbuiltReason,
   type MenuEntry,
 } from "../services/menus";
+import { commandLabel, submenuLabel } from "../i18n/menuLabels";
 import type { PopupItem } from "./MenuPopup";
 
 /**
@@ -23,7 +24,7 @@ export function resolveMenuEntries(entries: MenuEntry[]): PopupItem[] {
       return entry;
     }
     if (entry.kind === "submenu") {
-      return { kind: "submenu", label: entry.label, items: resolveMenuEntries(entry.items) };
+      return { kind: "submenu", label: submenuLabel(entry.label), items: resolveMenuEntries(entry.items) };
     }
     const checked = container.commands.isChecked(entry.command);
     const useToggledLabel = entry.toggledLabel !== undefined && checked === true;
@@ -35,7 +36,10 @@ export function resolveMenuEntries(entries: MenuEntry[]): PopupItem[] {
         : unbuiltReason(entry.command);
     return {
       kind: "item",
-      label: useToggledLabel ? (entry.toggledLabel ?? entry.label) : entry.label,
+      label: commandLabel(
+        entry.command,
+        useToggledLabel ? (entry.toggledLabel ?? entry.label) : entry.label,
+      ),
       // An entry with arguments (a shell profile, a project command) is not the plain command: no shortcut.
       shortcut:
         entry.args === undefined ? container.keybindings.labelFor(entry.command) : undefined,

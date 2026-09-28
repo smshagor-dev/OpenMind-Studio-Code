@@ -4,6 +4,7 @@ import { container } from "../services/container";
 import type { ProblemSeverity } from "../services/markerService";
 import { DebugConsoleView } from "./DebugConsoleView";
 import { ErrorIcon, WarningIcon } from "./icons";
+import { t } from "../i18n";
 
 /** Output tab: the selected channel's lines, newest at the bottom, following the tail. */
 export function OutputPanel() {
@@ -23,11 +24,11 @@ export function OutputPanel() {
   }, [lines]);
 
   return (
-    <div className="panel-view" role="tabpanel" aria-label="Output">
+    <div className="panel-view" role="tabpanel" aria-label={t("secondary.output")}>
       {lines.length === 0 ? (
-        <p className="panel-view__empty">No output in “{state.selected}” yet.</p>
+        <p className="panel-view__empty">{t("output.empty", { channel: state.selected })}</p>
       ) : (
-        <pre className="output-lines" ref={bodyRef} aria-label={`${state.selected} output`}>
+        <pre className="output-lines" ref={bodyRef} aria-label={t("output.of", { channel: state.selected })}>
           {lines.join("\n")}
         </pre>
       )}
@@ -49,7 +50,7 @@ export function OutputActions() {
     <>
       <select
         className="panel-select"
-        aria-label="Output channel"
+        aria-label={t("output.channel")}
         value={state.selected}
         onChange={(event) => {
           container.output.select(event.target.value);
@@ -64,8 +65,8 @@ export function OutputActions() {
       <button
         type="button"
         className="terminal-panel__action"
-        title="Clear Output"
-        aria-label="Clear Output"
+        title={t("secondary.clear")}
+        aria-label={t("secondary.clear")}
         disabled={lineCount === 0}
         onClick={() => {
           container.run("output.clear");
@@ -78,10 +79,10 @@ export function OutputActions() {
 }
 
 const SEVERITY_LABEL: Record<ProblemSeverity, string> = {
-  error: "Error",
-  warning: "Warning",
-  info: "Info",
-  hint: "Hint",
+  error: "problems.error",
+  warning: "problems.warning",
+  info: "problems.info",
+  hint: "problems.hint",
 };
 
 /** Problems tab: what Monaco's markers report for each open file, or an honest "no problems". */
@@ -92,13 +93,13 @@ export function ProblemsPanel() {
   );
   if (files.length === 0) {
     return (
-      <div className="panel-view" role="tabpanel" aria-label="Problems">
-        <p className="panel-view__empty">No problems have been detected in the workspace.</p>
+      <div className="panel-view" role="tabpanel" aria-label={t("problems.title")}>
+        <p className="panel-view__empty">{t("problems.none")}</p>
       </div>
     );
   }
   return (
-    <div className="panel-view" role="tabpanel" aria-label="Problems">
+    <div className="panel-view" role="tabpanel" aria-label={t("problems.title")}>
       <ul className="problems">
         {files.map((file) => (
           <li key={file.uri} className="problems__file">
@@ -131,7 +132,11 @@ export function ProblemsPanel() {
                     )}
                     <span className="problems__message">{problem.message}</span>
                     <span className="problems__where">
-                      {SEVERITY_LABEL[problem.severity]} [Ln {problem.line}, Col {problem.column}]
+                      {t("problems.where", {
+                        severity: t(SEVERITY_LABEL[problem.severity]),
+                        line: problem.line,
+                        column: problem.column,
+                      })}
                     </span>
                   </button>
                 </li>
@@ -157,23 +162,23 @@ export function PortsPanel() {
   );
   if (ports.length === 0) {
     return (
-      <div className="panel-view" role="tabpanel" aria-label="Ports">
+      <div className="panel-view" role="tabpanel" aria-label={t("panel.ports")}>
         <p className="panel-view__empty">
-          No ports are registered. Local servers started by OpenMind Studio will appear here.
+          {t("ports.none")}
         </p>
       </div>
     );
   }
   return (
-    <div className="panel-view" role="tabpanel" aria-label="Ports">
+    <div className="panel-view" role="tabpanel" aria-label={t("panel.ports")}>
       <table className="ports-table">
         <thead>
           <tr>
-            <th>Port</th>
-            <th>Label</th>
-            <th>Address</th>
-            <th>Source</th>
-            <th aria-label="Actions" />
+            <th>{t("php.col.port")}</th>
+            <th>{t("ports.label")}</th>
+            <th>{t("php.col.address")}</th>
+            <th>{t("keys.col.source")}</th>
+            <th aria-label={t("keys.col.actions")} />
           </tr>
         </thead>
         <tbody>
@@ -189,23 +194,23 @@ export function PortsPanel() {
                   disabled={entry.url === null}
                   title={
                     entry.url === null
-                      ? "This port has no web address to open."
-                      : `Open ${entry.url}`
+                      ? t("ports.noAddress")
+                      : t("ports.openUrl", { url: entry.url })
                   }
                   onClick={() => {
                     void container.ports.openInBrowser(entry.id);
                   }}
                 >
-                  Open in Browser
+                  {t("ports.openInBrowser")}
                 </button>
                 <button
                   type="button"
-                  title="Remove this port from the list"
+                  title={t("ports.removeTitle")}
                   onClick={() => {
                     container.ports.unregister(entry.id);
                   }}
                 >
-                  Remove
+                  {t("keys.remove")}
                 </button>
               </td>
             </tr>

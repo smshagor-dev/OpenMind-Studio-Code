@@ -2,19 +2,20 @@ import { useState, useSyncExternalStore } from "react";
 
 import { breakpointSummary, type Breakpoint } from "../services/breakpointService";
 import { container } from "../services/container";
+import { t } from "../i18n";
 
 /** What the running debugger can't do with these fields, or null (nothing running: unknown yet). */
 function unsupportedNote(): string | null {
   const abilities = container.debug.getState().run?.capabilities;
   if (!abilities) return null;
   const missing = [
-    abilities.conditionalBreakpoints ? null : "conditions",
-    abilities.hitConditionalBreakpoints ? null : "hit counts",
-    abilities.logPoints ? null : "logpoints",
+    abilities.conditionalBreakpoints ? null : t("breakpoints.conditions"),
+    abilities.hitConditionalBreakpoints ? null : t("breakpoints.hitCounts"),
+    abilities.logPoints ? null : t("breakpoints.logpoints"),
   ].filter((item): item is string => item !== null);
   return missing.length === 0
     ? null
-    : `The running debugger doesn't support breakpoint ${missing.join(", ")}.`;
+    : t("breakpoints.unsupported", { what: missing.join(", ") });
 }
 
 function EditForm({ bp }: { bp: Breakpoint }) {
@@ -28,7 +29,7 @@ function EditForm({ bp }: { bp: Breakpoint }) {
   return (
     <form
       className="debug-bp-edit"
-      aria-label={`Edit breakpoint line ${String(bp.line)}`}
+      aria-label={t("breakpoints.editLine", { line: bp.line })}
       onSubmit={(event) => {
         event.preventDefault();
         container.breakpoints.setOptions(bp.id, { condition, hitCondition, logMessage });
@@ -39,31 +40,31 @@ function EditForm({ bp }: { bp: Breakpoint }) {
       }}
     >
       <label>
-        Condition
+        {t("breakpoints.condition")}
         <input
           autoFocus
           value={condition}
-          placeholder="Stop only when this is true, e.g. x > 3"
+          placeholder={t("breakpoints.conditionPlaceholder")}
           onChange={(event) => {
             setCondition(event.target.value);
           }}
         />
       </label>
       <label>
-        Hit count
+        {t("breakpoints.hitCount")}
         <input
           value={hitCondition}
-          placeholder="Stop on this hit, e.g. 5 or >= 5"
+          placeholder={t("breakpoints.hitPlaceholder")}
           onChange={(event) => {
             setHitCondition(event.target.value);
           }}
         />
       </label>
       <label>
-        Log message
+        {t("breakpoints.logMessage")}
         <input
           value={logMessage}
-          placeholder="Print this instead of stopping, e.g. x is {x}"
+          placeholder={t("breakpoints.logPlaceholder")}
           onChange={(event) => {
             setLogMessage(event.target.value);
           }}
@@ -71,9 +72,9 @@ function EditForm({ bp }: { bp: Breakpoint }) {
       </label>
       {note ? <p className="debug-reason">{note}</p> : null}
       <div className="debug-bp-edit__buttons">
-        <button type="submit">Save</button>
+        <button type="submit">{t("common.save")}</button>
         <button type="button" onClick={close}>
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </form>
@@ -89,7 +90,7 @@ function Row({ bp, editing }: { bp: Breakpoint; editing: boolean }) {
       <div className="debug-bp-row__main">
         <input
           type="checkbox"
-          aria-label={`Enable breakpoint ${where}`}
+          aria-label={t("breakpoints.enableAt", { where })}
           checked={bp.enabled && !bp.stale}
           disabled={bp.stale}
           onChange={(event) => {
@@ -99,7 +100,7 @@ function Row({ bp, editing }: { bp: Breakpoint; editing: boolean }) {
         <button
           type="button"
           className="debug-bp-row__where"
-          title={bp.stale ? `${bp.path} — the file no longer exists` : bp.path}
+          title={bp.stale ? t("breakpoints.fileGone", { path: bp.path }) : bp.path}
           disabled={bp.stale}
           onClick={() => {
             void container.workspace.openPathAt(bp.path, { line: bp.line, column: 1, length: 0 });
@@ -108,13 +109,13 @@ function Row({ bp, editing }: { bp: Breakpoint; editing: boolean }) {
           {bp.logMessage !== null ? "◆ " : ""}
           {file}
           <span className="debug-bp-row__line">:{bp.line}</span>
-          {bp.stale ? <span className="debug-bp-row__stale"> (file missing)</span> : null}
+          {bp.stale ? <span className="debug-bp-row__stale"> {t("breakpoints.fileMissing")}</span> : null}
         </button>
         <button
           type="button"
           className="debug-x"
-          aria-label={`Edit breakpoint ${where}`}
-          title="Condition, hit count or log message"
+          aria-label={t("breakpoints.editAt", { where })}
+          title={t("breakpoints.editTitle")}
           disabled={bp.stale}
           onClick={() => {
             container.breakpoints.startEditing(bp.id);
@@ -125,8 +126,8 @@ function Row({ bp, editing }: { bp: Breakpoint; editing: boolean }) {
         <button
           type="button"
           className="debug-x"
-          aria-label={`Remove breakpoint ${where}`}
-          title="Remove breakpoint"
+          aria-label={t("breakpoints.removeAt", { where })}
+          title={t("breakpoints.remove")}
           onClick={() => {
             container.breakpoints.remove(bp.id);
           }}
@@ -154,7 +155,7 @@ export function BreakpointsPane() {
   if (list.length === 0) {
     return (
       <p className="debug-empty">
-        No breakpoints. Click the gutter beside a line number to add one.
+        {t("breakpoints.none")}
       </p>
     );
   }
@@ -167,7 +168,7 @@ export function BreakpointsPane() {
             container.breakpoints.setAllEnabled(true);
           }}
         >
-          Enable All
+          {t("breakpoints.enableAll")}
         </button>
         <button
           type="button"
@@ -175,7 +176,7 @@ export function BreakpointsPane() {
             container.breakpoints.setAllEnabled(false);
           }}
         >
-          Disable All
+          {t("breakpoints.disableAll")}
         </button>
         <button
           type="button"
@@ -183,10 +184,10 @@ export function BreakpointsPane() {
             container.breakpoints.removeAll();
           }}
         >
-          Remove All
+          {t("breakpoints.removeAll")}
         </button>
       </div>
-      <ul className="debug-list" aria-label="Breakpoints">
+      <ul className="debug-list" aria-label={t("debug.pane.breakpoints")}>
         {list.map((bp) => (
           <Row key={bp.id} bp={bp} editing={state.editing === bp.id} />
         ))}

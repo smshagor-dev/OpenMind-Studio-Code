@@ -2,6 +2,7 @@ import type { ConfirmPrompt, QuickPickPrompt } from "./extensionPromptService";
 import type { ActivationResult, ActivationTrigger } from "./extensionsIpc";
 import type { ShellKind } from "./ipc";
 import type { TerminalService } from "./terminalService";
+import { t } from "../i18n";
 
 /** A task as the host describes it (`host/provideTasks`, `tasks/execute`). */
 export interface ExtensionTask {
@@ -63,12 +64,16 @@ export function taskLine(task: ExtensionTask, shell: ShellKind): string | null {
 /** The labelled lines the confirmation shows for a task. */
 export function taskDetails(task: ExtensionTask): { label: string; value: string }[] {
   const lines = [
-    { label: "Task", value: `${task.name} (${task.source})` },
-    { label: "Command", value: task.commandLine },
-    { label: "Folder", value: task.cwd ?? "(the open folder)" },
+    { label: t("extTask.task"), value: `${task.name} (${task.source})` },
+    { label: t("tasks.confirm.command"), value: task.commandLine },
+    { label: t("tasks.confirm.folder"), value: task.cwd ?? t("extTask.openFolder") },
   ];
   const env = Object.entries(task.env);
-  if (env.length > 0) lines.push({ label: "Environment", value: env.map(([k, v]) => `${k}=${v}`).join("  ") });
+  if (env.length > 0)
+    lines.push({
+      label: t("tasks.confirm.environment"),
+      value: env.map(([k, v]) => `${k}=${v}`).join("  "),
+    });
   return lines;
 }
 
@@ -101,7 +106,7 @@ export class ExtensionTaskService {
       const answer = (await this.deps.host.request("host/provideTasks", {})) as { tasks?: ExtensionTask[] };
       return Array.isArray(answer.tasks) ? answer.tasks : [];
     } catch (error) {
-      this.deps.notice(`The task list couldn't be loaded: ${String(error).replace(/^Error: /, "")}`);
+      this.deps.notice(t("extTask.listFailed", { error: String(error).replace(/^Error: /, "") }));
       return [];
     }
   }
@@ -111,7 +116,7 @@ export class ExtensionTaskService {
     const tasks = await this.list();
     if (tasks.length === 0) {
       this.deps.notice(
-        "No tasks: no enabled extension provides tasks here. (Workspace tasks.json files aren't supported yet.)",
+        t("extTask.none"),
       );
       return;
     }
@@ -122,7 +127,7 @@ export class ExtensionTaskService {
         description: [task.source, task.group].filter(Boolean).join(" · "),
         detail: task.detail ?? task.commandLine,
       })),
-      placeHolder: "Select a task to run",
+      placeHolder: t("tasks.pick"),
       canPickMany: false,
     });
     const task = typeof picked === "number" ? tasks[picked] : undefined;
@@ -141,38 +146,38 @@ export class ExtensionTaskService {
   /** Shows the task and runs it after the user confirmed (the picker of Run Task... calls this too). */
   async confirmAndRun(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
     if (!task.cwdInsideFolder) {
-      const reason = `The task's folder is outside the open folder: ${task.cwd ?? "(none)"}`;
+      const reason = t("extTask.outside", { folder: task.cwd ?? t("common.none") });
       this.deps.notice(reason);
       return { started: false, reason };
     }
     const notes = [
-      "It runs in a new terminal with your rights, like a command you type yourself.",
+      t("extTask.note"),
       ...(task.problemMatchers.length > 0
-        ? [`Problem matchers (${task.problemMatchers.join(", ")}) are not supported: the output isn't turned into problems.`]
+        ? [t("extTask.matchers", { list: task.problemMatchers.join(", ") })]
         : []),
-      ...(task.isBackground ? ["A background task keeps running until you close its terminal."] : []),
+      ...(task.isBackground ? [t("extTask.background")] : []),
     ];
     const answer = await this.deps.confirm({
       extension: task.extension,
-      title: `Run the task "${task.name}"?`,
+      title: t("tasks.confirm.title", { label: task.name }),
       details: taskDetails(task),
       notes,
-      buttons: [RUN_TASK],
+      buttons: [t("tasks.confirm.run")],
     });
-    if (answer !== RUN_TASK) return { started: false, reason: "The user cancelled the task." };
+    if (answer !== t("tasks.confirm.run")) return { started: false, reason: "The user cancelled the task." };
     return this.run(task);
   }
 
   private async run(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
     const sessionId = await this.deps.terminals.createTerminal(undefined, task.cwd, {
-      title: `Task - ${task.name}`,
+      title: t("tasks.terminalName", { label: task.name }),
       show: true,
     });
     if (sessionId === null) return { started: false, reason: "The terminal could not be started." };
     const session = this.deps.terminals.getState().sessions.find((s) => s.id === sessionId);
     const line = session ? taskLine(task, session.shell) : null;
     if (line === null) {
-      const reason = "The task's environment can't be set safely in this terminal's shell; it was not run.";
+      const reason = t("extTask.unsafeEnv");
       this.deps.notice(reason);
       return { started: false, reason };
     }

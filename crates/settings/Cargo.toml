@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+openmind-core.workspace = true
 openmind-db = { version = "0.1.0", path = "../db" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["preserve_order"] }

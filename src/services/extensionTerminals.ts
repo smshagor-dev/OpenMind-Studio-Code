@@ -1,5 +1,6 @@
 import type { ConfirmPrompt } from "./extensionPromptService";
 import type { TerminalService } from "./terminalService";
+import { t } from "../i18n";
 
 /** What an extension terminal needs from the app's terminals (a subset of `TerminalService`). */
 export type TerminalsForExtensions = Pick<
@@ -28,6 +29,7 @@ interface Entry {
   typed: string;
 }
 
+/** The confirmation's buttons in English (shown in the UI language). */
 export const RUN = "Run";
 export const RUN_ALWAYS = "Always Run in This Terminal";
 const MAX_TEXT = 16 * 1024;
@@ -91,19 +93,19 @@ export class ExtensionTerminalService {
     if (!entry.trusted) {
       const answer = await this.deps.confirm({
         extension: entry.extension,
-        title: `Run a command in the terminal "${entry.name}"?`,
+        title: t("extTerminal.confirmTitle", { name: entry.name }),
         details: [
-          { label: "Command", value: line === "" ? "(Enter)" : line },
-          { label: "Terminal", value: entry.name },
+          { label: t("tasks.confirm.command"), value: line === "" ? "(Enter)" : line },
+          { label: t("extTerminal.terminal"), value: entry.name },
         ],
-        notes: ["The command runs with your rights, like one you type yourself."],
-        buttons: [RUN, RUN_ALWAYS],
+        notes: [t("extTerminal.note")],
+        buttons: [t("extTerminal.run"), t("extTerminal.runAlways")],
       });
       if (answer === null) {
         this.deps.log?.(`[${entry.extension}] a command for terminal "${entry.name}" was cancelled`);
         return { sent: false };
       }
-      if (answer === RUN_ALWAYS) entry.trusted = true;
+      if (answer === t("extTerminal.runAlways")) entry.trusted = true;
       // The user said yes: show them what runs.
       this.deps.terminals.setActive(entry.sessionId);
       await this.deps.showPanel();
@@ -120,7 +122,7 @@ export class ExtensionTerminalService {
     this.deps.terminals.setActive(entry.sessionId);
     if (!this.deps.terminals.isShowing()) {
       this.deps.notice(
-        `${entry.extension} opened the terminal "${entry.name}". Open the Terminal panel to see it.`,
+        t("extTerminal.opened", { extension: entry.extension, name: entry.name }),
       );
     }
   }

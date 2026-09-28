@@ -9,6 +9,7 @@ import type {
   SettingsScope,
   SettingValue,
 } from "./ipc";
+import { categoryLabel, settingDescription, settingTitle } from "../i18n/settingsText";
 
 export interface SettingsState {
   snapshot: PreferencesSnapshot | null;
@@ -196,7 +197,18 @@ export class SettingsService {
     if (snapshot === null) return [];
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     const matches = (def: SettingDefinition) => {
-      const text = `${def.id} ${def.title} ${def.description} ${def.category}`.toLowerCase();
+      // The English text and the UI language's text both match, so a search works in either.
+      const text = [
+        def.id,
+        def.title,
+        def.description,
+        def.category,
+        settingTitle(def),
+        settingDescription(def),
+        categoryLabel(def.category),
+      ]
+        .join(" ")
+        .toLowerCase();
       return words.every((word) => text.includes(word));
     };
     return snapshot.categories

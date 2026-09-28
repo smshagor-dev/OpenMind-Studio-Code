@@ -1,5 +1,6 @@
 import { container } from "../../services/container";
 import { useChat, useProviders } from "./aiHooks";
+import { t } from "../../i18n";
 
 function Notices({ notice }: { notice: string | null }) {
   const warning = container.ai.chat.contextWarning();
@@ -20,7 +21,7 @@ function Notices({ notice }: { notice: string | null }) {
               container.ai.chat.dismissNotice();
             }}
           >
-            Dismiss
+            {t("common.dismissAction")}
           </button>
         </p>
       ) : null}
@@ -35,23 +36,23 @@ function ChatButtons({ sending, empty }: { sending: boolean; empty: boolean }) {
         type="button"
         className="ai-link"
         disabled={sending || empty}
-        title={sending ? "Wait for the answer, or press Stop." : "Start a new, empty chat"}
+        title={sending ? t("ai.waitOrStop") : t("ai.newChatTitle")}
         onClick={() => {
           container.ai.chat.newChat();
         }}
       >
-        New chat
+        {t("ai.newChat")}
       </button>
       <button
         type="button"
         className="ai-link"
         disabled={sending || empty}
-        title="Clear this chat (and delete its saved copy)"
+        title={t("ai.clearChatTitle")}
         onClick={() => {
           void container.ai.chat.clear();
         }}
       >
-        Clear chat
+        {t("ai.clearChat")}
       </button>
     </>
   );
@@ -71,8 +72,8 @@ export function Composer() {
       <Notices notice={chat.notice} />
       <textarea
         className="ai-composer__input"
-        aria-label="Message"
-        placeholder="Ask the AI…  (Enter to send, Shift+Enter for a new line)"
+        aria-label={t("ai.message")}
+        placeholder={t("ai.placeholder")}
         rows={3}
         value={chat.draft}
         onChange={(event) => {
@@ -94,17 +95,17 @@ export function Composer() {
               void container.ai.chat.stop();
             }}
           >
-            Stop
+            {t("lsp.stop")}
           </button>
         ) : (
           <button
             type="button"
             className="ai-button ai-button--primary"
             disabled={blocker !== null || empty}
-            title={blocker ?? (empty ? "Type a message first." : "Send")}
+            title={blocker ?? (empty ? t("ai.typeFirst") : t("ai.send"))}
             onClick={send}
           >
-            Send
+            {t("ai.send")}
           </button>
         )}
         <ChatButtons sending={chat.sending} empty={chat.messages.length === 0} />

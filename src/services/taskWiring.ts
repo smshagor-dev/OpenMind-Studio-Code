@@ -8,6 +8,7 @@ import type { MarkerService } from "./markerService";
 import type { TerminalService } from "./terminalService";
 import { openOrCreate, TASKS_TEMPLATE } from "./workspaceJsonFiles";
 import { WorkspaceTaskService } from "./workspaceTasks";
+import { t } from "../i18n";
 
 export interface TaskWiringDeps {
   ipc: IpcClient;
@@ -61,7 +62,7 @@ export function wireTasks(deps: TaskWiringDeps): WorkspaceTaskService {
   const folderState = () =>
     deps.workspaceFolder() !== null
       ? { enabled: true }
-      : { enabled: false, reason: "Open a folder to use its tasks." };
+      : { enabled: false, reason: t("tasks.openFolder") };
   const register = (id: string, run: () => Promise<unknown>, state = folderState) => {
     commands.register(
       id,
@@ -77,7 +78,7 @@ export function wireTasks(deps: TaskWiringDeps): WorkspaceTaskService {
   const running = () =>
     tasks.getRunning().length > 0
       ? { enabled: true }
-      : { enabled: false, reason: "No task is running." };
+      : { enabled: false, reason: t("tasks.noneRunning") };
   register("tasks.showRunning", () => tasks.showRunning(), running);
   register("tasks.terminate", () => tasks.terminate(), running);
   register(

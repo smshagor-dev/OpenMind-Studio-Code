@@ -2,12 +2,13 @@ import { container } from "../services/container";
 import type { MarketSort } from "../services/marketplaceIpc";
 import type { InstalledExtension } from "../services/extensionsIpc";
 import type { PopupItem } from "./MenuPopup";
+import { t } from "../i18n";
 
 const SORTS: readonly { sort: MarketSort; label: string }[] = [
-  { sort: "relevance", label: "Relevance" },
-  { sort: "installs", label: "Install Count" },
-  { sort: "rating", label: "Rating" },
-  { sort: "updated", label: "Updated Date" },
+  { sort: "relevance", label: "extensions.sort.relevance" },
+  { sort: "installs", label: "extensions.sort.installs" },
+  { sort: "rating", label: "extensions.sort.rating" },
+  { sort: "updated", label: "extensions.sort.updated" },
 ];
 
 /** The filter button's menu: VS Code's "Sort By" choices for the marketplace list. */
@@ -17,10 +18,10 @@ export function sortMenu(): PopupItem[] {
   return [
     {
       kind: "submenu",
-      label: "Sort By",
+      label: t("extensions.sortBy"),
       items: SORTS.map(({ sort, label }) => ({
         kind: "item",
-        label,
+        label: t(label),
         enabled: true,
         checked: current === sort,
         onSelect: () => void marketplace.setSort(sort),
@@ -28,7 +29,7 @@ export function sortMenu(): PopupItem[] {
     },
     {
       kind: "item",
-      label: "Show Installed Extensions",
+      label: t("extensions.showInstalled"),
       enabled: true,
       onSelect: () => {
         marketplace.setQuery("@installed");
@@ -46,7 +47,7 @@ export function moreActionsMenu(): PopupItem[] {
   return [
     {
       kind: "item",
-      label: "Install from VSIX...",
+      label: t("extensions.installVsix"),
       enabled: install.enabled,
       reason: install.reason,
       onSelect: () => void service.chooseVsix(),
@@ -54,20 +55,20 @@ export function moreActionsMenu(): PopupItem[] {
     { kind: "separator" },
     {
       kind: "item",
-      label: "Refresh",
+      label: t("common.refresh"),
       enabled: true,
       onSelect: () => void marketplace.refresh(),
     },
     {
       kind: "item",
-      label: "Check for Extension Updates",
+      label: t("extensions.checkExtensionUpdates"),
       enabled: !marketplace.getState().checkingUpdates,
-      reason: "Already checking.",
+      reason: t("extensions.alreadyChecking"),
       onSelect: () => void marketplace.checkUpdates(),
     },
     {
       kind: "item",
-      label: "Restart Extension Host",
+      label: t("extensions.restartHost"),
       enabled: reload.enabled,
       reason: reload.reason,
       onSelect: () => void service.reloadHost(),
@@ -75,15 +76,15 @@ export function moreActionsMenu(): PopupItem[] {
     { kind: "separator" },
     {
       kind: "item",
-      label: "Show Extension Host Log",
+      label: t("extensions.showHostLog"),
       enabled: true,
       onSelect: () => void service.showLogs(),
     },
     {
       kind: "item",
-      label: "Open Extensions Folder",
+      label: t("extensions.openFolder"),
       enabled: root !== null,
-      reason: "Extensions aren't loaded yet.",
+      reason: t("extensions.notLoaded"),
       onSelect: () => {
         if (root !== null) void container.ipc.panelOpenFolder(root);
       },
@@ -98,14 +99,14 @@ export function manageMenu(extension: InstalledExtension): PopupItem[] {
   return [
     {
       kind: "item",
-      label: extension.enabled ? "Disable" : "Enable",
+      label: extension.enabled ? t("extensions.disable") : t("extensions.enable"),
       enabled: toggle.enabled,
       reason: toggle.reason,
       onSelect: () => void service.setEnabled(extension.id, !extension.enabled),
     },
     {
       kind: "item",
-      label: "Uninstall",
+      label: t("extensions.uninstall.confirm"),
       enabled: toggle.enabled,
       reason: toggle.reason,
       danger: true,
@@ -116,13 +117,13 @@ export function manageMenu(extension: InstalledExtension): PopupItem[] {
     { kind: "separator" },
     {
       kind: "item",
-      label: "Copy Extension ID",
+      label: t("extensions.copyId"),
       enabled: true,
       onSelect: () => void container.ipc.clipboardWriteText(extension.id),
     },
     {
       kind: "item",
-      label: "Open Extension Folder",
+      label: t("extensions.openExtensionFolder"),
       enabled: true,
       onSelect: () => {
         service.openFolder(extension.id);

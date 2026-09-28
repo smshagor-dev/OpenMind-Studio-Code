@@ -4,19 +4,20 @@ import { container } from "../services/container";
 import { CloseIcon } from "./icons";
 import { StartPage, type WelcomeCard } from "./StartPage";
 import { useWelcome } from "./useWelcome";
+import { t } from "../i18n";
 
 /** The Welcome page's tab (VS Code shows it italic, like a preview tab), closable with its ×. */
 export function WelcomeTab() {
   return (
-    <div className="tab-bar" role="tablist" aria-label="Open editors">
+    <div className="tab-bar" role="tablist" aria-label={t("editor.openEditors")}>
       <div className="tab tab--active tab--preview tab--welcome" role="tab" aria-selected="true">
         <img className="tab__app-icon" src={appIcon} alt="" width={16} height={16} />
-        <span className="tab__label">Welcome</span>
+        <span className="tab__label">{t("welcome.title")}</span>
         <button
           type="button"
           className="tab__close"
-          title="Close (Ctrl+F4)"
-          aria-label="Close Welcome"
+          title={t("welcome.closeTitle")}
+          aria-label={t("welcome.close")}
           onClick={() => {
             container.welcome.close();
           }}
@@ -50,36 +51,36 @@ function cards(): WelcomeCard[] {
     card(
       "runtimes",
       "runtime.manage",
-      "Install Runtimes",
-      "Install Node.js, Python, Git and PHP into the app folder — no admin rights, no PATH changes.",
+      t("welcome.card.runtimes"),
+      t("welcome.card.runtimesText"),
       "runtime",
     ),
     card(
       "php",
       "php.openWindow",
-      "PHP Server Control Panel",
-      "Run PHP, MariaDB and phpMyAdmin XAMPP-style; every folder in htdocs is a site.",
+      t("welcome.card.php"),
+      t("welcome.card.phpText"),
       "server",
     ),
     card(
       "language",
       "lsp.manage",
-      "Language Tools",
-      "Language servers for code completion, errors and go to definition.",
+      t("runtimes.tab.tools"),
+      t("welcome.card.languageText"),
       "language",
     ),
     card(
       "keyboard",
       "preferences.openKeybindings",
-      "Keyboard Shortcuts",
-      "See every shortcut, change it, and find conflicts.",
+      t("preferences.tab.keybindings"),
+      t("welcome.card.keysText"),
       "keyboard",
     ),
     card(
       "settings",
       "preferences.openSettings",
-      "Settings",
-      "Editor, terminal, Git, debugger and theme settings, for you or for one folder.",
+      t("preferences.tab.settings"),
+      t("welcome.card.settingsText"),
       "settings",
     ),
   ];
@@ -119,11 +120,11 @@ export function WelcomeContent({ recents }: { recents: Recents }) {
 }
 
 const WATERMARK: readonly { label: string; command: string }[] = [
-  { label: "Show All Commands", command: "workbench.commandPalette" },
-  { label: "Open File", command: "file.open" },
-  { label: "Open Folder", command: "file.openFolder" },
-  { label: "New Untitled Text File", command: "file.new" },
-  { label: "Toggle Terminal", command: "terminal.toggle" },
+  { label: "titlebar.showAllCommands", command: "workbench.commandPalette" },
+  { label: "watermark.openFile", command: "file.open" },
+  { label: "watermark.openFolder", command: "file.openFolder" },
+  { label: "openEditors.newUntitled", command: "file.new" },
+  { label: "watermark.toggleTerminal", command: "terminal.toggle" },
 ];
 
 /** What an empty editor shows once the Welcome tab is closed: the logo and a few shortcuts. */
@@ -136,7 +137,7 @@ export function EditorWatermark() {
           const key = container.keybindings.labelFor(entry.command);
           return key === undefined ? null : (
             <div key={entry.command} className="editor-watermark__row">
-              <dt>{entry.label}</dt>
+              <dt>{t(entry.label)}</dt>
               <dd>
                 {key.split(" ").map((chord) => (
                   <kbd key={chord}>{chord}</kbd>

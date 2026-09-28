@@ -3,6 +3,7 @@ import { useState } from "react";
 import { container } from "../../services/container";
 import type { AiProviderView } from "../../services/ai/aiProviderService";
 import { useProviders } from "./aiHooks";
+import { t } from "../../i18n";
 
 /** The model of the selected provider: a list when the provider told us its models, else a text field. */
 function ModelPicker({ provider }: { provider: AiProviderView }) {
@@ -21,13 +22,13 @@ function ModelPicker({ provider }: { provider: AiProviderView }) {
     return (
       <select
         className="ai-select"
-        aria-label="Model"
+        aria-label={t("ai.model")}
         value={model}
         onChange={(event) => {
           void providers.setModel(provider.id, event.target.value);
         }}
       >
-        {model === "" ? <option value="">Choose a model</option> : null}
+        {model === "" ? <option value="">{t("ai.chooseModel")}</option> : null}
         {options.map((id) => (
           <option key={id} value={id}>
             {id}
@@ -40,8 +41,8 @@ function ModelPicker({ provider }: { provider: AiProviderView }) {
     <input
       className="ai-input"
       type="text"
-      aria-label="Model"
-      placeholder="Model name"
+      aria-label={t("ai.model")}
+      placeholder={t("ai.modelName")}
       value={draft ?? model}
       onChange={(event) => {
         setDraft(event.target.value);
@@ -61,7 +62,7 @@ function ProviderSelect({ selectedId }: { selectedId: string }) {
   return (
     <select
       className="ai-select"
-      aria-label="Provider"
+      aria-label={t("ai.provider")}
       value={selectedId}
       onChange={(event) => {
         providers.select(event.target.value);
@@ -97,10 +98,10 @@ export function ProviderBar() {
         <span
           className={provider.local ? "ai-badge ai-badge--local" : "ai-badge ai-badge--online"}
           title={
-            provider.local ? "Requests stay on this computer." : `Requests go to ${provider.host}.`
+            provider.local ? t("ai.staysLocal") : t("ai.goesTo", { host: provider.host })
           }
         >
-          {provider.local ? "Local" : "Online"}
+          {provider.local ? t("ai.local") : t("ai.online")}
           {" · "}
           {provider.host}
         </span>
@@ -111,7 +112,7 @@ export function ProviderBar() {
             container.ai.ui.openManager(provider.id);
           }}
         >
-          Provider settings
+          {t("ai.providerSettings")}
         </button>
       </div>
     </div>

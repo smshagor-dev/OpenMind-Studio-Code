@@ -6,6 +6,7 @@ import { EllipsisIcon, LockIcon, SplitEditorIcon } from "./icons";
 import { RunCodeButton, RunCodeDropdown, RunStatusIndicator } from "./RunCodeControls";
 import { MenuPopup } from "./MenuPopup";
 import { useDismissOnOutside } from "./useDismissOnOutside";
+import { t } from "../i18n";
 
 interface EditorHeaderActionsProps {
   groupId: string;
@@ -37,7 +38,7 @@ export function EditorHeaderActions({
   }
 
   return (
-    <div className="editor-header-actions" role="toolbar" aria-label="Editor actions">
+    <div className="editor-header-actions" role="toolbar" aria-label={t("editor.actions")}>
       {active && hasTabs ? (
         <>
           <RunStatusIndicator />
@@ -47,15 +48,15 @@ export function EditorHeaderActions({
         </>
       ) : null}
       {locked ? (
-        <span className="editor-header-actions__lock" title="This group is locked">
+        <span className="editor-header-actions__lock" title={t("editor.groupLocked")}>
           <LockIcon />
         </span>
       ) : null}
       <button
         type="button"
         className="editor-header-actions__button"
-        title="Split Editor Right (Ctrl+\)"
-        aria-label="Split Editor Right"
+        title={t("editor.splitRightTitle")}
+        aria-label={t("editor.splitRight")}
         disabled={!hasTabs}
         onClick={() => {
           container.run("editor.splitRight");
@@ -66,8 +67,8 @@ export function EditorHeaderActions({
       <button
         type="button"
         className="editor-header-actions__button"
-        title="More Actions..."
-        aria-label="More Actions"
+        title={t("common.moreActionsTitle")}
+        aria-label={t("common.moreActions")}
         aria-haspopup="menu"
         onMouseDown={(event) => {
           event.stopPropagation();
@@ -94,7 +95,7 @@ export function EditorHeaderActions({
           )}
           x={Math.max(0, moreAnchor.right - 240)}
           y={moreAnchor.bottom + 2}
-          ariaLabel="Editor actions"
+          ariaLabel={t("editor.actions")}
           onClose={closeMore}
         />
       ) : null}

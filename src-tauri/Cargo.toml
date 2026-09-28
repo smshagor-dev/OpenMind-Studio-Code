@@ -47,7 +47,7 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [target."cfg(windows)".dependencies]
-winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi"] }
+winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi", "winnls"] }
 
 [dev-dependencies]
 sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "migrate"] }

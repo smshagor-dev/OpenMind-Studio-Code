@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 /**
  * How the notebook editor shows cell outputs, pure (Milestone 19). Every output is shown as data: text in a
  * `<pre>`, images as PNG/JPEG `data:` addresses (never a remote address), HTML only in a trusted notebook and then
@@ -105,16 +106,17 @@ export interface RunInput {
   running: boolean;
 }
 
+/** The English text of `notebook.kernelMissing` (kept for callers that compare it). */
 export const KERNEL_MISSING = "Kernel not configured. Install/configure from Runtime Manager.";
 
 /** Why a cell can't run now, or null. */
 export function runBlocker(input: RunInput): string | null {
-  if (input.cellKind !== "code") return "Only code cells run.";
+  if (input.cellKind !== "code") return t("notebook.onlyCode");
   if (input.language.toLowerCase() !== "python") {
-    return `Only Python notebooks can run: OpenMind's runner is Python (this notebook is ${input.language}).`;
+    return t("notebook.onlyPython", { language: input.language });
   }
-  if (!input.trusted) return "Trust this notebook to run its cells.";
-  if (!input.kernel) return KERNEL_MISSING;
-  if (input.running) return "A cell is running.";
+  if (!input.trusted) return t("notebook.trustToRun");
+  if (!input.kernel) return t("notebook.kernelMissing");
+  if (input.running) return t("notebook.cellRunning");
   return null;
 }

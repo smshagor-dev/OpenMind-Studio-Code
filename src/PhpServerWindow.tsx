@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { applyLanguageSetting, SYSTEM_LANGUAGE, useT } from "./i18n";
 import { useToasts } from "./appHooks";
 import { ErrorToast } from "./components/ErrorToast";
 import { ControlPanel } from "./components/ControlPanel";
@@ -16,6 +17,7 @@ export const PHP_WINDOW_LABEL = "php-server";
  * drifts from what the main window did in the meantime.
  */
 export function PhpServerWindow() {
+  useT();
   const [toasts, dismissToast] = useToasts();
 
   useEffect(() => {
@@ -27,6 +29,10 @@ export function PhpServerWindow() {
     void container.phpMyAdmin.initialize();
     void container.composer.initialize();
     void container.controlPanel.initialize();
+    // The UI language follows the setting here too (the settings are re-read when this window gets focus).
+    const stopLanguage = container.settings.onChange(["workbench.language"], () => {
+      applyLanguageSetting(container.settings.string("workbench.language", SYSTEM_LANGUAGE));
+    });
     const refresh = () => {
       void container.settings.reload();
       void container.runtime.refresh();
@@ -40,6 +46,7 @@ export function PhpServerWindow() {
     window.addEventListener("focus", refresh);
     return () => {
       window.removeEventListener("focus", refresh);
+      stopLanguage();
       container.php.dispose();
       container.mariaDb.dispose();
       container.phpMyAdmin.dispose();

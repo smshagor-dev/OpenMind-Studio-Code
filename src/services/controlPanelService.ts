@@ -6,6 +6,7 @@ import type { OutputService } from "./outputService";
 import type { PhpMyAdminService } from "./phpMyAdminService";
 import type { PhpServerService } from "./phpServerService";
 import type { Availability } from "./runtimeService";
+import { t } from "../i18n";
 
 export type ModuleId = PanelModule;
 export type PanelPage = "main" | "config" | "netstat" | "help";
@@ -209,7 +210,7 @@ export class ControlPanelService {
     return id === "mariadb" && !state.enabled
       ? {
           enabled: false,
-          reason: "MariaDB is managed through phpMyAdmin — start phpMyAdmin first.",
+          reason: t("php.reason.mariadbAdmin"),
         }
       : state;
   }
@@ -217,9 +218,9 @@ export class ControlPanelService {
   private configState(id: ModuleId): Availability {
     if (this.state.configPaths[id] !== null) return { enabled: true };
     const reasons: Record<ModuleId, string> = {
-      php: "PHP isn't installed yet — no php.ini to open.",
-      mariadb: "MariaDB's config file is created the first time it starts.",
-      phpmyadmin: "phpMyAdmin's config file is created the first time it starts.",
+      php: t("php.reason.noPhpIni"),
+      mariadb: t("php.reason.mariadbConfig"),
+      phpmyadmin: t("php.reason.pmaConfig"),
     };
     return { enabled: false, reason: reasons[id] };
   }
@@ -227,7 +228,7 @@ export class ControlPanelService {
   /** Whether the Explorer button can open the web root, and why not. */
   explorerState(): Availability {
     return this.php.getState().root === null
-      ? { enabled: false, reason: "Choose a web root folder first — use Config." }
+      ? { enabled: false, reason: t("php.reason.chooseWebRoot") }
       : { enabled: true };
   }
 

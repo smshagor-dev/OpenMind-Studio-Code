@@ -2,6 +2,7 @@ import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient } from "./ipc";
 import type { IndexSettingsRequest, IndexStatus } from "./searchIpc";
+import { t } from "../i18n";
 
 /** What the index service reads from the settings. */
 export interface IndexSettingsSource {
@@ -205,18 +206,18 @@ export class WorkspaceIndexService {
   label(): string {
     const status = this.state.status;
     if (this.getRoot() === null) return "";
-    if (status === null || status.state === "none") return "Index: not built";
+    if (status === null || status.state === "none") return t("index.notBuilt");
     switch (status.state) {
       case "disabled":
-        return "Index: off";
+        return t("index.off");
       case "indexing":
         return status.processed > 0
-          ? `Indexing ${String(status.processed)}/${String(status.discovered)}`
-          : `Scanning ${String(status.discovered)} files…`;
+          ? t("index.indexing", { done: status.processed, total: status.discovered })
+          : t("index.scanning", { count: status.discovered });
       case "error":
-        return "Index error";
+        return t("index.error");
       default:
-        return `Index: ${String(status.indexed)} files`;
+        return t("index.files", { count: status.indexed });
     }
   }
 

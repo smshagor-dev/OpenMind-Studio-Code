@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 export interface ToastMessage {
   id: number;
   message: string;
@@ -28,7 +29,7 @@ export function ErrorToast({ toasts, onDismiss }: ErrorToastProps) {
           <button
             type="button"
             className="error-toast__dismiss"
-            aria-label="Dismiss"
+            aria-label={t("common.dismiss")}
             onClick={() => {
               onDismiss(toast.id);
             }}

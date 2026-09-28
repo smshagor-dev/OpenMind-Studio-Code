@@ -3056,6 +3056,7 @@ dependencies = [
 name = "openmind-settings"
 version = "0.1.0"
 dependencies = [
+ "openmind-core",
  "openmind-db",
  "serde",
  "serde_json",

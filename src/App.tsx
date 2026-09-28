@@ -12,6 +12,7 @@ import {
   useToasts,
   useWorkbenchState,
 } from "./appHooks";
+import { useT } from "./i18n";
 import { ActivityBar } from "./components/ActivityBar";
 import { BottomPanel } from "./components/BottomPanel";
 import { EditorArea } from "./components/EditorArea";
@@ -49,6 +50,7 @@ const RuntimeManagerDialog = lazy(() =>
 
 /** The VS Code-style workbench: title bar, activity bar, side bar, editor group, status bar. */
 export function App() {
+  useT();
   const { workspaceState, activeWorkspace, themeKind, layout } = useWorkbenchState();
   const ready = useAppStartup();
   const [toasts, dismissToast] = useToasts();

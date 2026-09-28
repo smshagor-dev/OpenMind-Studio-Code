@@ -2,6 +2,7 @@ import { droppedOutside } from "../services/editorWindowService";
 import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseIcon } from "./icons";
+import { t } from "../i18n";
 
 interface TabBarProps {
   tabs: EditorTabView[];
@@ -95,8 +96,8 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach
             <button
               type="button"
               className="tab__close"
-              aria-label={`Close ${tab.title}`}
-              title="Close (Ctrl+W)"
+              aria-label={t("tabs.closeNamed", { name: tab.title })}
+              title={t("tabs.closeTitle")}
               onMouseDown={(event) => {
                 event.stopPropagation();
               }}

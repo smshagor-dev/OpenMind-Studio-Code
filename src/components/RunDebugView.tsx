@@ -7,6 +7,7 @@ import { BreakpointsPane, CallStackPane, VariablesPane, WatchPane } from "./Debu
 import { LoadedItemsPane } from "./LoadedItemsPane";
 import { PaneSection } from "./PaneSection";
 import { withShortcut } from "./shortcutLabel";
+import { t } from "../i18n";
 
 function activePath(): string | null {
   const id = container.workspace.getState().activeId;
@@ -32,7 +33,7 @@ function ConfigPicker() {
       {entries.length > 0 ? (
         <select
           className="debug-config"
-          aria-label="Launch configuration"
+          aria-label={t("debug.launchConfiguration")}
           value={current?.id ?? ""}
           onFocus={() => {
             void configs.refresh(activePath());
@@ -50,15 +51,13 @@ function ConfigPicker() {
         </select>
       ) : (
         <p className="debug-empty">
-          Open a Python or JavaScript file, or add a launch.json, to debug.
+          {t("debug.nothingToDebug")}
         </p>
       )}
       {notes.length > 0 ? (
         <details className="debug-notes">
           <summary>
-            {notes.length === 1
-              ? "1 setting of this configuration is not used"
-              : `${String(notes.length)} settings of this configuration are not used`}
+            {t("debug.unusedSettings", { count: notes.length })}
           </summary>
           <ul>
             {notes.map((note) => (
@@ -74,8 +73,9 @@ function ConfigPicker() {
       ))}
       {debuggers.length > 0 ? (
         <p className="debug-note">
-          Debuggers declared by extensions can&apos;t run yet:{" "}
-          {debuggers.map((d) => `${d.label ?? d.kind} (${d.extension})`).join(", ")}.
+          {t("debug.extensionDebuggers", {
+            list: debuggers.map((d) => `${d.label ?? d.kind} (${d.extension})`).join(", "),
+          })}
         </p>
       ) : null}
     </>
@@ -97,35 +97,35 @@ function StartControls() {
           disabled={!availability.enabled}
           title={
             availability.enabled
-              ? withShortcut("Start Debugging", "debug.start")
+              ? withShortcut(t("debug.start"), "debug.start")
               : availability.reason
           }
           onClick={() => {
             void debug.start();
           }}
         >
-          ▶ Start Debugging
+          ▶ {t("debug.start")}
         </button>
         <button
           type="button"
           disabled={!container.commands.isEnabled("debug.runWithoutDebugging")}
           title={
             container.commands.isEnabled("debug.runWithoutDebugging")
-              ? withShortcut("Run Code without the debugger", "run.code")
+              ? withShortcut(t("debug.runWithoutTitle"), "run.code")
               : container.commands.reasonFor("debug.runWithoutDebugging")
           }
           onClick={() => {
             container.run("debug.runWithoutDebugging");
           }}
         >
-          Run Without Debugging
+          {t("debug.runWithout")}
         </button>
         <button
           type="button"
           disabled={!configurable}
           title={
             configurable
-              ? "Open (or create) the folder's launch.json"
+              ? t("debug.openLaunchJson")
               : container.commands.reasonFor("debug.openConfigurations")
           }
           onClick={() => {
@@ -144,13 +144,13 @@ function StartControls() {
         <button
           type="button"
           className="debug-install"
-          title="Download and install the debugger with the Runtime Manager"
+          title={t("debug.installTitle")}
           onClick={() => {
             const kind = availability.installKind;
             if (kind) void container.runtime.install(kind, null);
           }}
         >
-          Install Debugger
+          {t("debug.install")}
         </button>
       ) : null}
       {run?.state === "terminated" && run.error ? (
@@ -206,17 +206,17 @@ export function RunDebugView() {
           <StartControls />
         )}
       </div>
-      <PaneSection title="Variables" expanded={open.variables} onToggle={toggler("variables")}>
+      <PaneSection title={t("debug.pane.variables")} expanded={open.variables} onToggle={toggler("variables")}>
         <VariablesPane />
       </PaneSection>
-      <PaneSection title="Watch" expanded={open.watch} onToggle={toggler("watch")}>
+      <PaneSection title={t("debug.pane.watch")} expanded={open.watch} onToggle={toggler("watch")}>
         <WatchPane />
       </PaneSection>
-      <PaneSection title="Call Stack" expanded={open.stack} onToggle={toggler("stack")}>
+      <PaneSection title={t("debug.pane.callStack")} expanded={open.stack} onToggle={toggler("stack")}>
         <CallStackPane />
       </PaneSection>
       <PaneSection
-        title="Breakpoints"
+        title={t("debug.pane.breakpoints")}
         expanded={open.breakpoints}
         onToggle={toggler("breakpoints")}
       >
@@ -224,7 +224,7 @@ export function RunDebugView() {
       </PaneSection>
       {canList ? (
         <PaneSection
-          title={abilities.loadedSources ? "Loaded Scripts" : "Modules"}
+          title={abilities.loadedSources ? t("debug.pane.loadedScripts") : t("debug.pane.modules")}
           expanded={open.loaded}
           onToggle={toggler("loaded")}
         >

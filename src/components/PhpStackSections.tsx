@@ -13,6 +13,7 @@ import {
 import type { Availability } from "../services/runtimeService";
 import { CredentialsBlock } from "./phpConfig/CredentialsBlock";
 import { Card, Facts } from "./phpConfig/parts";
+import { t } from "../i18n";
 
 /** A button that is live, or disabled with its reason as tooltip. */
 export function StackButton(props: {
@@ -42,19 +43,19 @@ export function PathValue({ path, label }: { path: string | null; label: string 
   return (
     <div className="php-view__path-row">
       <code className="php-view__path" title={path ?? undefined}>
-        {path ?? "Not set"}
+        {path ?? t("php.notSet")}
       </code>
       <button
         type="button"
         className="php-view__button php-view__button--small"
         disabled={path === null || path === ""}
-        title={path === null ? "Nothing to copy yet." : `Copy ${label}`}
-        aria-label={`Copy ${label}`}
+        title={path === null ? t("php.nothingToCopy") : t("php.copyNamed", { name: label })}
+        aria-label={t("php.copyNamed", { name: label })}
         onClick={() => {
           if (path !== null) void container.ipc.clipboardWriteText(path);
         }}
       >
-        Copy
+        {t("common.copy")}
       </button>
     </div>
   );
@@ -112,18 +113,18 @@ function PortField(props: Parameters<typeof PortFieldInner>[0]) {
 }
 
 const DATABASE_LABELS: Record<DatabaseStatus, string> = {
-  notInstalled: "Not installed",
-  needsInit: "Stopped — not initialized",
-  stopped: "Stopped",
-  starting: "Starting…",
-  running: "Running",
-  error: "Error",
+  notInstalled: "runtimes.notInstalled",
+  needsInit: "php.db.needsInit",
+  stopped: "php.status.stopped",
+  starting: "php.status.starting",
+  running: "php.status.running",
+  error: "php.status.error",
 };
 
 function portStatus(running: boolean, free: boolean | null, owner: string): string {
-  if (running) return `In use by ${owner}`;
-  if (free === null) return "Checking…";
-  return free ? "Free" : "Busy — another program is using it";
+  if (running) return t("php.port.inUseBy", { owner });
+  if (free === null) return t("extContrib.checking");
+  return free ? t("php.port.free") : t("php.port.busy");
 }
 
 export function DatabaseSection() {
@@ -140,66 +141,67 @@ export function DatabaseSection() {
   const status = db.status();
   const start = db.startState();
   const installed = db.installed();
-  const statusText = state.busy === "initializing" ? "Initializing…" : DATABASE_LABELS[status];
+  const statusText =
+    state.busy === "initializing" ? t("php.db.initializing") : t(DATABASE_LABELS[status]);
   return (
     <Card
       title="MariaDB"
-      label="Database"
+      label={t("php.database")}
       chip={mariaDbChip(status)}
-      description="A local database for your PHP projects. It listens on this computer only."
+      description={t("php.db.description")}
     >
       <Facts
         rows={[
           {
-            label: "Status",
+            label: t("extDetails.status"),
             value: (
               <span className={`php-view__db-status php-view__db-status--${status}`}>
                 {statusText}
               </span>
             ),
           },
-          { label: "Version", value: installed?.version ?? "Not installed" },
-          { label: "Bind address", value: `${LOCAL_HOST} (this computer only)` },
+          { label: t("extDetails.version"), value: installed?.version ?? t("runtimes.notInstalled") },
+          { label: t("php.bindAddress"), value: t("php.thisComputerOnly", { host: LOCAL_HOST }) },
         ]}
       />
       <PortField
         id="mariadb-port"
-        label="MariaDB port"
+        label={t("php.db.port")}
         value={state.port}
         locked={state.server !== null}
-        lockedReason="Stop MariaDB to change its port."
+        lockedReason={t("php.db.portLocked")}
         status={portStatus(state.server !== null, state.portFree, "MariaDB")}
         bad={state.portFree === false}
         onApply={(text) => db.setPort(text)}
       />
       <div className="php-view__field">
-        <span className="php-view__label">Data directory</span>
-        <PathValue path={state.dataDir === "" ? null : state.dataDir} label="data directory" />
+        <span className="php-view__label">{t("php.dataDirectory")}</span>
+        <PathValue path={state.dataDir === "" ? null : state.dataDir} label={t("php.dataDirectoryLower")} />
       </div>
       <div className="php-view__field">
-        <span className="php-view__label">Config file</span>
+        <span className="php-view__label">{t("php.configFile")}</span>
         <PathValue
           path={state.configFile === "" ? null : state.configFile}
-          label="MariaDB config file"
+          label={t("php.db.configFileLower")}
         />
         {state.configFile === "" ? (
-          <span className="php-view__hint">Created the first time MariaDB starts.</span>
+          <span className="php-view__hint">{t("php.db.configCreated")}</span>
         ) : null}
       </div>
       <div className="php-view__field">
-        <span className="php-view__label">Log directory</span>
-        <PathValue path={state.logDir === "" ? null : state.logDir} label="log directory" />
+        <span className="php-view__label">{t("php.logDirectory")}</span>
+        <PathValue path={state.logDir === "" ? null : state.logDir} label={t("php.logDirectoryLower")} />
       </div>
       <div className="php-view__row">
         <StackButton
-          label="Initialize Database"
+          label={t("php.db.initialize")}
           availability={db.initializeState()}
           onClick={() => {
             void db.initializeDatabase();
           }}
         />
         <StackButton
-          label="Start MariaDB"
+          label={t("php.db.start")}
           availability={start}
           primary
           onClick={() => {
@@ -207,14 +209,14 @@ export function DatabaseSection() {
           }}
         />
         <StackButton
-          label="Stop MariaDB"
+          label={t("php.db.stop")}
           availability={db.stopState()}
           onClick={() => {
             void db.stop();
           }}
         />
         <StackButton
-          label="Restart MariaDB"
+          label={t("php.db.restart")}
           availability={db.restartState()}
           onClick={() => {
             void db.restart();
@@ -228,7 +230,7 @@ export function DatabaseSection() {
             selectLog("MariaDB");
           }}
         >
-          Open MariaDB Logs
+          {t("php.db.openLogs")}
         </button>
       </div>
       {!start.enabled && state.server === null ? (
@@ -275,15 +277,15 @@ export function PhpMyAdminSection() {
       title="phpMyAdmin"
       label="phpMyAdmin"
       chip={phpMyAdminChip({ installed: installedVersion !== null, running })}
-      description="Browse and manage your databases in the browser."
+      description={t("php.pma.description")}
     >
       <Facts
         rows={[
           {
-            label: "Status",
+            label: t("extDetails.status"),
             value: state.server ? (
               <>
-                Running at{" "}
+                {t("php.pma.runningAt")}{" "}
                 <a
                   href={state.server.url ?? undefined}
                   onClick={(event) => {
@@ -295,28 +297,28 @@ export function PhpMyAdminSection() {
                 </a>
               </>
             ) : installedVersion === null ? (
-              "Not installed"
+              t("runtimes.notInstalled")
             ) : (
-              "Stopped"
+              t("php.status.stopped")
             ),
           },
-          { label: "Version", value: installedVersion ?? "Not installed" },
-          { label: "Address", value: url ?? "None until it runs" },
+          { label: t("extDetails.version"), value: installedVersion ?? t("runtimes.notInstalled") },
+          { label: t("php.col.address"), value: url ?? t("php.noneUntilRuns") },
         ]}
       />
       <PortField
         id="pma-port"
-        label="phpMyAdmin port"
+        label={t("php.pma.port")}
         value={state.port}
         locked={state.server !== null}
-        lockedReason="Stop phpMyAdmin to change its port."
+        lockedReason={t("php.pma.portLocked")}
         status={portStatus(state.server !== null, state.portFree, "phpMyAdmin")}
         bad={state.portFree === false}
         onApply={(text) => pma.setPort(text)}
       />
       <div className="php-view__row">
         <StackButton
-          label="Start phpMyAdmin"
+          label={t("php.pma.start")}
           availability={start}
           primary
           onClick={() => {
@@ -324,24 +326,24 @@ export function PhpMyAdminSection() {
           }}
         />
         <StackButton
-          label="Stop phpMyAdmin"
+          label={t("php.pma.stop")}
           availability={pma.stopState()}
           onClick={() => {
             void pma.stop();
           }}
         />
         <StackButton
-          label="Open phpMyAdmin"
+          label={t("php.pma.open")}
           availability={open.enabled && !admin.enabled ? admin : open}
           onClick={() => {
             void pma.open();
           }}
         />
         <StackButton
-          label="Copy phpMyAdmin URL"
+          label={t("php.pma.copyUrl")}
           availability={
             url === null
-              ? { enabled: false, reason: "phpMyAdmin has no address until it runs." }
+              ? { enabled: false, reason: t("php.pma.noAddress") }
               : { enabled: true }
           }
           onClick={() => {
@@ -356,7 +358,7 @@ export function PhpMyAdminSection() {
             selectLog("phpMyAdmin");
           }}
         >
-          Open phpMyAdmin Logs
+          {t("php.pma.openLogs")}
         </button>
       </div>
       {!start.enabled && !running ? (
@@ -366,7 +368,7 @@ export function PhpMyAdminSection() {
       ) : null}
       {!admin.enabled && installedVersion !== null && admin.reason ? (
         <div className="php-view__reason" role="note">
-          Admin: {admin.reason}
+          {t("php.adminReason", { reason: admin.reason })}
         </div>
       ) : null}
       {note ? (
@@ -381,8 +383,7 @@ export function PhpMyAdminSection() {
       ) : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
       <span className="php-view__hint">
-        Log in with user root and the MariaDB password from the MariaDB card. Served on 127.0.0.1
-        only.
+        {t("php.pma.loginHint")}
       </span>
     </Card>
   );

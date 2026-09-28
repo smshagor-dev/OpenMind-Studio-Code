@@ -1,4 +1,5 @@
 import type { Availability } from "./runtimeService";
+import { t } from "../i18n";
 
 // Pure model behind the PHP stack Configuration page: status chips, the connection helpers and the Admin button's
 // availability. No I/O, no clipboard — the services do that. Nothing here ever contains a password except
@@ -22,18 +23,18 @@ export function phpChip(input: {
   active: string | null;
   healthy: boolean;
 }): Chip {
-  if (!input.installed) return { label: "PHP: Not installed", tone: "warn" };
-  if (!input.healthy) return { label: "PHP: Broken", tone: "error" };
+  if (!input.installed) return { label: t("php.chip.php.notInstalled"), tone: "warn" };
+  if (!input.healthy) return { label: t("php.chip.php.broken"), tone: "error" };
   return input.active
-    ? { label: `PHP: Active ${input.active}`, tone: "ok" }
-    : { label: "PHP: Installed", tone: "info" };
+    ? { label: t("php.chip.php.active", { version: input.active }), tone: "ok" }
+    : { label: t("php.chip.php.installed"), tone: "info" };
 }
 
 export function composerChip(input: { installed: boolean; active: string | null }): Chip {
-  if (!input.installed) return { label: "Composer: Not installed", tone: "warn" };
+  if (!input.installed) return { label: t("php.chip.composer.notInstalled"), tone: "warn" };
   return input.active
     ? { label: `Composer: ${input.active}`, tone: "ok" }
-    : { label: "Composer: Installed", tone: "info" };
+    : { label: t("php.chip.composer.installed"), tone: "info" };
 }
 
 export type DbStatus = "notInstalled" | "needsInit" | "stopped" | "starting" | "running" | "error";
@@ -41,25 +42,25 @@ export type DbStatus = "notInstalled" | "needsInit" | "stopped" | "starting" | "
 export function mariaDbChip(status: DbStatus): Chip {
   switch (status) {
     case "running":
-      return { label: "MariaDB: Running", tone: "ok" };
+      return { label: t("php.chip.db.running"), tone: "ok" };
     case "starting":
-      return { label: "MariaDB: Starting", tone: "info" };
+      return { label: t("php.chip.db.starting"), tone: "info" };
     case "error":
-      return { label: "MariaDB: Error", tone: "error" };
+      return { label: t("php.chip.db.error"), tone: "error" };
     case "notInstalled":
-      return { label: "MariaDB: Not installed", tone: "warn" };
+      return { label: t("php.chip.db.notInstalled"), tone: "warn" };
     case "needsInit":
-      return { label: "MariaDB: Not initialized", tone: "warn" };
+      return { label: t("php.chip.db.needsInit"), tone: "warn" };
     case "stopped":
-      return { label: "MariaDB: Stopped", tone: "off" };
+      return { label: t("php.chip.db.stopped"), tone: "off" };
   }
 }
 
 export function phpMyAdminChip(input: { installed: boolean; running: boolean }): Chip {
-  if (!input.installed) return { label: "phpMyAdmin: Not installed", tone: "warn" };
+  if (!input.installed) return { label: t("php.chip.pma.notInstalled"), tone: "warn" };
   return input.running
-    ? { label: "phpMyAdmin: Running", tone: "ok" }
-    : { label: "phpMyAdmin: Available", tone: "info" };
+    ? { label: t("php.chip.pma.running"), tone: "ok" }
+    : { label: t("php.chip.pma.available"), tone: "info" };
 }
 
 /** `mysql://root@127.0.0.1:3307` — no password, so it is safe to copy and paste anywhere. */

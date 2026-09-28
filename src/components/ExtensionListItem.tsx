@@ -3,6 +3,7 @@ import { useState } from "react";
 import { formatCount } from "../services/extensionMarketplaceService";
 import { useQuietTitle } from "./useQuietTitle";
 import { CloudDownloadIcon, ExtensionsIcon, GearIcon, StarIcon, VerifiedIcon } from "./icons";
+import { t } from "../i18n";
 
 export interface ListItemProps {
   name: string;
@@ -53,7 +54,7 @@ export function ExtensionIcon({ url, size }: { url: string | null; size: number 
 /** One row of the Extensions view, laid out like VS Code's. */
 export function ExtensionListItem(props: ListItemProps) {
   const { action } = props;
-  const manageTip = useQuietTitle("Manage");
+  const manageTip = useQuietTitle(t("extensions.manage"));
   return (
     <li
       className={props.selected ? "ext-item ext-item--selected" : "ext-item"}
@@ -73,7 +74,7 @@ export function ExtensionListItem(props: ListItemProps) {
             </span>
             <span className="ext-item__stats">
               {props.downloads !== null ? (
-                <span className="ext-item__stat" title={`${String(props.downloads)} installs`}>
+                <span className="ext-item__stat" title={t("extensions.installs", { count: props.downloads })}>
                   <CloudDownloadIcon size={14} />
                   {formatCount(props.downloads)}
                 </span>
@@ -81,7 +82,7 @@ export function ExtensionListItem(props: ListItemProps) {
               {props.rating !== null ? (
                 <span
                   className="ext-item__stat"
-                  title={`Average rating: ${props.rating.toFixed(1)} out of 5`}
+                  title={t("extensions.rating", { rating: props.rating.toFixed(1) })}
                 >
                   <StarIcon size={13} filled />
                   {props.rating.toFixed(1)}
@@ -94,7 +95,7 @@ export function ExtensionListItem(props: ListItemProps) {
           <span className="ext-item__bottom">
             <span className="ext-item__publisher">
               {props.verified ? (
-                <span className="ext-verified" title="Verified publisher">
+                <span className="ext-verified" title={t("extensions.verified")}>
                   <VerifiedIcon size={13} />
                 </span>
               ) : null}
@@ -111,7 +112,7 @@ export function ExtensionListItem(props: ListItemProps) {
             disabled={action.busy !== null}
             onClick={action.onInstall}
           >
-            {action.busy ?? "Install"}
+            {action.busy ?? t("extensions.installButton")}
           </button>
         ) : (
           <>
@@ -120,7 +121,7 @@ export function ExtensionListItem(props: ListItemProps) {
               type="button"
               className="ext-item__manage"
               {...manageTip}
-              aria-label={`Manage ${props.name}`}
+              aria-label={t("extensions.manageNamed", { name: props.name })}
               onClick={(event) => {
                 action.onManage(event.currentTarget.getBoundingClientRect());
               }}

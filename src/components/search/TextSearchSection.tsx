@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { container } from "../../services/container";
 import { ResultGroups, type ResultGroupsController } from "./ResultGroups";
+import { t } from "../../i18n";
 
 const TOGGLES = [
-  { name: "caseSensitive", label: "Match Case", glyph: "Aa" },
-  { name: "wholeWord", label: "Match Whole Word", glyph: "ab" },
-  { name: "useRegex", label: "Use Regular Expression", glyph: ".*" },
+  { name: "caseSensitive", label: "search.matchCase", glyph: "Aa" },
+  { name: "wholeWord", label: "search.wholeWord", glyph: "ab" },
+  { name: "useRegex", label: "search.regex", glyph: ".*" },
 ] as const;
 
 /** Full-text search of the workspace: query, options, include/exclude patterns, and results grouped by file. */
@@ -32,8 +33,8 @@ export function TextSearchSection() {
           ref={inputRef}
           className="search-view__input"
           type="text"
-          placeholder="Search"
-          aria-label="Search"
+          placeholder={t("view.search")}
+          aria-label={t("view.search")}
           value={state.query}
           onChange={(event) => {
             container.search.setQuery(event.target.value);
@@ -53,8 +54,8 @@ export function TextSearchSection() {
                   ? "search-view__toggle search-view__toggle--on"
                   : "search-view__toggle"
               }
-              title={toggle.label}
-              aria-label={toggle.label}
+              title={t(toggle.label)}
+              aria-label={t(toggle.label)}
               aria-pressed={state.options[toggle.name]}
               onClick={() => {
                 container.search.toggleOption(toggle.name);
@@ -66,12 +67,12 @@ export function TextSearchSection() {
         </div>
       </div>
       <label className="search-view__label">
-        files to include
+        {t("search.include")}
         <input
           className="search-view__input"
           type="text"
-          placeholder="e.g. *.ts, src/**"
-          aria-label="Files to include"
+          placeholder={t("search.includePlaceholder")}
+          aria-label={t("search.includeLabel")}
           value={state.include}
           onChange={(event) => {
             container.search.setInclude(event.target.value);
@@ -79,12 +80,12 @@ export function TextSearchSection() {
         />
       </label>
       <label className="search-view__label">
-        files to exclude
+        {t("search.exclude")}
         <input
           className="search-view__input"
           type="text"
-          placeholder="e.g. *.min.js, docs"
-          aria-label="Files to exclude"
+          placeholder={t("search.excludePlaceholder")}
+          aria-label={t("search.excludeLabel")}
           value={state.exclude}
           onChange={(event) => {
             container.search.setExclude(event.target.value);
@@ -104,7 +105,7 @@ function SearchSummary() {
   );
   const cancelable = state.status === "searching";
   let text: string | null = null;
-  if (state.status === "searching") text = "Searching…";
+  if (state.status === "searching") text = t("search.searching");
   else if (state.status === "error") text = state.error;
   else if (state.status === "done" && state.outcome) {
     const { totalMatches, files, truncated } = {
@@ -113,14 +114,19 @@ function SearchSummary() {
     };
     const from =
       state.source === "index"
-        ? " · from the index"
+        ? ` · ${t("search.fromIndex")}`
         : state.source === "disk"
-          ? " · read from disk (no index yet)"
+          ? ` · ${t("search.fromDisk")}`
           : "";
     text =
       totalMatches === 0
-        ? "No results found."
-        : `${String(totalMatches)} result${totalMatches === 1 ? "" : "s"} in ${String(files)} file${files === 1 ? "" : "s"}${truncated ? " (limit reached — narrow the search)" : ""}${from}`;
+        ? t("search.noResults")
+        : t("search.summary", {
+            results: t("search.resultCount", { count: totalMatches }),
+            files: t("search.fileCount", { count: files }),
+            limit: truncated ? ` ${t("search.limitReached")}` : "",
+            from,
+          });
   }
   if (text === null) return null;
   return (
@@ -141,7 +147,7 @@ function SearchSummary() {
             container.search.cancel();
           }}
         >
-          Cancel
+          {t("common.cancel")}
         </button>
       ) : null}
       {state.status === "done" || state.status === "error" ? (
@@ -152,7 +158,7 @@ function SearchSummary() {
             container.search.clear();
           }}
         >
-          Clear
+          {t("search.clear")}
         </button>
       ) : null}
     </p>
@@ -185,5 +191,5 @@ function SearchResults() {
     [state.collapsed, state.visibleFiles, state.expandedFiles],
   );
   const files = state.outcome?.files ?? [];
-  return <ResultGroups files={files} controller={controller} label="Search results" />;
+  return <ResultGroups files={files} controller={controller} label={t("search.results")} />;
 }

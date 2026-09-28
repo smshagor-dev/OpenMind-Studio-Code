@@ -10,7 +10,6 @@ import type { WorkspaceService } from "../workspaceService";
 import {
   AiActionsService,
   AI_ACTION_COMMANDS,
-  AI_ACTION_LABELS,
   type AiContextSource,
 } from "./aiActionsService";
 import { AiChatService } from "./aiChatService";
@@ -22,6 +21,7 @@ import {
   type AiSettingsSource,
 } from "./aiProviderService";
 import { AiUiService } from "./aiUiService";
+import { t } from "../../i18n";
 
 export interface AiWiringDeps {
   ipc: AiIpc;
@@ -83,7 +83,7 @@ function createContextSource(deps: AiWiringDeps): AiContextSource {
 function editorActionList(): ExtensionEditorAction[] {
   const named = (kind: AiActionKind, inContextMenu: boolean): ExtensionEditorAction => ({
     command: AI_ACTION_COMMANDS[kind],
-    label: `AI: ${AI_ACTION_LABELS[kind]}`,
+    label: `${t("view.ai")}: ${t(`ai.action.${kind}`)}`,
     inContextMenu,
   });
   return [

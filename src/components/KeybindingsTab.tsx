@@ -4,7 +4,10 @@ import type { KeyboardEvent } from "react";
 import { useCommandStateRefresh } from "../appHooks";
 import { container } from "../services/container";
 import { normalizeKeyEvent } from "../services/keybindings";
+import { commandLabel } from "../i18n/menuLabels";
+import { menuCategoryLabel } from "../i18n/settingsText";
 import type { AssignCheck, ChangeResult, KeybindingRow } from "../services/keybindingsManager";
+import { t } from "../i18n";
 
 interface Editing {
   command: string;
@@ -82,8 +85,8 @@ export function KeybindingsTab() {
         <input
           type="search"
           className="prefs-search"
-          aria-label="Search keyboard shortcuts"
-          placeholder="Search by command name, category or keybinding"
+          aria-label={t("keys.search")}
+          placeholder={t("keys.searchPlaceholder")}
           value={page.query}
           onChange={(event) => {
             container.preferencesPage.setQuery(event.target.value);
@@ -95,19 +98,18 @@ export function KeybindingsTab() {
           disabled={!jsonEnabled}
           title={
             container.commands.reasonFor("preferences.openKeybindingsJson") ??
-            "Edit keybindings.json"
+            t("keys.editJson")
           }
           onClick={() => {
             container.run("preferences.openKeybindingsJson");
           }}
         >
-          Open Keyboard Shortcuts (JSON)
+          {t("keys.openJson")}
         </button>
       </div>
       {fileError ? (
         <p className="prefs-banner prefs-banner--error" role="alert">
-          keybindings.json has a problem, so the defaults are used and it will not be changed:{" "}
-          {fileError}
+          {t("keys.fileProblem", { error: fileError })}
         </p>
       ) : null}
       {message ? (
@@ -115,14 +117,14 @@ export function KeybindingsTab() {
           {message}
         </p>
       ) : null}
-      <table className="prefs-table" aria-label="Keyboard shortcuts">
+      <table className="prefs-table" aria-label={t("keys.table")}>
         <thead>
           <tr>
-            <th scope="col">Command</th>
-            <th scope="col">Keybinding</th>
-            <th scope="col">Source</th>
+            <th scope="col">{t("keys.col.command")}</th>
+            <th scope="col">{t("keys.col.keybinding")}</th>
+            <th scope="col">{t("keys.col.source")}</th>
             <th scope="col">
-              <span className="prefs-visually-hidden">Actions</span>
+              <span className="prefs-visually-hidden">{t("keys.col.actions")}</span>
             </th>
           </tr>
         </thead>
@@ -130,7 +132,7 @@ export function KeybindingsTab() {
           {rows.length === 0 ? (
             <tr>
               <td colSpan={4} className="prefs-empty">
-                No shortcuts match “{page.query}”.
+                {t("keys.noMatch", { query: page.query })}
               </td>
             </tr>
           ) : null}
@@ -143,9 +145,9 @@ export function KeybindingsTab() {
                 className={row.conflicts.length > 0 ? "prefs-table__row--conflict" : undefined}
               >
                 <td>
-                  <span className="prefs-table__title">{row.title}</span>
+                  <span className="prefs-table__title">{commandLabel(row.command, row.title)}</span>
                   <span className="prefs-table__meta">
-                    {row.category} · {row.command}
+                    {menuCategoryLabel(row.category)} · {row.command}
                   </span>
                 </td>
                 <td>
@@ -154,8 +156,8 @@ export function KeybindingsTab() {
                       <input
                         autoFocus
                         className="prefs-input"
-                        aria-label={`Press the new shortcut for ${row.title}`}
-                        placeholder="Press the keys, then Enter"
+                        aria-label={t("keys.pressFor", { title: commandLabel(row.command, row.title) })}
+                        placeholder={t("keys.pressPlaceholder")}
                         readOnly
                         value={current.key ?? ""}
                         onKeyDown={(event) => {
@@ -180,7 +182,7 @@ export function KeybindingsTab() {
                               void confirm(current, true);
                             }}
                           >
-                            Replace
+                            {t("keys.replace")}
                           </button>
                         ) : null}
                         <button
@@ -190,7 +192,7 @@ export function KeybindingsTab() {
                             void confirm(current, false);
                           }}
                         >
-                          Save
+                          {t("common.save")}
                         </button>
                         <button
                           type="button"
@@ -198,12 +200,12 @@ export function KeybindingsTab() {
                             setEditing(null);
                           }}
                         >
-                          Cancel
+                          {t("common.cancel")}
                         </button>
                       </div>
                     </div>
                   ) : row.keys.length === 0 ? (
-                    <span className="prefs-table__none">Not bound</span>
+                    <span className="prefs-table__none">{t("keys.notBound")}</span>
                   ) : (
                     row.keys.map((key) => (
                       <kbd key={key} className="prefs-kbd">
@@ -213,58 +215,58 @@ export function KeybindingsTab() {
                   )}
                   {!current && row.conflicts.length > 0 ? (
                     <span className="prefs-table__conflict" role="status">
-                      Also used by {row.conflicts.join(", ")}
+                      {t("keys.alsoUsedBy", { commands: row.conflicts.join(", ") })}
                     </span>
                   ) : null}
                 </td>
                 <td>
                   {row.source === "user"
-                    ? "User"
+                    ? t("settings.scope.user")
                     : row.source === "default"
-                      ? "Default"
+                      ? t("keys.source.default")
                       : row.source === "extension"
-                        ? (row.extension ?? "Extension")
+                        ? (row.extension ?? t("keys.source.extension"))
                         : "—"}
                 </td>
                 <td className="prefs-table__actions">
                   <button
                     type="button"
-                    aria-label={`Change keybinding of ${row.title}`}
+                    aria-label={t("keys.changeOf", { title: commandLabel(row.command, row.title) })}
                     disabled={!row.change.enabled}
-                    title={row.change.reason ?? "Change the keybinding"}
+                    title={row.change.reason ?? t("keys.changeTitle")}
                     onClick={() => {
                       setMessage(null);
                       setEditing({ command: row.command, key: null, check: null, error: null });
                     }}
                   >
-                    Change
+                    {t("keys.change")}
                   </button>
                   <button
                     type="button"
-                    aria-label={`Remove keybinding of ${row.title}`}
+                    aria-label={t("keys.removeOf", { title: commandLabel(row.command, row.title) })}
                     disabled={!row.change.enabled || row.keys.length === 0}
                     title={
                       row.change.reason ??
-                      (row.keys.length === 0 ? "It has no keybinding" : "Remove the keybinding")
+                      (row.keys.length === 0 ? t("keys.noKeybinding") : t("keys.removeTitle"))
                     }
                     onClick={() => {
                       void apply(manager.remove(row.command));
                     }}
                   >
-                    Remove
+                    {t("keys.remove")}
                   </button>
                   <button
                     type="button"
-                    aria-label={`Reset keybinding of ${row.title}`}
+                    aria-label={t("keys.resetOf", { title: commandLabel(row.command, row.title) })}
                     disabled={!row.customized}
                     title={
-                      row.customized ? "Back to the default keybinding" : "Already the default"
+                      row.customized ? t("keys.resetTitle") : t("keys.alreadyDefault")
                     }
                     onClick={() => {
                       void apply(manager.reset(row.command));
                     }}
                   >
-                    Reset
+                    {t("common.reset")}
                   </button>
                 </td>
               </tr>

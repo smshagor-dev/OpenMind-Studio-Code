@@ -1,7 +1,9 @@
 import type { ConfirmPrompt, QuickPickPrompt } from "../extensionPromptService";
+import { translateBackend } from "../../i18n/backendText";
 import type { IpcClient } from "../ipc";
 import type { KernelCandidate, NotebookCellEdit, NotebookCellKind } from "../workflowIpc";
 import { runBlocker } from "./notebookModel";
+import { t } from "../../i18n";
 
 export interface CellState {
   /** A key that stays while cells move. */
@@ -265,7 +267,7 @@ export class NotebookService {
     } catch (error) {
       const message = String(error).replace(/^Error: /, "");
       this.put(path, { conflict: message.includes("changed on disk") });
-      this.deps.notice(message);
+      this.deps.notice(translateBackend(message));
       return false;
     }
   }
@@ -295,18 +297,17 @@ export class NotebookService {
     const candidates = await this.kernels();
     if (candidates.length === 0) {
       this.deps.notice(
-        "Kernel not configured. Install/configure Python from Runtime Manager (nothing is downloaded automatically).",
+        t("notebook.noPython"),
       );
       return;
     }
     const picked = await this.deps.quickPick({
       extension: "OpenMind Studio",
-      placeHolder:
-        "Select a Python to run this notebook's cells (OpenMind's Python runner, not Jupyter)",
+      placeHolder: t("notebook.pickPython"),
       canPickMany: false,
       items: candidates.map((c) => ({
         label: c.label,
-        description: c.hasIpykernel ? "ipykernel installed (not used by OpenMind's runner)" : "",
+        description: c.hasIpykernel ? t("notebook.ipykernel") : "",
         detail: c.interpreter,
       })),
     });
@@ -333,7 +334,7 @@ export class NotebookService {
   runReason(path: string, cellKey: string): string | null {
     const doc = this.get(path);
     const cell = doc?.cells.find((c) => c.key === cellKey);
-    if (!doc || !cell) return "The cell is gone.";
+    if (!doc || !cell) return t("notebook.cellGone");
     return runBlocker({
       trusted: doc.trusted,
       kernel: doc.kernel !== null,
@@ -385,24 +386,22 @@ export class NotebookService {
     if (!doc) return;
     const code = doc.cells.filter((c) => c.kind === "code");
     const first = code[0];
-    const reason = first ? this.runReason(path, first.key) : "There are no code cells.";
+    const reason = first ? this.runReason(path, first.key) : t("notebook.noCodeCells");
     if (reason !== null) {
       this.deps.notice(reason);
       return;
     }
     const answer = await this.deps.confirm({
       extension: "OpenMind Studio",
-      title: `Run all ${String(code.length)} code cells?`,
+      title: t("notebook.runAllTitleConfirm", { count: code.length }),
       details: [
-        { label: "Notebook", value: path },
-        { label: "Kernel", value: doc.kernel ?? "" },
+        { label: t("notebook.label"), value: path },
+        { label: t("notebook.kernel"), value: doc.kernel ?? "" },
       ],
-      notes: [
-        "The cells run one after another with your rights, on this computer. It stops at the first cell that fails.",
-      ],
-      buttons: [RUN_ALL],
+      notes: [t("notebook.runAllNote")],
+      buttons: [t("notebook.runAllCells")],
     });
-    if (answer !== RUN_ALL) return;
+    if (answer !== t("notebook.runAllCells")) return;
     for (const cell of code) {
       if (!(await this.runCell(path, cell.key))) break;
     }

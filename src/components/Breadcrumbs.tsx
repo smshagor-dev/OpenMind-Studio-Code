@@ -2,6 +2,7 @@ import { container } from "../services/container";
 import { pathSegments } from "../services/explorerTree";
 import { FileTypeIcon } from "./fileIcons";
 import { ChevronRightSmallIcon } from "./icons";
+import { t } from "../i18n";
 
 interface BreadcrumbsProps {
   path: string | null;
@@ -20,7 +21,7 @@ export function Breadcrumbs({ path, title, rootPath }: BreadcrumbsProps) {
     rootPath !== null && segmentPath.length > rootPath.length && segmentPath.startsWith(rootPath);
 
   return (
-    <nav className="breadcrumbs" aria-label="Breadcrumbs">
+    <nav className="breadcrumbs" aria-label={t("editor.breadcrumbs")}>
       {segments.map((segment, index) => {
         const last = index === segments.length - 1;
         return (

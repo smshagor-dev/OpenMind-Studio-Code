@@ -13,6 +13,7 @@ import { useQuietTitle } from "./useQuietTitle";
 import { ChevronIcon, EllipsisIcon, FilterIcon } from "./icons";
 import { MenuPopup, type PopupItem } from "./MenuPopup";
 import { useDismissOnOutside } from "./useDismissOnOutside";
+import { t } from "../i18n";
 
 const INSTALLED_FILTER = "@installed";
 
@@ -84,7 +85,7 @@ function InstalledRow(props: {
       iconUrl={props.iconUrl}
       downloads={null}
       rating={null}
-      dimmed={extension.enabled ? undefined : "Disabled"}
+      dimmed={extension.enabled ? undefined : t("extensions.disabled")}
       problem={
         activity.lastError ?? (runtime && !runtime.ready && extension.enabled ? runtime.text : null)
       }
@@ -99,13 +100,13 @@ function InstalledRow(props: {
       }}
       action={{
         kind: "installed",
-        label: extension.enabled ? "" : "Disabled",
+        label: extension.enabled ? "" : t("extensions.disabled"),
         onManage: (anchor) => {
           props.onMenu({
             items: manageMenu(extension),
             x: anchor.left,
             y: anchor.bottom,
-            label: "Manage",
+            label: t("extensions.manage"),
           });
         },
       }}
@@ -137,13 +138,13 @@ function MarketRow(props: {
         installed
           ? {
               kind: "installed",
-              label: installed.enabled ? "" : "Disabled",
+              label: installed.enabled ? "" : t("extensions.disabled"),
               onManage: (anchor) => {
                 props.onMenu({
                   items: manageMenu(installed),
                   x: anchor.left,
                   y: anchor.bottom,
-                  label: "Manage",
+                  label: t("extensions.manage"),
                 });
               },
             }
@@ -170,7 +171,7 @@ function Updates() {
     return installed !== undefined && isNewerVersion(update.latest, installed.manifest.version);
   });
   return (
-    <div className="ext-updates" aria-label="Extension updates">
+    <div className="ext-updates" aria-label={t("extensions.updates")}>
       <div className="ext-updates__bar">
         <button
           type="button"
@@ -178,19 +179,19 @@ function Updates() {
           disabled={market.checkingUpdates}
           onClick={() => void marketplace.checkUpdates()}
         >
-          {market.checkingUpdates ? "Checking for updates…" : "Check for Updates"}
+          {market.checkingUpdates ? t("extensions.checkingUpdates") : t("extensions.checkUpdates")}
         </button>
         {market.updatesCheckedAt !== null && !market.checkingUpdates && market.updateError === null ? (
           <span className="ext-note">
             {updates.length === 0
-              ? `No updates on Open VSX (checked ${market.updatesCheckedAt}).`
-              : `${String(updates.length)} update${updates.length === 1 ? "" : "s"} on Open VSX.`}
+              ? t("extensions.noUpdates", { time: market.updatesCheckedAt })
+              : t("extensions.updateCount", { count: updates.length })}
           </span>
         ) : null}
       </div>
       {market.updateError !== null ? <p className="ext-note">{market.updateError}</p> : null}
       {updates.length > 0 ? (
-        <ul className="ext-plain-list" aria-label="Available updates">
+        <ul className="ext-plain-list" aria-label={t("extensions.availableUpdates")}>
           {updates.map((update) => {
             const busy = market.installing[marketId(update.namespace, update.name)] ?? null;
             return (
@@ -204,7 +205,7 @@ function Updates() {
                   disabled={busy !== null}
                   onClick={() => void marketplace.install(update.namespace, update.name)}
                 >
-                  {busy ?? "Update"}
+                  {busy ?? t("extensions.update")}
                 </button>
               </li>
             );
@@ -237,7 +238,7 @@ function Notices() {
                 service.clearMessages();
               }}
             >
-              Dismiss
+              {t("common.dismissAction")}
             </button>
           ) : null}
         </div>
@@ -247,7 +248,7 @@ function Notices() {
           <p>{problem}</p>
           {node && !node.portable && node.system !== null && !node.allowSystem ? (
             <p className="ext-banner__hint">
-              A Node.js was found at {node.system}. OpenMind Studio only uses it if you allow it.
+              {t("extensions.systemNodeFound", { path: node.system })}
             </p>
           ) : null}
           {node && !node.portable && node.system !== null && !node.allowSystem ? (
@@ -256,7 +257,7 @@ function Notices() {
               className="ext-button"
               onClick={() => void service.allowSystemNode()}
             >
-              Use System Node.js
+              {t("extensions.useSystemNode")}
             </button>
           ) : node && !node.portable ? (
             <button
@@ -266,11 +267,11 @@ function Notices() {
                 container.run("runtime.manage");
               }}
             >
-              Install Node.js Runtime
+              {t("extensions.installNode")}
             </button>
           ) : (
             <button type="button" className="ext-button" onClick={() => void host.reload()}>
-              Restart Extension Host
+              {t("extensions.restartHost")}
             </button>
           )}
         </div>
@@ -298,10 +299,10 @@ function MarketList(props: {
   if (market.error !== null) {
     return (
       <div className="ext-empty" role="alert">
-        <p>Couldn't reach the marketplace (Open VSX).</p>
+        <p>{t("extensions.marketUnreachable")}</p>
         <p className="ext-empty__hint">{market.error}</p>
         <button type="button" className="ext-button" onClick={() => void marketplace.refresh()}>
-          Retry
+          {t("common.retry")}
         </button>
       </div>
     );
@@ -309,32 +310,31 @@ function MarketList(props: {
   if (!market.requested) {
     return (
       <div className="ext-empty">
-        <p>Online marketplace results are loaded only when you request them.</p>
+        <p>{t("extensions.loadOnRequest")}</p>
         <p className="ext-empty__hint">
-          Nothing has been fetched from Open VSX. Type in the search box, or load the most installed
-          extensions.
+          {t("extensions.nothingFetched")}
         </p>
         <button type="button" className="ext-button" onClick={() => void marketplace.browse()}>
-          Load Popular
+          {t("extensions.loadPopular")}
         </button>
       </div>
     );
   }
   if (market.loading && market.items.length === 0) {
-    return <p className="ext-empty">Loading…</p>;
+    return <p className="ext-empty">{t("common.loading")}</p>;
   }
   if (market.items.length === 0) {
     const query = market.query.trim();
     return (
       <p className="ext-empty">
-        {query === "" ? "No extensions found." : `No extensions found for "${query}".`}
+        {query === "" ? t("extensions.noneFound") : t("extensions.noneFoundFor", { query })}
       </p>
     );
   }
   return (
     <ul
       className="ext-items"
-      aria-label="Marketplace extensions"
+      aria-label={t("extensions.marketList")}
       onScroll={(event) => {
         const list = event.currentTarget;
         if (list.scrollTop + list.clientHeight > list.scrollHeight - 200) {
@@ -350,7 +350,7 @@ function MarketList(props: {
           onMenu={props.onMenu}
         />
       ))}
-      {market.loadingMore ? <li className="ext-empty">Loading more…</li> : null}
+      {market.loadingMore ? <li className="ext-empty">{t("extensions.loadingMore")}</li> : null}
     </ul>
   );
 }
@@ -363,8 +363,8 @@ function MarketList(props: {
 export function ExtensionsView() {
   const { registryState, ui, market } = useExtensionsState();
   const { registry, service, marketplace } = container.extensions;
-  const filterTip = useQuietTitle("Filter Extensions...");
-  const moreTip = useQuietTitle("More Actions...");
+  const filterTip = useQuietTitle(t("extensions.filterTitle"));
+  const moreTip = useQuietTitle(t("common.moreActionsTitle"));
   const [menu, setMenu] = useState<OpenMenu>(null);
   useDismissOnOutside(menu !== null, () => {
     setMenu(null);
@@ -398,8 +398,8 @@ export function ExtensionsView() {
         <input
           type="search"
           className="ext-search"
-          placeholder="Search Extensions in Marketplace"
-          aria-label="Search Extensions in Marketplace"
+          placeholder={t("extensions.search")}
+          aria-label={t("extensions.search")}
           value={market.query}
           onChange={(event) => {
             marketplace.setQuery(event.target.value);
@@ -410,11 +410,11 @@ export function ExtensionsView() {
           className="ext-search__action"
           title={filterTip.title}
           onMouseLeave={filterTip.onMouseLeave}
-          aria-label="Filter Extensions"
+          aria-label={t("extensions.filter")}
           onMouseDown={(event) => {
             filterTip.onMouseDown();
             event.stopPropagation();
-            openMenu(sortMenu(), event.currentTarget.getBoundingClientRect(), "Filter Extensions");
+            openMenu(sortMenu(), event.currentTarget.getBoundingClientRect(), t("extensions.filter"));
           }}
         >
           <FilterIcon />
@@ -424,14 +424,14 @@ export function ExtensionsView() {
           className="ext-search__action"
           title={moreTip.title}
           onMouseLeave={moreTip.onMouseLeave}
-          aria-label="More Actions"
+          aria-label={t("common.moreActions")}
           onMouseDown={(event) => {
             moreTip.onMouseDown();
             event.stopPropagation();
             openMenu(
               moreActionsMenu(),
               event.currentTarget.getBoundingClientRect(),
-              "More Actions",
+              t("common.moreActions"),
             );
           }}
         >
@@ -440,18 +440,18 @@ export function ExtensionsView() {
       </div>
       <Notices />
       {installedOnly || query === "" ? (
-        <Section title="Installed" count={installedShown.length} grow={installedOnly}>
+        <Section title={t("extensions.installed")} count={installedShown.length} grow={installedOnly}>
           {installed.length > 0 ? <Updates /> : null}
           {registryState.snapshot === null && registryState.error === null ? (
-            <p className="ext-empty">Loading extensions…</p>
+            <p className="ext-empty">{t("extensions.loading")}</p>
           ) : installedShown.length === 0 ? (
             <p className="ext-empty">
               {installed.length === 0
-                ? "No extensions installed."
-                : "No installed extension matches."}
+                ? t("extensions.noneInstalled")
+                : t("extensions.noInstalledMatch")}
             </p>
           ) : (
-            <ul className="ext-items ext-items--installed" aria-label="Installed extensions">
+            <ul className="ext-items ext-items--installed" aria-label={t("extensions.installedList")}>
               {installedShown.map((extension) => (
                 <InstalledRow
                   key={extension.id}
@@ -466,7 +466,7 @@ export function ExtensionsView() {
       ) : null}
       {installedOnly ? null : (
         <Section
-          title={query === "" ? "Popular" : "Marketplace"}
+          title={query === "" ? t("extensions.popular") : t("extensions.marketplace")}
           count={market.loading || !market.requested ? null : market.total}
           grow
         >
@@ -474,14 +474,14 @@ export function ExtensionsView() {
         </Section>
       )}
       {registryState.snapshot ? (
-        <p className="ext-host-line" aria-label="Extension host status">
-          Extension host: {hostStateText(registryState.snapshot.host)}
+        <p className="ext-host-line" aria-label={t("extensions.hostStatus")}>
+          {t("extensions.hostLine", { state: hostStateText(registryState.snapshot.host) })}
         </p>
       ) : null}
       {ui.logs !== null ? (
-        <section className="ext-logs" aria-label="Extension host log">
+        <section className="ext-logs" aria-label={t("extensions.hostLog")}>
           <header>
-            <h3>Extension host log</h3>
+            <h3>{t("extensions.hostLog")}</h3>
             <button
               type="button"
               className="ext-link"
@@ -489,7 +489,7 @@ export function ExtensionsView() {
                 service.openLogsFolder();
               }}
             >
-              Open logs folder
+              {t("extensions.openLogsFolder")}
             </button>
             <button
               type="button"
@@ -498,7 +498,7 @@ export function ExtensionsView() {
                 service.hideLogs();
               }}
             >
-              Close
+              {t("common.close")}
             </button>
           </header>
           <pre>{ui.logs}</pre>

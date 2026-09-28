@@ -75,7 +75,8 @@ except through well-defined public APIs; no circular crate dependencies (enforce
 
 - `openmind-core` — shared error types, `AppPaths` (portable, exe-relative path resolution),
   logging init. No I/O beyond what's needed for path/logging setup. Everything else depends on
-  this; this depends on nothing else in the workspace.
+  this; this depends on nothing else in the workspace. Since Milestone 20.1 `locale` (pure): `SUPPORTED_LANGUAGES`
+  (`en`, `ru`, `bn`), `language_for_tag` (`ru-RU` -> `ru`) and `pick_language` (first bundled system language, else `en`).
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern. Since Milestone 20.0: `migrations::MIGRATOR` (the embedded
   migrations; `build.rs` + `migration_inputs.rs` print `cargo:rerun-if-changed` for the folder and every `.sql`, so a
@@ -892,6 +893,20 @@ internals.
   are tokens** in `styles/theme.css` (dark, light and a high-contrast palette, plus semantic tokens: success/warning/info/error,
   overlays, debugger, terminal, disabled/invalid); `styles/themeTokens.test.ts` fails on a hard-coded color in any other stylesheet
   and on a token nobody defines. The old `theme` table is only read once, as the default of the new setting.
+- **UI language (Milestone 20.1).** `src/i18n/`: `locales/{en,ru,bn}.json` (flat stable keys, named `{placeholders}`,
+  plural objects chosen with `Intl.PluralRules`), `i18n.ts` (the `I18n` class: fallback to English, then the key itself;
+  `validateCatalog` drops malformed entries; `resolveLanguage` = setting > PC language > English), `index.ts` (the shared
+  `i18n`, `t`, `useT`, `initLanguage` — `main.tsx` asks `ui_language` before the first render, 1.5 s max —,
+  `applyLanguageSetting`), `menuLabels.ts` (menus stay English data and are translated when a menu opens:
+  `menu.<id>`, `command.<id>[.alt|.toggled]`, `submenu.<name>`, only when the row's label is that key's English, so data
+  rows keep their text), `settingsText.ts` (setting titles/descriptions/options/categories translated when the backend's
+  English matches the catalog; extensions' settings untouched; Settings search matches both languages) and
+  `backendText.ts` (a few exact backend sentences: task risks, notebook save conflict, debugger readiness). Components call
+  `t(...)`; the root screens (`App`, `PhpServerWindow`, `StartupErrorPage`) subscribe with `useT()`, so a language change
+  re-renders everything at once (nothing is `memo`ized). Values that code compares (control-panel statuses, task/notebook
+  confirmation buttons, AI `what`, panel tab ids) stay English and are translated where they are shown. Module-level
+  label tables hold keys (`t(...)` at render). The Settings page shows System Default as "System Default — currently
+  <language>". See `docs/localization.md`.
 - `safely()` (`safely.ts`) — shared helper: runs an operation, and on failure emits `appError`
   (rendered as a toast by `App.tsx`) and returns a fallback instead of throwing. Used by
   `WorkspaceService` and `ExplorerService` everywhere a failure is plausible in normal use (a file
@@ -2260,7 +2275,39 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   error before the database (the app folder can't be resolved or created) still ends the process with a panic message; the page is English-only;
   a database from a *newer* build is refused rather than opened read-only; `C:\omm19`'s database, which mixes CRLF and LF checksums, is repaired the
   first time a new build opens it. Left on disk: `C:\omm200`.
-- [ ] Milestone 20 — localization / i18n (to be scoped).
+- [x] **Milestone 20.1** — System language localization (`feat: add system language localization`). The UI follows the PC's
+  language; English is the fallback; Settings > Workbench > **Display Language** (`workbench.language`: `system` default, `en`, `ru`,
+  `bn`; user scope; not part of profiles) overrides it and applies live. No network, no run-time translation, catalogs bundled in the
+  app (en 85 KB, ru 132 KB, bn 147 KB of JSON in the main chunk). Backend: `openmind_core::locale`, `openmind_settings::language`
+  (`language_setting` reads `settings.json` directly; `effective_language`), `src-tauri/src/locale.rs` (`ui_language`:
+  `GetUserPreferredUILanguages` via winapi `winnls`; `OPENMIND_UI_LOCALE=ru-RU,...` simulates the PC language for tests; works in the
+  start-up error window too). Frontend: see "UI language (Milestone 20.1)". **1 412 keys**, Russian and Bangla complete (a test fails on
+  a missing/extra key, a changed placeholder or a plural without `other`); another test scans every `t("...")` in the source for a key
+  English lacks; `crates/settings/tests/ui_catalog.rs` keeps setting texts equal to the schema and `startup_error_tests.rs` keeps the
+  error page's per-kind English equal to `explain()`. **Localized**: title bar, all eight menus and their "not built" reasons,
+  activity/side/status bars, panel tabs, Explorer, tabs, Welcome/Start page, toasts, the shared confirm/quick-pick/input dialogs,
+  Settings and Keyboard Shortcuts pages (all 53 settings), Run and Debug (picker, breakpoints, panes, toolbar, Debug Console, start
+  reasons), tasks (picker, confirmation, risks, notices), Problems/Output/Ports, notebooks (toolbar, trust banner, kernel messages,
+  Run All confirmation, outputs, save conflict), Extensions (view, VSIX trust dialog, permissions, details page, menus, host state,
+  terminal and task confirmations, secrets), Runtime Manager, Language Tools (bundle, badges, states), the PHP control panel, its
+  Configuration header/summary/credentials and MariaDB/phpMyAdmin cards, the AI panel/manager/confirmation, Profiles, search, file
+  preview toolbar, the database error page (by stable `failure.kind`; copied details stay English). **Still English (documented in
+  docs/localization.md)**: Monaco's own widgets and F1 palette, native dialogs, installers, logs/Output lines, extension and
+  third-party text, backend messages beyond the known ones, and unconverted screens (Git/Source Control, the PHP window's Web Root /
+  Ports / PHP versions / Composer / Laravel cards, About, formatter and language-status dialogs, toolchain details, several service
+  notices). The translations were written for this milestone without a service and are **not reviewed by native speakers**.
+  **Verified by hand** (debug build, `C:\omm201` with `OPENMIND_UI_LOCALE=ru-RU`): the whole workbench opened in Russian (menus,
+  activity bar, notebook toolbar, Settings page with "Системный по умолчанию — сейчас Русский"); choosing Bangla in Settings switched
+  every screen at once and wrote `"workbench.language": "bn"`; after a restart (still ru-RU) Bangla stayed; with the setting removed,
+  `hi-IN` gave English and no simulation gave Windows' real `en-US`; technical names stayed (file names, `workbench.language`,
+  `edit.copy`, `openmind-samples.sample-api-v2`, task commands); in Russian: TypeScript diagnostics from the bundled server with the
+  Problems chrome translated, the task confirmation with the translated risk, the extension terminal confirmation, SecretStorage, the
+  debug picker and panes, notebook, image preview, search ("6 результатов в 2 файлах · из индекса"), Runtime Manager, the PHP control
+  panel and Configuration page, no AI item; the database error page (`C:\omm200`, tampered checksum) in Russian with Copy giving the
+  English details and Exit leaving nothing running; no outside connection from the app; every close left no process; User/Machine
+  PATH identical. Left on disk: `C:\omm200`, `C:\omm201`.
+- [ ] Milestone 20.2 / 21 — to be scoped (more screens translated, native-speaker review, profile-aware keybindings, signing,
+  auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

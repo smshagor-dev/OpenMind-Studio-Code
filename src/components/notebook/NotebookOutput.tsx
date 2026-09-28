@@ -5,6 +5,7 @@ import { parseMarkdown } from "../../services/markdown";
 import { collapsed, outputView, type OutputView } from "../../services/notebook/notebookModel";
 import { HtmlPreview } from "../filePreview/HtmlPreview";
 import { BlockList } from "../MarkdownPreview";
+import { t } from "../../i18n";
 
 /** A long text shown collapsed until the user expands it. */
 function LongText({ text, className }: { text: string; className: string }) {
@@ -21,7 +22,7 @@ function LongText({ text, className }: { text: string; className: string }) {
           setOpen(true);
         }}
       >
-        Show all ({cut.hiddenLines} more line{cut.hiddenLines === 1 ? "" : "s"})
+        {t("notebook.showAll", { count: cut.hiddenLines })}
       </button>
     </>
   );
@@ -34,14 +35,13 @@ function View({ view }: { view: OutputView }) {
         <LongText text={view.text} className={`notebook__text notebook__text--${view.stream}`} />
       );
     case "image":
-      return <img className="notebook__image" src={view.src} alt="Cell output" />;
+      return <img className="notebook__image" src={view.src} alt={t("notebook.output")} />;
     case "html":
       return <HtmlPreview text={view.html} />;
     case "htmlBlocked":
       return (
         <p className="notebook__blocked" role="note">
-          HTML output is hidden because this notebook is not trusted. Trust it to show HTML
-          (sanitized, with scripts and remote content blocked).
+          {t("notebook.htmlHidden")}
         </p>
       );
     case "markdown":
@@ -67,8 +67,9 @@ function View({ view }: { view: OutputView }) {
     case "unsupported":
       return (
         <p className="notebook__blocked" role="note">
-          This output can&apos;t be shown
-          {view.mimes.length > 0 ? ` (${view.mimes.join(", ")})` : ""}.
+          {view.mimes.length > 0
+            ? t("notebook.unsupportedOutputTypes", { types: view.mimes.join(", ") })
+            : t("notebook.unsupportedOutput")}
         </p>
       );
   }
@@ -84,7 +85,7 @@ export function NotebookOutputs({
 }) {
   if (outputs.length === 0) return null;
   return (
-    <div className="notebook__outputs" aria-label="Cell output">
+    <div className="notebook__outputs" aria-label={t("notebook.output")}>
       {outputs.map((output, index) => (
         <View key={index} view={outputView(output, trusted)} />
       ))}

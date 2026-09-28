@@ -13,6 +13,7 @@ import {
 } from "./PanelViews";
 import { TerminalView } from "./TerminalView";
 import { useDismissOnOutside } from "./useDismissOnOutside";
+import { t } from "../i18n";
 
 interface BottomPanelProps {
   themeKind: string;
@@ -43,13 +44,13 @@ export function BottomPanel({ themeKind }: BottomPanelProps) {
     <section
       className={panel.visible ? "terminal-panel" : "terminal-panel terminal-panel--hidden"}
       style={{ height: panel.height }}
-      aria-label="Panel"
+      aria-label={t("panel.panel")}
     >
       <div
         className="terminal-panel__sash"
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Resize panel"
+        aria-label={t("panel.resize")}
         onPointerDown={(event) => {
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -68,7 +69,7 @@ export function BottomPanel({ themeKind }: BottomPanelProps) {
         }}
       />
       <div className="terminal-panel__header">
-        <div className="panel-tabs" role="tablist" aria-label="Panel tabs">
+        <div className="panel-tabs" role="tablist" aria-label={t("panel.tabs")}>
           {PANEL_TABS.map((tab) => (
             <PanelTabButton key={tab} tab={tab} active={tab === panel.activeTab} />
           ))}
@@ -78,8 +79,8 @@ export function BottomPanel({ themeKind }: BottomPanelProps) {
           <button
             type="button"
             className="terminal-panel__action"
-            title="Close Panel"
-            aria-label="Hide Panel"
+            title={t("panel.close")}
+            aria-label={t("panel.hide")}
             onClick={() => {
               void container.panel.hide();
             }}
@@ -117,7 +118,7 @@ function PanelTabButton({ tab, active }: { tab: PanelTab; active: boolean }) {
         void container.panel.setActiveTab(tab);
       }}
     >
-      {PANEL_TAB_LABELS[tab]}
+      {t(PANEL_TAB_LABELS[tab])}
       {tab === "problems" && problemCount > 0 ? (
         <span className="panel-tab__badge">{problemCount}</span>
       ) : null}
@@ -148,8 +149,8 @@ function TerminalActions() {
       <button
         type="button"
         className="terminal-panel__action"
-        title="New Terminal"
-        aria-label="New Terminal"
+        title={t("terminal.new")}
+        aria-label={t("terminal.new")}
         onClick={() => {
           container.run("terminal.new");
         }}
@@ -160,8 +161,8 @@ function TerminalActions() {
         <button
           type="button"
           className="terminal-panel__action"
-          title="Launch Profile..."
-          aria-label="Select shell for new terminal"
+          title={t("terminal.launchProfile")}
+          aria-label={t("terminal.selectShell")}
           onMouseDown={(event) => {
             event.stopPropagation();
             setShellMenu(shellMenu ? null : event.currentTarget.getBoundingClientRect());
@@ -173,8 +174,8 @@ function TerminalActions() {
       <button
         type="button"
         className="terminal-panel__action"
-        title="Clear Terminal"
-        aria-label="Clear Terminal"
+        title={t("terminal.clear")}
+        aria-label={t("terminal.clear")}
         disabled={state.activeId === null}
         onClick={() => {
           container.run("terminal.clear");
@@ -194,7 +195,7 @@ function TerminalActions() {
           }))}
           x={shellMenu.left}
           y={shellMenu.bottom + 2}
-          ariaLabel="Shells"
+          ariaLabel={t("terminal.shells")}
           onClose={closeShellMenu}
           autoFocus
         />

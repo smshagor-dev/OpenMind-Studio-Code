@@ -1,4 +1,6 @@
 import type { DebugReadiness, DebugRun, DebugStatus, DebugTarget, LaunchConfig } from "./ipc";
+import { i18n, t } from "../i18n";
+import { translateBackend } from "../i18n/backendText";
 
 /**
  * Pure debugging model: which files can be debugged, the default launch configuration, what
@@ -79,21 +81,21 @@ export function startAvailability(input: {
 }): StartAvailability {
   const { path, status, run } = input;
   if (run !== null && run.state !== "terminated") {
-    return { enabled: false, reason: "A debug session is already running." };
+    return { enabled: false, reason: t("debug.reason.running") };
   }
-  if (path === null) return { enabled: false, reason: "Open a file or folder to start debugging." };
+  if (path === null) return { enabled: false, reason: t("debug.reason.openFile") };
   const target = debugTargetOf(path);
   if (target === null) {
-    return { enabled: false, reason: "No debugger is available for this file type." };
+    return { enabled: false, reason: t("debug.reason.noDebugger") };
   }
   if (status === null) {
-    return { enabled: false, reason: "Checking for debuggers…", target };
+    return { enabled: false, reason: t("debug.reason.checking"), target };
   }
   const readiness = readinessFor(status, target);
   if (!readiness.ready) {
     return {
       enabled: false,
-      reason: readiness.problem ?? "Debugger is not installed yet.",
+      reason: readiness.problem ? translateBackend(readiness.problem) : t("debug.reason.notInstalled"),
       target,
       ...(readiness.installKind !== null ? { installKind: readiness.installKind } : {}),
     };
@@ -110,14 +112,14 @@ export interface ControlState {
   reason?: string;
 }
 
-const NOT_PAUSED = "The program isn't paused.";
+const NOT_PAUSED = "debug.reason.notPaused";
 
 export function controlAvailability(
   control: DebugControl | "stop" | "restart",
   run: DebugRun | null,
 ): ControlState {
   if (run === null || run.state === "terminated") {
-    return { enabled: false, reason: "There is no debug session." };
+    return { enabled: false, reason: t("debug.reason.noSession") };
   }
   switch (control) {
     case "stop":
@@ -126,24 +128,34 @@ export function controlAvailability(
     case "pause":
       return run.state === "running"
         ? { enabled: true }
-        : { enabled: false, reason: "The program isn't running." };
+        : { enabled: false, reason: t("debug.reason.notRunning") };
     default:
-      return run.state === "stopped" ? { enabled: true } : { enabled: false, reason: NOT_PAUSED };
+      return run.state === "stopped" ? { enabled: true } : { enabled: false, reason: t(NOT_PAUSED) };
   }
 }
 
 /** A short status line: "Paused on breakpoint", "Running", ... */
+/** Why the program is paused: the adapter's own words in English; in another UI language our text for the usual reasons. */
+function pausedText(run: DebugRun): string {
+  const reason = run.stopped?.reason ?? "pause";
+  const known = ["breakpoint", "step", "pause", "entry", "exception", "goto", "function breakpoint"];
+  if (i18n.language !== "en" && known.includes(reason)) {
+    return t("debug.run.pausedOn", { reason: t(`debug.reason.${reason.replace(" ", "")}`) });
+  }
+  return run.stopped?.description ?? t("debug.run.pausedOn", { reason });
+}
+
 export function runSummary(run: DebugRun | null): string {
   if (run === null) return "";
   switch (run.state) {
     case "starting":
-      return "Starting…";
+      return t("debug.run.starting");
     case "running":
-      return "Running";
+      return t("debug.run.running");
     case "stopped":
-      return run.stopped?.description ?? `Paused on ${run.stopped?.reason ?? "pause"}`;
+      return pausedText(run);
     case "terminated":
-      return run.error ? "Ended with an error" : "Ended";
+      return run.error ? t("debug.run.endedWithError") : t("debug.run.ended");
   }
 }
 

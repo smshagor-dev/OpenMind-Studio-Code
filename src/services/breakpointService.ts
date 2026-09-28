@@ -1,6 +1,7 @@
 import type { BreakpointRow, IpcClient } from "./ipc";
 import { pathKey } from "./textSync";
 import type { SourceBreakpoint } from "./workflowIpc";
+import { t } from "../i18n";
 
 /** A breakpoint's extras: stop only when a condition holds or on a hit count, or log instead of stopping. */
 export interface BreakpointOptions {
@@ -304,9 +305,9 @@ export class BreakpointService {
 /** What a breakpoint does besides stopping, in a few words ("if x > 1 · hit 3 · logs "x={x}""). */
 export function breakpointSummary(bp: Breakpoint): string {
   return [
-    bp.condition !== null ? `if ${bp.condition}` : null,
-    bp.hitCondition !== null ? `hit ${bp.hitCondition}` : null,
-    bp.logMessage !== null ? `logs "${bp.logMessage}"` : null,
+    bp.condition !== null ? t("breakpoints.summaryIf", { condition: bp.condition }) : null,
+    bp.hitCondition !== null ? t("breakpoints.summaryHit", { hit: bp.hitCondition }) : null,
+    bp.logMessage !== null ? t("breakpoints.summaryLogs", { message: bp.logMessage }) : null,
   ]
     .filter((part): part is string => part !== null)
     .join(" · ");

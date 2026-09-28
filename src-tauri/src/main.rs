@@ -2,6 +2,7 @@
 
 mod app_state;
 mod commands;
+mod locale;
 mod secret;
 mod startup;
 mod startup_error;
@@ -220,6 +221,7 @@ fn main() {
             commands::language::language_file_status,
             commands::language::language_terminal_line,
             startup::startup_report,
+            locale::ui_language,
             startup_error::startup_error_info,
             startup_error::startup_error_open_data_folder,
             startup_error::startup_error_back_up,

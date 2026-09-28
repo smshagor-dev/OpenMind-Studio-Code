@@ -10,12 +10,13 @@ export const PANEL_TABS: readonly PanelTab[] = [
   "ports",
 ];
 
+/** The panel tabs' names as translation keys (the panel shows them in the UI language). */
 export const PANEL_TAB_LABELS: Record<PanelTab, string> = {
-  problems: "Problems",
-  output: "Output",
-  debugConsole: "Debug Console",
-  terminal: "Terminal",
-  ports: "Ports",
+  problems: "panel.tab.problems",
+  output: "panel.tab.output",
+  debugConsole: "panel.tab.debugConsole",
+  terminal: "panel.tab.terminal",
+  ports: "panel.tab.ports",
 };
 
 export interface PanelState {

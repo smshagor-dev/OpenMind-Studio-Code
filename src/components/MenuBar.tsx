@@ -4,6 +4,8 @@ import type { TopLevelMenu } from "../services/menus";
 import { resolveMenuEntries } from "./menuItems";
 import { MenuPopup } from "./MenuPopup";
 import { useDismissOnOutside } from "./useDismissOnOutside";
+import { t } from "../i18n";
+import { topMenuLabel } from "../i18n/menuLabels";
 
 interface MenuBarProps {
   menus: TopLevelMenu[];
@@ -45,7 +47,7 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
   const openMenuDef = open ? menus[open.index] : undefined;
 
   return (
-    <div className="menubar" role="menubar" aria-label="Application menu">
+    <div className="menubar" role="menubar" aria-label={t("menu.application")}>
       {menus.map((menu, index) => (
         <button
           key={menu.id}
@@ -66,7 +68,7 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
             if (open && open.index !== index) openMenu(index, false);
           }}
         >
-          {menu.label}
+          {topMenuLabel(menu.id, menu.label)}
         </button>
       ))}
       {open && openMenuDef ? (
@@ -76,7 +78,7 @@ export function MenuBar({ menus, onMenuOpen }: MenuBarProps) {
           x={open.anchor.left}
           y={open.anchor.bottom}
           autoFocus={open.keyboard}
-          ariaLabel={openMenuDef.label}
+          ariaLabel={topMenuLabel(openMenuDef.id, openMenuDef.label)}
           onClose={close}
           onNavigate={(direction) => {
             openMenu(open.index + (direction === "right" ? 1 : -1), true);

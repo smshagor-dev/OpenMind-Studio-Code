@@ -4,6 +4,7 @@ import type {
   InstalledExtension,
   PermissionName,
 } from "./extensionsIpc";
+import { t } from "../i18n";
 
 /** Shown before any `.vsix` is installed: extension code runs with the user's permissions. */
 export const TRUST_WARNING =
@@ -50,14 +51,15 @@ export function runtimeStatus(
   node: ExtensionNodeInfo,
 ): { text: string; ready: boolean } {
   if (extension.runtimeRequirement === null) {
-    return { text: "No code to run: this extension only contributes data.", ready: true };
+    return { text: t("extensions.runtime.noCode"), ready: true };
   }
-  if (host.state === "running") return { text: `Runs in ${host.node ?? "Node.js"}.`, ready: true };
-  if (node.portable) return { text: "Runs in OpenMind's portable Node.js.", ready: true };
+  if (host.state === "running")
+    return { text: t("extensions.runtime.runsIn", { node: host.node ?? "Node.js" }), ready: true };
+  if (node.portable) return { text: t("extensions.runtime.portable"), ready: true };
   if (node.system !== null && node.allowSystem) {
-    return { text: `Runs in the System Node.js at ${node.system}.`, ready: true };
+    return { text: t("extensions.runtime.system", { path: node.system }), ready: true };
   }
-  return { text: NODE_REQUIRED, ready: false };
+  return { text: t("extensions.nodeRequired"), ready: false };
 }
 
 /** Why an extension's commands can't run right now (`undefined`: they can). */
@@ -66,32 +68,32 @@ export function commandBlockedReason(
   host: ExtensionHostStatus,
   node: ExtensionNodeInfo,
 ): string | undefined {
-  if (!extension.enabled) return `${displayName(extension)} is disabled.`;
+  if (!extension.enabled) return t("extensions.isDisabled", { name: displayName(extension) });
   if (extension.runtimeRequirement === null) return undefined;
   if (host.state === "running") return undefined;
   const runtime = runtimeStatus(extension, host, node);
-  if (!runtime.ready) return NODE_REQUIRED;
-  if (host.state === "crashed") return host.error ?? "The extension host stopped.";
+  if (!runtime.ready) return t("extensions.nodeRequired");
+  if (host.state === "crashed") return host.error ?? t("extensions.hostStopped");
   return undefined;
 }
 
 /** A human line for a manifest activation event (`onCommand:x` → "When the command x runs"). */
 export function describeActivation(event: string): string {
-  if (event === "*") return "At every start-up (may slow the app down)";
-  if (event === "onStartupFinished") return "After the app has started";
+  if (event === "*") return t("activation.everyStartup");
+  if (event === "onStartupFinished") return t("activation.afterStartup");
   const [kind, ...rest] = event.split(":");
   const value = rest.join(":");
   switch (kind) {
     case "onCommand":
-      return `When the command "${value}" runs`;
+      return t("activation.command", { value });
     case "onLanguage":
-      return `When a ${value} file is opened`;
+      return t("activation.language", { value });
     case "workspaceContains":
-      return `When the folder contains ${value}`;
+      return t("activation.contains", { value });
     case "onView":
-      return `When the view "${value}" is shown`;
+      return t("activation.view", { value });
     default:
-      return `${event} (not supported yet, never triggers)`;
+      return t("activation.unsupported", { event });
   }
 }
 
@@ -99,23 +101,25 @@ export function describeActivation(event: string): string {
 export function pointLines(extension: InstalledExtension): {
   point: string;
   count: number;
+  support: string;
   status: string;
   note: string | null;
 }[] {
   return extension.points.map((point) => ({
     point: point.point,
     count: point.count,
+    support: point.support,
     status:
       point.support === "supported"
-        ? "Supported"
+        ? t("extensions.point.supported")
         : point.support === "metadata"
-          ? "Metadata only"
-          : "Not supported",
+          ? t("extensions.point.metadata")
+          : t("extensions.point.unsupported"),
     note:
       point.support === "unsupported"
-        ? (point.note ?? NOT_SUPPORTED_POINT)
+        ? (point.note ?? t("extensions.pointUnsupported"))
         : point.point === "languages"
-          ? "Disabling or uninstalling takes effect for languages after OpenMind Studio restarts."
+          ? t("extensions.languagesRestart")
           : point.note,
   }));
 }
@@ -156,7 +160,8 @@ export function permissionLines(extension: InstalledExtension): PermissionLine[]
   return names
     .map((name): PermissionLine => ({
       name,
-      ...PERMISSION_INFO[name],
+      label: t(`permission.${name}.label`),
+      description: t(`permission.${name}.description`),
       origin: requested.includes(name) ? (inferred.includes(name) ? "both" : "requested") : "inferred",
       highRisk: highRisk.includes(name),
       accepted: accepted.includes(name),
@@ -178,7 +183,7 @@ export function canGrantOutsideWorkspace(extension: InstalledExtension): boolean
 /** Set when an extension's last error was the guard refusing it files outside the open folder. */
 export function outsideWorkspaceBlock(lastError: string | null): string | null {
   return lastError !== null && lastError.includes(`Permission '${OUTSIDE_WORKSPACE}'`)
-    ? "Blocked: this extension tried to use files outside your open workspace, which it hasn't been granted."
+    ? t("extensions.outsideBlocked")
     : null;
 }
 
@@ -189,16 +194,18 @@ export const PERMISSION_LIMITS_NOTE =
 export function hostStateText(host: ExtensionHostStatus): string {
   switch (host.state) {
     case "running":
-      return `Running${host.node ? ` (${host.node})` : ""}`;
+      return host.node ? t("extensions.host.runningOn", { node: host.node }) : t("extensions.host.running");
     case "starting":
-      return "Starting…";
+      return t("extensions.host.starting");
     case "restarting":
-      return "Restarting after a crash…";
+      return t("extensions.host.restarting");
     case "crashed":
-      return `Stopped unexpectedly${host.error ? `: ${host.error}` : ""}`;
+      return host.error
+        ? t("extensions.host.crashedWith", { error: host.error })
+        : t("extensions.host.crashed");
     case "unavailable":
-      return host.error ?? NODE_REQUIRED;
+      return host.error ?? t("extensions.nodeRequired");
     default:
-      return "Not running (it starts when an extension needs it)";
+      return t("extensions.host.notRunning");
   }
 }

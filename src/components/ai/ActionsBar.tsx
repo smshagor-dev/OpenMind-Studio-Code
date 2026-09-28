@@ -1,9 +1,10 @@
 import { useState, useSyncExternalStore } from "react";
 
 import { container } from "../../services/container";
-import { AI_ACTION_COMMANDS, AI_ACTION_LABELS } from "../../services/ai/aiActionsService";
+import { AI_ACTION_COMMANDS } from "../../services/ai/aiActionsService";
 import type { AiActionKind } from "../../services/ai/aiContext";
 import { useChat, useProviders } from "./aiHooks";
+import { t } from "../../i18n";
 
 const ACTION_ORDER: AiActionKind[] = ["explain", "fix", "docs", "terminal", "preview"];
 
@@ -29,7 +30,7 @@ export function ActionsBar() {
     <div
       className="ai-actions"
       role="group"
-      aria-label="AI actions"
+      aria-label={t("ai.actions")}
       onMouseEnter={refresh}
       onFocus={refresh}
     >
@@ -41,12 +42,12 @@ export function ActionsBar() {
             type="button"
             className="ai-action"
             disabled={reason !== null}
-            title={reason ?? AI_ACTION_LABELS[kind]}
+            title={reason ?? t(`ai.action.${kind}`)}
             onClick={() => {
               container.run(AI_ACTION_COMMANDS[kind]);
             }}
           >
-            {AI_ACTION_LABELS[kind]}
+            {t(`ai.action.${kind}`)}
           </button>
         );
       })}

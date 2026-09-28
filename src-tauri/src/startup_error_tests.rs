@@ -158,3 +158,120 @@ fn back_up_never_overwrites_an_existing_backup() {
     assert!(err.contains("nothing was moved"));
     assert_eq!(std::fs::read_to_string(&db).expect("read"), "main");
 }
+
+/// The page's text per kind (src/startupError/failureText.ts) and English in the UI catalog.
+fn catalog() -> serde_json::Map<String, serde_json::Value> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/i18n/locales/en.json");
+    let text = std::fs::read_to_string(path).expect("the UI's English catalog");
+    match serde_json::from_str(&text).expect("valid JSON") {
+        serde_json::Value::Object(map) => map,
+        _ => panic!("en.json must be an object"),
+    }
+}
+
+#[test]
+fn the_ui_catalog_says_exactly_what_the_backend_says_for_every_kind() {
+    let en = catalog();
+    let text = |key: &str| {
+        en.get(key)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<missing>")
+            .to_string()
+    };
+    // (kind, the text key the page uses, the step keys it shows)
+    let cases: [(FailureKind, &str, &[&str]); 12] = [
+        (
+            FailureKind::ChecksumMismatch { version: 7 },
+            "checksumMismatch",
+            &["exitAndUse", "backUp"],
+        ),
+        (
+            FailureKind::UnknownMigration { version: 7 },
+            "unknownMigration",
+            &["useNewer", "backUp"],
+        ),
+        (
+            FailureKind::PartialMigration { version: 7 },
+            "partialMigration",
+            &["backUp", "reportKept"],
+        ),
+        (
+            FailureKind::MigrationFailed { version: Some(7) },
+            "migrationFailed",
+            &["exitAndUse", "backUp"],
+        ),
+        (
+            FailureKind::MigrationFailed { version: None },
+            "migrationFailed",
+            &["exitAndUse", "backUp"],
+        ),
+        (FailureKind::Locked, "locked", &["closeOther"]),
+        (
+            FailureKind::Corrupt,
+            "corrupt",
+            &["backUp", "restoreBackup"],
+        ),
+        (FailureKind::ReadOnly, "readOnly", &["checkWritable"]),
+        (FailureKind::CannotOpen, "readOnly", &["checkWritable"]),
+        (FailureKind::CreateFolder, "readOnly", &["checkWritable"]),
+        (FailureKind::DiskFull, "diskFull", &["freeSpace"]),
+        (FailureKind::Other, "other", &["report", "backUp"]),
+    ];
+    for (kind, key, steps) in cases {
+        let (category, title, explanation, next_steps) = super::explain(kind);
+        let base = format!("databaseError.kind.{key}");
+        assert_eq!(text(&format!("{base}.category")), category, "{kind:?}");
+        assert_eq!(text(&format!("{base}.title")), title, "{kind:?}");
+        let explanation_key = if kind == (FailureKind::MigrationFailed { version: None }) {
+            format!("{base}.explanationNoVersion")
+        } else {
+            format!("{base}.explanation")
+        };
+        assert_eq!(
+            text(&explanation_key).replace("{version}", "7"),
+            explanation,
+            "{kind:?}"
+        );
+        let english_steps: Vec<String> = steps
+            .iter()
+            .map(|s| text(&format!("databaseError.step.{s}")))
+            .collect();
+        assert_eq!(english_steps, next_steps, "{kind:?}");
+    }
+}
+
+#[test]
+fn the_payload_carries_a_stable_code_and_only_fixed_fields() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let failure = describe(
+        &mismatch(),
+        &dir.path().join("openmind-studio.db"),
+        dir.path(),
+    );
+    let json = serde_json::to_value(&failure).expect("serializes");
+    assert_eq!(
+        json["failure"],
+        serde_json::json!({ "kind": "checksumMismatch", "version": 3 })
+    );
+    let fields: Vec<&str> = json
+        .as_object()
+        .expect("object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        fields,
+        [
+            "failure",
+            "category",
+            "title",
+            "explanation",
+            "nextSteps",
+            "dbPath",
+            "dataDir",
+            "errorChain",
+            "details",
+            "canBackUp"
+        ]
+    );
+}

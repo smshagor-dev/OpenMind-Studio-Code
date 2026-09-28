@@ -3,6 +3,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import { CloseIcon } from "./icons";
 import { shortcutFor } from "./shortcutLabel";
+import { t } from "../i18n";
 
 /**
  * VS Code's Secondary Side Bar: a card on the far side of the editor showing
@@ -43,13 +44,13 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
       ref={asideRef}
       className={onLeft ? "secondary-sidebar secondary-sidebar--left" : "secondary-sidebar"}
       style={state.half ? { flex: "1 1 0" } : { flex: `0 0 ${String(state.width)}px` }}
-      aria-label="Secondary Side Bar"
+      aria-label={t("secondary.bar")}
     >
       <div
         className="secondary-sidebar__sash"
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize Secondary Side Bar"
+        aria-label={t("secondary.resize")}
         onPointerDown={(event) => {
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
@@ -72,10 +73,10 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
         }}
       />
       <header className="secondary-sidebar__title">
-        <h2 className="secondary-sidebar__label">Output</h2>
+        <h2 className="secondary-sidebar__label">{t("secondary.output")}</h2>
         <select
           className="panel-select"
-          aria-label="Secondary Side Bar output channel"
+          aria-label={t("secondary.channel")}
           value={state.channel}
           onChange={(event) => void container.secondarySideBar.setChannel(event.target.value)}
         >
@@ -88,8 +89,8 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
         <button
           type="button"
           className="secondary-sidebar__action"
-          title="Clear Output"
-          aria-label="Clear Secondary Side Bar Output"
+          title={t("secondary.clear")}
+          aria-label={t("secondary.clearLabel")}
           disabled={lines.length === 0}
           onClick={() => {
             container.output.clear(state.channel);
@@ -100,8 +101,8 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
         <button
           type="button"
           className="secondary-sidebar__action"
-          title="Hide Secondary Side Bar (Ctrl+Alt+B)"
-          aria-label="Hide Secondary Side Bar"
+          title={t("secondary.hideTitle")}
+          aria-label={t("secondary.hide")}
           onClick={() => void container.secondarySideBar.hide()}
         >
           <CloseIcon />

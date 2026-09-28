@@ -5,6 +5,7 @@ import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { describeProgress, injectionStatus } from "../services/runtimeService";
 import "../styles/toolchains.css";
 import { ToolsPanel } from "./toolchains/ToolsPanel";
+import { t } from "../i18n";
 
 type Tab = "runtimes" | "tools";
 
@@ -40,16 +41,15 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
         }}
       >
         <div className="rm-head">
-          <h2 id="runtimes-title">Runtime Manager</h2>
+          <h2 id="runtimes-title">{t("activity.runtimeManager")}</h2>
           <p className="runtimes__intro">
-            Everything here lives inside OpenMind Studio&apos;s own folder. It is added to the PATH
-            of terminals and tools OpenMind starts — never to your system PATH.
+            {t("runtimes.intro")}
           </p>
-          <div className="rm-tabs" role="tablist" aria-label="Runtime Manager sections">
+          <div className="rm-tabs" role="tablist" aria-label={t("runtimes.sections")}>
             {(
               [
-                ["runtimes", "Runtimes"],
-                ["tools", "Language Tools"],
+                ["runtimes", "runtimes.tab.runtimes"],
+                ["tools", "runtimes.tab.tools"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -62,7 +62,7 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
                   setTab(id);
                 }}
               >
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
@@ -70,7 +70,7 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
         <div className="rm-body" role="tabpanel">
           {tab === "runtimes" ? (
             <>
-              {!state.loaded ? <p className="runtimes__loading">Loading…</p> : null}
+              {!state.loaded ? <p className="runtimes__loading">{t("common.loading")}</p> : null}
               <div className="rm-runtimes">
                 {state.runtimes.map((runtime) => (
                   <RuntimeCard key={runtime.id} runtime={runtime} onDetails={setDetailsFor} />
@@ -83,7 +83,7 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div className="modal__actions">
           <button type="button" onClick={onClose} autoFocus>
-            Close
+            {t("common.close")}
           </button>
         </div>
         {detailsFor ? (
@@ -128,23 +128,25 @@ function RuntimeDetails({ runtime, onClose }: { runtime: RuntimeStatus; onClose:
           <p>{runtime.description}</p>
           {runtime.notes ? (
             <>
-              <h4>Notes</h4>
+              <h4>{t("runtimes.notes")}</h4>
               <p>{runtime.notes}</p>
             </>
           ) : null}
-          <h4>Versions</h4>
+          <h4>{t("runtimes.versions")}</h4>
           <p>
             {runtime.installed.length === 0
-              ? "None installed."
+              ? t("runtimes.noneInstalled")
               : runtime.installed
-                  .map((entry) => `${entry.version}${entry.active ? " (active)" : ""}`)
+                  .map((entry) =>
+                    entry.active ? t("runtimes.versionActive", { version: entry.version }) : entry.version,
+                  )
                   .join(", ")}
-            {runtime.globalVersion ? ` · System: ${runtime.globalVersion}` : ""}
+            {runtime.globalVersion ? ` · ${t("runtimes.system", { version: runtime.globalVersion })}` : ""}
           </p>
         </div>
         <div className="modal__actions">
           <button type="button" autoFocus onClick={onClose}>
-            Close
+            {t("common.close")}
           </button>
         </div>
       </div>
@@ -181,25 +183,27 @@ function RuntimeCard({
       <header className="runtime-card__header">
         <h3>{runtime.displayName}</h3>
         <span className={installed ? "runtime-badge runtime-badge--installed" : "runtime-badge"}>
-          {installed ? "Installed" : "Not installed"}
+          {installed ? t("runtimes.installed") : t("runtimes.notInstalled")}
         </span>
         {runtime.activeVersion ? (
-          <span className="runtime-card__active">Active: {runtime.activeVersion}</span>
+          <span className="runtime-card__active">
+            {t("runtimes.activeVersion", { version: runtime.activeVersion })}
+          </span>
         ) : null}
         {runtime.globalVersion ? (
-          <span className="runtime-card__global" title="Already on your system PATH">
-            System: {runtime.globalVersion}
+          <span className="runtime-card__global" title={t("runtimes.onSystemPath")}>
+            {t("runtimes.system", { version: runtime.globalVersion })}
           </span>
         ) : null}
         <button
           type="button"
           className="rm-details-button"
-          title={`Full description and notes for ${runtime.displayName}`}
+          title={t("runtimes.detailsTitle", { name: runtime.displayName })}
           onClick={() => {
             onDetails(runtime);
           }}
         >
-          Details
+          {t("runtimes.details")}
         </button>
       </header>
       <p className="runtime-card__description" title={runtime.description}>
@@ -217,7 +221,7 @@ function RuntimeCard({
       <div className="runtime-card__install">
         {runtime.availableVersions.length > 0 ? (
           <select
-            aria-label={`${runtime.displayName} version to install`}
+            aria-label={t("runtimes.versionToInstall", { name: runtime.displayName })}
             value={selectable ?? ""}
             disabled={working !== undefined}
             onChange={(event) => {
@@ -236,20 +240,21 @@ function RuntimeCard({
           className="button button--primary"
           disabled={!install.enabled}
           title={
-            install.reason ?? `Download and install ${runtime.displayName} ${selectable ?? ""}`
+            install.reason ??
+            t("runtimes.installTitle", { name: runtime.displayName, version: selectable ?? "" })
           }
           onClick={() => {
             void service.install(runtime.id, selectable);
           }}
         >
-          {working === "install" ? "Installing…" : "Install"}
+          {working === "install" ? t("runtimes.installing") : t("extensions.installButton")}
         </button>
       </div>
 
       {progress ? <ProgressBar progress={progress} /> : null}
       {working === "delete" || working === "activate" ? (
         <p className="runtime-card__working">
-          {working === "delete" ? "Removing…" : "Switching version…"}
+          {working === "delete" ? t("runtimes.removing") : t("runtimes.switching")}
         </p>
       ) : null}
       {error ? (
@@ -261,7 +266,7 @@ function RuntimeCard({
               service.dismissError(runtime.id);
             }}
           >
-            Dismiss
+            {t("common.dismissAction")}
           </button>
         </div>
       ) : null}
@@ -282,49 +287,55 @@ function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: Install
   const repair = service.repairAvailability(runtime, entry.version);
   const remove = service.deleteAvailability(runtime);
   const injection = DEBUG_ADAPTERS.has(runtime.id)
-    ? { injected: false, label: "Used only by the debugger — not added to any PATH" }
+    ? { injected: false, label: t("runtimes.debuggerOnly") }
     : injectionStatus(entry);
 
   return (
     <li className="runtime-version">
       <span className="runtime-version__name">{entry.version}</span>
-      {entry.active ? <span className="runtime-badge runtime-badge--active">Active</span> : null}
+      {entry.active ? <span className="runtime-badge runtime-badge--active">{t("runtimes.active")}</span> : null}
       {entry.healthy ? null : (
-        <span className="runtime-badge runtime-badge--warn">Needs repair</span>
+        <span className="runtime-badge runtime-badge--warn">{t("runtimes.needsRepair")}</span>
       )}
       <span className="runtime-version__spacer" />
       {entry.active ? null : (
         <button
           type="button"
           disabled={!activate.enabled}
-          title={activate.reason ?? `Use ${runtime.displayName} ${entry.version} in new terminals`}
+          title={
+            activate.reason ??
+            t("runtimes.setActiveTitle", { name: runtime.displayName, version: entry.version })
+          }
           onClick={() => {
             void service.setActive(runtime.id, entry.version);
           }}
         >
-          Set active
+          {t("runtimes.setActive")}
         </button>
       )}
       <button
         type="button"
         disabled={!repair.enabled}
-        title={repair.reason ?? "Re-download and reinstall the missing or damaged files"}
+        title={repair.reason ?? t("runtimes.repairTitle")}
         onClick={() => {
           void service.repair(runtime.id, entry.version);
         }}
       >
-        Repair
+        {t("runtimes.repair")}
       </button>
       <button
         type="button"
         className="runtime-version__delete"
         disabled={!remove.enabled}
-        title={remove.reason ?? `Delete ${runtime.displayName} ${entry.version} from this app`}
+        title={
+          remove.reason ??
+          t("runtimes.deleteTitle", { name: runtime.displayName, version: entry.version })
+        }
         onClick={() => {
           void service.remove(runtime.id, entry.version);
         }}
       >
-        Delete
+        {t("runtimes.delete")}
       </button>
       <div className="runtime-version__details">
         <span
@@ -342,11 +353,11 @@ function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: Install
             className={
               feature.available ? "runtime-feature" : "runtime-feature runtime-feature--missing"
             }
-            title={feature.available ? `${feature.label} is available` : feature.note}
+            title={feature.available ? t("runtimes.featureAvailableTitle", { name: feature.label }) : feature.note}
           >
             {feature.available
-              ? `${feature.label}: available`
-              : `${feature.label}: not available — ${feature.note}`}
+              ? t("runtimes.featureAvailable", { name: feature.label })
+              : t("runtimes.featureMissing", { name: feature.label, note: feature.note })}
           </span>
         ))}
       </div>

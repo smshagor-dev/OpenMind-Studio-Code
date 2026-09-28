@@ -8,6 +8,7 @@ import type {
   QuickPickPrompt,
 } from "../services/extensionPromptService";
 import "../styles/extensions.css";
+import { t } from "../i18n";
 
 function Message({ message }: { message: MessagePrompt }) {
   const prompts = container.extensions.prompts;
@@ -32,7 +33,7 @@ function Message({ message }: { message: MessagePrompt }) {
         <button
           type="button"
           className="ext-link"
-          aria-label="Dismiss"
+          aria-label={t("common.dismiss")}
           onClick={() => {
             prompts.dismiss(message.id);
           }}
@@ -61,12 +62,12 @@ function QuickPick({ prompt }: { prompt: QuickPickPrompt }) {
         className="modal ext-quickpick"
         role="dialog"
         aria-modal="true"
-        aria-label={prompt.placeHolder ?? "Pick an item"}
+        aria-label={prompt.placeHolder ?? t("prompts.pickItem")}
         onClick={(event) => {
           event.stopPropagation();
         }}
       >
-        <h2>{prompt.placeHolder ?? `${prompt.extension} asks you to pick`}</h2>
+        <h2>{prompt.placeHolder ?? t("prompts.asksToPick", { source: prompt.extension })}</h2>
         <ul className="ext-plain-list">
           {prompt.items.map((item, index) => (
             <li key={`${item.label}-${String(index)}`}>
@@ -101,7 +102,7 @@ function QuickPick({ prompt }: { prompt: QuickPickPrompt }) {
                 prompts.answer(prompt.id, [...picked].sort((a, b) => a - b));
               }}
             >
-              OK
+              {t("common.ok")}
             </button>
           ) : null}
           <button
@@ -110,7 +111,7 @@ function QuickPick({ prompt }: { prompt: QuickPickPrompt }) {
               prompts.dismiss(prompt.id);
             }}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -136,7 +137,7 @@ function InputBox({ prompt }: { prompt: InputPrompt }) {
         className="modal ext-input"
         role="dialog"
         aria-modal="true"
-        aria-label={prompt.title ?? prompt.prompt ?? "Enter a value"}
+        aria-label={prompt.title ?? prompt.prompt ?? t("prompts.enterValue")}
         onClick={(event) => {
           event.stopPropagation();
         }}
@@ -148,7 +149,7 @@ function InputBox({ prompt }: { prompt: InputPrompt }) {
           if (event.key === "Escape") prompts.dismiss(prompt.id);
         }}
       >
-        <h2>{prompt.title ?? prompt.prompt ?? `${prompt.extension} asks for a value`}</h2>
+        <h2>{prompt.title ?? prompt.prompt ?? t("prompts.asksForValue", { source: prompt.extension })}</h2>
         {prompt.title !== null && prompt.prompt !== null ? <p>{prompt.prompt}</p> : null}
         <input
           ref={ref}
@@ -161,7 +162,7 @@ function InputBox({ prompt }: { prompt: InputPrompt }) {
         />
         <div className="modal__actions">
           <button type="submit" className="modal__confirm--primary">
-            OK
+            {t("common.ok")}
           </button>
           <button
             type="button"
@@ -169,7 +170,7 @@ function InputBox({ prompt }: { prompt: InputPrompt }) {
               prompts.dismiss(prompt.id);
             }}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </form>
@@ -196,7 +197,7 @@ function ConfirmBox({ prompt }: { prompt: ConfirmPrompt }) {
         }}
       >
         <h2>{prompt.title}</h2>
-        <p className="ext-confirm__from">Requested by {prompt.extension}</p>
+        <p className="ext-confirm__from">{t("prompts.requestedBy", { source: prompt.extension })}</p>
         <dl className="ext-confirm__details">
           {prompt.details.map((line) => (
             <div key={line.label}>
@@ -232,7 +233,7 @@ function ConfirmBox({ prompt }: { prompt: ConfirmPrompt }) {
               prompts.dismiss(prompt.id);
             }}
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -250,7 +251,7 @@ export function ExtensionPrompts() {
   return (
     <>
       {state.messages.length > 0 ? (
-        <div className="ext-toasts" aria-label="Extension messages">
+        <div className="ext-toasts" aria-label={t("prompts.messages")}>
           {state.messages.map((message) => (
             <Message key={message.id} message={message} />
           ))}

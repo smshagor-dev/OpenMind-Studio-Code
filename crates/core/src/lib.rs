@@ -1,5 +1,6 @@
 pub mod error;
 pub mod jsonc;
+pub mod locale;
 pub mod paths;
 pub mod vars;
 
