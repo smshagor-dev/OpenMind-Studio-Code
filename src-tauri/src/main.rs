@@ -238,6 +238,19 @@ fn main() {
             commands::format::format_options,
             commands::format::format_run,
             commands::about::about_info,
+            commands::network::network_status,
+            commands::network::network_set_credentials,
+            commands::network::network_clear_credentials,
+            commands::network::network_test,
+            commands::network::network_terminal_env,
+            commands::network_offline::network_offline_inspect,
+            commands::network_offline::network_offline_import,
+            commands::network_offline::network_offline_list,
+            commands::network_offline::network_offline_remove,
+            commands::network_offline::network_offline_clear,
+            commands::network_offline::network_offline_folder,
+            commands::network_offline::network_offline_path,
+            commands::network_offline::network_offline_extract,
             commands::toolchains::toolchains_list,
             commands::toolchains::toolchains_set_active,
             commands::toolchains::toolchains_verify,
@@ -344,6 +357,11 @@ fn main() {
                 workspace_folder: WorkspaceFolderService::new(db.clone()),
                 explorer_state: ExplorerStateService::new(db.clone()),
                 db,
+            });
+            // The proxy for OpenMind's own requests, from the settings (local reads; no request is made).
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                commands::network::refresh(&handle.state::<AppState>()).await;
             });
 
             Ok(())

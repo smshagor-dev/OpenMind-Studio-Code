@@ -14,6 +14,8 @@ pub mod index;
 pub mod language;
 pub mod lsp;
 pub mod marketplace;
+pub mod network;
+pub mod network_offline;
 pub mod notebook;
 pub mod panel;
 pub mod php;

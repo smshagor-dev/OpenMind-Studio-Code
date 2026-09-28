@@ -102,18 +102,21 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> thread::JoinHandle<Vec<u8
 }
 
 /// Runs `exe args` in `cwd`. Never prompts: a remote that wants a password
-/// fails instead of waiting for input nobody can give.
+/// fails instead of waiting for input nobody can give. `env` is added to this
+/// command only (the app's proxy variables, when a proxy is configured).
 pub fn run(
     exe: &Path,
     cwd: &Path,
     args: &[String],
     timeout: Duration,
     registry: &GitRegistry,
+    env: &[(String, String)],
 ) -> Result<Output, GitError> {
     let mut command = Command::new(exe);
     command
         .args(args)
         .current_dir(cwd)
+        .envs(env.iter().map(|(key, value)| (key, value)))
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GCM_INTERACTIVE", "never")
         .env("GIT_OPTIONAL_LOCKS", "0")

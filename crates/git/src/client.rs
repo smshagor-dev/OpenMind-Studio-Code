@@ -77,6 +77,7 @@ pub struct GitClient {
     exe: GitExecutable,
     sink: LogSink,
     registry: GitRegistry,
+    env: Vec<(String, String)>,
 }
 
 impl GitClient {
@@ -85,7 +86,15 @@ impl GitClient {
             exe,
             sink,
             registry,
+            env: Vec::new(),
         }
+    }
+
+    /// Adds environment variables to every Git command this client starts (the
+    /// app's proxy variables). Nothing global is changed.
+    pub fn with_env(mut self, env: Vec<(String, String)>) -> Self {
+        self.env = env;
+        self
     }
 
     pub fn executable(&self) -> &GitExecutable {
@@ -101,7 +110,14 @@ impl GitClient {
         timeout: Duration,
         log_stdout: bool,
     ) -> Result<Output, GitError> {
-        let output = exec::run(&self.exe.path, cwd, args, timeout, &self.registry)?;
+        let output = exec::run(
+            &self.exe.path,
+            cwd,
+            args,
+            timeout,
+            &self.registry,
+            &self.env,
+        )?;
         let stdout = if log_stdout {
             // `git status -z` separates records with NUL: show them as lines.
             shorten(&output.stdout_text().replace('\0', "\n"), 4000)
@@ -484,15 +500,19 @@ fn failure(output: &Output) -> GitError {
         }
     }
     let lower = text.to_ascii_lowercase();
+    // A proxy that wants a password is the network's problem, not the remote's: keep Git's text
+    // so the app can say so (and offer the proxy settings).
+    let proxy_auth = lower.contains("407") || lower.contains("proxy authentication");
     if lower.contains("not a git repository") {
         GitError::NotARepository
-    } else if lower.contains("terminal prompts disabled")
-        || lower.contains("could not read username")
-        || lower.contains("could not read password")
-        || lower.contains("authentication failed")
-        || lower.contains("permission denied (publickey")
-        || lower.contains("invalid username or password")
-        || lower.contains("http basic: access denied")
+    } else if !proxy_auth
+        && (lower.contains("terminal prompts disabled")
+            || lower.contains("could not read username")
+            || lower.contains("could not read password")
+            || lower.contains("authentication failed")
+            || lower.contains("permission denied (publickey")
+            || lower.contains("invalid username or password")
+            || lower.contains("http basic: access denied"))
     {
         GitError::NeedsCredentials
     } else if text.is_empty() {
@@ -530,6 +550,16 @@ mod tests {
             "Deleting a file needs confirmation."
         );
         assert!(require_confirmed(true, "x").is_ok());
+    }
+
+    #[test]
+    fn a_proxy_that_wants_a_password_is_not_reported_as_the_remote_asking() {
+        let proxy = failure(&out(
+            128,
+            "",
+            "fatal: unable to access 'https://x/': Received HTTP code 407 from proxy after CONNECT",
+        ));
+        assert!(matches!(proxy, GitError::Failed(text) if text.contains("407")));
     }
 
     #[test]

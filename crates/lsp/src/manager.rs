@@ -504,6 +504,17 @@ impl LspManager {
         app_root: &std::path::Path,
         node: &NodeExecutable,
     ) -> Result<(), LspError> {
+        self.install_package_env(def, app_root, node, &[])
+    }
+
+    /// [`Self::install_package`] with extra variables for npm (the proxy the user configured).
+    pub fn install_package_env(
+        &self,
+        def: &'static ServerDef,
+        app_root: &std::path::Path,
+        node: &NodeExecutable,
+        env: &[(String, String)],
+    ) -> Result<(), LspError> {
         let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
         let members: Vec<&'static str> = SERVERS
             .iter()
@@ -533,7 +544,7 @@ impl LspManager {
         );
         let sink = self.clone();
         let sink_id = def.id;
-        let outcome = install::install(app_root, package, node, move |line| {
+        let outcome = install::install(app_root, package, node, env, move |line| {
             sink.log(sink_id, LogLevel::Info, line);
         });
         let next = match &outcome {

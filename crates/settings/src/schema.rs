@@ -58,6 +58,7 @@ pub const CATEGORIES: &[&str] = &[
     "Debugger",
     "AI",
     "PHP Server",
+    "Network",
     "Workbench",
 ];
 
@@ -315,11 +316,20 @@ fn tools_definitions() -> Vec<SettingDef> {
 
 fn app_definitions() -> Vec<SettingDef> {
     use SettingScope::User;
+    let text = |max_length| SettingKind::Text { max_length };
     vec![
         def("extensions.allowSystemNode", "Extensions", "Allow System Node.js for Extensions", "Run the extension host with a Node.js found on this computer when OpenMind's portable Node.js is not installed. It is always labelled as the system Node.js.", SettingKind::Bool, json!(false), User),
         def("extensions.marketplace.autoFetch", "Extensions", "Load Marketplace Automatically", "Load the Popular list from Open VSX (open-vsx.org) whenever the Extensions view is shown (not at launch). Turn it off to contact the marketplace only when you search, load Popular, open an extension page or install.", SettingKind::Bool, json!(true), User),
         def("php.server.defaultPort", "PHP Server", "Default Port", "Port the PHP server uses until you choose another one in the PHP control panel.", SettingKind::Int { min: 1024, max: 65_535 }, json!(8000), User),
         def("php.tray.hideOnClose", "PHP Server", "Keep Servers Running in the Tray", "Closing the main window while a PHP, MariaDB or phpMyAdmin server runs hides the app to the system tray instead of quitting.", SettingKind::Bool, json!(true), User),
+        def("network.proxy.mode", "Network", "Proxy", "How programs OpenMind starts (terminals, Run Code, tasks, Git, package managers, downloads) reach the network. No Proxy changes nothing. Use System Proxy uses the proxy Windows or the environment already names. Manual Proxy uses the addresses below. Only processes OpenMind starts are affected; Windows' own settings are never changed.", opts(&[("none", "No Proxy"), ("system", "Use System Proxy"), ("manual", "Manual Proxy")]), json!("none"), User),
+        def("network.proxy.http", "Network", "HTTP Proxy", "Manual proxy for http:// addresses, as host:port or http://host:port. Put the user name and password in Network: Proxy Settings, not here.", text(300), json!(""), User),
+        def("network.proxy.https", "Network", "HTTPS Proxy", "Manual proxy for https:// addresses. Empty: the HTTP proxy is used for https:// too.", text(300), json!(""), User),
+        def("network.proxy.socks", "Network", "SOCKS Proxy", "Optional SOCKS5 proxy (socks5://host:port), passed as ALL_PROXY. Not every tool supports SOCKS.", text(300), json!(""), User),
+        def("network.proxy.noProxy", "Network", "No Proxy For", "Comma-separated hosts that are reached directly (for example intranet.local, .corp). localhost, 127.0.0.1 and ::1 are always direct.", text(1000), json!("localhost,127.0.0.1,::1,.local"), User),
+        def("network.goProxy", "Network", "Go Module Proxy", "GOPROXY for Go commands OpenMind starts. Empty: Go's own setting is used.", text(300), json!(""), User),
+        def("network.testUrl", "Network", "Connection Test Address", "The address Test Connection requests (http or https). Nothing is contacted until you press Test.", text(300), json!("https://pypi.org/"), User),
+        def("network.offline.useWheelhouse", "Network", "Use Offline Python Packages", "Let pip in processes OpenMind starts also look in the imported offline wheels (PIP_FIND_LINKS). pip's own configuration is not changed.", SettingKind::Bool, json!(false), User),
         def("workbench.colorTheme", "Workbench", "Color Theme", "Colors of the workbench, the editor and the terminal. System follows Windows.", opts(&[("system", "System"), ("dark", "Dark"), ("light", "Light"), ("high-contrast", "High Contrast")]), json!("dark"), User),
         def("workbench.iconTheme", "Workbench", "Icon Theme", "The icons in the Explorer, tabs and search. The built-in themes are bundled with the app; an extension's icon theme uses the images inside that extension. Nothing is downloaded.", opts(&[("material", "Material Icons (files and folders)"), ("material-files", "Material Icons (files only)"), ("minimal", "Minimal (one file icon, no folder icons)")]), json!("material"), User),
         def("workbench.language", "Workbench", "Display Language", "The language of OpenMind Studio's own menus, dialogs and messages. System Default follows the language of Windows; English is used for anything a language doesn't translate. Code, file paths and extensions keep their own text.", opts(&[("system", "System Default"), ("en", "English"), ("ru", "Русский (Russian)"), ("bn", "বাংলা (Bangla)")]), json!("system"), User),

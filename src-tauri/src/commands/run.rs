@@ -73,6 +73,10 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
     let mut path_prepend = crate::commands::toolchains::bundled_dirs(state).await;
     path_prepend.extend(std::mem::take(&mut environment.path_prepend));
     environment.path_prepend = path_prepend;
+    // The proxy the user configured (Network settings), for this process only; nothing when there is none.
+    environment
+        .vars
+        .extend(crate::commands::network::process_env(state).await);
     environment
 }
 

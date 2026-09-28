@@ -91,6 +91,7 @@ import { languageForPath } from "../editor/languageForPath";
 import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
 import * as monaco from "monaco-editor";
 import { t } from "../i18n";
+import { wireNetwork } from "./network/networkWiring";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
@@ -627,6 +628,24 @@ const extensions = wireExtensions({
       .groups.some((group) => group.tabs.some((tab) => tab.docId === docId && tab.kind === "text")),
 });
 contributionsRef = extensions.contributions;
+/** Network: the proxy of processes OpenMind starts and of its own requests, offline packages, the network-failure card. */
+const network = wireNetwork({
+  ipc: tauriIpcClient,
+  events,
+  commands,
+  settings,
+  output,
+  terminal,
+  installVsix: async (path) => {
+    await layout.showView("extensions");
+    await extensions.service.inspect(path);
+  },
+  runtime,
+  editor,
+  run: (id) => {
+    run(id);
+  },
+});
 const ai = wireAi({
   ipc: tauriIpcClient,
   events,
@@ -778,6 +797,8 @@ function reportStartup(phases: [string, number][], usableMs: number): void {
 /** Loads the formatter choices the user made and looks up the formatter of the file in front (no formatter runs). */
 async function startFormatting(): Promise<void> {
   autoSave.start();
+  // The proxy settings and the offline cache list: local reads, no network request.
+  await network.load();
   await profiles.load();
   await formatting.initialize();
   await formatting.refreshStatus();
@@ -877,6 +898,7 @@ export const container = {
   startLanguage,
   formatting,
   profiles,
+  network,
   reportStartup,
   startFormatting,
   startExtensions: extensions.start,

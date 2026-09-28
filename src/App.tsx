@@ -20,6 +20,7 @@ import { ErrorToast } from "./components/ErrorToast";
 import { AiConfirmDialog } from "./components/ai/AiConfirmDialog";
 import { FormatterDialog } from "./components/formatting/FormatterDialog";
 import { ProfilesDialog } from "./components/profiles/ProfilesDialog";
+import { NetworkDialog, NetworkFailureCard } from "./components/network/NetworkDialog";
 import { LanguageStatusDialog } from "./components/language/LanguageStatusDialog";
 import { AiProviderManager } from "./components/ai/AiProviderManager";
 import { QuickOpen } from "./components/QuickOpen";
@@ -180,6 +181,8 @@ export function App() {
       <LanguageStatusDialog />
       <FormatterDialog />
       <ProfilesDialog />
+      <NetworkDialog />
+      <NetworkFailureCard />
       <ExtensionDialogs />
       <ExtensionPrompts />
       <Suspense fallback={null}>

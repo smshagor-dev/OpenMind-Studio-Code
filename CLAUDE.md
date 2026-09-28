@@ -623,6 +623,29 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   *without* a cached value shown as its `=text` — **no formula engine**, dates stay serial numbers, charts/pivots/macros ignored. Commands in `src-tauri/src/commands/preview.rs`
   (`preview_inspect/read_bytes/read_text/docx/xlsx`, all on `spawn_blocking`).
 
+- `openmind-network` (Milestone 21) — proxy settings, system proxy detection, the proxy environment of processes OpenMind starts, the proxy
+  route of OpenMind's own HTTP requests, retries/mirrors, network problem categories, the connection test and the offline package cache.
+  Tauri-agnostic; see `docs/network-proxy.md`. **No bypass**: it only uses the proxy the user configured or the one Windows/the environment
+  already names; it never changes Windows' proxy, the Registry, PATH, the process environment or a tool's global config, never starts a
+  program, never uses WPAD/PAC evaluation (`tests/policy.rs` scans the source). `proxy` (`ProxyMode` none/system/manual, `ProxyUrl::parse` —
+  credentials in an address refused —, the no-proxy list with loopback always direct, `ResolvedProxy::for_target`), `system` (read-only:
+  env vars, `WinHttpGetIEProxyConfigForCurrentUser`, `WinHttpGetDefaultProxyConfiguration`; a PAC URL is reported, not run), `env`
+  (`proxy_env`: `HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY` in both cases, `NPM_CONFIG_*`, `PIP_PROXY`, `CARGO_HTTP_PROXY`, `GOPROXY` only if set,
+  `PIP_FIND_LINKS` for the offline wheels as a `file:///` URL — pip splits the variable on spaces), `redact` (password -> `****`, literal and percent-encoded), `problem` (`NetProblem` categories,
+  `classify` of a ureq error, `classify_via` = through a proxy a refused connection/unknown name is `ProxyUnavailable`, `diagnose` of git/pip/npm/composer/cargo/go/curl output, `label`), `http` (the process-wide proxy in force,
+  `set_current`, `configure(builder, url)`: mode None leaves a client unchanged), `retry` (`with_mirrors`: 3 attempts per address with
+  1 s/2 s pauses for retryable failures, then the next mirror; 407/cancel stop at once; every retry logged), `probe` (`test_connection`:
+  one GET, no redirects, categorized, redacted) and `offline` (`inspect`: runtime archives by SHA-256 against the manifests, `.vsix` with
+  `TargetPlatform`, wheel platform tags, npm `.tgz`, Composer/source ZIP; `OfflineCache` in `cache/offline` with `index.json`, import copies and
+  re-verifies the SHA-256, remove/clear; `extract_source` into an empty folder with safe names). Runtime Manager: `UreqClient` builds its agent
+  per URL through `http::configure`, errors are `RuntimeError::Network(NetError)`, artifacts may list `mirrors`, `fetch::fetch_verified` does
+  retry/mirror/checksum; the AI transport uses the same route (loopback direct). App: `commands::network` (`network_status|set_credentials|
+  clear_credentials|test|terminal_env`; credentials DPAPI-encrypted as `network.proxy.credentials`; `refresh` at start-up is local reads only)
+  and `commands::network_offline` (`network_offline_inspect|import|list|remove|clear|folder|path|extract`; a runtime archive goes to the Runtime
+  Manager's `download_path`). `run::environment` appends `process_env` (every launcher: terminal, tasks, Run Code, debug, LSP, extension host,
+  notebook, PHP, database/Composer, panel shell); Git gets it through `GitClient::with_env` (its log lines are redacted); the LSP `npm ci` gets
+  it through `LspManager::install_package_env`.
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
@@ -893,6 +916,15 @@ internals.
   are tokens** in `styles/theme.css` (dark, light and a high-contrast palette, plus semantic tokens: success/warning/info/error,
   overlays, debugger, terminal, disabled/invalid); `styles/themeTokens.test.ts` fails on a hard-coded color in any other stylesheet
   and on a token nobody defines. The old `theme` table is only read once, as the default of the new setting.
+- **Network (Milestone 21).** `src/services/network/`: `networkIpc.ts`, `networkModel.ts` (pure: `diagnoseNetwork` — the Rust rules —,
+  `STRONG_PROBLEMS`, `statusLabel`, `validateProxyAddress`, `testText`), `NetworkService` (status, credentials — the password is handed over once
+  and never kept —, Test, the redacted terminal env, the offline import flow, the once-per-session terminal notice, `report()` = the
+  network-failure card with Configure Proxy / Retry / Import Package / Use Offline Cache, a dismissed problem quiet for 2 minutes) and
+  `networkWiring.ts` (`network.openSettings|testConnection|showTerminalEnv|clearCredentials|importOffline|openCacheFolder`, in *Terminal > Network*
+  and — through `EditorService.setAppActions` — the F1 palette; follows every `network.*` setting; watches tool Output channels, `appError`
+  and terminal output (strong problems only); `RuntimeService.setFailureListener` gives the card a Retry). UI: `components/network/`
+  (`NetworkDialog` with Proxy and Offline Packages tabs, `NetworkFailureCard`, `NetworkStatusButton` in the terminal panel header).
+  Strings are `network.*`, `command.network.*`, `submenu.network`; settings `network.*` (category Network, user scope).
 - **UI language (Milestone 20.1).** `src/i18n/`: `locales/{en,ru,bn}.json` (flat stable keys, named `{placeholders}`,
   plural objects chosen with `Intl.PluralRules`), `i18n.ts` (the `I18n` class: fallback to English, then the key itself;
   `validateCatalog` drops malformed entries; `resolveLanguage` = setting > PC language > English), `index.ts` (the shared
@@ -2306,7 +2338,38 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   panel and Configuration page, no AI item; the database error page (`C:\omm200`, tampered checksum) in Russian with Copy giving the
   English details and Exit leaving nothing running; no outside connection from the app; every close left no process; User/Machine
   PATH identical. Left on disk: `C:\omm200`, `C:\omm201`.
-- [ ] Milestone 20.2 / 21 — to be scoped (more screens translated, native-speaker review, profile-aware keybindings, signing,
+- [x] **Milestone 21** — Network resilience, proxy-aware processes and the offline package cache (`feat: add proxy-aware network
+  resilience`). See `openmind-network`, "Network (Milestone 21)" and `docs/network-proxy.md`. **No bypass**: OpenMind uses only the
+  proxy the user sets (Manual: HTTP/HTTPS/SOCKS5 + no-proxy list) or the one Windows/the environment already names (System: env vars,
+  Internet Settings, WinHTTP; PAC scripts are reported, never evaluated); default **No Proxy** changes nothing. Proxy variables go only to
+  processes OpenMind starts (every launcher via `run::environment`, Git via `with_env`, the LSP `npm ci`) and OpenMind's own requests
+  (Runtime Manager, Open VSX, AI, Test Connection) use the same route; loopback is always direct. Credentials are DPAPI-encrypted, never
+  returned, logged or shown (`****` in the terminal env view). Downloads: retry with backoff (3 per address), resume, mirrors
+  (manifest `mirrors`), checksum before anything is kept; 407 stops at once. Offline: runtime archives (by SHA-256 -> `cache/downloads`,
+  then Install works with no network), `.vsix` (normal trust flow), wheels (`PIP_FIND_LINKS` as a file URL when enabled), npm `.tgz`,
+  Composer and source ZIPs (safe extraction into an empty folder); incompatible platforms refused. The network-failure card (Configure
+  Proxy / Retry / Import Package / Use Offline Cache) follows tool Output channels, errors and terminal output (strong problems only).
+  All new text en/ru/bn (1 532 keys). **Verified by hand** (debug build, fresh `C:\omm21`, a local Python proxy on 127.0.0.1:8899 requiring
+  Basic auth): launch made no request (proxy log empty; only WebView2's usual Microsoft connection); Terminal > Network > Proxy Settings,
+  Manual, `127.0.0.1:8899` typed in the dialog; Test before credentials -> "the proxy requires a user name and password" (proxy: `CONNECT
+  pypi.org 407`), credentials saved from the form -> "Connected through 127.0.0.1:8899: HTTP 200"; a new terminal showed the once-per-session
+  notice and "Network: Manual Proxy", had `HTTP(S)_PROXY`, `NO_PROXY`, `NPM_CONFIG_*`, `PIP_PROXY`, `CARGO_HTTP_PROXY`; through the proxy
+  with auth: `git ls-remote`, `curl`, `pip download`, `npm view`, `composer show`, `cargo search`, `go list -m` (each seen in the proxy
+  log); credentials cleared -> Runtime Manager Git install failed once with 407 (no retry loop), the card offered Retry, Retry after saving
+  credentials installed MinGit through the proxy (github.com + release-assets); the app's own Git cloned a GitHub repository through the
+  proxy; with the proxy pointed at a dead port (Test: "proxy unavailable") the MinGit archive, a wheel and a manylinux wheel were imported from a
+  "USB" folder (runtime recognized by checksum, manylinux refused with the reason), Git installed from the import with no request, and pip
+  installed `six` with `--no-index` from the offline wheels; a pip 407 in a terminal raised the card and Configure Proxy kept it; the password
+  was nowhere in the app folder or the WebView2 profile, the database held `dpapi1:`; closing with three terminals left no process; User/Machine
+  PATH, Internet Settings and WinHTTP proxy unchanged; no global git/npm/pip proxy config written. Found and fixed by hand: the no-proxy list
+  and GOPROXY fields were validated as proxy addresses, the dialog's inputs were 180 px tall, `PIP_FIND_LINKS` broke on the space in "OpenMind
+  Studio", a dead proxy read "connection failed", Configure Proxy dismissed the card (and its Retry). **Limitations**: no PAC/WPAD evaluation,
+  Basic proxy auth only (no NTLM/Kerberos), open terminals keep their environment, Cargo has no SOCKS through `CARGO_HTTP_PROXY`, Yarn Berry
+  needs its own setting, offline npm/Composer packages are cached (installed by the user with the local path), no Pause button (a failed download
+  resumes), the native file dialog of Import was cancelled rather than driven (imports used the same backend commands), `.vsix`/source-ZIP
+  imports and Extract were covered by tests, not by hand, and a `HEAD /` straight to the proxy port seen once during the terminal run came from a
+  tool in that terminal, not from OpenMind. Left on disk: `C:\omm21`.
+- [ ] Milestone 21.1 / 22 — to be scoped (more screens translated, native-speaker review, profile-aware keybindings, signing,
   auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the

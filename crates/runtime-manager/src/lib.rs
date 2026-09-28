@@ -2,6 +2,7 @@ pub mod detect;
 pub mod download;
 pub mod error;
 pub mod extract;
+pub mod fetch;
 pub mod manager;
 pub mod manifest;
 pub mod paths;

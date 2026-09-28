@@ -90,6 +90,7 @@ export class RuntimeService {
   private readonly listeners = new Set<() => void>();
   private unsubscribe: (() => void) | null = null;
   private unsubscribeChanged: (() => void) | null = null;
+  private failureListener: ((message: string, retry: () => void) => void) | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
@@ -97,6 +98,11 @@ export class RuntimeService {
     /** Where install/repair/delete activity is logged (the Output panel's "Runtime Manager" channel). */
     private readonly log: (line: string) => void = () => undefined,
   ) {}
+
+  /** Told about a failed install/repair with a way to run it again (the network card's Retry). */
+  setFailureListener(listener: (message: string, retry: () => void) => void): void {
+    this.failureListener = listener;
+  }
 
   getState(): RuntimeState {
     return this.state;
@@ -253,6 +259,9 @@ export class RuntimeService {
       ok = false;
       this.log(`${operation} ${kind} failed: ${String(error)}`);
       this.update({ errors: { ...this.state.errors, [kind]: String(error) } });
+      this.failureListener?.(String(error), () => {
+        void this.run(kind, operation, task);
+      });
     }
     this.update({
       working: omit(this.state.working, kind),

@@ -65,6 +65,19 @@ pub struct Artifact {
     /// For `archive: "file"`: the file name it is installed as.
     #[serde(default)]
     pub install_as: Option<String>,
+    /// Other https addresses of the same file, tried in order when the main one fails. The checksum is the same,
+    /// so a mirror can't hand over a different file.
+    #[serde(default)]
+    pub mirrors: Vec<String>,
+}
+
+impl Artifact {
+    /// The main address, then the mirrors.
+    pub fn urls(&self) -> Vec<String> {
+        std::iter::once(self.url.clone())
+            .chain(self.mirrors.iter().cloned())
+            .collect()
+    }
 }
 
 /// A small config file written into a fresh install (PHP's `php.ini`). Content
@@ -308,8 +321,10 @@ impl RuntimeManifest {
                         return bad("installAs only applies to \"file\" artifacts".into());
                     }
                 }
-                if !artifact.url.to_ascii_lowercase().starts_with("https://") {
-                    return Err(RuntimeError::InsecureUrl(artifact.url.clone()));
+                for url in artifact.urls() {
+                    if !url.to_ascii_lowercase().starts_with("https://") {
+                        return Err(RuntimeError::InsecureUrl(url));
+                    }
                 }
                 let hash = &artifact.sha256;
                 if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {

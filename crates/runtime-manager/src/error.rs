@@ -27,6 +27,10 @@ pub enum RuntimeError {
     #[error("download failed: {0}")]
     Download(String),
 
+    /// A network failure with its category (DNS, proxy authentication, TLS ...), so the UI can say what to do.
+    #[error("download failed ({}): {}", .0.problem.label(), .0.detail)]
+    Network(openmind_network::problem::NetError),
+
     #[error("checksum mismatch: expected {expected}, got {actual}")]
     ChecksumMismatch { expected: String, actual: String },
 
@@ -56,6 +60,18 @@ pub enum RuntimeError {
     Db(#[from] openmind_db::DbError),
 }
 
+fn network_recovery(problem: openmind_network::problem::NetProblem) -> &'static str {
+    use openmind_network::problem::NetProblem as P;
+    match problem {
+        P::ProxyAuthRequired => "The proxy asks for a user name and password. Enter them in Network: Proxy Settings, then try again.",
+        P::ProxyUnavailable => "The proxy could not be reached. Check the proxy address in Network: Proxy Settings, or import the file from a USB drive (Network: Import Offline Package).",
+        P::Dns => "The server's name could not be found. On a network that only allows a proxy, set the proxy in Network: Proxy Settings; offline, import the file with Network: Import Offline Package.",
+        P::Tls => "The secure connection was refused (a network that inspects HTTPS can cause this). Nothing was downloaded. Import the file with Network: Import Offline Package, or ask the network administrator.",
+        P::Blocked => "The network or the server refused this address. Import the file from another computer with Network: Import Offline Package.",
+        _ => "Check the connection and try again — a partial download is resumed, not restarted. Offline, import the file with Network: Import Offline Package.",
+    }
+}
+
 impl RuntimeError {
     pub(crate) fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
         Self::Io {
@@ -68,6 +84,7 @@ impl RuntimeError {
     /// the error in the Runtime Manager so a failure never dead-ends.
     pub fn recovery(&self) -> &'static str {
         match self {
+            Self::Network(error) => network_recovery(error.problem),
             Self::Download(_) => {
                 "Check your internet connection and try again — a partial download is resumed, not restarted."
             }

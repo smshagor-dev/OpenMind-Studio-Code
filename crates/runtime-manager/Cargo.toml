@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 openmind-db = { version = "0.1.0", path = "../db" }
+openmind-network = { version = "0.1.0", path = "../network" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 flate2 = "1"

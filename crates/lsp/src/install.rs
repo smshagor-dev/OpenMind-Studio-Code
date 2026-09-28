@@ -53,11 +53,13 @@ pub fn npm_args(npm_cli: &Path) -> Vec<String> {
     ]
 }
 
-/// Installs `package`. `log` gets every line npm prints.
+/// Installs `package`. `log` gets every line npm prints. `env` is added to npm's environment (the app's proxy
+/// variables, when a proxy is configured).
 pub fn install(
     app_root: &Path,
     package: &Package,
     node: &NodeExecutable,
+    env: &[(String, String)],
     log: impl Fn(&str) + Send + Sync + Clone + 'static,
 ) -> Result<(), LspError> {
     let Source::Npm {
@@ -81,7 +83,15 @@ pub fn install(
     }
     std::fs::create_dir_all(&staging).map_err(io_err)?;
     let lock = (package_json, package_lock);
-    let outcome = install_into(&staging, app_root, package, lock, node, &npm_cli, log);
+    let outcome = install_into(
+        &staging,
+        app_root,
+        package,
+        lock,
+        (node, &npm_cli),
+        env,
+        log,
+    );
     if outcome.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
         return outcome;
@@ -100,24 +110,26 @@ fn install_into(
     app_root: &Path,
     package: &Package,
     (package_json, package_lock): (&str, &str),
-    node: &NodeExecutable,
-    npm_cli: &Path,
+    (node, npm_cli): (&NodeExecutable, &Path),
+    env: &[(String, String)],
     log: impl Fn(&str) + Send + Sync + Clone + 'static,
 ) -> Result<(), LspError> {
     std::fs::write(staging.join("package.json"), package_json).map_err(io_err)?;
     std::fs::write(staging.join("package-lock.json"), package_lock).map_err(io_err)?;
+    let mut vars: Vec<(String, String)> = env.to_vec();
+    vars.extend([
+        // npm's download cache stays inside the app folder.
+        (
+            "npm_config_cache".into(),
+            app_root.join("cache").join("npm").display().to_string(),
+        ),
+        ("npm_config_update_notifier".into(), "false".into()),
+    ]);
     let spec = SpawnSpec {
         program: node.path.clone(),
         args: npm_args(npm_cli),
         cwd: staging.to_path_buf(),
-        vars: vec![
-            // npm's download cache stays inside the app folder.
-            (
-                "npm_config_cache".into(),
-                app_root.join("cache").join("npm").display().to_string(),
-            ),
-            ("npm_config_update_notifier".into(), "false".into()),
-        ],
+        vars,
         path_prepend: node
             .path
             .parent()
@@ -208,7 +220,7 @@ mod tests {
             path: root.path().join("node.exe"),
             source: crate::node::NodeSource::Portable,
         };
-        let err = install(root.path(), package, &node, |_| {}).expect_err("no npm");
+        let err = install(root.path(), package, &node, &[], |_| {}).expect_err("no npm");
         assert!(matches!(err, LspError::InstallFailed(text) if text.contains("npm")));
         assert!(!root.path().join("language-servers").exists());
     }
@@ -221,7 +233,7 @@ mod tests {
             path: root.path().join("node.exe"),
             source: crate::node::NodeSource::Portable,
         };
-        let err = install(root.path(), package, &node, |_| {}).expect_err("native");
+        let err = install(root.path(), package, &node, &[], |_| {}).expect_err("native");
         assert!(err.to_string().contains("LSP bundle"), "{err}");
         assert!(!root.path().join("language-servers").exists());
     }

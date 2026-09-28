@@ -7,7 +7,7 @@ use openmind_db::{Db, InstalledRuntimeEntry, InstalledRuntimesRepository};
 use serde::Serialize;
 
 use crate::detect::{detect_version, find_on_path};
-use crate::download::{download, verify_sha256, HttpClient};
+use crate::download::{verify_sha256, HttpClient};
 use crate::error::RuntimeError;
 use crate::extract::{extract_tar_gz, extract_zip, ExtractSelection};
 use crate::manifest::{ArchiveKind, RuntimeManifest, RuntimeRegistry};
@@ -132,6 +132,14 @@ impl RuntimeManager {
 
     pub fn registry(&self) -> &RuntimeRegistry {
         &self.registry
+    }
+
+    pub fn paths(&self) -> &RuntimePaths {
+        &self.paths
+    }
+
+    pub fn platform(&self) -> &str {
+        &self.platform
     }
 
     /// Every known runtime with what's installed. Also reconciles the
@@ -551,20 +559,18 @@ fn install_files(
 ) -> Result<(), RuntimeError> {
     use InstallPhase::*;
 
-    // A previously downloaded copy is reused only if it still matches.
+    // A previously downloaded (or offline-imported) copy is reused only if it still matches.
     let cached = archive.exists()
         && verify_sha256(archive, &artifact.sha256, &mut |c, t| report(Verify, c, t)).is_ok();
     if !cached {
-        download(
+        crate::fetch::fetch_verified(
             client,
-            &artifact.url,
+            artifact,
             archive,
-            artifact.size_bytes,
-            &mut |c, t| {
-                report(Download, c, t);
-            },
+            &|c, t| report(Download, c, t),
+            &|c, t| report(Verify, c, t),
+            &mut std::thread::sleep,
         )?;
-        verify_sha256(archive, &artifact.sha256, &mut |c, t| report(Verify, c, t))?;
     }
 
     remove_dir_if_exists(staging)?;

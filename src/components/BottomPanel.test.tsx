@@ -34,6 +34,13 @@ const FAKE_MARKERS = {
   getProblemFiles: () => [],
 };
 
+/** No proxy configured (the terminal header's network label). */
+const NETWORK_STATE = { status: null, offline: [] };
+const FAKE_NETWORK = {
+  subscribe: () => () => undefined,
+  getState: () => NETWORK_STATE,
+};
+
 const POWERSHELL: ShellInfo = { kind: "powerShell", label: "PowerShell", available: true };
 const CMD: ShellInfo = { kind: "cmd", label: "Command Prompt", available: true };
 
@@ -77,7 +84,7 @@ describe("BottomPanel", () => {
     run = vi.fn((id: string, ...args: unknown[]) => {
       void commands.execute(id, ...args);
     });
-    harness.current = { terminal, panel, output, ports, markers: FAKE_MARKERS, run };
+    harness.current = { terminal, panel, output, ports, markers: FAKE_MARKERS, run, network: FAKE_NETWORK };
   }
 
   const terminalTabs = () => screen.getByRole("tablist", { name: "Terminals" });

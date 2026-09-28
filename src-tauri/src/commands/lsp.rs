@@ -360,7 +360,9 @@ pub async fn lsp_install(server: String, state: State<'_, AppState>) -> Result<(
             .map_err(|err| err.to_string());
     }
     let node = resolved.npm_node.map_err(|err| err.to_string())?;
-    tokio::task::spawn_blocking(move || manager.install_package(def, &root, &node))
+    // npm downloads through the proxy the user configured (nothing when there is none).
+    let proxy = crate::commands::network::process_env(&state).await;
+    tokio::task::spawn_blocking(move || manager.install_package_env(def, &root, &node, &proxy))
         .await
         .map_err(|err| format!("The installer stopped unexpectedly: {err}"))?
         .map_err(|err| err.to_string())

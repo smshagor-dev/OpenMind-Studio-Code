@@ -33,6 +33,7 @@ openmind-ai = { version = "0.1.0", path = "../crates/ai" }
 openmind-search = { version = "0.1.0", path = "../crates/search" }
 openmind-runner = { version = "0.1.0", path = "../crates/runner" }
 openmind-runtime-manager = { version = "0.1.0", path = "../crates/runtime-manager" }
+openmind-network = { version = "0.1.0", path = "../crates/network" }
 openmind-settings = { version = "0.1.0", path = "../crates/settings" }
 openmind-terminal = { version = "0.1.0", path = "../crates/terminal" }
 openmind-workspace = { version = "0.1.0", path = "../crates/workspace" }

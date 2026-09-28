@@ -1,0 +1,23 @@
+[package]
+name = "openmind-network"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+thiserror.workspace = true
+tracing.workspace = true
+ureq = { version = "3.4.2", features = ["rustls"] }
+zip = { version = "7.2.0", default-features = false, features = ["deflate"] }
+
+[target."cfg(windows)".dependencies]
+winapi = { version = "0.3", features = ["winhttp", "winreg", "winbase", "minwindef", "winerror"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tracing-subscriber.workspace = true

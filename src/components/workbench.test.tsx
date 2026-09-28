@@ -36,6 +36,7 @@ import { MenuPopup, type PopupItem } from "./MenuPopup";
 import { SearchPanelService } from "../services/searchPanelService";
 import { SearchView } from "./SearchView";
 
+const NO_NETWORK = { status: null, offline: [] };
 const FAKE_PROBLEMS = {
   files: [] as unknown[],
   listeners: new Set<() => void>(),
@@ -122,6 +123,8 @@ function setup(overrides: { searchOutcome?: SearchOutcome; content?: string } = 
     terminal,
     search,
     searchPanel: new SearchPanelService(),
+    // Nothing configured: the terminal header says "Network: No Proxy".
+    network: { subscribe: () => () => undefined, getState: () => NO_NETWORK },
     // No AI provider is enabled: the AI item and panel must not exist.
     ai: {
       providers: {

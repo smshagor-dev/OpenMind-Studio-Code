@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 
+import { NetworkStatusButton } from "./network/NetworkDialog";
 import { container } from "../services/container";
 import { PANEL_TABS, PANEL_TAB_LABELS, type PanelTab } from "../services/panelService";
 import { CloseIcon } from "./icons";
@@ -146,6 +147,7 @@ function TerminalActions() {
 
   return (
     <>
+      <NetworkStatusButton />
       <button
         type="button"
         className="terminal-panel__action"

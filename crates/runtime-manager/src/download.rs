@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use openmind_network::problem::{classify_via, NetError, NetProblem};
 use sha2::{Digest, Sha256};
 
 use crate::error::RuntimeError;
@@ -24,22 +25,45 @@ pub trait HttpClient: Send + Sync {
     fn get(&self, url: &str, range_from: Option<u64>) -> Result<HttpResponse, RuntimeError>;
 }
 
-pub struct UreqClient {
-    agent: ureq::Agent,
-}
+/// The real client. The agent is built per request so it follows the proxy in force for that address
+/// (`openmind_network::http`): with no proxy configured nothing changes.
+pub struct UreqClient;
 
 impl UreqClient {
     pub fn new() -> Self {
-        let agent: ureq::Agent = ureq::Agent::config_builder()
+        Self
+    }
+
+    fn agent(url: &str) -> ureq::Agent {
+        let builder = ureq::Agent::config_builder()
             .https_only(true)
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(15)))
             .timeout_recv_response(Some(Duration::from_secs(30)))
-            .timeout_recv_body(Some(Duration::from_secs(60)))
+            .timeout_recv_body(Some(Duration::from_secs(60)));
+        openmind_network::http::configure(builder, url)
             .build()
-            .into();
-        Self { agent }
+            .into()
     }
+}
+
+/// A network error of the HTTP client, categorized and free of proxy credentials.
+pub(crate) fn network_error(error: &ureq::Error, url: &str) -> RuntimeError {
+    let credentials = openmind_network::http::current().and_then(|proxy| proxy.credentials);
+    let detail = openmind_network::redact::redact(&error.to_string(), credentials.as_ref());
+    let through_proxy = matches!(
+        openmind_network::http::route(url),
+        openmind_network::http::Route::Proxy(_)
+    );
+    RuntimeError::Network(NetError::new(classify_via(error, through_proxy), detail))
+}
+
+fn read_error(error: std::io::Error) -> RuntimeError {
+    let problem = match error.kind() {
+        std::io::ErrorKind::TimedOut => NetProblem::Timeout,
+        _ => NetProblem::Io,
+    };
+    RuntimeError::Network(NetError::new(problem, error.to_string()))
 }
 
 impl Default for UreqClient {
@@ -50,13 +74,11 @@ impl Default for UreqClient {
 
 impl HttpClient for UreqClient {
     fn get(&self, url: &str, range_from: Option<u64>) -> Result<HttpResponse, RuntimeError> {
-        let mut request = self.agent.get(url);
+        let mut request = Self::agent(url).get(url);
         if let Some(start) = range_from {
             request = request.header("Range", format!("bytes={start}-"));
         }
-        let response = request
-            .call()
-            .map_err(|err| RuntimeError::Download(err.to_string()))?;
+        let response = request.call().map_err(|err| network_error(&err, url))?;
         let status = response.status().as_u16();
         let content_length = response.body().content_length();
         Ok(HttpResponse {
@@ -100,11 +122,7 @@ pub fn download(
     let resumed = match response.status {
         206 if resume_from > 0 => true,
         200 => false,
-        other => {
-            return Err(RuntimeError::Download(format!(
-                "server answered HTTP {other} for {url}"
-            )));
-        }
+        other => return Err(RuntimeError::Network(NetError::status(other, url))),
     };
     if !resumed {
         // The server ignored the Range header (or there was nothing to resume): start over.
@@ -127,10 +145,7 @@ pub fn download(
     let mut last_report = Instant::now();
     progress(done, total);
     loop {
-        let read = response
-            .body
-            .read(&mut buffer)
-            .map_err(|err| RuntimeError::Download(err.to_string()))?;
+        let read = response.body.read(&mut buffer).map_err(read_error)?;
         if read == 0 {
             break;
         }
@@ -147,8 +162,9 @@ pub fn download(
     if let Some(total) = response.content_length.map(|len| len + resume_from) {
         if done != total {
             // Connection dropped mid-body: keep the .part so the next attempt resumes it.
-            return Err(RuntimeError::Download(format!(
-                "connection ended after {done} of {total} bytes"
+            return Err(RuntimeError::Network(NetError::new(
+                NetProblem::ConnectionFailed,
+                format!("connection ended after {done} of {total} bytes"),
             )));
         }
     }
@@ -335,7 +351,7 @@ pub(crate) mod tests {
         *server.fail_after.lock().expect("lock") = Some(100_000);
 
         let first = download(&server, "https://x/a.zip", &dest, None, &mut |_, _| {});
-        assert!(matches!(first, Err(RuntimeError::Download(_))));
+        assert!(matches!(first, Err(RuntimeError::Network(_))));
         assert!(!dest.exists());
         assert_eq!(fs::metadata(part_path(&dest)).expect("part").len(), 100_000);
 

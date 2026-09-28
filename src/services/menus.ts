@@ -424,6 +424,16 @@ function terminalMenu(shells: { kind: string; label: string }[]): TopLevelMenu {
       cmd("Language Tools...", "lsp.manage"),
       cmd("Restart Language Server", "lsp.restart"),
       cmd("Show LSP Output", "lsp.openOutput"),
+      SEPARATOR,
+      sub("Network", [
+        cmd("Proxy Settings...", "network.openSettings"),
+        cmd("Test Connection", "network.testConnection"),
+        cmd("Show Current Terminal Proxy Environment", "network.showTerminalEnv"),
+        cmd("Clear Proxy Credentials", "network.clearCredentials"),
+        SEPARATOR,
+        cmd("Import Offline Package...", "network.importOffline"),
+        cmd("Open Package Cache Folder", "network.openCacheFolder"),
+      ]),
     ],
   };
 }

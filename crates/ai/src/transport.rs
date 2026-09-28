@@ -29,13 +29,16 @@ enum Mode {
     Whole,
 }
 
-fn agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
+/// The agent for one request. It follows the proxy the user configured (`openmind_network::http`); a provider on
+/// this computer (loopback) is always reached directly.
+fn agent(url: &str) -> ureq::Agent {
+    let builder = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .max_redirects(0)
         .timeout_connect(Some(Duration::from_secs(15)))
         .timeout_recv_response(Some(Duration::from_secs(120)))
-        .timeout_recv_body(Some(Duration::from_secs(600)))
+        .timeout_recv_body(Some(Duration::from_secs(600)));
+    openmind_network::http::configure(builder, url)
         .build()
         .into()
 }
@@ -43,7 +46,7 @@ fn agent() -> ureq::Agent {
 fn spawn(req: WireRequest, mode: Mode) -> mpsc::Receiver<Event> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let agent = agent();
+        let agent = agent(&req.url);
         let response = match (req.method, req.body.as_deref()) {
             (Method::Post, body) => {
                 let mut builder = agent.post(&req.url);

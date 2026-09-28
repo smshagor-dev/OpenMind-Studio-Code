@@ -132,7 +132,9 @@ describe("pruneMenuEntries", () => {
 describe("dynamic menu content", () => {
   it("lists only the shells that were found under Terminal > New Terminal With Profile", () => {
     const none = buildMenuBar(EMPTY).find((menu) => menu.id === "terminal");
-    expect(none?.items.some((item) => item.kind === "submenu")).toBe(false);
+    expect(
+      none?.items.some((item) => item.kind === "submenu" && item.label === "New Terminal With Profile"),
+    ).toBe(false);
     const menus = buildMenuBar(EMPTY, {
       shells: [
         { kind: "powerShell", label: "PowerShell" },

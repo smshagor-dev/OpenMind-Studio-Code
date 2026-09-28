@@ -737,6 +737,7 @@ fn stopping_all_kills_a_running_git_command_and_what_it_started() {
             ],
             std::time::Duration::from_secs(60),
             &runner_registry,
+            &[],
         )
     });
     let started = std::time::Instant::now();

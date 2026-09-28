@@ -70,13 +70,20 @@ async fn build_client(app: &AppHandle, state: &AppState) -> Result<GitClient, Gi
         std::env::var_os("PATH"),
     )?;
     let handle = app.clone();
+    let network = crate::commands::network::refresh(state).await;
+    let proxy_env = crate::commands::network::env_of(state, &network);
+    let credentials = network.credentials;
     Ok(GitClient::new(
         exe,
-        Arc::new(move |entry: LogEntry| {
+        Arc::new(move |mut entry: LogEntry| {
+            // Git's own output could quote a proxy address: never show its password.
+            entry.stdout = openmind_network::redact::redact(&entry.stdout, credentials.as_ref());
+            entry.stderr = openmind_network::redact::redact(&entry.stderr, credentials.as_ref());
             let _ = handle.emit("git:log", entry);
         }),
         state.git.clone(),
-    ))
+    )
+    .with_env(proxy_env))
 }
 
 /// Runs `operation` against the open workspace's repository on a worker thread.
