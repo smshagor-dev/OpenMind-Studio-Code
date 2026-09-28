@@ -951,7 +951,11 @@ internals.
   `WorkloadService` (catalog, selection, plan refreshed on every change — the newest answer wins —, sections, the first-run page once
   (`workloads.firstRunDone` in `editor_settings`; Skip installs nothing), licence dialog before install, a sequential install queue through
   `RuntimeService.install(id, null, acceptLicense)` — so downloads are proxy-aware and failures reach the network card —, Verify) and
-  `workloadsWiring.ts` (`workloads.open` = Runtime Manager on the Workloads tab, `workloads.firstRun`; Terminal > Workloads...). UI:
+  `workloadsWiring.ts` (`workloads.open` = Runtime Manager on the Workloads tab, `workloads.firstRun`; Terminal > Workloads...; since 22.1 it
+  follows `RuntimeService` and `LspService` and calls `WorkloadService.invalidate()` when an install fingerprint changes — installed/healthy/
+  active runtime versions, installed/bundled servers; progress and no-op refreshes don't count). The page `attach()`es while it is on screen:
+  a change re-reads the catalog and plan at once (one read per burst, the newest read wins, Verify results of runtimes no longer installed are
+  dropped); with no page shown it is only marked stale and read on the next `attach()`, because a catalog read runs version probes. UI:
   `components/workloads/WorkloadsPage.tsx` (sidebar Welcome / Installation Location / Workloads & Runtimes / Language Packs / Network & Proxy /
   Offline Packages / Summary / Install, main area, right summary with sizes, path, proxy mode, offline folder and warning counts, bottom Back /
   Skip for now / Import offline packages / Next / Install selected) used by `FirstRunWorkloads` (App) and the Runtime Manager's third tab;
@@ -2434,6 +2438,18 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   local-only telemetry counters (no env switch exists); deleting .NET while `VBCSCompiler` runs fails honestly (run `dotnet build-server shutdown`);
   PostgreSQL's SHA-256 is computed, not published; no installer-time selection; Windows x64 only. User/Machine PATH, git global config and Internet
   Settings identical before and after. Left on disk: `E:\omm22` (2.55 GB, lighter tools still installed), the worktree `E:\wt-m22`.
+- [x] **Milestone 22.1** — Workloads refresh after runtime changes (`fix: refresh workloads after runtime changes`). The Workloads tab read its
+  catalog once, so a runtime deleted on the Runtimes tab still showed Installed there (and Install was refused) until the Runtime Manager was
+  reopened. Now it follows the Runtime and LSP services (see "Workloads (Milestone 22)"); the backend's `runtime:changed` already reached the
+  `RuntimeService`, so no backend change was needed. Tests: service (attach/invalidate/stale/burst/newest-wins/Verify pruning), wiring (runtime and
+  language-server fingerprints, progress ignored, closed page reads nothing) and the page end to end (delete and reinstall on the Runtimes tab update
+  the card, Install button, summary and dependency warning); all seven fail with the fix switched off. **Verified by hand** (debug build in the
+  test copy `E:\omm22`): Ninja installed and verified from its Workloads card; deleted on the Runtimes tab -> back on Workloads (same dialog) the
+  card said Available, Install was enabled and the old Verified line was gone; with Systems development selected, Ninja was in "Will install",
+  reinstalling it on the Runtimes tab turned the card Installed and dropped it from the summary; a backend delete while the tab was on screen (as
+  another window would) updated the card in ~0.6 s; with only Maven selected, deleting the JDK put "Java JDK 21.0.12.1, 196 MB" in the summary and
+  reinstalling it cleared it. No request at launch; PATH, Windows proxy and global git/npm/pip/cargo config unchanged; no process left after close.
+  Limitation: a bundled-toolchain switch (Language Tools' version selector) doesn't invalidate the catalog (it only changes which copy is found).
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 

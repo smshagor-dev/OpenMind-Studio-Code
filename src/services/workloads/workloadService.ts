@@ -77,7 +77,13 @@ export class WorkloadService {
   };
   private readonly listeners = new Set<() => void>();
   private planRequest = 0;
+  private catalogRequest = 0;
   private requestedTab: string | null = null;
+  /** Pages showing the catalog right now (the Workloads tab, the first-run page). */
+  private viewers = 0;
+  /** Install state changed since the catalog was read. */
+  private stale = false;
+  private reloadQueued = false;
 
   constructor(private readonly host: WorkloadHost) {}
 
@@ -95,14 +101,51 @@ export class WorkloadService {
     for (const listener of [...this.listeners]) listener();
   }
 
-  /** Reads the catalog (local state only: what is installed, the LSP bundle, tools on PATH). */
+  /**
+   * Reads the catalog (local state only: what is installed, the LSP bundle, tools on PATH) and the plan of the
+   * current selection. The newest read wins; Verify results of runtimes that are no longer installed are dropped.
+   */
   async load(): Promise<void> {
+    const request = ++this.catalogRequest;
+    this.stale = false;
     try {
-      this.set({ catalog: await this.host.ipc.workloadsCatalog(), error: null });
+      const catalog = await this.host.ipc.workloadsCatalog();
+      if (request !== this.catalogRequest) return;
+      this.set({ catalog, verify: keepInstalled(this.state.verify, catalog), error: null });
       await this.refreshPlan();
     } catch (error) {
-      this.set({ error: String(error) });
+      if (request === this.catalogRequest) this.set({ error: String(error) });
     }
+  }
+
+  /**
+   * A page showing the catalog is on screen; call the returned function when it goes. Data that went stale while
+   * nothing showed it is read again now.
+   */
+  attach(): () => void {
+    this.viewers += 1;
+    if (this.state.catalog === null || this.stale) void this.load();
+    let attached = true;
+    return () => {
+      if (attached) this.viewers -= 1;
+      attached = false;
+    };
+  }
+
+  /**
+   * Install state changed somewhere else (the Runtimes tab, Language Tools, another window). While a page shows the
+   * catalog it is read again at once (one read for a burst of changes); otherwise on the next `attach()`, so no
+   * version probe runs for a page nobody is looking at.
+   */
+  invalidate(): void {
+    if (this.state.catalog === null) return;
+    this.stale = true;
+    if (this.viewers === 0 || this.reloadQueued) return;
+    this.reloadQueued = true;
+    queueMicrotask(() => {
+      this.reloadQueued = false;
+      if (this.stale && this.viewers > 0) void this.load();
+    });
   }
 
   /** Opens the first-run page if it has never been shown or skipped. */
@@ -262,6 +305,14 @@ export class WorkloadService {
       this.set({ verify: { ...this.state.verify, [runtime]: { ok: false, text: String(error) } } });
     }
   }
+}
+
+/** Verify results only for runtimes the catalog still lists as installed. */
+function keepInstalled(verify: WorkloadState["verify"], catalog: WorkloadCatalog): WorkloadState["verify"] {
+  const installed = new Set(
+    catalog.components.filter((c) => c.state === "installed" && c.runtime !== null).map((c) => c.runtime),
+  );
+  return Object.fromEntries(Object.entries(verify).filter(([runtime]) => installed.has(runtime)));
 }
 
 function emptyPlan(): Plan {

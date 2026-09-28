@@ -101,6 +101,13 @@ anything inside a tool — `sdkmanager` asks for each SDK package's licence itse
   starts a server from it.
 - **Terraform** is source-available under the Business Source License 1.1.
 
+## Keeping the page current
+
+The Workloads tab reads what is installed from the backend. When a runtime is installed, repaired, deleted or switched anywhere
+(the Runtimes tab, the PHP window, another window) or a language server is installed or unpacked (Language Tools), the page
+reads it again while it is on screen, so its cards, Install buttons, summary and warnings never show an old state. While the
+page isn't shown nothing is read (a read runs version checks); it is read again when the page comes back.
+
 ## Downloads
 
 Large downloads are not cut off: the time allowed for a body grows with its expected size (at least 15 minutes, enough

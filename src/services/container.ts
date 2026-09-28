@@ -648,7 +648,7 @@ const network = wireNetwork({
   },
 });
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
-const workloads = wireWorkloads({ events, commands, runtime });
+const workloads = wireWorkloads({ events, commands, runtime, lsp });
 const ai = wireAi({
   ipc: tauriIpcClient,
   events,

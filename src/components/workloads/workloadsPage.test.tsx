@@ -6,7 +6,10 @@ import { EventBus } from "../../services/eventBus";
 import type { AppEvents } from "../../services/events";
 import { CATALOG } from "../../services/workloads/workloadModel.test";
 import type { Plan, WorkloadsIpc } from "../../services/workloads/workloadsIpc";
+import type { WorkloadCatalog } from "../../services/workloads/workloadsIpc";
 import { WorkloadService } from "../../services/workloads/workloadService";
+import { wireWorkloads } from "../../services/workloads/workloadsWiring";
+import { CommandRegistry } from "../../services/commandRegistry";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
 vi.mock("../../services/container", () => ({
@@ -136,5 +139,100 @@ describe("WorkloadsPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(r.ipc.workloadsFirstRunDone).toHaveBeenCalled();
     expect(r.install).not.toHaveBeenCalled();
+  });
+});
+
+/** The Runtime Manager's runtime list as the RuntimeService holds it (only what the wiring and the page read). */
+function runtimeList(jdkInstalled: boolean) {
+  return {
+    ...RUNTIME_STATE,
+    runtimes: [
+      ...RUNTIME_STATE.runtimes.map((r) => ({ ...r, installed: [], activeVersion: null })),
+      { id: "jdk", installed: jdkInstalled ? [{ version: "21.0.12.1", healthy: true }] : [], activeVersion: jdkInstalled ? "21.0.12.1" : null },
+    ],
+  };
+}
+
+function jdk(state: "installed" | "available"): WorkloadCatalog {
+  return { ...CATALOG, components: CATALOG.components.map((c) => (c.id === "jdk" ? { ...c, state } : c)) };
+}
+
+describe("WorkloadsPage follows the Runtimes tab", () => {
+  it("a runtime deleted and reinstalled on the Runtimes tab updates its card, Install button and the summary without reopening", async () => {
+    let installed = true;
+    const listeners = new Set<() => void>();
+    let runtimeState = runtimeList(true);
+    const runtime = {
+      getState: () => runtimeState,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      install: vi.fn().mockResolvedValue(true),
+      refresh: () => Promise.resolve(),
+    };
+    /** What the Runtimes tab's Delete / Install does: the backend changes, the RuntimeService reloads its list. */
+    const changeOnRuntimesTab = async (nowInstalled: boolean) => {
+      installed = nowInstalled;
+      runtimeState = runtimeList(nowInstalled);
+      await act(async () => {
+        for (const listener of [...listeners]) listener();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+    };
+    const ipc: WorkloadsIpc = {
+      workloadsCatalog: vi.fn(() => Promise.resolve(jdk(installed ? "installed" : "available"))),
+      workloadsPlan: vi.fn(() =>
+        Promise.resolve(
+          installed
+            ? plan({ install: ["maven"] })
+            : plan({ install: ["jdk", "maven"], warnings: [{ kind: "dependencyAdded", component: "jdk", neededBy: "maven" }] }),
+        ),
+      ),
+      workloadsFirstRun: vi.fn().mockResolvedValue(false),
+      workloadsFirstRunDone: vi.fn().mockResolvedValue(undefined),
+      runtimeVerify: vi.fn().mockResolvedValue("21.0.12.1"),
+    };
+    const workloads = wireWorkloads({ ipc, events: new EventBus<AppEvents>(), commands: new CommandRegistry(), runtime: runtime as never });
+    const network = { subscribe: () => () => undefined, getState: () => NETWORK_STATE, load: vi.fn().mockResolvedValue(undefined) };
+    harness.current = { workloads, network, runtime, run: vi.fn(), ipc: { openExternalUrl: vi.fn() } };
+
+    render(<WorkloadsPage firstRun={false} />);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    act(() => {
+      workloads.setSection("workloads");
+    });
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("article", { name: "Java / Kotlin development" })).getByRole("checkbox"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const card = () => screen.getByRole("article", { name: "Java JDK (Temurin 21)" });
+    const summary = () => screen.getByRole("complementary", { name: "Summary" });
+    /** The card's state chip (the header holds only the name and the state). */
+    const chip = () => card().querySelector("header")?.textContent.replace("Java JDK (Temurin 21)", "");
+    expect(chip()).toBe("Installed");
+    expect(within(card()).getByRole("button", { name: "Install" })).toBeDisabled();
+    expect(within(summary()).queryByText("Java JDK (Temurin 21) 1.0")).toBeNull();
+
+    await changeOnRuntimesTab(false);
+    expect(chip()).toBe("Available");
+    expect(within(card()).getByRole("button", { name: "Install" })).toBeEnabled();
+    expect(within(summary()).getByText("Java JDK (Temurin 21) 1.0", { exact: false })).toBeInTheDocument();
+    act(() => {
+      workloads.setSection("summary");
+    });
+    expect(screen.getByText("Java JDK (Temurin 21) was added because Maven needs it.")).toBeInTheDocument();
+    act(() => {
+      workloads.setSection("workloads");
+    });
+
+    await changeOnRuntimesTab(true);
+    expect(chip()).toBe("Installed");
+    expect(within(card()).getByRole("button", { name: "Install" })).toBeDisabled();
+    act(() => {
+      workloads.setSection("summary");
+    });
+    expect(screen.queryByText("Java JDK (Temurin 21) was added because Maven needs it.")).toBeNull();
+    expect(ipc.workloadsCatalog).toHaveBeenCalledTimes(3);
   });
 });

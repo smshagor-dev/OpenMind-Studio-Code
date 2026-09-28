@@ -248,10 +248,12 @@ function LicenseDialog({ ids, catalog }: { ids: string[]; catalog: WorkloadCatal
 export function WorkloadsPage({ firstRun }: { firstRun: boolean }) {
   const t = useT();
   const state = useWorkloads();
+  // While the page is on screen, install changes made elsewhere (the Runtimes tab, Language Tools, another window)
+  // re-read the catalog; data that went stale while it was hidden is read again when it comes back.
+  useEffect(() => container.workloads.attach(), []);
   useEffect(() => {
-    if (state.catalog === null) void container.workloads.load();
     void container.network.load();
-  }, [state.catalog]);
+  }, []);
   const catalog = state.catalog;
   if (catalog === null) return <p className="wl-text">{state.error ?? t("common.loading")}</p>;
   const plan = state.plan;
