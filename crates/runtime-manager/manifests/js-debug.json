@@ -18,6 +18,7 @@
         {
           "platform": "windows-x64",
           "url": "https://github.com/microsoft/vscode-js-debug/releases/download/v1.140.0/js-debug-dap-v1.140.0.tar.gz",
+          "installBytes": 2567828,
           "sha256": "27dab92937ec1ab35821ae955aac867544fe06a1b6307229049f2d789af10968",
           "sizeBytes": 1249709,
           "archive": "tar.gz",

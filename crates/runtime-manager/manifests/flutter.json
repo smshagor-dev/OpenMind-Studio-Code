@@ -1,0 +1,50 @@
+{
+  "id": "flutter",
+  "displayName": "Flutter SDK",
+  "description": "Flutter UI toolkit with its own Dart SDK.",
+  "defaultVersion": "3.47.5",
+  "versionCommand": {
+    "executable": "bin/flutter.bat",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "Flutter "
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/flutter.bat"
+  ],
+  "env": {
+    "PUB_CACHE": "{cache}\\pub",
+    "FLUTTER_SUPPRESS_ANALYTICS": "true",
+    "DART_SUPPRESS_ANALYTICS": "true"
+  },
+  "requires": [
+    "git"
+  ],
+  "license": {
+    "name": "BSD-3-Clause",
+    "url": "https://flutter.dev/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "Official Flutter stable ZIP from Google (releases_windows.json); SHA256 published in that index. Heavy: about 1.9 GB to download and 3.5 GB installed. Flutter needs Git. Commands such as `flutter precache` or a first build download engine artifacts when you run them. Android builds also need the JDK and the Android command-line tools; Android Studio and the emulator are not installed by OpenMind.",
+  "versions": [
+    {
+      "version": "3.47.5",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.47.5-stable.zip",
+          "sha256": "0ccd71931f49c2fbe394b1eeb6d79af3d624058a043ea0d03d34160581624fb8",
+          "sizeBytes": 1933437428,
+          "installBytes": 3484783741,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

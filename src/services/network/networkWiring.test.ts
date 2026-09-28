@@ -11,12 +11,16 @@ import type { TerminalService } from "../terminalService";
 import type { NetworkIpc } from "./networkIpc";
 import { NETWORK_COMMANDS, wireNetwork } from "./networkWiring";
 
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 afterEach(() => {
   i18n.setLanguage("en");
 });
 
 function rig() {
   const events = new EventBus<AppEvents>();
+  const notices: string[] = [];
+  events.on("appNotice", ({ message }) => notices.push(message));
   const commands = new CommandRegistry();
   const output = new OutputService();
   const onChange = vi.fn();
@@ -28,6 +32,14 @@ function rig() {
   let sessions: { id: string }[] = [];
   const terminalListeners = new Set<() => void>();
   const taps = new Map<string, (data: Uint8Array) => void>();
+  const inputs = new Set<(id: string, data: string) => void>();
+  const createTerminal = vi.fn(() => {
+    const id = `t${String(sessions.length + 1)}`;
+    sessions = [...sessions, { id }];
+    for (const listener of terminalListeners) listener();
+    return Promise.resolve(id);
+  });
+  const write = vi.fn();
   const terminal = {
     getState: () => ({ sessions }),
     subscribe: (listener: () => void) => {
@@ -38,6 +50,12 @@ function rig() {
       taps.set(id, listener);
       return () => taps.delete(id);
     },
+    onInput: (listener: (id: string, data: string) => void) => {
+      inputs.add(listener);
+      return () => inputs.delete(listener);
+    },
+    createTerminal,
+    write,
   } as unknown as TerminalService;
   let failure: ((message: string, retry: () => void) => void) | null = null;
   const setAppActions = vi.fn();
@@ -75,6 +93,12 @@ function rig() {
       for (const listener of terminalListeners) listener();
     },
     print: (id: string, text: string) => taps.get(id)?.(new TextEncoder().encode(text)),
+    type: (id: string, text: string) => {
+      for (const listener of inputs) listener(id, text);
+    },
+    createTerminal,
+    write,
+    notices: () => notices,
     failRuntime: (message: string, retry: () => void) => failure?.(message, retry),
   };
 }
@@ -118,6 +142,40 @@ describe("wireNetwork", () => {
     expect(r.network.getState().failure?.retry).not.toBeNull();
     r.network.retryFailure();
     expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it("the university pip failure is proxy authentication, and Retry Command reruns it in a new proxy-ready terminal", async () => {
+    const r = rig();
+    await r.network.load();
+    r.addTerminal("t1");
+    r.type("t1", "pip install requests\r");
+    r.print(
+      "t1",
+      "WARNING: Retrying ... ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy Authentication Required'))\r\n" +
+        "ERROR: Could not find a version that satisfies the requirement requests (from versions: none)\r\n" +
+        "ERROR: No matching distribution found for requests\r\n",
+    );
+    const failure = r.network.getState().failure;
+    expect(failure).toMatchObject({ problem: "proxyAuthRequired", retryIsCommand: true });
+    r.network.retryFailure();
+    await flush();
+    expect(r.createTerminal).toHaveBeenCalledOnce();
+    expect(r.write).toHaveBeenCalledWith("t2", "pip install requests\r");
+  });
+
+  it("a proxy change marks the terminals opened before it as stale, once", async () => {
+    const r = rig();
+    await r.network.load();
+    r.addTerminal("t1");
+    expect(r.network.getState().staleTerminals).toEqual([]);
+    (r.networkIpc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ mode: "manual", active: true, http: "http://proxy.lab:3128" });
+    await r.network.load();
+    expect(r.network.getState().staleTerminals).toEqual(["t1"]);
+    expect(r.notices()).toContain(
+      "Proxy settings changed. Terminals opened before the change still use the old settings: open a new terminal.",
+    );
+    r.addTerminal("t2");
+    expect(r.network.getState().staleTerminals).toEqual(["t1"]);
   });
 
   it("nothing is contacted when wired: no test, no request", () => {

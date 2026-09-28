@@ -6,11 +6,11 @@ use std::sync::{Arc, Mutex};
 use openmind_db::{Db, InstalledRuntimeEntry, InstalledRuntimesRepository};
 use serde::Serialize;
 
-use crate::detect::{detect_version, find_on_path};
+use crate::detect::system_versions;
 use crate::download::{verify_sha256, HttpClient};
 use crate::error::RuntimeError;
 use crate::extract::{extract_tar_gz, extract_zip, ExtractSelection};
-use crate::manifest::{ArchiveKind, RuntimeManifest, RuntimeRegistry};
+use crate::manifest::{ArchiveKind, License, RuntimeManifest, RuntimeRegistry};
 use crate::paths::RuntimePaths;
 use crate::postinstall;
 use crate::shims::{shims_present, write_shims};
@@ -75,6 +75,11 @@ pub struct RuntimeStatus {
     pub global_version: Option<String>,
     /// Some operation on this runtime is running right now.
     pub busy: bool,
+    pub requires: Vec<String>,
+    pub license: Option<License>,
+    /// Download and installed size of the default version for this platform (`None`: unknown or no download).
+    pub download_bytes: Option<u64>,
+    pub install_bytes: Option<u64>,
 }
 
 /// What a launched process needs to see the active runtimes: folders to put
@@ -158,17 +163,10 @@ impl RuntimeManager {
             .unwrap_or_default();
 
         let manifests: Vec<RuntimeManifest> = self.registry.all().cloned().collect();
-        let globals = tokio::task::spawn_blocking({
-            let manifests = manifests.clone();
-            move || {
-                manifests
-                    .iter()
-                    .map(|m| (m.id.clone(), global_version(m)))
-                    .collect::<Vec<_>>()
-            }
-        })
-        .await
-        .unwrap_or_default();
+        let probe = manifests.clone();
+        let globals = tokio::task::spawn_blocking(move || system_versions(&probe))
+            .await
+            .unwrap_or_default();
 
         let mut statuses = Vec::new();
         for manifest in manifests {
@@ -199,6 +197,10 @@ impl RuntimeManager {
                     .find(|(id, _)| *id == manifest.id)
                     .and_then(|(_, version)| version.clone()),
                 busy: busy.contains(&manifest.id),
+                download_bytes: manifest.sizes(&manifest.default_version, &self.platform).0,
+                install_bytes: manifest.sizes(&manifest.default_version, &self.platform).1,
+                requires: manifest.requires,
+                license: manifest.license,
                 id: manifest.id,
                 display_name: manifest.display_name,
                 description: manifest.description,
@@ -349,9 +351,9 @@ impl RuntimeManager {
                 });
             }
             for (key, value) in &manifest.env {
-                environment
-                    .vars
-                    .push((key.clone(), value.replace("{dir}", &dir.to_string_lossy())));
+                let value = value.replace("{dir}", &dir.to_string_lossy());
+                let value = value.replace("{cache}", &self.paths.cache_dir().to_string_lossy());
+                environment.vars.push((key.clone(), value));
             }
         }
         Ok(environment)
@@ -680,15 +682,6 @@ fn remove_dir_if_exists(dir: &Path) -> Result<(), RuntimeError> {
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(err) => Err(RuntimeError::io(dir, err)),
     }
-}
-
-fn global_version(manifest: &RuntimeManifest) -> Option<String> {
-    let name = Path::new(&manifest.version_command.executable)
-        .file_stem()?
-        .to_string_lossy()
-        .into_owned();
-    let exe = find_on_path(&name)?;
-    detect_version(&exe, &manifest.version_command)
 }
 
 #[cfg(test)]

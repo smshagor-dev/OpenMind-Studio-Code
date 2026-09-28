@@ -58,6 +58,7 @@ export class TerminalService {
   private state: TerminalState = EMPTY_STATE;
   private readonly listeners = new Set<() => void>();
   private readonly sinks = new Map<string, TerminalSink>();
+  private readonly inputTaps = new Set<(id: string, data: string) => void>();
   /** Listeners of a session's raw output (a task's problem matchers read it). */
   private readonly taps = new Map<string, Set<(data: Uint8Array) => void>>();
   /** Callers waiting for a session to end (a task chain waits for each step). */
@@ -294,11 +295,20 @@ export class TerminalService {
     return panel.visible && panel.activeTab === "terminal";
   }
 
+  /** Listens to what is typed or pasted into any terminal (the network card replays a failed command from it). */
+  onInput(listener: (id: string, data: string) => void): () => void {
+    this.inputTaps.add(listener);
+    return () => {
+      this.inputTaps.delete(listener);
+    };
+  }
+
   write(id: string, data: string): void {
     // An exited shell has no stdin left; typing into its tab is a quiet no-op, not an error toast.
     if (this.state.sessions.some((session) => session.id === id && session.exited)) {
       return;
     }
+    for (const tap of [...this.inputTaps]) tap(id, data);
     void safely(this.events, () => this.ipc.terminalWrite(id, data), "send input", undefined);
   }
 

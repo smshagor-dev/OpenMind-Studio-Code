@@ -296,6 +296,18 @@ mod tests {
             let text = format!("download failed ({}): x", problem.label());
             assert_eq!(diagnose(&text), Some(problem), "{text}");
         }
+        // The real university case: pip ends with "No matching distribution found", but the cause is the proxy.
+        let university = "WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after \
+            connection broken by 'ProxyError('Unable to connect to proxy', OSError('Tunnel connection failed: 407 Proxy \
+            Authentication Required'))': /simple/requests/\n\
+            ERROR: Could not find a version that satisfies the requirement requests (from versions: none)\n\
+            ERROR: No matching distribution found for requests";
+        assert_eq!(diagnose(university), Some(NetProblem::ProxyAuthRequired));
+        // Without a network cause, a missing package is not a network problem at all.
+        assert_eq!(
+            diagnose("ERROR: No matching distribution found for nosuchpkg"),
+            None
+        );
         assert_eq!(diagnose("Successfully installed six-1.16.0"), None);
         assert_eq!(diagnose(""), None);
     }

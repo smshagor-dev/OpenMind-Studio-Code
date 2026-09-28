@@ -76,7 +76,9 @@ function setup(status: NetworkStatus = STATUS, ipc: Partial<NetworkIpc> = {}) {
     openRuntimeManager: () => undefined,
   });
   const run = vi.fn();
-  harness.current = { network, run, settings: { string: () => "" } };
+  const terminalState = { activeId: null };
+  const terminal = { subscribe: () => () => undefined, getState: () => terminalState };
+  harness.current = { network, run, terminal, settings: { string: () => "" } };
   return { network, setSetting, run, ipc: full };
 }
 

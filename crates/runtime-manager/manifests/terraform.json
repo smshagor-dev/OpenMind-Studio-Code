@@ -1,0 +1,47 @@
+{
+  "id": "terraform",
+  "displayName": "Terraform",
+  "description": "HashiCorp infrastructure-as-code CLI.",
+  "defaultVersion": "1.16.4",
+  "versionCommand": {
+    "executable": "terraform.exe",
+    "args": [
+      "version"
+    ],
+    "outputPrefix": "Terraform v"
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "terraform.exe"
+  ],
+  "env": {
+    "CHECKPOINT_DISABLE": "1",
+    "TF_PLUGIN_CACHE_DIR": "{cache}\\terraform-plugins"
+  },
+  "requires": [],
+  "license": {
+    "name": "Business Source License 1.1",
+    "url": "https://www.hashicorp.com/bsl",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official HashiCorp ZIP; SHA256 from the release's SHA256SUMS. CHECKPOINT_DISABLE=1 turns off Terraform's version check call for processes OpenMind starts. Licence: BSL 1.1 (source-available).",
+  "versions": [
+    {
+      "version": "1.16.4",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://releases.hashicorp.com/terraform/1.16.4/terraform_1.16.4_windows_amd64.zip",
+          "sha256": "5c736ed6b0f13e98bc5029fe159574cca33634c3477466c56442c28b513a7054",
+          "sizeBytes": 36761827,
+          "installBytes": 123252702,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

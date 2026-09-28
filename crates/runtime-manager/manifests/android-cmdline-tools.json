@@ -1,0 +1,50 @@
+{
+  "id": "android-cmdline-tools",
+  "displayName": "Android command-line tools",
+  "description": "sdkmanager and avdmanager for installing Android SDK packages.",
+  "defaultVersion": "23.0",
+  "versionCommand": {
+    "executable": "cmdline-tools/bin/sdkmanager.bat",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": ""
+  },
+  "binDirs": [
+    "cmdline-tools/bin"
+  ],
+  "verifyFiles": [
+    "cmdline-tools/bin/sdkmanager.bat"
+  ],
+  "env": {
+    "ANDROID_HOME": "{dir}",
+    "ANDROID_SDK_ROOT": "{dir}",
+    "ANDROID_USER_HOME": "{cache}\\android"
+  },
+  "requires": [
+    "jdk"
+  ],
+  "license": {
+    "name": "Android Software Development Kit License Agreement",
+    "url": "https://developer.android.com/studio/terms",
+    "acceptanceRequired": true
+  },
+  "probeSystem": false,
+  "notes": "Official command-line tools ZIP from dl.google.com. Google publishes SHA1; the SHA256 was computed from the download after the SHA1 matched. You must accept the Android SDK licence before installing. ANDROID_HOME points at this install; add platforms with `sdkmanager --sdk_root=%ANDROID_HOME% \"platforms;android-35\"` — sdkmanager asks you to accept each package's licence itself (OpenMind never accepts licences for you).",
+  "versions": [
+    {
+      "version": "23.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://dl.google.com/android/repository/commandlinetools-win-16111833_latest.zip",
+          "sha256": "e5885e2e59038c0778a85fc19f01de7ce7c567c105553f7617b936b1e0e87b2b",
+          "sizeBytes": 154957218,
+          "installBytes": 179125592,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

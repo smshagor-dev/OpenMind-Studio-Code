@@ -3110,6 +3110,7 @@ dependencies = [
  "openmind-tasks",
  "openmind-terminal",
  "openmind-toolchains",
+ "openmind-workloads",
  "openmind-workspace",
  "serde",
  "serde_json",
@@ -3160,6 +3161,14 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "openmind-workloads"
+version = "0.1.0"
+dependencies = [
+ "openmind-runtime-manager",
+ "serde",
 ]
 
 [[package]]

@@ -25,6 +25,7 @@
         {
           "platform": "windows-x64",
           "url": "https://archive.mariadb.org/mariadb-11.8.9/winx64-packages/mariadb-11.8.9-winx64.zip",
+          "installBytes": 308892539,
           "sha256": "830c46727d9278eae212ae3eca44eeb9e71b2a68704e95f344a64fba7b1963f5",
           "sizeBytes": 97016251,
           "archive": "zip",

@@ -21,6 +21,7 @@ import { AiConfirmDialog } from "./components/ai/AiConfirmDialog";
 import { FormatterDialog } from "./components/formatting/FormatterDialog";
 import { ProfilesDialog } from "./components/profiles/ProfilesDialog";
 import { NetworkDialog, NetworkFailureCard } from "./components/network/NetworkDialog";
+import { FirstRunWorkloads } from "./components/workloads/WorkloadsPage";
 import { LanguageStatusDialog } from "./components/language/LanguageStatusDialog";
 import { AiProviderManager } from "./components/ai/AiProviderManager";
 import { QuickOpen } from "./components/QuickOpen";
@@ -183,6 +184,7 @@ export function App() {
       <ProfilesDialog />
       <NetworkDialog />
       <NetworkFailureCard />
+      <FirstRunWorkloads />
       <ExtensionDialogs />
       <ExtensionPrompts />
       <Suspense fallback={null}>

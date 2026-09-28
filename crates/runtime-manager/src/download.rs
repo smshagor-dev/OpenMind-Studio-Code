@@ -23,6 +23,25 @@ pub struct HttpResponse {
 /// a network (and without ever weakening the HTTPS rule for real use).
 pub trait HttpClient: Send + Sync {
     fn get(&self, url: &str, range_from: Option<u64>) -> Result<HttpResponse, RuntimeError>;
+
+    /// `get` for a download of about `expected_bytes` (the time allowed for the body depends on it).
+    fn get_sized(
+        &self,
+        url: &str,
+        range_from: Option<u64>,
+        _expected_bytes: Option<u64>,
+    ) -> Result<HttpResponse, RuntimeError> {
+        self.get(url, range_from)
+    }
+}
+
+/// ureq's body timeout is the *total* time for the whole body, not an idle timeout: it must fit the download.
+/// At least 15 minutes, and enough for the expected size at 200 KB/s (a slow link); 5 minutes when the size is unknown.
+pub fn body_timeout(expected_bytes: Option<u64>) -> Duration {
+    match expected_bytes {
+        Some(bytes) => Duration::from_secs((bytes / (200 * 1024)).max(15 * 60)),
+        None => Duration::from_secs(5 * 60),
+    }
 }
 
 /// The real client. The agent is built per request so it follows the proxy in force for that address
@@ -34,13 +53,13 @@ impl UreqClient {
         Self
     }
 
-    fn agent(url: &str) -> ureq::Agent {
+    fn agent(url: &str, body: Duration) -> ureq::Agent {
         let builder = ureq::Agent::config_builder()
             .https_only(true)
             .http_status_as_error(false)
             .timeout_connect(Some(Duration::from_secs(15)))
             .timeout_recv_response(Some(Duration::from_secs(30)))
-            .timeout_recv_body(Some(Duration::from_secs(60)));
+            .timeout_recv_body(Some(body));
         openmind_network::http::configure(builder, url)
             .build()
             .into()
@@ -74,7 +93,17 @@ impl Default for UreqClient {
 
 impl HttpClient for UreqClient {
     fn get(&self, url: &str, range_from: Option<u64>) -> Result<HttpResponse, RuntimeError> {
-        let mut request = Self::agent(url).get(url);
+        self.get_sized(url, range_from, None)
+    }
+
+    fn get_sized(
+        &self,
+        url: &str,
+        range_from: Option<u64>,
+        expected_bytes: Option<u64>,
+    ) -> Result<HttpResponse, RuntimeError> {
+        let remaining = expected_bytes.map(|total| total.saturating_sub(range_from.unwrap_or(0)));
+        let mut request = Self::agent(url, body_timeout(remaining)).get(url);
         if let Some(start) = range_from {
             request = request.header("Range", format!("bytes={start}-"));
         }
@@ -112,18 +141,20 @@ pub fn download(
     let part = part_path(dest);
     let mut resume_from = fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
 
-    let mut response = client.get(url, (resume_from > 0).then_some(resume_from))?;
+    let mut response =
+        client.get_sized(url, (resume_from > 0).then_some(resume_from), expected_size)?;
     if response.status == 416 {
         // The partial file is longer than (or unrelated to) the remote file.
         let _ = fs::remove_file(&part);
         resume_from = 0;
-        response = client.get(url, None)?;
+        response = client.get_sized(url, None, expected_size)?;
     }
     let resumed = match response.status {
         206 if resume_from > 0 => true,
         200 => false,
         other => return Err(RuntimeError::Network(NetError::status(other, url))),
     };
+    tracing::info!(url, status = response.status, resume_from, resumed, length = ?response.content_length, "download response");
     if !resumed {
         // The server ignored the Range header (or there was nothing to resume): start over.
         resume_from = 0;
@@ -341,6 +372,14 @@ pub(crate) mod tests {
             assert!(matches!(result, Err(RuntimeError::InsecureUrl(_))), "{url}");
         }
         assert!(server.requests.lock().expect("lock").is_empty());
+    }
+
+    #[test]
+    fn the_body_time_limit_fits_the_download_size() {
+        // A 1.9 GB SDK must not be cut off after a minute (ureq's body timeout is the total time).
+        assert!(body_timeout(Some(1_933_437_428)) >= Duration::from_secs(9_000));
+        assert_eq!(body_timeout(Some(1_000)), Duration::from_secs(15 * 60));
+        assert_eq!(body_timeout(None), Duration::from_secs(5 * 60));
     }
 
     #[test]

@@ -1,0 +1,45 @@
+{
+  "id": "postgresql",
+  "displayName": "PostgreSQL client tools",
+  "description": "psql, pg_dump, pg_restore (and the server binaries, not started).",
+  "defaultVersion": "17.6",
+  "versionCommand": {
+    "executable": "bin/psql.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "psql (PostgreSQL) "
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/psql.exe",
+    "bin/pg_dump.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "PostgreSQL License",
+    "url": "https://www.postgresql.org/about/licence/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "EDB's Windows binaries ZIP (the one postgresql.org links). EDB publishes no checksum; the SHA256 was computed from a download on 2026-09-28. The ZIP also contains the server and pgAdmin 4 (about 0.9 GB installed); OpenMind uses the client tools and never starts a database server from it.",
+  "versions": [
+    {
+      "version": "17.6",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://get.enterprisedb.com/postgresql/postgresql-17.6-1-windows-x64-binaries.zip",
+          "sha256": "d378882abd001a186735acd6f6ba716bca6ccd192e800412d4fd15ed25376b3e",
+          "sizeBytes": 329891687,
+          "installBytes": 889381162,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

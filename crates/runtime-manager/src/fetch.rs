@@ -110,6 +110,7 @@ mod tests {
             extract_root: None,
             install_as: None,
             mirrors: vec![MIRROR.into()],
+            install_bytes: None,
         }
     }
 

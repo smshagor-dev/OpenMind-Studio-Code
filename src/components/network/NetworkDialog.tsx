@@ -113,9 +113,17 @@ export function NetworkFailureCard() {
               network.retryFailure();
             }}
           >
-            {t("network.failure.retry")}
+            {failure.retryIsCommand ? t("network.failure.retryCommand") : t("network.failure.retry")}
           </button>
         ) : null}
+        <button
+          type="button"
+          onClick={() => {
+            container.run("terminal.new");
+          }}
+        >
+          {t("network.failure.newTerminal")}
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -149,22 +157,27 @@ export function NetworkFailureCard() {
 
 /** "Network: Manual Proxy" in the terminal panel's header; a click opens the proxy settings. */
 export function NetworkStatusButton() {
-  const { status, offline } = useSyncExternalStore(
+  const { status, offline, staleTerminals } = useSyncExternalStore(
     container.network.subscribe,
     container.network.getState,
   );
+  const activeId = useSyncExternalStore(
+    (listener) => container.terminal.subscribe(listener),
+    () => container.terminal.getState().activeId,
+  );
   const t = useT();
+  const stale = activeId !== null && staleTerminals.includes(activeId);
   const label = statusLabel(status, offline.length);
   return (
     <button
       type="button"
-      className="terminal-panel__action network-status"
-      title={t("network.palette.openSettings")}
+      className={stale ? "terminal-panel__action network-status network-status--stale" : "terminal-panel__action network-status"}
+      title={stale ? t("network.terminal.staleTitle") : t("network.palette.openSettings")}
       onClick={() => {
         container.run("network.openSettings");
       }}
     >
-      {label}
+      {stale ? `⚠ ${label}` : label}
     </button>
   );
 }

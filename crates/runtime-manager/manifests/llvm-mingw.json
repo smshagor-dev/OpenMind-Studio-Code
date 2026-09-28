@@ -1,0 +1,46 @@
+{
+  "id": "llvm-mingw",
+  "displayName": "C/C++ toolchain (LLVM-MinGW)",
+  "description": "Clang, LLD, LLDB and the MinGW-w64 runtime: a C/C++ compiler that needs no Visual Studio.",
+  "defaultVersion": "20260922",
+  "versionCommand": {
+    "executable": "bin/clang.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "clang version "
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/clang.exe",
+    "bin/lldb.exe",
+    "bin/mingw32-make.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "Apache-2.0 with LLVM exception (and MinGW-w64 licences)",
+    "url": "https://github.com/mstorsjo/llvm-mingw",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "llvm-mingw UCRT x86_64 ZIP from GitHub; SHA256 is the release asset digest. Builds MinGW (GNU ABI) programs; projects that need MSVC need Visual Studio Build Tools, which OpenMind doesn't install. LLDB is the debugger (GDB is not packaged).",
+  "versions": [
+    {
+      "version": "20260922",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-x86_64.zip",
+          "sha256": "e3ad77d117a4bea19a7a3b333341824d79a5a371004a10e25b8504e7b3047666",
+          "sizeBytes": 190725905,
+          "installBytes": 749625811,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

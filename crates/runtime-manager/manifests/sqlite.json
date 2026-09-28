@@ -1,0 +1,44 @@
+{
+  "id": "sqlite",
+  "displayName": "SQLite tools",
+  "description": "sqlite3 shell, sqldiff and sqlite3_analyzer.",
+  "defaultVersion": "3.53.4",
+  "versionCommand": {
+    "executable": "sqlite3.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": ""
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "sqlite3.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "Public domain",
+    "url": "https://www.sqlite.org/copyright.html",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official sqlite-tools ZIP from sqlite.org. sqlite.org publishes SHA3-256; the SHA256 was computed from the download after the SHA3-256 matched.",
+  "versions": [
+    {
+      "version": "3.53.4",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://www.sqlite.org/2026/sqlite-tools-win-x64-3530400.zip",
+          "sha256": "f46ee2475de4cbe287e6e5f7d43c838796b14e7379cd216bdbb28d391429f9fc",
+          "sizeBytes": 6557792,
+          "installBytes": 14929920,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

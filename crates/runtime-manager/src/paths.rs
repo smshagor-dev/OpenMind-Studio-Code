@@ -29,6 +29,11 @@ impl RuntimePaths {
         &self.runtimes_dir
     }
 
+    /// The app's `cache` folder: tools' own caches (Go modules, Gradle, NuGet, pub) go under it, not the profile.
+    pub fn cache_dir(&self) -> &Path {
+        &self.cache_dir
+    }
+
     pub fn downloads_dir(&self) -> PathBuf {
         self.cache_dir.join("downloads")
     }

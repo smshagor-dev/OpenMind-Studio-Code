@@ -42,6 +42,10 @@ function status(id: string, versions: InstalledVersion[]): RuntimeStatus {
     installed: versions,
     activeVersion: versions[0]?.version ?? null,
     globalVersion: null,
+    requires: [],
+    license: null,
+    downloadBytes: null,
+    installBytes: null,
     busy: false,
   };
 }

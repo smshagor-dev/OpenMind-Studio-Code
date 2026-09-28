@@ -1,0 +1,44 @@
+{
+  "id": "git-lfs",
+  "displayName": "Git LFS",
+  "description": "Large File Storage extension for Git.",
+  "defaultVersion": "3.8.0",
+  "versionCommand": {
+    "executable": "git-lfs.exe",
+    "args": [
+      "version"
+    ],
+    "outputPrefix": "git-lfs/"
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "git-lfs.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "MIT",
+    "url": "https://github.com/git-lfs/git-lfs",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official Windows ZIP from GitHub; SHA256 is the release asset digest. OpenMind never runs `git lfs install` for you (that writes your global Git config); run `git lfs install --local` inside a repository.",
+  "versions": [
+    {
+      "version": "3.8.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/git-lfs/git-lfs/releases/download/v3.8.0/git-lfs-windows-amd64-v3.8.0.zip",
+          "sha256": "b62e7b8ceddee635f691233d77de8eaa4b213e9209e0173811d8cfa77f7882c1",
+          "sizeBytes": 5862396,
+          "installBytes": 15298479,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

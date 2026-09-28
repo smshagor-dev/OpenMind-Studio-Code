@@ -19,6 +19,10 @@ function status(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
     installed: [],
     activeVersion: null,
     globalVersion: null,
+    requires: [],
+    license: null,
+    downloadBytes: null,
+    installBytes: null,
     busy: false,
     ...overrides,
   };
@@ -160,7 +164,7 @@ describe("RuntimeService", () => {
     finish();
     await done;
 
-    expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.21.0");
+    expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.21.0", false);
     expect(service.getState().working).toEqual({});
     expect(service.getState().progress).toEqual({});
     expect(ipc.runtimeList).toHaveBeenCalledTimes(2);

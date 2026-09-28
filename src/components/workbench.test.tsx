@@ -36,7 +36,7 @@ import { MenuPopup, type PopupItem } from "./MenuPopup";
 import { SearchPanelService } from "../services/searchPanelService";
 import { SearchView } from "./SearchView";
 
-const NO_NETWORK = { status: null, offline: [] };
+const NO_NETWORK = { status: null, offline: [], staleTerminals: [] };
 const FAKE_PROBLEMS = {
   files: [] as unknown[],
   listeners: new Set<() => void>(),

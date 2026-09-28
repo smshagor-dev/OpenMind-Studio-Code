@@ -9,6 +9,7 @@ import type { RuntimeService } from "../runtimeService";
 import type { SettingsService } from "../settingsService";
 import type { TerminalService } from "../terminalService";
 import { tauriNetworkIpc, type NetworkIpc } from "./networkIpc";
+import { CommandLineTracker } from "./commandLine";
 import { NetworkService } from "./networkService";
 
 export const NETWORK_SETTINGS = [
@@ -123,18 +124,58 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
     network.report(message, t("network.failure.sourceApp"));
   });
 
-  // Each new terminal: the once-per-session notice, and its output is watched for unmistakable network problems.
-  const watched = new Set<string>();
+  // Each new terminal: the once-per-session notice, its typed commands are followed (for Retry Command), and its
+  // output is watched for unmistakable network problems.
+  const watched = new Map<string, number>();
+  const trackers = new Map<string, CommandLineTracker>();
+  let generation = 0;
+  let fingerprint: string | null = null;
+  /** Retry Command: the failed command again, in a new terminal that has the current proxy variables. */
+  const rerun = (command: string) => async () => {
+    const id = await deps.terminal.createTerminal();
+    if (id !== null) deps.terminal.write(id, `${command}\r`);
+  };
+  deps.terminal.onInput((id, data) => {
+    const tracker = trackers.get(id) ?? new CommandLineTracker();
+    trackers.set(id, tracker);
+    tracker.feed(data);
+  });
+  const updateStale = () => {
+    const live = deps.terminal.getState().sessions.filter((s) => !s.exited);
+    network.setStaleTerminals(live.filter((s) => (watched.get(s.id) ?? generation) < generation).map((s) => s.id));
+  };
   deps.terminal.subscribe(() => {
     for (const session of deps.terminal.getState().sessions) {
       if (watched.has(session.id)) continue;
-      watched.add(session.id);
+      watched.set(session.id, generation);
       network.terminalStarted();
       const decoder = new TextDecoder();
       deps.terminal.onOutput(session.id, (data) => {
         const text = plain(decoder.decode(data, { stream: true }));
-        if (text.length > 0) network.report(text, t("network.failure.sourceTerminal"), null, true);
+        if (text.length === 0) return;
+        const command = trackers.get(session.id)?.last() ?? null;
+        network.report(
+          text,
+          t("network.failure.sourceTerminal"),
+          command === null ? null : () => void rerun(command)(),
+          true,
+          command !== null,
+        );
       });
+    }
+    updateStale();
+  });
+  // A proxy change makes the terminals opened before it out of date (they keep their environment): say so once.
+  network.subscribe(() => {
+    const next = network.proxyFingerprint();
+    if (next === null || next === fingerprint) return;
+    const changed = fingerprint !== null;
+    fingerprint = next;
+    if (!changed) return;
+    generation += 1;
+    updateStale();
+    if (network.getState().staleTerminals.length > 0) {
+      deps.events.emit("appNotice", { message: t("network.terminal.stale") });
     }
   });
   return network;

@@ -1,0 +1,45 @@
+{
+  "id": "kubectl",
+  "displayName": "kubectl",
+  "description": "Kubernetes command-line tool.",
+  "defaultVersion": "1.37.1",
+  "versionCommand": {
+    "executable": "kubectl.exe",
+    "args": [
+      "version",
+      "--client"
+    ],
+    "outputPrefix": "Client Version: v"
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "kubectl.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "Apache-2.0",
+    "url": "https://kubernetes.io/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official kubectl.exe from dl.k8s.io; SHA256 published beside it. It uses your existing kubeconfig (%USERPROFILE%\\.kube\\config); OpenMind doesn't create or change it.",
+  "versions": [
+    {
+      "version": "1.37.1",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://dl.k8s.io/release/v1.37.1/bin/windows/amd64/kubectl.exe",
+          "sha256": "14b93c4916a6f37a06fbc1f46b0a1d2404c4f9741be09f00d6caf8af3b05f1d3",
+          "sizeBytes": 63456768,
+          "installBytes": 63456768,
+          "archive": "file",
+          "installAs": "kubectl.exe"
+        }
+      ]
+    }
+  ]
+}

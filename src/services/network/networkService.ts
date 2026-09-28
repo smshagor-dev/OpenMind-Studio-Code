@@ -13,6 +13,8 @@ export interface NetworkFailure {
   source: string;
   /** Runs the failed action again (only when the reporter can). */
   retry: (() => void) | null;
+  /** Retry runs the failed terminal command again, in a new proxy-ready terminal. */
+  retryIsCommand: boolean;
 }
 
 export interface NetworkState {
@@ -28,6 +30,8 @@ export interface NetworkState {
   /** The last file inspected for import, waiting for the user to confirm. */
   inspection: Inspection | null;
   failure: NetworkFailure | null;
+  /** Terminals opened before the last proxy change: they still have the old proxy variables. */
+  staleTerminals: string[];
   error: string | null;
   notice: string | null;
 }
@@ -68,6 +72,7 @@ export class NetworkService {
     offline: [],
     inspection: null,
     failure: null,
+    staleTerminals: [],
     error: null,
     notice: null,
   };
@@ -213,14 +218,41 @@ export class NetworkService {
    * Looks at what a tool printed. A network problem shows the card (Configure Proxy / Retry / Import Package / Use
    * Offline Cache). `strongOnly`: only unmistakable problems (terminal output, where "timed out" can mean anything).
    */
-  report(text: string, source: string, retry: (() => void) | null = null, strongOnly = false): boolean {
+  report(
+    text: string,
+    source: string,
+    retry: (() => void) | null = null,
+    strongOnly = false,
+    retryIsCommand = false,
+  ): boolean {
     const problem = diagnoseNetwork(text);
     if (problem === null || (strongOnly && !STRONG_PROBLEMS.has(problem))) return false;
     const current = this.state.failure;
     if (current?.problem === problem && (retry === null || current.retry !== null)) return true;
     if (current === null && (this.quietUntil.get(problem) ?? 0) > this.now()) return false;
-    this.set({ failure: { problem, source, retry: retry ?? current?.retry ?? null } });
+    const keep = retry === null && current !== null;
+    this.set({
+      failure: {
+        problem,
+        source,
+        retry: retry ?? current?.retry ?? null,
+        retryIsCommand: keep ? current.retryIsCommand : retryIsCommand,
+      },
+    });
     return true;
+  }
+
+  /** Marks the terminals that still have the proxy variables of before the last change. */
+  setStaleTerminals(ids: string[]): void {
+    this.set({ staleTerminals: ids });
+  }
+
+  /** A fingerprint of what new terminals get: when it changes, open terminals are out of date. */
+  proxyFingerprint(): string | null {
+    const s = this.state.status;
+    // The status can be missing before the first answer (or in tests where the backend answers nothing).
+    if (!s) return null;
+    return JSON.stringify([s.mode, s.active, s.http, s.https, s.socks, s.noProxy, s.hasCredentials, s.username, s.useWheelhouse, s.goProxy]);
   }
 
   dismissFailure(): void {

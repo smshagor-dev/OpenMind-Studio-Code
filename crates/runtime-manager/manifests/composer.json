@@ -21,6 +21,7 @@
         {
           "platform": "windows-x64",
           "url": "https://getcomposer.org/download/2.10.3/composer.phar",
+          "installBytes": 3642137,
           "sha256": "7a2d379d5b8ffdaa028580ef26494c36d2feef4b178d3dd1473a4dbc5e17c8d6",
           "sizeBytes": 3642137,
           "archive": "file",

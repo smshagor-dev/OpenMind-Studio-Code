@@ -1,0 +1,13 @@
+[package]
+name = "openmind-workloads"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+openmind-runtime-manager = { version = "0.1.0", path = "../runtime-manager" }

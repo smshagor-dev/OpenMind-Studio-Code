@@ -646,6 +646,35 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   notebook, PHP, database/Composer, panel shell); Git gets it through `GitClient::with_env` (its log lines are redacted); the LSP `npm ci` gets
   it through `LspManager::install_package_env`.
 
+- `openmind-workloads` (Milestone 22) — the Runtime Manager's Visual Studio-style **workload / language-pack catalog** as data, and the rules
+  that turn it into honest statuses and an install plan; no I/O (the app supplies `Facts`: the runtime list, the LSP bundle, tools found on
+  PATH). See `docs/workloads.md`. `catalog`: ~100 `Component`s, each with a `Provision` — `Runtime` (a Runtime Manager manifest),
+  `IncludedWith` (npm with Node, LLDB with LLVM-MinGW, the .NET runtimes with the SDK), `LspBundled`, `LspOnRequest` (Intelephense),
+  `Project` (added with the project's package manager: the command is shown, never run), `BuiltIn`, `External { admin }` (Docker Desktop,
+  MSVC Build Tools, CUDA/ROCm, .NET Framework, rustup, Android Studio/emulator, Redis, MAUI, Xcode) or `Planned` (GDB, JDT LS, C# LSP,
+  Phpactor, NuGet offline) — plus a detection tool id and a note; 12 `WORKLOADS` (Minimal, Web, Python, PHP/Laravel, .NET/C#, Java/Kotlin,
+  Flutter/Dart/mobile, Systems, Database, DevOps, AI/ML, Full offline toolkit), 12 `PACKS`, ~38 `FRAMEWORKS` (needs). `status::resolve`
+  gives `State` Installed / Available / HeavySdk (install ≥ 700 MB, still installable) / ExternalRequired / ManualInstall / AdminRequired /
+  UnsupportedArchitecture / Planned with version, source, sizes, found path, command, licence flag; a tool found on this computer makes an
+  external component Installed (source `system`) and a framework ready (`framework_missing`). `plan::plan(Selection{workloads, add,
+  remove})` resolves requirements (dependencies first; a removed dependency is warned about, never re-added), sums download/install sizes
+  of runtimes to install (installed ones left out), lists licences to accept and warnings. Tests check the catalog against the real
+  Runtime Manager manifests (dev-dependency) and that nothing without a safe app-local package is ever installable.
+  **Runtime Manager additions (Milestone 22)**: 19 new manifests (JDK Temurin 21, Maven, Gradle, Kotlin, Go, CMake, Ninja, LLVM-MinGW,
+  Git LFS, kubectl, Helm, Terraform, .NET SDK 10, Dart, Flutter, Android command-line tools, Android platform tools, SQLite tools,
+  PostgreSQL client tools; SHA-256 published by the vendor, or computed from the download after the vendor's SHA-512/SHA-1/SHA3-256
+  matched, PostgreSQL computed); manifest fields `requires`, `license {name, url, acceptanceRequired}` (Android: `runtime_install`
+  refuses without `acceptLicense`), `probeSystem` (off for tools whose `--version` is slow or may download: Flutter, Dart, Gradle,
+  Maven, Kotlin, Android), artifact `installBytes` (measured from each ZIP's central directory; the old manifests got it too); env
+  placeholder `{cache}` (tools' caches app-local; telemetry switches for launched processes); system version probes run in parallel
+  (`detect::system_versions`); `parse_version_output` prefers the line starting with the prefix (Gradle's welcome, adb's second line).
+  Kotlin gets seeded `openmind-bin\kotlinc.cmd`/`kotlin.cmd` (JetBrains' `kotlinc.bat` breaks on paths with spaces without 8.3 names).
+  .NET: `DOTNET_ADD_GLOBAL_TOOLS_TO_PATH=false` and `DOTNET_GENERATE_ASPNET_CERTIFICATE=false` (without them the SDK's first run edits
+  the User PATH and the certificate store). Downloads: ureq's body timeout is the *total* time, so `download::body_timeout` sizes it
+  from the expected bytes (at least 15 min, 200 KB/s) via `HttpClient::get_sized`; each response is logged (status, resume offset).
+  `commands::workloads`: `workloads_catalog|plan|first_run|first_run_done`, `runtime_verify` (the active install's version command with
+  the runtimes' environment, 30 s limit, only on a click).
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
@@ -916,6 +945,20 @@ internals.
   are tokens** in `styles/theme.css` (dark, light and a high-contrast palette, plus semantic tokens: success/warning/info/error,
   overlays, debugger, terminal, disabled/invalid); `styles/themeTokens.test.ts` fails on a hard-coded color in any other stylesheet
   and on a token nobody defines. The old `theme` table is only read once, as the default of the new setting.
+- **Workloads (Milestone 22).** `src/services/workloads/`: `workloadsIpc.ts`, `workloadModel.ts` (pure: selection toggles for workloads /
+  components / packs, Minimal clears everything, `runtimeCards`, sizes, state/warning/framework text; catalog text translated by
+  `workload.<id>.*`, `workloadPack.<id>.name`, `workloadComponent.<id>.name|note` keys with the backend English as fallback),
+  `WorkloadService` (catalog, selection, plan refreshed on every change — the newest answer wins —, sections, the first-run page once
+  (`workloads.firstRunDone` in `editor_settings`; Skip installs nothing), licence dialog before install, a sequential install queue through
+  `RuntimeService.install(id, null, acceptLicense)` — so downloads are proxy-aware and failures reach the network card —, Verify) and
+  `workloadsWiring.ts` (`workloads.open` = Runtime Manager on the Workloads tab, `workloads.firstRun`; Terminal > Workloads...). UI:
+  `components/workloads/WorkloadsPage.tsx` (sidebar Welcome / Installation Location / Workloads & Runtimes / Language Packs / Network & Proxy /
+  Offline Packages / Summary / Install, main area, right summary with sizes, path, proxy mode, offline folder and warning counts, bottom Back /
+  Skip for now / Import offline packages / Next / Install selected) used by `FirstRunWorkloads` (App) and the Runtime Manager's third tab;
+  `WorkloadCards.tsx` (workload, component row, runtime card with status/version/architecture/source/sizes/Install/Verify/Import
+  package/Details and the disabled reason, pack card). Network card additions: **Retry Command** (a `CommandLineTracker` rebuilds the
+  command typed in a terminal from `TerminalService.onInput`; Retry opens a new, proxy-ready terminal and runs it), **Open New
+  Proxy-Ready Terminal**, and stale terminals (opened before a proxy change: `⚠` in the terminal header plus one notice).
 - **Network (Milestone 21).** `src/services/network/`: `networkIpc.ts`, `networkModel.ts` (pure: `diagnoseNetwork` — the Rust rules —,
   `STRONG_PROBLEMS`, `statusLabel`, `validateProxyAddress`, `testText`), `NetworkService` (status, credentials — the password is handed over once
   and never kept —, Test, the redacted terminal env, the offline import flow, the once-per-session terminal notice, `report()` = the
@@ -2369,8 +2412,30 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   resumes), the native file dialog of Import was cancelled rather than driven (imports used the same backend commands), `.vsix`/source-ZIP
   imports and Extract were covered by tests, not by hand, and a `HEAD /` straight to the proxy port seen once during the terminal run came from a
   tool in that terminal, not from OpenMind. Left on disk: `C:\omm21`.
-- [ ] Milestone 21.1 / 22 — to be scoped (more screens translated, native-speaker review, profile-aware keybindings, signing,
-  auto-update).
+- [x] **Milestone 22** — Optional runtime workloads (`feat: add optional runtime workload installer`). See `openmind-workloads`, "Workloads
+  (Milestone 22)" and `docs/workloads.md`. Runtime Manager > **Workloads** tab and a first-run page (shown once; Skip for now / Minimal install nothing)
+  with 12 workloads, 12 language packs and single components, a summary with download/install sizes, dependencies, licences and warnings, Install
+  selected (one runtime after another through the proxy-aware Runtime Manager), Verify on a click, offline import and the proxy status. **Installer-time
+  selection is not built**: "First-run and Runtime Manager workload selection implemented; installer-time selection is future packaging integration."
+  Never installable (with a reason): Redis, GDB, rustup/Rust, Docker Desktop, MSVC Build Tools, CUDA/ROCm, Android Studio, the Android Emulator and
+  system images, Xcode/iOS. The university pip failure (`407 Proxy Authentication Required` / `Tunnel connection failed` / `No matching distribution
+  found`) is classified as proxy authentication (Rust test), and its card offers Configure Proxy, Retry Command (the tracked command line, rerun in a
+  new proxy-ready terminal), Open New Proxy-Ready Terminal, Import Wheels / Offline Package and Use Offline Cache; terminals opened before a proxy
+  change are marked stale. All new strings in en/ru/bn. **Verified by hand** (debug build, fresh copy `E:\omm22`, a path with spaces, one heavy SDK at a
+  time, each deleted through the app afterwards): Ninja, SQLite, Git LFS, Helm, Terraform, kubectl, CMake, JDK, Maven, Kotlin, Gradle, Android platform
+  and command-line tools (licence dialog), Go, Dart, LLVM-MinGW (a C++ program compiled and ran), .NET 10 (a console app ran), PostgreSQL client, Git
+  and Flutter 3.47.5 (a broken download resumed with a range request) installed from the cards and verified; an install went through a local
+  authenticating proxy; the pip 407 card, stale notice and Retry Command (pip then downloaded through the proxy) worked; offline import recognised a
+  Ninja ZIP and refused a manylinux wheel; Russian UI checked. **Found and fixed by hand**: Kotlin's launcher broke on spaces; Gradle/adb/sdkmanager
+  versions misread; Flutter's download was cut off by a 60 s *total* body timeout; the dialog footer was cut off; an empty size read "1 KB"; Terminal >
+  Workloads opened on Runtimes; Retry Command was missing because the terminal's cursor-position reply marked the line unknown; **the .NET SDK's first
+  run added a folder to the User PATH and created an HTTPS dev certificate** — both undone by hand (PATH restored byte for byte, certificate removed)
+  and prevented with the two env switches, re-verified. **Limitations**: NuGet still writes `%APPDATA%\NuGet\NuGet.Config` on first restore; Go keeps
+  local-only telemetry counters (no env switch exists); deleting .NET while `VBCSCompiler` runs fails honestly (run `dotnet build-server shutdown`);
+  PostgreSQL's SHA-256 is computed, not published; no installer-time selection; Windows x64 only. User/Machine PATH, git global config and Internet
+  Settings identical before and after. Left on disk: `E:\omm22` (2.55 GB, lighter tools still installed), the worktree `E:\wt-m22`.
+- [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
+  keybindings, signing, auto-update).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.

@@ -143,6 +143,10 @@ a card appears with **Configure Proxy**, **Retry** (when the failed action can b
 unreachable, TLS, DNS), so a `ping` timing out doesn't raise it. A dismissed problem stays quiet for two minutes.
 Details stay in the Output channels, with the proxy password removed.
 
+Card actions for a terminal failure: **Retry Command** runs the command you typed again in a new terminal with the current proxy
+variables, and **Open New Proxy-Ready Terminal** opens one. Terminals opened before a proxy change keep the old variables: the
+terminal header shows `⚠ Network: ...` for them and a notice says so once.
+
 ## Troubleshooting
 
 - *"the proxy requires a user name and password"* — Network > Proxy Authentication, then Retry.

@@ -51,6 +51,10 @@ function status(
     installed,
     activeVersion: installed.find((entry) => entry.active)?.version ?? null,
     globalVersion: null,
+    requires: [],
+    license: null,
+    downloadBytes: null,
+    installBytes: null,
     busy: false,
     ...over,
   };

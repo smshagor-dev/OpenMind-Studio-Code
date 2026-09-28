@@ -31,4 +31,5 @@ pub mod tasks;
 pub mod terminal;
 pub mod toolchains;
 pub mod watch;
+pub mod workloads;
 pub mod workspace;

@@ -92,6 +92,7 @@ import { createContributionBinding, registerHostProvider } from "../editor/exten
 import * as monaco from "monaco-editor";
 import { t } from "../i18n";
 import { wireNetwork } from "./network/networkWiring";
+import { wireWorkloads } from "./workloads/workloadsWiring";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
@@ -646,6 +647,8 @@ const network = wireNetwork({
     run(id);
   },
 });
+/** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
+const workloads = wireWorkloads({ events, commands, runtime });
 const ai = wireAi({
   ipc: tauriIpcClient,
   events,
@@ -799,6 +802,8 @@ async function startFormatting(): Promise<void> {
   autoSave.start();
   // The proxy settings and the offline cache list: local reads, no network request.
   await network.load();
+  // The first-run workload page, once (a local flag; nothing is downloaded until Install).
+  await workloads.maybeOpenFirstRun();
   await profiles.load();
   await formatting.initialize();
   await formatting.refreshStatus();
@@ -899,6 +904,7 @@ export const container = {
   formatting,
   profiles,
   network,
+  workloads,
   reportStartup,
   startFormatting,
   startExtensions: extensions.start,

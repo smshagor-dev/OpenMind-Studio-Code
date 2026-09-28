@@ -1,0 +1,44 @@
+{
+  "id": "cmake",
+  "displayName": "CMake",
+  "description": "Cross-platform build system generator (cmake, ctest, cpack).",
+  "defaultVersion": "4.4.3",
+  "versionCommand": {
+    "executable": "bin/cmake.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "cmake version "
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/cmake.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "BSD-3-Clause",
+    "url": "https://cmake.org/licensing/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official Kitware ZIP from GitHub; SHA256 from the release's SHA-256.txt.",
+  "versions": [
+    {
+      "version": "4.4.3",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.zip",
+          "sha256": "4d52ebab7193a698651639ed80d8d04fd903358843572cf44c7fd234cb7c26ab",
+          "sizeBytes": 54408599,
+          "installBytes": 143281458,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

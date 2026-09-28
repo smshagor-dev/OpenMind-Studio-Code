@@ -18,6 +18,7 @@
         {
           "platform": "windows-x64",
           "url": "https://github.com/git-for-windows/git/releases/download/v2.55.0.windows.5/MinGit-2.55.0.5-64-bit.zip",
+          "installBytes": 94375970,
           "sha256": "56d7b226b7693196cfc71fef26568f536c4a021ab6c37ff2db4287bed908e96e",
           "sizeBytes": 38989688,
           "archive": "zip",

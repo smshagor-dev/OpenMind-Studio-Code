@@ -55,6 +55,9 @@ from happening.
   settings keep the extension's text. Settings search matches both languages.
 - `src/i18n/backendText.ts`: a short list of English sentences the backend sends that matter for a decision (a task's
   risks, the notebook save conflict, the debugger's "not installed" reasons), matched exactly.
+- Workloads (Milestone 22): `workloads.*` (page, states, warnings, sections), `workload.<id>.name|summary`,
+  `workloadPack.<id>.name`, `workloadComponent.<id>.name|note` (catalog text; the backend's English is the fallback for an id without a
+  key), `command.workloads.open`, `runtimes.tab.workloads`.
 - Network (Milestone 21): `network.*` (window, card, labels, problem categories, offline import), `command.network.*` and
   `submenu.network` (Terminal > Network), `setting.network.*`. Network problem categories come from Rust as stable ids
   (`proxyAuthRequired`, `dns` ...) and are translated as `network.problem.<id>`; a tool's own output stays as printed.

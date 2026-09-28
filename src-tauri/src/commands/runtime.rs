@@ -26,9 +26,20 @@ pub async fn runtime_list(state: State<'_, AppState>) -> Result<Vec<RuntimeStatu
 pub async fn runtime_install(
     kind: String,
     version: Option<String>,
+    accept_license: Option<bool>,
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<InstalledVersion, String> {
+    // A vendor licence that must be accepted (Android SDK) is checked here too, not only in the UI.
+    if let Some(reason) = state
+        .runtime
+        .registry()
+        .get(&kind)
+        .ok()
+        .and_then(|manifest| manifest.license_blocker(accept_license.unwrap_or(false)))
+    {
+        return Err(reason);
+    }
     let result = state
         .runtime
         .install(&kind, version.as_deref(), progress_sink(app.clone()))

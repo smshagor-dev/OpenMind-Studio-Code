@@ -1,0 +1,48 @@
+{
+  "id": "gradle",
+  "displayName": "Gradle",
+  "description": "Gradle build tool (Java, Kotlin, Android).",
+  "defaultVersion": "9.8.0",
+  "versionCommand": {
+    "executable": "bin/gradle.bat",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "Gradle "
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/gradle.bat"
+  ],
+  "env": {
+    "GRADLE_USER_HOME": "{cache}\\gradle"
+  },
+  "requires": [
+    "jdk"
+  ],
+  "license": {
+    "name": "Apache-2.0",
+    "url": "https://gradle.org/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "Official Gradle binary distribution; SHA256 published by Gradle. GRADLE_USER_HOME points at the app's cache folder. Projects with a gradlew wrapper download their own Gradle when you run it.",
+  "versions": [
+    {
+      "version": "9.8.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://services.gradle.org/distributions/gradle-9.8.0-bin.zip",
+          "sha256": "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c",
+          "sizeBytes": 151611662,
+          "installBytes": 170451591,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

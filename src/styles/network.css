@@ -212,6 +212,10 @@
   margin-left: auto;
 }
 
+.terminal-panel__action.network-status--stale {
+  color: var(--warning-fg);
+}
+
 .terminal-panel__action.network-status {
   max-width: 220px;
   padding: 0 6px;

@@ -292,6 +292,20 @@ fn bundle_info(resolved: &Resolved) -> BundleInfo {
     }
 }
 
+/// Per language server: whether the offline bundle carries it and whether it is installed (local reads only).
+pub(crate) async fn server_facts(state: &AppState) -> Vec<(&'static str, bool, bool)> {
+    let resolved = resolve(state).await;
+    summaries()
+        .into_iter()
+        .filter_map(|summary| {
+            let def = server_by_id(summary.id)?;
+            let package = package_by_id(def.package)?;
+            let installed = install::is_installed(&state.app_root, def, package);
+            Some((def.id, bundled(&resolved, def), installed))
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, String> {
     let resolved = resolve(&state).await;

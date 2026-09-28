@@ -28,6 +28,10 @@ function runtime(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
     installed: [],
     activeVersion: null,
     globalVersion: null,
+    requires: [],
+    license: null,
+    downloadBytes: null,
+    installBytes: null,
     busy: false,
     ...overrides,
   };
@@ -48,7 +52,7 @@ describe("RuntimeManagerDialog", () => {
       }),
     });
     service = new RuntimeService(ipc, new EventBus<AppEvents>());
-    harness.current = { runtime: service };
+    harness.current = { runtime: service, workloads: { takeRequestedTab: () => null, peekRequestedTab: () => null } };
     const onClose = vi.fn();
     render(<RuntimeManagerDialog onClose={onClose} />);
     await screen.findByRole("region", { name: runtimes[0]?.displayName ?? "" });
@@ -111,7 +115,7 @@ describe("RuntimeManagerDialog", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Install" }));
 
-    expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.20.0");
+    expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.20.0", false);
   });
 
   it("disables Install for an installed version and explains why", async () => {
@@ -305,7 +309,7 @@ describe("RuntimeManagerDialog", () => {
       const git = screen.getByRole("region", { name: "Git" });
       fireEvent.click(within(git).getByRole("button", { name: "Install" }));
 
-      expect(ipc.runtimeInstall).toHaveBeenCalledWith("git", "2.55.0.5");
+      expect(ipc.runtimeInstall).toHaveBeenCalledWith("git", "2.55.0.5", false);
       expect(await within(git).findByRole("alert")).toHaveTextContent("Nothing was installed");
     });
 
@@ -351,10 +355,10 @@ describe("RuntimeManagerDialog", () => {
     expect(screen.queryByRole("dialog", { name: "Python" })).toBeNull();
   });
 
-  it("has Runtimes and Language Tools tabs, opening on Runtimes", async () => {
+  it("has Runtimes, Language Tools and Workloads tabs, opening on Runtimes", async () => {
     await open([runtime()]);
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["Runtimes", "Language Tools"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["Runtimes", "Language Tools", "Workloads"]);
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(tabs[1]).toHaveAttribute("aria-selected", "false");
   });

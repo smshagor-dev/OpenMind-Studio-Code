@@ -35,7 +35,7 @@ const FAKE_MARKERS = {
 };
 
 /** No proxy configured (the terminal header's network label). */
-const NETWORK_STATE = { status: null, offline: [] };
+const NETWORK_STATE = { status: null, offline: [], staleTerminals: [] };
 const FAKE_NETWORK = {
   subscribe: () => () => undefined,
   getState: () => NETWORK_STATE,

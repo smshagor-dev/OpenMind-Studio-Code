@@ -1,0 +1,47 @@
+{
+  "id": "dart",
+  "displayName": "Dart SDK",
+  "description": "Dart compiler, package manager (pub) and analysis server.",
+  "defaultVersion": "3.13.4",
+  "versionCommand": {
+    "executable": "bin/dart.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": "Dart SDK version: "
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/dart.exe"
+  ],
+  "env": {
+    "PUB_CACHE": "{cache}\\pub",
+    "DART_SUPPRESS_ANALYTICS": "true"
+  },
+  "requires": [],
+  "license": {
+    "name": "BSD-3-Clause",
+    "url": "https://dart.dev/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "Official Dart SDK ZIP from Google's dart-archive; SHA256 published beside it. The pub cache is in the app's cache folder. Flutter includes its own Dart.",
+  "versions": [
+    {
+      "version": "3.13.4",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://storage.googleapis.com/dart-archive/channels/stable/release/3.13.4/sdk/dartsdk-windows-x64-release.zip",
+          "sha256": "c38bcecee16b348694d4acc72b3781e5fa0e8766a4d0d1576182c7204ab3d763",
+          "sizeBytes": 219873408,
+          "installBytes": 616268993,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

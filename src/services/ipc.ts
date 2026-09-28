@@ -423,6 +423,19 @@ export interface RuntimeStatus {
   /** A copy of this tool already on the system PATH, if any. */
   globalVersion: string | null;
   busy: boolean;
+  /** Other runtimes it needs (Maven needs the JDK). */
+  requires: string[];
+  license: RuntimeLicense | null;
+  /** Download and installed size of the default version for this computer (`null`: unknown). */
+  downloadBytes: number | null;
+  installBytes: number | null;
+}
+
+export interface RuntimeLicense {
+  name: string;
+  url: string;
+  /** The vendor's terms must be accepted before installing (Android SDK). */
+  acceptanceRequired: boolean;
 }
 
 /**
@@ -523,7 +536,8 @@ export interface IpcClient
 
   // Portable runtimes (Rust owns installs; progress arrives as pushed events)
   runtimeList: () => Promise<RuntimeStatus[]>;
-  runtimeInstall: (kind: string, version: string | null) => Promise<InstalledVersion>;
+  /** `acceptLicense`: the user accepted the runtime's vendor licence (required for some, e.g. the Android SDK). */
+  runtimeInstall: (kind: string, version: string | null, acceptLicense?: boolean) => Promise<InstalledVersion>;
   runtimeRepair: (kind: string, version: string) => Promise<boolean>;
   runtimeSetActive: (kind: string, version: string) => Promise<void>;
   runtimeDelete: (kind: string, version: string) => Promise<void>;
@@ -1102,7 +1116,8 @@ export const tauriIpcClient: IpcClient = {
 
   runtimeList: () => invoke<RuntimeStatus[]>("runtime_list"),
 
-  runtimeInstall: (kind, version) => invoke<InstalledVersion>("runtime_install", { kind, version }),
+  runtimeInstall: (kind, version, acceptLicense) =>
+    invoke<InstalledVersion>("runtime_install", { kind, version, acceptLicense: acceptLicense ?? false }),
 
   runtimeRepair: (kind, version) => invoke<boolean>("runtime_repair", { kind, version }),
 

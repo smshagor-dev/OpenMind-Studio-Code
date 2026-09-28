@@ -421,6 +421,7 @@ function terminalMenu(shells: { kind: string; label: string }[]): TopLevelMenu {
       cmd("Configure Default Build Task...", "tasks.configureDefaultBuild"),
       SEPARATOR,
       cmd("Manage Runtimes...", "runtime.manage"),
+      cmd("Workloads...", "workloads.open"),
       cmd("Language Tools...", "lsp.manage"),
       cmd("Restart Language Server", "lsp.restart"),
       cmd("Show LSP Output", "lsp.openOutput"),

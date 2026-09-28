@@ -42,6 +42,10 @@ function status(id: string, versions: InstalledVersion[], available: string[] = 
     installed: versions,
     activeVersion: versions.find((v) => v.active)?.version ?? null,
     globalVersion: null,
+    requires: [],
+    license: null,
+    downloadBytes: null,
+    installBytes: null,
     busy: false,
   };
 }

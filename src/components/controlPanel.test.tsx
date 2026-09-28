@@ -37,6 +37,10 @@ const PHP: RuntimeStatus = {
   installed: [{ version: "8.4.26", path: "C:/x", active: true, healthy: true, features: [] }],
   activeVersion: "8.4.26",
   globalVersion: null,
+  requires: [],
+  license: null,
+  downloadBytes: null,
+  installBytes: null,
   busy: false,
 };
 

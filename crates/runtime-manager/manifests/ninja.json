@@ -1,0 +1,44 @@
+{
+  "id": "ninja",
+  "displayName": "Ninja",
+  "description": "Small, fast build system used by CMake.",
+  "defaultVersion": "1.13.2",
+  "versionCommand": {
+    "executable": "ninja.exe",
+    "args": [
+      "--version"
+    ],
+    "outputPrefix": ""
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "ninja.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "Apache-2.0",
+    "url": "https://github.com/ninja-build/ninja",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official ninja-win.zip from GitHub; SHA256 is the digest GitHub publishes for the release asset.",
+  "versions": [
+    {
+      "version": "1.13.2",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip",
+          "sha256": "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65",
+          "sizeBytes": 291570,
+          "installBytes": 603648,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

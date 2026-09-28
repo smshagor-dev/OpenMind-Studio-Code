@@ -1,0 +1,45 @@
+{
+  "id": "android-platform-tools",
+  "displayName": "Android platform tools",
+  "description": "adb and fastboot.",
+  "defaultVersion": "37.0.1",
+  "versionCommand": {
+    "executable": "adb.exe",
+    "args": [
+      "version"
+    ],
+    "outputPrefix": "Version "
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "adb.exe",
+    "fastboot.exe"
+  ],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "Android Software Development Kit License Agreement",
+    "url": "https://developer.android.com/studio/terms",
+    "acceptanceRequired": true
+  },
+  "probeSystem": true,
+  "notes": "Official platform-tools ZIP from dl.google.com. Google publishes SHA1; the SHA256 was computed from the download after the SHA1 matched. Requires accepting the Android SDK licence.",
+  "versions": [
+    {
+      "version": "37.0.1",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://dl.google.com/android/repository/platform-tools_r37.0.1-win.zip",
+          "sha256": "45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e022bbc1a99",
+          "sizeBytes": 8044989,
+          "installBytes": 17529398,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

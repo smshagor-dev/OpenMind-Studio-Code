@@ -41,6 +41,8 @@
         {
           "platform": "windows-x64",
           "url": "https://nodejs.org/dist/v24.21.0/node-v24.21.0-win-x64.zip",
+          "sizeBytes": 37618919,
+          "installBytes": 106986507,
           "sha256": "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
           "archive": "zip",
           "stripComponents": 1
@@ -53,6 +55,8 @@
         {
           "platform": "windows-x64",
           "url": "https://nodejs.org/dist/v24.20.0/node-v24.20.0-win-x64.zip",
+          "sizeBytes": 37539751,
+          "installBytes": 106774079,
           "sha256": "6cac9ffbca8f6a47091e4b5c772e0606049c3871cb67d900c0cedde630e545ba",
           "archive": "zip",
           "stripComponents": 1
@@ -65,6 +69,8 @@
         {
           "platform": "windows-x64",
           "url": "https://nodejs.org/dist/v20.20.2/node-v20.20.2-win-x64.zip",
+          "sizeBytes": 30283903,
+          "installBytes": 84068021,
           "sha256": "dc3700fdd57a63eedb8fd7e3c7baaa32e6a740a1b904167ff4204bc68ed8bf77",
           "archive": "zip",
           "stripComponents": 1
@@ -77,6 +83,8 @@
         {
           "platform": "windows-x64",
           "url": "https://nodejs.org/dist/v16.20.2/node-v16.20.2-win-x64.zip",
+          "sizeBytes": 26923830,
+          "installBytes": 73982951,
           "sha256": "f8bb35f6c08dc7bf14ac753509c06ed1a7ebf5b390cd3fbdc8f8c1aedd020ec3",
           "archive": "zip",
           "stripComponents": 1

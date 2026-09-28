@@ -9,6 +9,33 @@ use crate::manifest::VersionCommand;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The version of each manifest's tool found on the system PATH, asked in parallel (each run has the same time
+/// limit). A manifest with `probeSystem: false` is never run (a system Flutter may download on `--version`).
+pub fn system_versions(
+    manifests: &[crate::manifest::RuntimeManifest],
+) -> Vec<(String, Option<String>)> {
+    let handles: Vec<_> = manifests
+        .iter()
+        .filter(|manifest| manifest.probe_system)
+        .map(|manifest| {
+            let manifest = manifest.clone();
+            std::thread::spawn(move || {
+                let name = Path::new(&manifest.version_command.executable)
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let version = find_on_path(&name)
+                    .and_then(|exe| detect_version(&exe, &manifest.version_command));
+                (manifest.id, version)
+            })
+        })
+        .collect();
+    handles
+        .into_iter()
+        .filter_map(|handle| handle.join().ok())
+        .collect()
+}
+
 /// Runs `<exe> <args>` and extracts the version from its first output line
 /// (dropping `prefix`). `None` if it can't run, times out, or prints nothing
 /// usable. Only ever called on binaries that were checksum-verified before
@@ -60,9 +87,24 @@ pub fn detect_version(exe: &Path, command: &VersionCommand) -> Option<String> {
     }
 }
 
-pub(crate) fn parse_version_output(output: &str, prefix: &str) -> Option<String> {
+/// The version a tool printed: the first line that starts with `prefix` (a tool may print a welcome or deprecation
+/// line first — Gradle's "Welcome to Gradle", sdkmanager's warning), else the first line that starts with a digit
+/// when there is no prefix, else the first non-empty line.
+pub fn parse_version_output(output: &str, prefix: &str) -> Option<String> {
     let clean = strip_ansi(output);
-    let line = clean.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let lines: Vec<&str> = clean
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let line = if prefix.is_empty() {
+        lines
+            .iter()
+            .find(|line| line.starts_with(|c: char| c.is_ascii_digit()))
+    } else {
+        lines.iter().find(|line| line.starts_with(prefix))
+    }
+    .or(lines.first())?;
     let rest = line.strip_prefix(prefix).unwrap_or(line).trim();
     // Only the version itself: `php --version` goes on with "(cli) (built: ...)"
     // and Composer with a build date.
@@ -162,6 +204,25 @@ mod tests {
         assert_eq!(
             parse_version_output("\n\n  1.2.3  \n", "").as_deref(),
             Some("1.2.3")
+        );
+    }
+
+    #[test]
+    fn a_welcome_or_warning_line_before_the_version_is_skipped() {
+        let gradle = "\nWelcome to Gradle 9.8.0!\n\nHere are the highlights of this release:\n\n------------\nGradle 9.8.0\n------------\n";
+        assert_eq!(
+            parse_version_output(gradle, "Gradle ").as_deref(),
+            Some("9.8.0")
+        );
+        let adb = "Android Debug Bridge version 1.0.41\nVersion 37.0.1-15733141\nInstalled as C:/x/adb.exe\n";
+        assert_eq!(
+            parse_version_output(adb, "Version ").as_deref(),
+            Some("37.0.1-15733141")
+        );
+        let sdkmanager = "WARNING: The SDK Manager CLI tool (sdkmanager) is deprecated.\n23.0\n";
+        assert_eq!(
+            parse_version_output(sdkmanager, "").as_deref(),
+            Some("23.0")
         );
     }
 

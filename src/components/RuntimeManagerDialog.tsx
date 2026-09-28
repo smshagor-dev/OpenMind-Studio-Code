@@ -5,9 +5,10 @@ import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { describeProgress, injectionStatus } from "../services/runtimeService";
 import "../styles/toolchains.css";
 import { ToolsPanel } from "./toolchains/ToolsPanel";
+import { WorkloadsPage } from "./workloads/WorkloadsPage";
 import { t } from "../i18n";
 
-type Tab = "runtimes" | "tools";
+type Tab = "runtimes" | "tools" | "workloads";
 
 /** Terminal > Manage Runtimes: portable runtimes to install and switch, and the app-local language tools. */
 export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
@@ -15,7 +16,14 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
     (listener) => container.runtime.subscribe(listener),
     () => container.runtime.getState(),
   );
-  const [tab, setTab] = useState<Tab>("runtimes");
+  // Workloads... (Terminal menu) opens this dialog on the Workloads tab.
+  const [tab, setTab] = useState<Tab>(() =>
+    container.workloads.peekRequestedTab() === "workloads" ? "workloads" : "runtimes",
+  );
+  // Cleared once mounted (a discarded first render must not consume the request).
+  useEffect(() => {
+    container.workloads.takeRequestedTab();
+  }, []);
   const [detailsFor, setDetailsFor] = useState<RuntimeStatus | null>(null);
 
   useEffect(() => {
@@ -50,6 +58,7 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
               [
                 ["runtimes", "runtimes.tab.runtimes"],
                 ["tools", "runtimes.tab.tools"],
+                ["workloads", "runtimes.tab.workloads"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -77,8 +86,10 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
             </>
-          ) : (
+          ) : tab === "tools" ? (
             <ToolsPanel />
+          ) : (
+            <WorkloadsPage firstRun={false} />
           )}
         </div>
         <div className="modal__actions">

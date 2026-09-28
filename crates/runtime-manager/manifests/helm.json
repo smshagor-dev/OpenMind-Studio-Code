@@ -1,0 +1,49 @@
+{
+  "id": "helm",
+  "displayName": "Helm",
+  "description": "Kubernetes package manager.",
+  "defaultVersion": "4.3.0",
+  "versionCommand": {
+    "executable": "helm.exe",
+    "args": [
+      "version",
+      "--short"
+    ],
+    "outputPrefix": "v"
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "helm.exe"
+  ],
+  "env": {
+    "HELM_CACHE_HOME": "{cache}\\helm\\cache",
+    "HELM_CONFIG_HOME": "{cache}\\helm\\config",
+    "HELM_DATA_HOME": "{cache}\\helm\\data"
+  },
+  "requires": [],
+  "license": {
+    "name": "Apache-2.0",
+    "url": "https://helm.sh/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": true,
+  "notes": "Official get.helm.sh ZIP; SHA256 published beside it. Helm's cache, config and data folders are in the app's cache folder.",
+  "versions": [
+    {
+      "version": "4.3.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://get.helm.sh/helm-v4.3.0-windows-amd64.zip",
+          "sha256": "304ea163cce4d9ad14e189c01846c6a34de9cfdfe48536ae54b2e8ba7884e67c",
+          "sizeBytes": 20832154,
+          "installBytes": 67523495,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "id": "kotlin",
+  "displayName": "Kotlin compiler",
+  "description": "kotlinc command-line compiler.",
+  "defaultVersion": "2.4.20",
+  "versionCommand": {
+    "executable": "openmind-bin/kotlinc.cmd",
+    "args": [
+      "-version"
+    ],
+    "outputPrefix": "info: kotlinc-jvm "
+  },
+  "binDirs": [
+    "openmind-bin",
+    "bin"
+  ],
+  "verifyFiles": [
+    "openmind-bin/kotlinc.cmd",
+    "lib/kotlin-preloader.jar",
+    "lib/kotlin-compiler.jar"
+  ],
+  "env": {},
+  "requires": [
+    "jdk"
+  ],
+  "license": {
+    "name": "Apache-2.0",
+    "url": "https://kotlinlang.org/",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "Official kotlin-compiler ZIP from JetBrains' GitHub release; SHA256 published with the release. JetBrains' bin\\kotlinc.bat breaks when the install path contains a space on a drive without 8.3 short names, so OpenMind puts small kotlinc.cmd / kotlin.cmd launchers (openmind-bin, first on PATH) that call Java directly with quoted paths. They don't handle kotlinc.bat's -J options; use JAVA_OPTS instead.",
+  "seedFiles": [
+    {
+      "path": "openmind-bin/kotlinc.cmd",
+      "content": "@echo off\r\nsetlocal\r\nrem OpenMind Studio: kotlinc without kotlinc.bat's short-path lookup, which breaks on paths with spaces.\r\nset \"KOTLIN_HOME=%~dp0..\"\r\nset \"JAVA_EXE=java\"\r\nif defined JAVA_HOME set \"JAVA_EXE=%JAVA_HOME%\\bin\\java.exe\"\r\nif not defined JAVA_OPTS set \"JAVA_OPTS=-Xmx512M -Xms128M\"\r\n\"%JAVA_EXE%\" %JAVA_OPTS% \"-Dkotlin.home=%KOTLIN_HOME%\" -cp \"%KOTLIN_HOME%\\lib\\kotlin-preloader.jar\" org.jetbrains.kotlin.preloading.Preloader -cp \"%KOTLIN_HOME%\\lib\\kotlin-compiler.jar\" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler %*\r\nexit /b %ERRORLEVEL%\r\n"
+    },
+    {
+      "path": "openmind-bin/kotlin.cmd",
+      "content": "@echo off\r\nsetlocal\r\nrem OpenMind Studio: the kotlin runner without kotlin.bat's short-path lookup.\r\nset \"KOTLIN_HOME=%~dp0..\"\r\nset \"JAVA_EXE=java\"\r\nif defined JAVA_HOME set \"JAVA_EXE=%JAVA_HOME%\\bin\\java.exe\"\r\nif not defined JAVA_OPTS set \"JAVA_OPTS=-Xmx512M -Xms128M\"\r\n\"%JAVA_EXE%\" %JAVA_OPTS% \"-Dkotlin.home=%KOTLIN_HOME%\" -cp \"%KOTLIN_HOME%\\lib\\kotlin-runner.jar\" org.jetbrains.kotlin.runner.Main %*\r\nexit /b %ERRORLEVEL%\r\n"
+    }
+  ],
+  "versions": [
+    {
+      "version": "2.4.20",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/JetBrains/kotlin/releases/download/v2.4.20/kotlin-compiler-2.4.20.zip",
+          "sha256": "59e9ca74c7904ef2c122b12114937673ccce68de820a663f0ed66ccf8799e0b7",
+          "sizeBytes": 89729132,
+          "installBytes": 97392810,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

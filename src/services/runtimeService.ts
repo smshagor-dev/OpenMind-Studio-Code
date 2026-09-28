@@ -158,8 +158,9 @@ export class RuntimeService {
     }
   }
 
-  install(kind: string, version: string | null): Promise<boolean> {
-    return this.run(kind, "install", () => this.ipc.runtimeInstall(kind, version));
+  /** `acceptLicense`: the user accepted the vendor licence the runtime requires (the backend refuses without it). */
+  install(kind: string, version: string | null, acceptLicense = false): Promise<boolean> {
+    return this.run(kind, "install", () => this.ipc.runtimeInstall(kind, version, acceptLicense));
   }
 
   /** Repairs `version`; resolves `true` if something was actually repaired. */

@@ -61,6 +61,7 @@
         {
           "platform": "windows-x64",
           "url": "https://api.nuget.org/v3-flatcontainer/python/3.14.7/python.3.14.7.nupkg",
+          "installBytes": 41889428,
           "sha256": "46a4da5529a92d18ff894911f6e6033a8253198d705b8161bf28c9123c87d46b",
           "sizeBytes": 15623417,
           "archive": "zip",
@@ -75,6 +76,7 @@
         {
           "platform": "windows-x64",
           "url": "https://api.nuget.org/v3-flatcontainer/python/3.13.13/python.3.13.13.nupkg",
+          "installBytes": 37925658,
           "sha256": "c2347c2975f661b2dafceacc94218dfe87781955a3cd309c633d343b8c8dac31",
           "sizeBytes": 14280522,
           "archive": "zip",
@@ -89,6 +91,7 @@
         {
           "platform": "windows-x64",
           "url": "https://api.nuget.org/v3-flatcontainer/python/3.12.10/python.3.12.10.nupkg",
+          "installBytes": 39200793,
           "sha256": "0eb85c2dfccccf1b17352de4c397f69194035b7d37149eacc16f1147d93de3b8",
           "sizeBytes": 14515433,
           "archive": "zip",
@@ -103,6 +106,7 @@
         {
           "platform": "windows-x64",
           "url": "https://api.nuget.org/v3-flatcontainer/python/3.11.9/python.3.11.9.nupkg",
+          "installBytes": 45644754,
           "sha256": "9283876d58c017e0e846f95b490da3bca0fc0a6ee1134b2870677cfb7eec3c67",
           "sizeBytes": 17478009,
           "archive": "zip",
@@ -117,6 +121,7 @@
         {
           "platform": "windows-x64",
           "url": "https://api.nuget.org/v3-flatcontainer/python/3.10.11/python.3.10.11.nupkg",
+          "installBytes": 41622470,
           "sha256": "7c6f99b160a36a7e09492dfcff2b0a3a60bb5229ca44cdcc3ecb32871a6144d0",
           "sizeBytes": 16283939,
           "archive": "zip",

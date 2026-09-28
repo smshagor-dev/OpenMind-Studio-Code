@@ -44,6 +44,13 @@ describe("diagnoseNetwork", () => {
     ];
     for (const [text, expected] of cases) expect(diagnoseNetwork(text), text).toBe(expected);
     expect(diagnoseNetwork("Successfully installed six-1.16.0")).toBeNull();
+    // The real university case: "No matching distribution" is only the consequence of the proxy's 407.
+    expect(
+      diagnoseNetwork(
+        "OSError('Tunnel connection failed: 407 Proxy Authentication Required')\nERROR: No matching distribution found for requests",
+      ),
+    ).toBe("proxyAuthRequired");
+    expect(diagnoseNetwork("ERROR: No matching distribution found for nosuchpkg")).toBeNull();
   });
 });
 

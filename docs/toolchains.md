@@ -71,6 +71,11 @@ OpenMind Studio/
 - **debugpy**: the path must be `<version dir>/debugpy/adapter/__main__.py`; the Run and Debug feature then starts the
   adapter from that folder instead of the Runtime Manager's install. Debugger files are never put on a PATH.
 
+### Workloads
+
+The SDKs this catalog lists as external (JDK, Go, .NET, Flutter, Android tools, a C/C++ toolchain) are not bundled tool packs,
+but since Milestone 22 they can be installed app-locally from Runtime Manager > Workloads (`docs/workloads.md`).
+
 ### Proxy
 
 Bundled tools started by OpenMind get the same proxy variables as every other process OpenMind starts (Settings >
