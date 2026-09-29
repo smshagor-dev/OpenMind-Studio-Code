@@ -16,6 +16,7 @@ const STATUS: NetworkStatus = {
   pacUrl: null,
   diagnostics: [],
   hasCredentials: false,
+  credentialStatus: "none",
   username: null,
   credentialProblem: null,
   useWheelhouse: false,

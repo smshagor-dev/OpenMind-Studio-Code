@@ -70,22 +70,74 @@ pub(crate) fn read_config(state: &AppState) -> NetworkConfig {
     }
 }
 
+/// What is saved for the proxy's user name and password. Unreadable is not the same as none: a record exists (another
+/// Windows user saved it, or it is damaged) and the user must be able to clear it or save over it.
+#[derive(Debug)]
+pub(crate) enum CredentialState {
+    None,
+    Saved(Credentials),
+    /// The reason, never the stored value.
+    Unreadable(String),
+}
+
+impl CredentialState {
+    /// `none`, `saved` or `unreadable`, for the UI.
+    pub(crate) fn status(&self) -> &'static str {
+        match self {
+            CredentialState::None => "none",
+            CredentialState::Saved(_) => "saved",
+            CredentialState::Unreadable(_) => "unreadable",
+        }
+    }
+}
+
+/// Reads a stored credential record: `unprotect` decrypts it (DPAPI in the app). A record that can't be decrypted or
+/// isn't the expected JSON is `Unreadable` with a reason that never includes the stored text.
+pub(crate) fn credential_state(
+    stored: Option<&str>,
+    unprotect: impl Fn(&str) -> Result<String, String>,
+) -> CredentialState {
+    let Some(stored) = stored.filter(|value| !value.is_empty()) else {
+        return CredentialState::None;
+    };
+    let plain = match unprotect(stored) {
+        Ok(plain) => plain,
+        Err(reason) => return CredentialState::Unreadable(reason),
+    };
+    let json: Value = match serde_json::from_str(&plain) {
+        Ok(json) => json,
+        Err(_) => {
+            return CredentialState::Unreadable("The saved proxy credentials are damaged.".into())
+        }
+    };
+    match json["username"].as_str().filter(|user| !user.is_empty()) {
+        Some(username) => CredentialState::Saved(Credentials {
+            username: username.to_string(),
+            password: json["password"].as_str().unwrap_or_default().to_string(),
+        }),
+        None => CredentialState::Unreadable("The saved proxy credentials are damaged.".into()),
+    }
+}
+
 /// The saved proxy user name and password (DPAPI-encrypted in the app's database).
-async fn stored_credentials(state: &AppState) -> Result<Option<Credentials>, String> {
-    let stored = EditorSettingsRepository::new(state.db.pool())
+async fn stored_credentials(db: &openmind_db::Db) -> CredentialState {
+    match EditorSettingsRepository::new(db.pool())
         .get(CREDENTIALS_KEY)
         .await
-        .map_err(|err| err.to_string())?;
-    let Some(stored) = stored.filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    let plain = secret::unprotect(&stored).map_err(|err| err.to_string())?;
-    let json: Value = serde_json::from_str(&plain)
-        .map_err(|_| "The saved proxy credentials are damaged.".to_string())?;
-    Ok(Some(Credentials {
-        username: json["username"].as_str().unwrap_or_default().to_string(),
-        password: json["password"].as_str().unwrap_or_default().to_string(),
-    }))
+    {
+        Ok(stored) => credential_state(stored.as_deref(), |value| {
+            secret::unprotect(value).map_err(|err| err.to_string())
+        }),
+        Err(err) => CredentialState::Unreadable(err.to_string()),
+    }
+}
+
+/// Removes the saved credential record, readable or not (clearing never needs to decrypt it).
+async fn clear_stored_credentials(db: &openmind_db::Db) -> Result<(), String> {
+    EditorSettingsRepository::new(db.pool())
+        .delete(CREDENTIALS_KEY)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 /// The proxy in force now, and what was found on the way.
@@ -95,15 +147,20 @@ pub(crate) struct Resolution {
     pub credentials: Option<Credentials>,
     pub credential_problem: Option<String>,
     pub stored_username: Option<String>,
+    /// `none`, `saved` or `unreadable`.
+    pub credential_status: &'static str,
 }
 
 /// Resolves the proxy from the settings (reading Windows' and the environment's proxy in System mode — local
 /// reads, never a network request, never a change) and makes it the proxy of OpenMind's own requests.
 pub(crate) async fn refresh(state: &AppState) -> Resolution {
     let config = read_config(state);
-    let (stored, credential_problem) = match stored_credentials(state).await {
-        Ok(stored) => (stored, None),
-        Err(problem) => (None, Some(problem)),
+    let credential_state = stored_credentials(&state.db).await;
+    let credential_status = credential_state.status();
+    let (stored, credential_problem) = match credential_state {
+        CredentialState::None => (None, None),
+        CredentialState::Saved(credentials) => (Some(credentials), None),
+        CredentialState::Unreadable(problem) => (None, Some(problem)),
     };
     let (proxy, found) = match config.mode {
         ProxyMode::None => (ResolvedProxy::off(), None),
@@ -127,6 +184,7 @@ pub(crate) async fn refresh(state: &AppState) -> Resolution {
         credentials,
         credential_problem,
         stored_username,
+        credential_status,
     }
 }
 
@@ -173,9 +231,13 @@ pub struct NetworkStatus {
     /// What is ignored or can't be done with these settings (an address with credentials in it, a PAC script, ...),
     /// so nothing is dropped without telling the user.
     diagnostics: Vec<DiagnosticInfo>,
+    /// Readable credentials are saved (they are used).
     has_credentials: bool,
+    /// `none`, `saved` or `unreadable` (a record exists but can't be decrypted: Clear must stay possible).
+    credential_status: &'static str,
     /// The saved user name (never the password).
     username: Option<String>,
+    /// Why saved credentials can't be read (never the stored value).
     credential_problem: Option<String>,
     use_wheelhouse: bool,
     go_proxy: Option<String>,
@@ -210,6 +272,7 @@ fn status_of(resolution: &Resolution) -> NetworkStatus {
         })
         .collect(),
         has_credentials: resolution.stored_username.is_some(),
+        credential_status: resolution.credential_status,
         username: resolution.stored_username.clone(),
         credential_problem: resolution.credential_problem.clone(),
         use_wheelhouse: resolution.config.use_wheelhouse,
@@ -251,10 +314,7 @@ pub async fn network_set_credentials(
 pub async fn network_clear_credentials(
     state: State<'_, AppState>,
 ) -> Result<NetworkStatus, String> {
-    EditorSettingsRepository::new(state.db.pool())
-        .delete(CREDENTIALS_KEY)
-        .await
-        .map_err(|err| err.to_string())?;
+    clear_stored_credentials(&state.db).await?;
     tracing::info!("proxy credentials cleared");
     Ok(status_of(&refresh(&state).await))
 }
@@ -314,6 +374,7 @@ mod tests {
             credentials: None,
             credential_problem: None,
             stored_username: None,
+            credential_status: "none",
         };
         let json = serde_json::to_string(&super::status_of(&resolution)).expect("json");
         assert!(
@@ -346,5 +407,110 @@ mod tests {
                 .all(|(_, v)| !v.contains("s3cr3t") && !v.contains("s3cr3t%21")),
             "{shown:?}"
         );
+    }
+    #[test]
+    fn a_record_that_cant_be_read_is_unreadable_not_none() {
+        use super::{credential_state, CredentialState};
+        let decrypts = |value: &str| Ok(value.trim_start_matches("enc:").to_string());
+        assert!(matches!(
+            credential_state(None, decrypts),
+            CredentialState::None
+        ));
+        assert!(matches!(
+            credential_state(Some(""), decrypts),
+            CredentialState::None
+        ));
+        match credential_state(
+            Some(r#"enc:{"username":"ivan","password":"s3cr3t"}"#),
+            decrypts,
+        ) {
+            CredentialState::Saved(creds) => assert_eq!(creds.username, "ivan"),
+            other => panic!("{other:?}"),
+        }
+        // Another Windows user's DPAPI blob, or a damaged one: unreadable, with a reason and never the stored text.
+        let refuses =
+            |_: &str| Err("Windows couldn't decrypt the stored value: error 87".to_string());
+        let state = credential_state(Some("dpapi1:AAAAbm90LXZhbGlk"), refuses);
+        assert_eq!(state.status(), "unreadable");
+        let CredentialState::Unreadable(reason) = state else {
+            panic!("unreadable")
+        };
+        assert!(
+            !reason.contains("dpapi1") && !reason.contains("AAAA"),
+            "{reason}"
+        );
+        for damaged in ["enc:not json", r#"enc:{"password":"x"}"#] {
+            assert_eq!(
+                credential_state(Some(damaged), decrypts).status(),
+                "unreadable",
+                "{damaged}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_damaged_record_is_reported_and_can_be_cleared_without_decrypting_it() {
+        use openmind_db::EditorSettingsRepository;
+        let dir = tempfile::tempdir().expect("tmp");
+        tauri::async_runtime::block_on(async {
+            let db = openmind_db::Db::connect(&dir.path().join("t.db"))
+                .await
+                .expect("db");
+            EditorSettingsRepository::new(db.pool())
+                .set(super::CREDENTIALS_KEY, "dpapi1:AAAAbm90LXZhbGlk")
+                .await
+                .expect("set");
+            let state = super::stored_credentials(&db).await;
+            assert_eq!(state.status(), "unreadable");
+            // The status the UI gets: unreadable, Clear-able, with the warning, and no stored blob anywhere.
+            let proxy = resolve_manual(&ProxySettings {
+                http: "proxy.lab:3128".into(),
+                ..ProxySettings::default()
+            });
+            let resolution = super::Resolution {
+                config: super::NetworkConfig {
+                    mode: openmind_network::proxy::ProxyMode::Manual,
+                    settings: ProxySettings::default(),
+                    go_proxy: String::new(),
+                    test_url: String::new(),
+                    use_wheelhouse: false,
+                },
+                proxy,
+                credentials: None,
+                credential_problem: match &state {
+                    super::CredentialState::Unreadable(reason) => Some(reason.clone()),
+                    _ => None,
+                },
+                stored_username: None,
+                credential_status: state.status(),
+            };
+            let json = serde_json::to_string(&super::status_of(&resolution)).expect("json");
+            assert!(
+                json.contains(r#""credentialStatus":"unreadable""#),
+                "{json}"
+            );
+            assert!(json.contains(r#""hasCredentials":false"#), "{json}");
+            assert!(
+                json.contains(
+                    r#"{"severity":"warning","kind":"credentialsUnreadable","inUse":true}"#
+                ),
+                "{json}"
+            );
+            assert!(
+                !json.contains(r#""kind":"noCredentials""#),
+                "unreadable isn't 'none': {json}"
+            );
+            assert!(!json.contains("dpapi1") && !json.contains("AAAA"), "{json}");
+            // Clearing works although the record can't be decrypted; afterwards there is nothing.
+            super::clear_stored_credentials(&db).await.expect("clear");
+            assert_eq!(super::stored_credentials(&db).await.status(), "none");
+            assert_eq!(
+                EditorSettingsRepository::new(db.pool())
+                    .get(super::CREDENTIALS_KEY)
+                    .await
+                    .expect("get"),
+                None
+            );
+        });
     }
 }

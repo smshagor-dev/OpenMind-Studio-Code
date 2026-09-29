@@ -27,6 +27,7 @@ const STATUS: NetworkStatus = {
   pacUrl: null,
   diagnostics: [],
   hasCredentials: true,
+  credentialStatus: "saved",
   username: "ivan",
   credentialProblem: null,
   useWheelhouse: false,
@@ -337,3 +338,93 @@ describe("Milestone 22.2: diagnostics, Test Connection labels, pip, stale termin
     expect(screen.getByRole("button", { name: "Import Wheels Folder..." })).toBeInTheDocument();
   });
 });
+
+describe("Milestone 22.3: saved credentials that can't be read", () => {
+  const UNREADABLE: NetworkStatus = {
+    ...STATUS,
+    hasCredentials: false,
+    credentialStatus: "unreadable",
+    username: null,
+    credentialProblem: "Windows couldn't decrypt the stored value (it was saved by another Windows user or machine): error 87",
+    diagnostics: [{ severity: "warning", kind: "credentialsUnreadable", inUse: true }],
+  };
+  const NONE: NetworkStatus = {
+    ...STATUS,
+    hasCredentials: false,
+    credentialStatus: "none",
+    username: null,
+    diagnostics: [{ severity: "info", kind: "noCredentials" }],
+  };
+
+  it("shows the warning, keeps the reason under Details, and lets Clear remove the damaged record", async () => {
+    const clear = vi.fn().mockResolvedValue(NONE);
+    const r = setup(UNREADABLE, { networkClearCredentials: clear });
+    render(<NetworkDialog />);
+    await act(() => r.network.openWindow());
+    const message = "Saved proxy credentials could not be read. Clear them or save them again.";
+    expect(screen.getByRole("region", { name: "Diagnostics" })).toHaveTextContent(message);
+    // The raw reason is only under Details, and nothing stored is shown.
+    expect(screen.getByText(/error 87/).closest("details")).not.toBeNull();
+    expect(document.body.textContent).not.toMatch(/dpapi1|AAAA/);
+    const button = screen.getByRole("button", { name: "Clear Credentials" });
+    expect(button).toBeEnabled();
+    // Saving over it stays possible too.
+    fireEvent.change(screen.getByLabelText("User name"), { target: { value: "ivan" } });
+    expect(screen.getByRole("button", { name: "Save Credentials" })).toBeEnabled();
+    await act(async () => {
+      fireEvent.click(button);
+      await Promise.resolve();
+    });
+    expect(clear).toHaveBeenCalledOnce();
+    expect(screen.queryByText(message)).toBeNull();
+    expect(screen.getByRole("region", { name: "Diagnostics" })).toHaveTextContent("No proxy user name and password are saved.");
+    expect(screen.getByRole("button", { name: "Clear Credentials" })).toBeDisabled();
+  });
+
+  it("Clear stays disabled when nothing is saved, and is enabled for readable credentials", async () => {
+    const none = setup(NONE);
+    const { unmount } = render(<NetworkDialog />);
+    await act(() => none.network.openWindow());
+    expect(screen.getByRole("button", { name: "Clear Credentials" })).toBeDisabled();
+    unmount();
+    const saved = setup(STATUS);
+    render(<NetworkDialog />);
+    await act(() => saved.network.openWindow());
+    expect(screen.getByRole("button", { name: "Clear Credentials" })).toBeEnabled();
+    expect(screen.queryByRole("region", { name: "Diagnostics" })).toBeNull();
+  });
+
+  it("saving again overwrites the damaged record and the warning goes away", async () => {
+    const save = vi.fn().mockResolvedValue(STATUS);
+    const r = setup(UNREADABLE, { networkSetCredentials: save });
+    render(<NetworkDialog />);
+    await act(() => r.network.openWindow());
+    fireEvent.change(screen.getByLabelText("User name"), { target: { value: "ivan" } });
+    fireEvent.change(screen.getByLabelText("Password or token"), { target: { value: "Pa$$w0rd!" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save Credentials" }));
+      await Promise.resolve();
+    });
+    expect(save).toHaveBeenCalledWith("ivan", "Pa$$w0rd!");
+    expect(screen.queryByText("Saved proxy credentials could not be read. Clear them or save them again.")).toBeNull();
+    expect(screen.getByText("Saved for ivan.")).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("w0rd");
+  });
+
+  it("the warning in Russian and Bangla", async () => {
+    const r = setup(UNREADABLE);
+    i18n.setLanguage("ru");
+    const { unmount } = render(<NetworkDialog />);
+    await act(() => r.network.openWindow());
+    expect(screen.getByRole("region", { name: "Диагностика" })).toHaveTextContent(
+      "Сохранённые учётные данные прокси не удалось прочитать. Удалите их или сохраните снова.",
+    );
+    unmount();
+    i18n.setLanguage("bn");
+    render(<NetworkDialog />);
+    expect(screen.getByRole("region", { name: "ডায়াগনস্টিক" })).toHaveTextContent(
+      "সংরক্ষিত প্রক্সি লগইন তথ্য পড়া যায়নি। সেগুলো মুছুন অথবা আবার সংরক্ষণ করুন।",
+    );
+  });
+});
+

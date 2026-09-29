@@ -46,6 +46,13 @@ Windows user (`editor_settings` row `network.proxy.credentials`, `dpapi1:...`), 
 user name), never logged. *Network: Clear Proxy Credentials* deletes them. In System mode, saved credentials win over ones
 written into an environment variable. Special characters are percent-encoded in the proxy URL given to tools.
 
+Saved credentials have three states: **none**, **saved** (readable, used) and **unreadable** — a record exists but can't be
+decrypted (saved by another Windows user or on another computer, or damaged). Unreadable is not the same as none: the Diagnostics
+list says *"Saved proxy credentials could not be read. Clear them or save them again."* (a warning while a proxy is in force,
+information in No Proxy mode), **Clear Credentials** stays enabled (clearing deletes the record without decrypting it) and saving
+overwrites it. Requests go without credentials meanwhile, so a proxy that needs them answers 407 ("Proxy authentication
+required"). The reason is shown only under Details; the stored value never is.
+
 ## What gets the proxy
 
 Every process OpenMind starts goes through one place (`commands::run::environment`), so all of these get the same

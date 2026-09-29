@@ -23,6 +23,7 @@ const STATUS: NetworkStatus = {
   pacUrl: null,
   diagnostics: [],
   hasCredentials: false,
+  credentialStatus: "none",
   username: null,
   credentialProblem: null,
   useWheelhouse: false,
@@ -170,7 +171,9 @@ describe("labels", () => {
     expect(diagnosticText({ severity: "warning", kind: "autoDetectNotEvaluated" })).toContain("WPAD");
     expect(diagnosticText({ severity: "warning", kind: "socksOnly" })).toContain("SOCKS");
     expect(diagnosticText({ severity: "info", kind: "noCredentials" })).toContain("407");
-    expect(diagnosticText({ severity: "warning", kind: "credentialsUnreadable" })).toContain("Save them again");
+    expect(diagnosticText({ severity: "warning", kind: "credentialsUnreadable", inUse: true })).toBe(
+      "Saved proxy credentials could not be read. Clear them or save them again.",
+    );
     i18n.setLanguage("ru");
     expect(
       diagnosticText({ severity: "warning", kind: "ignoredField", field: "https", problem: "credentialsInAddress" }),

@@ -42,7 +42,8 @@ export type NetworkDiagnostic = { severity: "warning" | "info" } & (
   | { kind: "autoDetectNotEvaluated" }
   | { kind: "socksOnly" }
   | { kind: "noCredentials" }
-  | { kind: "credentialsUnreadable" }
+  /** `inUse`: a proxy is in force, so requests go without the credentials. */
+  | { kind: "credentialsUnreadable"; inUse: boolean }
 );
 
 export interface NetworkStatus {
@@ -55,7 +56,10 @@ export interface NetworkStatus {
   noProxy: string[];
   pacUrl: string | null;
   diagnostics: NetworkDiagnostic[];
+  /** Readable credentials are saved (and used). */
   hasCredentials: boolean;
+  /** `unreadable`: a record exists but can't be decrypted — it can still be cleared or saved over. */
+  credentialStatus: "none" | "saved" | "unreadable";
   username: string | null;
   credentialProblem: string | null;
   useWheelhouse: boolean;

@@ -1359,6 +1359,14 @@ starts a host until an extension is needed), ~179 MB; **the same plus one `"*"` 
 (+45 MB for the Node host). So installed-but-idle extensions cost nothing measurable at launch, and a `"*"` extension costs one Node process and ~45 MB
 right after start-up (the extension list marks it "Activates at every start-up (\"*\"), which can slow the app down.").
 
+## Manual smoke tests
+
+Follow `docs/smoke-testing.md`: test copies only, baseline and compare the machine's state, and **never run a test copy's Python
+package cleanup from an external shell in normal mode** — it sees the user's own site-packages first (this removed numpy, pandas,
+python-dateutil, six and tzdata from the user's environment once). Use an OpenMind terminal, or `python -s` with
+`PYTHONNOUSERSITE=1` after `scripts/check-python-isolation.py` says OK; never uninstall from `%APPDATA%\Python` or the user's Python
+without explicit approval.
+
 ## Coding rules 
 
 - Max 700 lines per file, max 80 lines per function — split before either limit.
@@ -2483,6 +2491,14 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   failure card's buttons; a non-TLS server was called a certificate failure. pip's own cache (`%LOCALAPPDATA%\pip\cache`) received the online test
   downloads (pip's default; removed afterwards). **Limitations**: Retry/Restart use the folder the terminal started in; the risky-command check is a
   word list; NTLM/Kerberos, PAC/WPAD evaluation still not done; the native Import Wheels folder dialog was not driven by hand. Left on disk: `E:\omm222`.
+- [x] **Milestone 22.3** — Clear damaged proxy credentials (`fix: allow clearing unreadable proxy credentials`). Found in the 22.2 merge smoke: saved
+  credentials that can't be decrypted were reported as "no credentials", so Clear Credentials was disabled and the damaged record couldn't be removed from
+  the UI. `commands::network::credential_state` now distinguishes `none` / `saved` / `unreadable` (a failed decrypt, invalid JSON or a record without a
+  user name; the reason never includes the stored text), `NetworkStatus.credentialStatus` carries it, `clear_stored_credentials` deletes the record without
+  reading it, and `Diagnostic::CredentialsUnreadable { inUse }` is a warning while a proxy is in force and information otherwise (`rename_all_fields` so the
+  field is `inUse` — a test caught `in_use`). UI: Clear enabled for saved or unreadable, disabled for none; the decrypt reason only under Details; the
+  diagnostic reads "Saved proxy credentials could not be read. Clear them or save them again." (en/ru/bn). Also added `docs/smoke-testing.md` and
+  `scripts/check-python-isolation.py` after the 22.2 smoke removed packages from the user's own Python (see "Manual smoke tests").
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 

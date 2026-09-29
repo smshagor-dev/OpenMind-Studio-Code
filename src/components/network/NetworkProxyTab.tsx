@@ -135,7 +135,17 @@ function Credentials({ state }: { state: NetworkState }) {
       {status?.hasCredentials === true ? (
         <p className="network__meta">{t("network.credentials.savedFor", { user: status.username ?? "" })}</p>
       ) : null}
-      {status?.credentialProblem ? <p className="network__warning">{status.credentialProblem}</p> : null}
+      {status?.credentialStatus === "unreadable" ? (
+        <>
+          <p className="network__warning">{t("network.diag.credentialsUnreadable")}</p>
+          {status.credentialProblem !== null ? (
+            <details className="network__details">
+              <summary>{t("network.test.details")}</summary>
+              <code>{status.credentialProblem}</code>
+            </details>
+          ) : null}
+        </>
+      ) : null}
       <div className="network__row">
         <input
           className="network__input"
@@ -174,7 +184,8 @@ function Credentials({ state }: { state: NetworkState }) {
         </button>
         <button
           type="button"
-          disabled={state.busy || status?.hasCredentials !== true}
+          // Saved or unreadable: there is a record to remove (clearing never needs to read it).
+          disabled={state.busy || (status?.credentialStatus ?? "none") === "none"}
           onClick={() => {
             void container.network.clearCredentials();
           }}

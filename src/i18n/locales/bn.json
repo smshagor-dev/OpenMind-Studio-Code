@@ -1849,7 +1849,7 @@
   "network.diag.autoDetectNotEvaluated": "Windows স্বয়ংক্রিয়ভাবে প্রক্সি খোঁজার জন্য সেট করা (WPAD)। OpenMind সেই খোঁজ করে না: ডাউনলোড ব্যর্থ হলে প্রক্সি নিজে দিন।",
   "network.diag.socksOnly": "শুধু একটি SOCKS প্রক্সি দেওয়া আছে। pip, npm, pnpm, Yarn ও Cargo HTTP_PROXY/HTTPS_PROXY পড়ে এবং এটি ব্যবহার করবে না; নেটওয়ার্কে HTTP প্রক্সি থাকলে তাদের জন্য সেটি দিন।",
   "network.diag.noCredentials": "প্রক্সির ব্যবহারকারীর নাম ও পাসওয়ার্ড সংরক্ষিত নেই। প্রক্সি সেগুলো না চাইলে (ত্রুটি 407) এতে সমস্যা নেই।",
-  "network.diag.credentialsUnreadable": "সংরক্ষিত প্রক্সি লগইন তথ্য পড়া যাচ্ছে না (অন্য Windows ব্যবহারকারী সংরক্ষণ করেছেন, বা নষ্ট হয়ে গেছে)। আবার সংরক্ষণ করুন।",
+  "network.diag.credentialsUnreadable": "সংরক্ষিত প্রক্সি লগইন তথ্য পড়া যায়নি। সেগুলো মুছুন অথবা আবার সংরক্ষণ করুন।",
   "network.diag.staleTerminals": "কিছু খোলা টার্মিনাল এখনো পুরোনো প্রক্সি সেটিংস ব্যবহার করছে। নতুনগুলো প্রয়োগ করতে একটি নতুন টার্মিনাল খুলুন।",
   "network.failure.pipProxyAuth": "নেটওয়ার্ক প্রক্সিতে লগইন প্রয়োজন বলে pip PyPI-তে পৌঁছাতে পারেনি। এটি কোনো অনুপস্থিত Python প্যাকেজ নয়।",
   "network.failure.pipNetwork": "pip PyPI-তে পৌঁছাতে পারেনি ({problem})। এটি কোনো অনুপস্থিত Python প্যাকেজ নয়।",

@@ -8,7 +8,11 @@ use crate::proxy::{ProxyProblem, ResolvedProxy};
 
 /// One thing about the proxy settings the user should know. The UI turns it into a sentence in its language.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase", tag = "kind")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind"
+)]
 pub enum Diagnostic {
     /// An address in the settings (or the environment) is not used, and why.
     IgnoredField {
@@ -23,15 +27,18 @@ pub enum Diagnostic {
     SocksOnly,
     /// A proxy is in force but no user name and password are saved (fine unless the proxy answers 407).
     NoCredentials,
-    /// Saved credentials exist but can't be read (another Windows user, or damaged).
-    CredentialsUnreadable,
+    /// Saved credentials exist but can't be read (another Windows user, or damaged). `in_use`: a proxy is in force, so
+    /// requests go without them (a warning); otherwise it's only worth knowing.
+    CredentialsUnreadable { in_use: bool },
 }
 
 impl Diagnostic {
     /// `warning`: something is ignored or can't work; `info`: worth knowing.
     pub fn severity(&self) -> &'static str {
         match self {
-            Diagnostic::NoCredentials => "info",
+            Diagnostic::NoCredentials | Diagnostic::CredentialsUnreadable { in_use: false } => {
+                "info"
+            }
             _ => "warning",
         }
     }
@@ -52,7 +59,9 @@ pub fn diagnose_settings(
         })
         .collect();
     if credentials_unreadable {
-        out.push(Diagnostic::CredentialsUnreadable);
+        out.push(Diagnostic::CredentialsUnreadable {
+            in_use: proxy.active(),
+        });
     }
     if let Some(url) = &proxy.pac_url {
         out.push(Diagnostic::PacNotEvaluated { url: url.clone() });
@@ -126,7 +135,7 @@ mod tests {
         assert_eq!(
             diagnose_settings(&system, false, true),
             vec![
-                Diagnostic::CredentialsUnreadable,
+                Diagnostic::CredentialsUnreadable { in_use: false },
                 Diagnostic::PacNotEvaluated {
                     url: "http://wpad/wpad.dat".into()
                 },
@@ -142,5 +151,18 @@ mod tests {
         assert!(diagnose_settings(&ResolvedProxy::off(), false, false).is_empty());
         assert_eq!(Diagnostic::NoCredentials.severity(), "info");
         assert_eq!(Diagnostic::SocksOnly.severity(), "warning");
+        // Unreadable credentials matter when a proxy is in force (requests go without them), not in No Proxy mode.
+        assert_eq!(
+            diagnose_settings(&fine, false, true),
+            vec![Diagnostic::CredentialsUnreadable { in_use: true }]
+        );
+        assert_eq!(
+            Diagnostic::CredentialsUnreadable { in_use: true }.severity(),
+            "warning"
+        );
+        assert_eq!(
+            Diagnostic::CredentialsUnreadable { in_use: false }.severity(),
+            "info"
+        );
     }
 }

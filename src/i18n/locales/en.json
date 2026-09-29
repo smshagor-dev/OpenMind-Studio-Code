@@ -1849,7 +1849,7 @@
   "network.diag.autoDetectNotEvaluated": "Windows is set to detect the proxy automatically (WPAD). OpenMind doesn't do that lookup: if downloads fail, set the proxy manually.",
   "network.diag.socksOnly": "Only a SOCKS proxy is set. pip, npm, pnpm, Yarn and Cargo read HTTP_PROXY/HTTPS_PROXY and won't use it; set an HTTP proxy for them if the network has one.",
   "network.diag.noCredentials": "No proxy user name and password are saved. That's fine unless the proxy asks for them (error 407).",
-  "network.diag.credentialsUnreadable": "The saved proxy credentials can't be read (saved by another Windows user, or damaged). Save them again.",
+  "network.diag.credentialsUnreadable": "Saved proxy credentials could not be read. Clear them or save them again.",
   "network.diag.staleTerminals": "Some open terminals still use the old proxy settings. Open a new terminal to apply them.",
   "network.failure.pipProxyAuth": "pip could not reach PyPI because the network proxy requires authentication. This is not a missing Python package.",
   "network.failure.pipNetwork": "pip could not reach PyPI ({problem}). This is not a missing Python package.",
