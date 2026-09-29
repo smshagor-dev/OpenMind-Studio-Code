@@ -11,6 +11,7 @@ import type { RuntimeService } from "../runtimeService";
 import type { SettingsService } from "../settingsService";
 import { typeInNewTerminal } from "../terminalCommand";
 import type { TerminalService } from "../terminalService";
+import type { BrokerIpc } from "./brokerIpc";
 import { tauriNetworkIpc, type NetworkIpc } from "./networkIpc";
 import { CommandLineTracker } from "./commandLine";
 import { isRiskyCommand } from "./networkModel";
@@ -25,6 +26,7 @@ export const NETWORK_SETTINGS = [
   "network.goProxy",
   "network.testUrl",
   "network.offline.useWheelhouse",
+  "network.gateway.enabled",
 ];
 
 /** How much of a terminal's previous output chunk is looked at again with the next one. */
@@ -52,11 +54,15 @@ export const NETWORK_COMMANDS: [string, string][] = [
   ["network.clearCredentials", "network.palette.clearCredentials"],
   ["network.importOffline", "network.palette.importOffline"],
   ["network.openCacheFolder", "network.palette.openCacheFolder"],
+  ["network.showDownloads", "network.palette.showDownloads"],
+  ["network.exportDiagnostics", "network.palette.exportDiagnostics"],
 ];
 
 export interface NetworkWiringDeps {
   ipc: IpcClient;
   networkIpc?: NetworkIpc;
+  /** The Unified Download Broker (the app passes the real one; without it there is no Downloads list). */
+  brokerIpc?: BrokerIpc;
   events: EventBus<AppEvents>;
   commands: CommandRegistry;
   settings: SettingsService;
@@ -168,7 +174,9 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
       deps.run("runtime.manage");
     },
     terminals,
+    broker: deps.brokerIpc,
   });
+  void network.attachBroker();
 
   commands.register("network.openSettings", () => network.openWindow("proxy"));
   commands.register("network.testConnection", async () => {
@@ -183,6 +191,11 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
   });
   commands.register("network.importOffline", () => network.chooseImport());
   commands.register("network.openCacheFolder", () => network.openCacheFolder());
+  commands.register("network.showDownloads", () => network.openWindow("downloads"));
+  commands.register("network.exportDiagnostics", async () => {
+    await network.openWindow("downloads");
+    await network.exportDiagnostics();
+  });
 
   // The commands in the F1 palette, in the UI language.
   const paletteActions = () =>
@@ -249,9 +262,10 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
     }
     updateStale();
   });
-  // A proxy change makes the terminals opened before it out of date (they keep their environment): say so once.
+  // A change of what new terminals get (package gateway on/off, offline wheels) makes the terminals opened before it out
+  // of date (they keep their environment): say so once. A proxy change doesn't: the gateway uses the proxy in force.
   network.subscribe(() => {
-    const next = network.proxyFingerprint();
+    const next = network.envFingerprint();
     if (next === null || next === fingerprint) return;
     const changed = fingerprint !== null;
     fingerprint = next;

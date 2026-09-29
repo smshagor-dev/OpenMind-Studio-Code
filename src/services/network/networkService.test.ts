@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
+import type { BrokerEvent, BrokerStatus } from "./brokerIpc";
 import type { CacheEntry, Inspection, NetworkIpc, NetworkStatus } from "./networkIpc";
 import { NetworkService, type NetworkHost } from "./networkService";
 
@@ -167,16 +168,115 @@ describe("NetworkService: settings and credentials", () => {
     expect(r.service.getState().env).toEqual([["HTTP_PROXY", "http://ivan:****@proxy.lab:3128"]]);
   });
 
-  it("the terminal notice appears once per session, and only when a proxy is in force", async () => {
-    const off = rig({ networkStatus: vi.fn().mockResolvedValue({ ...STATUS, mode: "none", active: false }) });
+  it("the terminal notice appears once per session, and only while the package gateway runs and is on", async () => {
+    const off = rig({}, { broker: broker({ enabled: false }) });
     await off.service.load();
     off.service.terminalStarted();
     expect(off.notices).toEqual([]);
-    const r = rig();
+    const none = rig();
+    await none.service.load();
+    none.service.terminalStarted();
+    expect(none.notices).toEqual([]);
+    const r = rig({}, { broker: broker() });
     await r.service.load();
     r.service.terminalStarted();
     r.service.terminalStarted();
-    expect(r.notices).toEqual(["Proxy environment applied to this terminal session."]);
+    expect(r.notices).toEqual([
+      "Package downloads in this terminal (pip, npm, Go, Git, Cargo, Composer) go through OpenMind's download route.",
+    ]);
+  });
+});
+
+function broker(status: Partial<BrokerStatus> = {}) {
+  let listener: ((event: BrokerEvent) => void) | null = null;
+  const full: BrokerStatus = {
+    enabled: true,
+    running: true,
+    problem: null,
+    port: 4000,
+    npmPort: 4001,
+    tempDir: "C:/app/temp",
+    shimsDir: "C:/app/shims",
+    skipped: [],
+    recent: [],
+    recovery: null,
+    ...status,
+  };
+  return {
+    brokerStatus: vi.fn().mockResolvedValue(full),
+    brokerCancel: vi.fn().mockResolvedValue(true),
+    exportDiagnostics: vi.fn().mockResolvedValue("C:/app/logs/openmind-network-diagnostics.json"),
+    onProgress: vi.fn((next: (event: BrokerEvent) => void) => {
+      listener = next;
+      return Promise.resolve(() => undefined);
+    }),
+    emit: (event: BrokerEvent) => listener?.(event),
+  };
+}
+
+const EVENT: BrokerEvent = {
+  id: 7,
+  provider: "pypi",
+  artifact: "six-1.17.0-py2.py3-none-any.whl",
+  phase: "downloading",
+  bytes: 5_000,
+  total: 11_000,
+  speed: 2_000,
+  retry: null,
+  failure: null,
+  detail: null,
+};
+
+describe("NetworkService: the Unified Download Broker", () => {
+  it("progress events build the Downloads list, one row per operation", async () => {
+    const fake = broker();
+    const r = rig({}, { broker: fake });
+    await r.service.attachBroker();
+    fake.emit(EVENT);
+    fake.emit({ ...EVENT, phase: "complete", bytes: 11_000 });
+    fake.emit({ ...EVENT, id: 8, provider: "npm", artifact: "left-pad-1.3.0.tgz" });
+    const downloads = r.service.getState().downloads;
+    expect(downloads.map((d) => [d.id, d.phase])).toEqual([
+      [8, "downloading"],
+      [7, "complete"],
+    ]);
+  });
+
+  it("a gateway failure with a network cause shows the card; a missing package doesn't", async () => {
+    const fake = broker();
+    const r = rig({}, { broker: fake });
+    await r.service.attachBroker();
+    fake.emit({ ...EVENT, phase: "failed", failure: "notFound", detail: "HTTP 404" });
+    expect(r.service.getState().failure).toBeNull();
+    fake.emit({ ...EVENT, id: 9, phase: "failed", failure: "proxyAuthentication", detail: "HTTP 407" });
+    const failure = r.service.getState().failure;
+    expect(failure?.problem).toBe("proxyAuthRequired");
+    expect(failure?.source).toBe("pip");
+    expect(failure?.pip).toBe(true);
+  });
+
+  it("Cancel and Save Network Diagnostics go to the backend; the status shows the gateway", async () => {
+    const fake = broker({ skipped: [{ tool: "pip", reason: "PIP_INDEX_URL is set" }] });
+    const r = rig({}, { broker: fake });
+    await r.service.load();
+    expect(r.service.getState().gateway?.skipped).toEqual([{ tool: "pip", reason: "PIP_INDEX_URL is set" }]);
+    await r.service.cancelDownload(7);
+    expect(fake.brokerCancel).toHaveBeenCalledWith(7);
+    expect(await r.service.exportDiagnostics()).toBe("C:/app/logs/openmind-network-diagnostics.json");
+    expect(r.service.getState().notice).toContain("openmind-network-diagnostics.json");
+  });
+
+  it("the terminal fingerprint ignores the proxy and follows the gateway switch and the offline wheels", async () => {
+    const fake = broker();
+    const r = rig({}, { broker: fake });
+    await r.service.load();
+    const before = r.service.envFingerprint();
+    (r.ipc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ ...STATUS, http: "http://other:1" });
+    await r.service.load();
+    expect(r.service.envFingerprint()).toBe(before);
+    fake.brokerStatus.mockResolvedValue({ ...(await fake.brokerStatus()), enabled: false });
+    await r.service.load();
+    expect(r.service.envFingerprint()).not.toBe(before);
   });
 });
 

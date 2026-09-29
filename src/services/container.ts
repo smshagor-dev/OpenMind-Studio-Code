@@ -91,6 +91,7 @@ import { languageForPath } from "../editor/languageForPath";
 import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
 import * as monaco from "monaco-editor";
 import { t } from "../i18n";
+import { tauriBrokerIpc } from "./network/brokerIpc";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
@@ -635,6 +636,7 @@ contributionsRef = extensions.contributions;
 /** Network: the proxy of processes OpenMind starts and of its own requests, offline packages, the network-failure card. */
 const network = wireNetwork({
   ipc: tauriIpcClient,
+  brokerIpc: tauriBrokerIpc,
   events,
   commands,
   settings,

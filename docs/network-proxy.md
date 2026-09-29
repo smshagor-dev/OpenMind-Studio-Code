@@ -55,41 +55,33 @@ required"). The reason is shown only under Details; the stored value never is.
 
 ## What gets the proxy
 
-Every process OpenMind starts goes through one place (`commands::run::environment`), so all of these get the same
-variables: **terminals, Run Code, tasks, the debugger, language servers, the extension host, notebooks' kernels, the PHP
-server, MariaDB/phpMyAdmin/Composer, the PHP panel's shell** — plus **Git** (its own runner) and OpenMind's own HTTP
-requests: **Runtime Manager downloads, Open VSX (marketplace), AI providers** and **Test Connection**.
+Since Milestone 23 (the Unified Download Broker, see `docs/download-broker.md`) **no proxy variable is put into terminals
+any more** (`HTTP_PROXY`, `PIP_PROXY`, `NPM_CONFIG_PROXY` ... are gone). The proxy is used by **OpenMind's own client**:
+Runtime Manager downloads, Open VSX, AI providers, Test Connection — and the **package gateway**, a loopback server that
+the package tools of every process OpenMind starts (terminals, Run Code, tasks, the debugger, language-server installs,
+the extension host, Git, the PHP panel's Composer) are pointed at with process-local settings:
 
-Variables (only when a proxy is in force):
-
-| Variable | Value | Used by |
+| Variable / setting | Value | Used by |
 | --- | --- | --- |
-| `HTTP_PROXY`, `http_proxy` | the HTTP proxy URL (with credentials) | curl, wget, git, pip, npm, composer, go, most tools |
-| `HTTPS_PROXY`, `https_proxy` | the HTTPS proxy URL | same |
-| `ALL_PROXY`, `all_proxy` | the SOCKS proxy, if set | curl, git |
-| `NO_PROXY`, `no_proxy` | the no-proxy list | same |
-| `NPM_CONFIG_PROXY`, `NPM_CONFIG_HTTPS_PROXY`, `NPM_CONFIG_NOPROXY` | same values | npm, pnpm, yarn (classic) |
-| `PIP_PROXY` | the HTTPS proxy | pip |
-| `CARGO_HTTP_PROXY` | the HTTPS proxy | cargo |
-| `GOPROXY` | only if you set *Go Module Proxy* | go |
-| `PIP_FIND_LINKS` | the offline wheels folder as a `file:///` URL (pip splits this variable on spaces, and the app folder usually has one), only with *Use Offline Python Packages* on | pip |
+| `PIP_INDEX_URL` | `http://127.0.0.1:<port>/<token>/pypi/simple/` | pip |
+| `NPM_CONFIG_REGISTRY`, `PNPM_CONFIG_REGISTRY` | `http://127.0.0.1:<npm port>/` | npm, pnpm, Yarn 1 (metadata) |
+| `GOPROXY` | `http://127.0.0.1:<port>/<token>/go` | go (checksums still verified against sum.golang.org) |
+| `GIT_CONFIG_COUNT` + `GIT_CONFIG_KEY_n/VALUE_n` | `url.<gateway>/git/https/.insteadOf=https://`, an identity `pushInsteadOf`, no proxy for the gateway | git (clone/fetch/pull; push keeps Git's own connection) |
+| `CARGO_HTTP_PROXY` | `http://cargo:<token>@127.0.0.1:<port>` (the gateway's tunnel) | cargo |
+| `OPENMIND_COMPOSER_PROXY` | the tunnel for Composer; OpenMind's `composer` launcher sets `HTTPS_PROXY` from it for Composer's own process | OpenMind's portable Composer |
+| `OPENMIND_FETCH_URL` | the gateway's download endpoint | `openmind-fetch` |
+| `NO_PROXY` | your own value plus `127.0.0.1,localhost` | every tool (so your own proxy never captures gateway requests) |
+| `PIP_FIND_LINKS` | the offline wheels folder as a `file:///` URL, only with *Use Offline Python Packages* on | pip |
 
-Per tool:
+A tool you configured yourself keeps your settings and is listed on the Downloads tab: `PIP_INDEX_URL` or `index-url` in
+`pip.ini`, `NPM_CONFIG_REGISTRY` or `registry=` in `~/.npmrc`, `GOPROXY` (environment or `%APPDATA%\go\env`), and
+`CARGO_HTTP_PROXY` or a proxy / `replace-with` in `~/.cargo/config.toml`. Nothing is ever written to any of those files.
+The setting **Route Package Downloads Through OpenMind** (`network.gateway.enabled`, on) turns the gateway settings off.
 
-- **git** — the variables (git's curl honours them). No `git config` is written. A proxy 407 is reported as a network
-  problem, not as "the remote wants a password".
-- **pip** — `PIP_PROXY` + the variables. OpenMind never writes `pip.ini`.
-- **npm / pnpm / yarn** — `NPM_CONFIG_*` + the variables. `.npmrc` is never written. Yarn Berry (2+) reads only its own
-  `httpProxy` setting: configure it in the project if you use it.
-- **Composer** — the variables (Composer reads `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`).
-- **cargo** — `CARGO_HTTP_PROXY`. SOCKS isn't supported by Cargo through this variable.
-- **go** — the variables; `GOPROXY` only if you configure it (a module mirror, not a network proxy).
-- **curl / wget** — the variables.
-
-*Network: Show Current Terminal Proxy Environment* lists what a new terminal gets, with the password as `****`.
-The terminal panel's header shows **Network: No Proxy / Manual Proxy / System Proxy / Offline Cache**; when a proxy is in
-force the first terminal of the session shows "Proxy environment applied to this terminal session." once.
-**A terminal that is already open keeps the environment it started with** — open a new one after changing the proxy.
+**A program's own requests are not routed** (`requests.get`, `fetch`, `curl` in a script): OpenMind only helps the
+package tools. *Network: Show Terminal Package Settings* lists what a new terminal gets (the gateway token as `****`).
+A proxy change applies at once, also in open terminals (the gateway uses the proxy in force for each request); only
+turning the gateway or the offline wheels on or off marks open terminals as out of date.
 
 ## Diagnostics
 

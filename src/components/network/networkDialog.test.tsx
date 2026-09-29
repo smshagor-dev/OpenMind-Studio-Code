@@ -49,7 +49,7 @@ function setup(status: NetworkStatus = STATUS, ipc: Partial<NetworkIpc> = {}) {
       elapsedMs: 40,
       detail: null,
     }),
-    networkTerminalEnv: vi.fn().mockResolvedValue([["HTTPS_PROXY", "http://ivan:****@proxy.lab:3128"]]),
+    networkTerminalEnv: vi.fn().mockResolvedValue([["PIP_INDEX_URL", "http://127.0.0.1:4000/****/pypi/simple/"]]),
     offlineInspect: vi.fn().mockResolvedValue({
       path: "E:/usb/numpy-2.0.0-cp312-cp312-manylinux_2_17_x86_64.whl",
       fileName: "numpy-2.0.0-cp312-cp312-manylinux_2_17_x86_64.whl",
@@ -120,7 +120,7 @@ describe("NetworkDialog", () => {
     expect(screen.getByText("Saved for ivan.")).toBeInTheDocument();
   });
 
-  it("Test shows the categorized result; the terminal environment is shown redacted", async () => {
+  it("Test shows the categorized result; the terminal package settings are shown with the token hidden", async () => {
     const r = setup();
     render(<NetworkDialog />);
     await act(() => r.network.openWindow());
@@ -131,11 +131,11 @@ describe("NetworkDialog", () => {
     expect(screen.getByRole("status")).toHaveTextContent("✓ Connected");
     expect(screen.getByText("through proxy.lab:3128 · HTTP 200 · 40 ms")).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Network: Show Current Terminal Proxy Environment" }));
+      fireEvent.click(screen.getByRole("button", { name: "Network: Show Terminal Package Settings" }));
       await Promise.resolve();
     });
-    expect(screen.getByLabelText("Network: Show Current Terminal Proxy Environment")).toHaveTextContent(
-      "HTTPS_PROXY=http://ivan:****@proxy.lab:3128",
+    expect(screen.getByLabelText("Network: Show Terminal Package Settings")).toHaveTextContent(
+      "PIP_INDEX_URL=http://127.0.0.1:4000/****/pypi/simple/",
     );
   });
 
@@ -248,7 +248,7 @@ describe("Milestone 22.2: diagnostics, Test Connection labels, pip, stale termin
     expect(screen.getByText("io: No such host is known. (os error 11001)")).toBeInTheDocument();
   });
 
-  it("the pip card says it isn't a missing package; Open New Proxy-Ready Terminal opens one", async () => {
+  it("the pip card says it isn't a missing package; Open New Terminal opens one", async () => {
     const r = setup();
     act(() => {
       r.network.report(
@@ -264,7 +264,7 @@ describe("Milestone 22.2: diagnostics, Test Connection labels, pip, stale termin
       "Terminal: pip could not reach PyPI because the network proxy requires authentication. This is not a missing Python package.",
     );
     expect(card).toHaveTextContent("This looks like a proxy authentication problem, not a missing Python package.");
-    fireEvent.click(screen.getByRole("button", { name: "Open New Proxy-Ready Terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open New Terminal" }));
     await act(() => Promise.resolve());
     expect(r.terminals.openProxyReady).toHaveBeenCalledWith(null);
   });
@@ -292,9 +292,9 @@ describe("Milestone 22.2: diagnostics, Test Connection labels, pip, stale termin
     act(() => {
       r.network.setStaleTerminals(["t1"]);
     });
-    expect(screen.getByRole("status")).toHaveTextContent("Proxy settings changed. Open a new terminal to apply them.");
-    fireEvent.click(screen.getByRole("button", { name: "Open New Proxy-Ready Terminal" }));
-    fireEvent.click(screen.getByRole("button", { name: "Restart This Terminal With Proxy" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Package settings changed. Open a new terminal to apply them.");
+    fireEvent.click(screen.getByRole("button", { name: "Open New Terminal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart This Terminal" }));
     await act(() => Promise.resolve());
     expect(r.terminals.openProxyReady).toHaveBeenCalledWith("t1");
     expect(r.terminals.restart).toHaveBeenCalledWith("t1");
@@ -428,3 +428,53 @@ describe("Milestone 22.3: saved credentials that can't be read", () => {
   });
 });
 
+
+describe("Downloads tab (Milestone 23)", () => {
+  it("shows the gateway, the tools left on their own settings, the downloads with Cancel, and saves diagnostics", async () => {
+    const r = setup();
+    const brokerIpc = {
+      brokerStatus: vi.fn().mockResolvedValue({
+        enabled: true,
+        running: true,
+        problem: null,
+        port: 4000,
+        npmPort: 4001,
+        tempDir: "C:/app/temp",
+        shimsDir: "C:/app/shims",
+        skipped: [{ tool: "go", reason: "GOPROXY is set" }],
+        recent: [
+          {
+            id: 3,
+            provider: "npm",
+            artifact: "express-4.21.2.tgz",
+            phase: "downloading",
+            bytes: 50_000,
+            total: 100_000,
+            speed: 10_000,
+            retry: 2,
+            failure: null,
+            detail: null,
+          },
+        ],
+        recovery: { removed: 1, keptPartial: 0, inUse: 0 },
+      }),
+      brokerCancel: vi.fn().mockResolvedValue(true),
+      exportDiagnostics: vi.fn().mockResolvedValue("C:/app/logs/openmind-network-diagnostics.json"),
+      onProgress: vi.fn().mockResolvedValue(() => undefined),
+    };
+    (r.network as unknown as { host: { broker: unknown } }).host.broker = brokerIpc;
+    render(<NetworkDialog />);
+    await act(() => r.network.openWindow("downloads"));
+    expect(screen.getByText("Package gateway running on 127.0.0.1 (port 4000, npm 4001).")).toBeInTheDocument();
+    expect(screen.getByText("go: GOPROXY is set")).toBeInTheDocument();
+    expect(screen.getByText("npm · express-4.21.2.tgz")).toBeInTheDocument();
+    expect(screen.getByText(/Downloading · 48\.8 KB \/ 97\.7 KB · 50% · 9\.8 KB\/s · attempt 2/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(brokerIpc.brokerCancel).toHaveBeenCalledWith(3);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save Network Diagnostics" }));
+      await Promise.resolve();
+    });
+    expect(brokerIpc.exportDiagnostics).toHaveBeenCalled();
+  });
+});

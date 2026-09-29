@@ -634,7 +634,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   *without* a cached value shown as its `=text` — **no formula engine**, dates stay serial numbers, charts/pivots/macros ignored. Commands in `src-tauri/src/commands/preview.rs`
   (`preview_inspect/read_bytes/read_text/docx/xlsx`, all on `spawn_blocking`).
 
-- `openmind-network` (Milestone 21) — proxy settings, system proxy detection, the proxy environment of processes OpenMind starts, the proxy
+- `openmind-network` (Milestone 21) — proxy settings, system proxy detection, (until Milestone 23) the proxy environment of processes OpenMind starts, the proxy
   route of OpenMind's own HTTP requests, retries/mirrors, network problem categories, the connection test and the offline package cache.
   Tauri-agnostic; see `docs/network-proxy.md`. **No bypass**: it only uses the proxy the user configured or the one Windows/the environment
   already names; it never changes Windows' proxy, the Registry, PATH, the process environment or a tool's global config, never starts a
@@ -661,6 +661,32 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   Manager's `download_path`). `run::environment` appends `process_env` (every launcher: terminal, tasks, Run Code, debug, LSP, extension host,
   notebook, PHP, database/Composer, panel shell); Git gets it through `GitClient::with_env` (its log lines are redacted); the LSP `npm ci` gets
   it through `LspManager::install_package_env`.
+
+- `openmind-broker` (Milestone 23) — the **Unified Download Broker**; see `docs/download-broker.md`. Package downloads of tools in processes OpenMind
+  starts go the way the Download Manager's do: `broker::Broker` downloads each artifact with `openmind_runtime_manager::download`/`verify_sha256` and
+  the `with_mirrors` policy through the `UreqClient` (whose agent now comes from `openmind_network::http::agent`/`Timeouts`, shared with the gateway;
+  `http::net_error` is the one error mapping), one download for concurrent requests, cancel, progress `BrokerEvent`s, `FailureKind` (DNS, connection,
+  TLS, certificate, proxy/auth, registry, checksum, disk full, permission, cancelled ...). `staging`: `<app>/temp/<provider>/<hash>/` with an exclusive
+  `.lock` and `meta.json`; released artifacts are removed, stopped downloads keep `.part` (resume), start-up `recover` keeps partials < 3 days, skips held
+  folders, never follows links. `gateway`: a dependency-free HTTP/1.1 loopback server (`http1`), two random ports (main + npm registry at a port root),
+  a per-run token in every main path, the `Host` header must name the gateway; `upstream` = the Download Manager's agent with header allow-lists
+  (https only, gzip decoded by ureq, re-framed); providers `pypi` (index pages, file links rewritten, published SHA-256 checked), `npm` (packuments
+  unchanged so lockfiles keep registry.npmjs.org; pnpm gets local tarball links; audit POST; writes refused), `goproxy` (+ `sumdb/sum.golang.org`),
+  `git` (smart HTTP upload-pack streamed, receive-pack refused), `fetch` (explicit https download), `tunnel` (CONNECT for Cargo and OpenMind's
+  Composer: token + port 443 + host names only; HTTP/SOCKS5 upstream proxy with OpenMind's credentials, a proxy on 127.0.0.1 allowed, or direct;
+  TLS stays the tool's). `env::process_env` = the process-local settings (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`/`PNPM_CONFIG_REGISTRY`, `GOPROXY`,
+  `GIT_CONFIG_*` insteadOf + identity pushInsteadOf + no proxy for the gateway, `CARGO_HTTP_PROXY`, `OPENMIND_COMPOSER_PROXY`, `OPENMIND_FETCH_URL`,
+  `NO_PROXY` + loopback), leaving a tool the user configured (env, `pip.ini`, `~/.npmrc`, `%APPDATA%\go\env`, `~/.cargo/config.toml`) alone and
+  reporting it; `fetch_shims` = `openmind-fetch(.cmd)` in `<app>/shims`. `tests/policy.rs` forbids TLS/hash weakening and global config writes.
+  App: `commands::broker` (`BrokerRuntime` in `AppState`: gateway started in `setup` — a bind, nothing contacted —, recovery in the background,
+  `broker:progress` (throttled), `broker_status|cancel`, stopped in `shutdown`); `commands::network::env_of` now returns the gateway settings (the old
+  `proxy_env` blanket variables were removed) — every launcher still goes through it; `run::environment` puts `<app>/shims` first on PATH;
+  `commands::network_diag::network_diagnostics_export` writes `logs/openmind-network-diagnostics.json` (A Download Manager route per host with DNS and
+  direct TCP, B-E pip/npm/Composer/Git through OpenMind, F the same as a plain PowerShell; secrets scrubbed). Runtime-manager shims gained
+  `proxyEnv` (Composer: `HTTPS_PROXY` from `OPENMIND_COMPOSER_PROXY` inside `setlocal`) and an outdated launcher is rewritten (`shims_present` compares
+  the text). Setting `network.gateway.enabled` (user, default on). Frontend: `network/brokerIpc.ts`, `downloadsModel.ts`, `NetworkService`
+  (`gateway`, `downloads`, `attachBroker`, `cancelDownload`, `exportDiagnostics`, `reportProblem`, `envFingerprint` = gateway switch + offline wheels,
+  no longer the proxy), the Network window's **Downloads** tab (`NetworkDownloadsTab`), Terminal > Network > Package Downloads / Save Network Diagnostics.
 
 - `openmind-workloads` (Milestone 22) — the Runtime Manager's Visual Studio-style **workload / language-pack catalog** as data, and the rules
   that turn it into honest statuses and an install plan; no I/O (the app supplies `Facts`: the runtime list, the LSP bundle, tools found on

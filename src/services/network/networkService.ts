@@ -11,9 +11,11 @@ import type {
   WheelFolderImport,
   Wheelhouse,
 } from "./networkIpc";
+import type { BrokerEvent, BrokerIpc, BrokerStatus } from "./brokerIpc";
+import { failureProblem, providerLabel, upsertDownload } from "./downloadsModel";
 import { diagnoseNetwork, isPipOutput, problemText, STRONG_PROBLEMS, validateProxyAddress } from "./networkModel";
 
-export type NetworkTab = "proxy" | "offline";
+export type NetworkTab = "proxy" | "offline" | "downloads";
 
 /** A network failure a tool reported, with what the user can do about it. */
 export interface NetworkFailure {
@@ -41,8 +43,14 @@ export interface NetworkState {
   /** The last file inspected for import, waiting for the user to confirm. */
   inspection: Inspection | null;
   failure: NetworkFailure | null;
-  /** Terminals opened before the last proxy change: they still have the old proxy variables. */
+  /** Terminals opened before the last change of their package settings (gateway on/off, offline wheels). */
   staleTerminals: string[];
+  /** The package gateway (null until read, or without a broker in tests). */
+  gateway: BrokerStatus | null;
+  /** Package downloads of this session, newest first. */
+  downloads: BrokerEvent[];
+  /** Where the last diagnostics export was written. */
+  diagnosticsPath: string | null;
   /** The offline Python wheelhouse (loaded with the Offline Packages tab). */
   wheelhouse: Wheelhouse | null;
   /** The result of the last Import Wheels Folder (what was imported, what was refused and why). */
@@ -65,6 +73,8 @@ export interface NetworkHost {
   openRuntimeManager: () => void;
   /** Stale terminal actions and running a command in a new terminal (the terminal wiring does the work). */
   terminals: NetworkTerminalHost;
+  /** The Unified Download Broker (package gateway, downloads, diagnostics). */
+  broker?: BrokerIpc;
   now?: () => number;
 }
 
@@ -100,6 +110,9 @@ export class NetworkService {
     inspection: null,
     failure: null,
     staleTerminals: [],
+    gateway: null,
+    downloads: [],
+    diagnosticsPath: null,
     wheelhouse: null,
     wheelImport: null,
     error: null,
@@ -141,6 +154,62 @@ export class NetworkService {
       this.set({ status, offline });
     } catch (error) {
       this.set({ error: String(error) });
+    }
+    await this.loadGateway();
+  }
+
+  /** The package gateway's state and the downloads it made (local reads only). */
+  async loadGateway(): Promise<void> {
+    if (this.host.broker === undefined) return;
+    try {
+      const gateway = await this.host.broker.brokerStatus();
+      let downloads = this.state.downloads;
+      for (const event of [...gateway.recent].reverse()) downloads = upsertDownload(downloads, event);
+      this.set({ gateway, downloads });
+    } catch (error) {
+      this.set({ error: String(error) });
+    }
+  }
+
+  /** Follows the broker's progress events (the wiring calls this once). */
+  async attachBroker(): Promise<() => void> {
+    if (this.host.broker === undefined) return () => undefined;
+    return this.host.broker.onProgress((event) => {
+      this.onDownload(event);
+    });
+  }
+
+  /** One progress event: the list follows it, and a network failure gets the card. */
+  onDownload(event: BrokerEvent): void {
+    this.set({ downloads: upsertDownload(this.state.downloads, event) });
+    if (event.phase !== "failed" || event.failure === null) return;
+    const problem = failureProblem(event.failure);
+    if (problem === null) return;
+    this.reportProblem(problem, providerLabel(event.provider), event.provider === "pypi");
+  }
+
+  async cancelDownload(id: number): Promise<void> {
+    if (this.host.broker === undefined) return;
+    try {
+      await this.host.broker.brokerCancel(id);
+    } catch (error) {
+      this.set({ error: String(error) });
+    }
+  }
+
+  /** Writes openmind-network-diagnostics.json (the checks run now, only because the user asked). */
+  async exportDiagnostics(): Promise<string | null> {
+    if (this.host.broker === undefined) return null;
+    this.set({ busy: true, error: null, notice: null, diagnosticsPath: null });
+    try {
+      const path = await this.host.broker.exportDiagnostics();
+      this.set({ diagnosticsPath: path, notice: t("network.diagnostics.written", { path }) });
+      return path;
+    } catch (error) {
+      this.set({ error: String(error) });
+      return null;
+    } finally {
+      this.set({ busy: false });
     }
   }
 
@@ -238,9 +307,10 @@ export class NetworkService {
     }
   }
 
-  /** The once-per-session notice when a terminal starts with the proxy variables. */
+  /** The once-per-session notice when a terminal starts with the package gateway. */
   terminalStarted(): void {
-    if (this.terminalNoticeShown || this.state.status?.active !== true) return;
+    const gateway = this.state.gateway;
+    if (this.terminalNoticeShown || gateway === null || !gateway.running || !gateway.enabled) return;
     this.terminalNoticeShown = true;
     this.host.events.emit("appNotice", { message: t("network.terminal.applied") });
   }
@@ -320,12 +390,23 @@ export class NetworkService {
     if (error !== null) this.host.events.emit("appError", { message: error });
   }
 
-  /** A fingerprint of what new terminals get: when it changes, open terminals are out of date. */
-  proxyFingerprint(): string | null {
+  /**
+   * A fingerprint of what new terminals get: when it changes, open terminals are out of date. The proxy is not part of
+   * it: terminals reach the network through the package gateway, which uses the proxy in force at each request.
+   */
+  envFingerprint(): string | null {
     const s = this.state.status;
     // The status can be missing before the first answer (or in tests where the backend answers nothing).
     if (!s) return null;
-    return JSON.stringify([s.mode, s.active, s.http, s.https, s.socks, s.noProxy, s.hasCredentials, s.username, s.useWheelhouse, s.goProxy]);
+    return JSON.stringify([s.useWheelhouse, this.state.gateway?.enabled ?? null]);
+  }
+
+  /** A network problem reported by the package gateway itself (no text to read: the category is known). */
+  reportProblem(problem: NetProblem, source: string, pip: boolean): void {
+    const current = this.state.failure;
+    if (current?.problem === problem) return;
+    if (current === null && (this.quietUntil.get(problem) ?? 0) > this.now()) return;
+    this.set({ failure: { problem, source, retry: null, retryIsCommand: false, pip } });
   }
 
   dismissFailure(): void {

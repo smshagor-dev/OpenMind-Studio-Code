@@ -430,7 +430,9 @@ function terminalMenu(shells: { kind: string; label: string }[]): TopLevelMenu {
       sub("Network", [
         cmd("Proxy Settings...", "network.openSettings"),
         cmd("Test Connection", "network.testConnection"),
-        cmd("Show Current Terminal Proxy Environment", "network.showTerminalEnv"),
+        cmd("Show Terminal Package Settings", "network.showTerminalEnv"),
+        cmd("Package Downloads", "network.showDownloads"),
+        cmd("Save Network Diagnostics", "network.exportDiagnostics"),
         cmd("Clear Proxy Credentials", "network.clearCredentials"),
         SEPARATOR,
         cmd("Import Offline Package...", "network.importOffline"),

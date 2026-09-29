@@ -262,19 +262,19 @@ describe("wireNetwork", () => {
     expect(errors).toEqual(["A new terminal couldn't be started; the current one was kept."]);
   });
 
-  it("Keep Current Terminal silences it until the next proxy change", async () => {
+  it("Keep Current Terminal silences it until the next change of the package settings", async () => {
     const r = rig();
     await r.network.load();
     r.addTerminal("t1");
     const status = r.networkIpc.networkStatus as ReturnType<typeof vi.fn>;
-    status.mockResolvedValue({ mode: "manual", active: true, http: "http://a:1" });
+    status.mockResolvedValue({ mode: "manual", active: true, useWheelhouse: true });
     await r.network.load();
     expect(r.network.getState().staleTerminals).toEqual(["t1"]);
     r.network.keepTerminal("t1");
     expect(r.network.getState().staleTerminals).toEqual([]);
     r.addTerminal("t2");
     expect(r.network.getState().staleTerminals).toEqual([]);
-    status.mockResolvedValue({ mode: "manual", active: true, http: "http://b:2" });
+    status.mockResolvedValue({ mode: "manual", active: true, useWheelhouse: false });
     await r.network.load();
     expect(r.network.getState().staleTerminals).toEqual(["t1", "t2"]);
   });
@@ -309,16 +309,26 @@ describe("wireNetwork", () => {
     expect(wsl.createTerminal).not.toHaveBeenCalled();
   });
 
-  it("a proxy change marks the terminals opened before it as stale, once", async () => {
+  it("a proxy change doesn't make terminals stale: the gateway uses the proxy in force at each request", async () => {
+    const r = rig();
+    await r.network.load();
+    r.addTerminal("t1");
+    (r.networkIpc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ mode: "manual", active: true, http: "http://proxy.lab:3128" });
+    await r.network.load();
+    expect(r.network.getState().staleTerminals).toEqual([]);
+    expect(r.notices()).toEqual([]);
+  });
+
+  it("a change of what new terminals get (the offline wheels) marks the terminals opened before it, once", async () => {
     const r = rig();
     await r.network.load();
     r.addTerminal("t1");
     expect(r.network.getState().staleTerminals).toEqual([]);
-    (r.networkIpc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ mode: "manual", active: true, http: "http://proxy.lab:3128" });
+    (r.networkIpc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ mode: "manual", active: true, useWheelhouse: true });
     await r.network.load();
     expect(r.network.getState().staleTerminals).toEqual(["t1"]);
     expect(r.notices()).toContain(
-      "Proxy settings changed. Terminals opened before the change still use the old settings: open a new terminal.",
+      "Package settings changed. Terminals opened before the change still use the old ones: open a new terminal.",
     );
     r.addTerminal("t2");
     expect(r.network.getState().staleTerminals).toEqual(["t1"]);
@@ -330,11 +340,11 @@ describe("wireNetwork", () => {
     r.addTerminal("t1");
     r.output.append("Git", "fatal: unable to access 'https://x/': Received HTTP code 407 from proxy after CONNECT");
     expect(r.network.getState().failure).not.toBeNull();
-    (r.networkIpc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ mode: "manual", active: true, http: "http://proxy.lab:3128" });
+    (r.networkIpc.networkStatus as ReturnType<typeof vi.fn>).mockResolvedValue({ mode: "manual", active: true, useWheelhouse: true });
     await r.network.load();
     expect(r.network.getState().staleTerminals).toEqual(["t1"]);
     expect(r.notices()).not.toContain(
-      "Proxy settings changed. Terminals opened before the change still use the old settings: open a new terminal.",
+      "Package settings changed. Terminals opened before the change still use the old ones: open a new terminal.",
     );
   });
 

@@ -4,10 +4,11 @@ import "../../styles/network.css";
 import { useT } from "../../i18n";
 import { container } from "../../services/container";
 import { statusLabel } from "../../services/network/networkModel";
+import { NetworkDownloadsTab } from "./NetworkDownloadsTab";
 import { NetworkOfflineTab } from "./NetworkOfflineTab";
 import { NetworkProxyTab } from "./NetworkProxyTab";
 
-/** Network: proxy settings and offline packages. Opening it reads local state only; nothing is contacted. */
+/** Network: proxy settings, offline packages and package downloads. Opening it reads local state only; nothing is contacted. */
 export function NetworkDialog() {
   const t = useT();
   const state = useSyncExternalStore(container.network.subscribe, container.network.getState);
@@ -25,6 +26,7 @@ export function NetworkDialog() {
   const tabs = [
     ["proxy", t("network.tab.proxy")],
     ["offline", t("network.tab.offline")],
+    ["downloads", t("network.tab.downloads")],
   ] as const;
   return (
     <div
@@ -69,7 +71,13 @@ export function NetworkDialog() {
             {state.notice}
           </p>
         ) : null}
-        {state.tab === "proxy" ? <NetworkProxyTab state={state} /> : <NetworkOfflineTab state={state} />}
+        {state.tab === "proxy" ? (
+          <NetworkProxyTab state={state} />
+        ) : state.tab === "offline" ? (
+          <NetworkOfflineTab state={state} />
+        ) : (
+          <NetworkDownloadsTab state={state} />
+        )}
         <p className="network__policy">{t("network.policy")}</p>
         <div className="modal__actions">
           <button
@@ -185,8 +193,8 @@ export function NetworkStatusButton() {
 }
 
 /**
- * Above a terminal opened before the last proxy change: it still has the old proxy variables. The user decides:
- * a new terminal, a restart of this one (asked first), or keep it as it is.
+ * Above a terminal opened before the last change of the package settings (gateway on/off, offline wheels): it still
+ * has the old ones. The user decides: a new terminal, a restart of this one (asked first), or keep it as it is.
  */
 export function StaleTerminalBanner() {
   const t = useT();
