@@ -193,6 +193,18 @@ describe("NetworkService: failures", () => {
     );
   });
 
+  it("a later 'cannot connect to proxy' (pip's wrapper, a repainted line) never replaces 'the proxy needs credentials'", () => {
+    const r = rig();
+    r.service.report("OSError('Tunnel connection failed: 407 Proxy Authentication Required')", "Terminal", null, true);
+    // What a terminal repaint re-sent on its own in the 22.7 smoke:
+    r.service.report("ProxyError('Cannot connect to proxy.', OSError('Tunnel connection failed: 407 Proxy Authenticatio", "Terminal", null, true);
+    r.service.report("ERROR: No matching distribution found for six", "Terminal", null, true);
+    expect(r.service.getState().failure).toMatchObject({ problem: "proxyAuthRequired", pip: true });
+    // Another kind of failure still replaces it.
+    r.service.report("Could not resolve host: pypi.org", "Terminal", null, true);
+    expect(r.service.getState().failure?.problem).toBe("dns");
+  });
+
   it("terminal output only counts unmistakable problems", () => {
     const r = rig();
     expect(r.service.report("Request timed out.", "Terminal", null, true)).toBe(false);

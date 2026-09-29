@@ -271,6 +271,13 @@ export class NetworkService {
       if (pip && !current.pip) this.set({ failure: { ...current, pip: true } });
       return true;
     }
+    // A proxy that asks for credentials is also one that "can't be connected to" (pip wraps every 407 in
+    // `ProxyError('Cannot connect to proxy.')`, and a terminal repaint can re-send that part of a line on its own): the
+    // generic proxy failure never replaces the precise one on the card.
+    if (current?.problem === "proxyAuthRequired" && problem === "proxyUnavailable") {
+      if (pip && !current.pip) this.set({ failure: { ...current, pip: true } });
+      return true;
+    }
     if (current === null && (this.quietUntil.get(problem) ?? 0) > this.now()) return false;
     const keep = retry === null && current !== null;
     this.set({
