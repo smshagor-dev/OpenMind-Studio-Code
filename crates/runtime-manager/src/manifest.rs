@@ -146,6 +146,11 @@ pub struct Shim {
     /// per launch from the *active* install, so nothing absolute is written.
     #[serde(default)]
     pub via_env: Option<String>,
+    /// The environment variable that may hold a proxy address for this command only (`OPENMIND_COMPOSER_PROXY`: the
+    /// gateway's tunnel for Composer). The launcher sets `HTTPS_PROXY` from it inside its own scope, so the variable
+    /// never reaches the shell that called it or any other program.
+    #[serde(default)]
+    pub proxy_env: Option<String>,
 }
 
 /// A capability of a runtime that an install may or may not have (pip for
@@ -356,15 +361,17 @@ impl RuntimeManifest {
                         .chars()
                         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '='))
             };
-            let via_ok = shim.via_env.as_deref().is_none_or(|name| {
-                !name.is_empty()
-                    && name
-                        .chars()
-                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-            });
-            if !via_ok {
+            let variable = |name: &Option<String>| {
+                name.as_deref().is_none_or(|name| {
+                    !name.is_empty()
+                        && name
+                            .chars()
+                            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                })
+            };
+            if !variable(&shim.via_env) || !variable(&shim.proxy_env) {
                 return bad(format!(
-                    "shim \"{}\": viaEnv must be an upper-case variable name",
+                    "shim \"{}\": viaEnv and proxyEnv must be upper-case variable names",
                     shim.name
                 ));
             }

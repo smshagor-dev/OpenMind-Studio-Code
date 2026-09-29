@@ -3,16 +3,16 @@
 //! Registry or a tool's global configuration, and nothing contacts the network except `network_test`.
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use openmind_db::EditorSettingsRepository;
 use openmind_network::diagnostics::{diagnose_settings, Diagnostic};
-use openmind_network::env::{proxy_env, EnvExtras};
+use openmind_network::env::file_url;
 use openmind_network::http::{self, HttpProxy};
 use openmind_network::probe::{test_connection, TestOutcome};
 use openmind_network::proxy::{
     resolve_manual, Credentials, ProxyMode, ProxySettings, ProxySource, ResolvedProxy,
 };
-use openmind_network::redact::redact_env;
 use openmind_network::system;
 use openmind_settings::schema::Extras;
 use openmind_settings::store;
@@ -32,10 +32,12 @@ pub(crate) struct NetworkConfig {
     pub go_proxy: String,
     pub test_url: String,
     pub use_wheelhouse: bool,
+    /// `network.gateway.enabled`: point the package tools of processes OpenMind starts at the package gateway.
+    pub gateway_enabled: bool,
 }
 
-fn user_values(state: &AppState) -> HashMap<String, Value> {
-    let layer = store::read_layer(&state.settings_file);
+fn user_values(settings_file: &Path) -> HashMap<String, Value> {
+    let layer = store::read_layer(settings_file);
     store::effective(&layer, None, &Extras::default())
         .into_iter()
         .filter(|entry| entry.id.starts_with("network."))
@@ -44,7 +46,12 @@ fn user_values(state: &AppState) -> HashMap<String, Value> {
 }
 
 pub(crate) fn read_config(state: &AppState) -> NetworkConfig {
-    let values = user_values(state);
+    read_config_file(&state.settings_file)
+}
+
+/// The Network settings of `settings/settings.json` (also read before the app state exists).
+pub(crate) fn read_config_file(settings_file: &Path) -> NetworkConfig {
+    let values = user_values(settings_file);
     let text = |id: &str| {
         values
             .get(id)
@@ -67,6 +74,10 @@ pub(crate) fn read_config(state: &AppState) -> NetworkConfig {
             .get("network.offline.useWheelhouse")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        gateway_enabled: values
+            .get("network.gateway.enabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
     }
 }
 
@@ -188,21 +199,23 @@ pub(crate) async fn refresh(state: &AppState) -> Resolution {
     }
 }
 
-/// The proxy variables for a process OpenMind starts (empty when no proxy is in force). Only that process gets them.
+/// The package settings for a process OpenMind starts: its package tools are pointed at the package gateway, which
+/// downloads through OpenMind's own route (the proxy in force). Only that process gets them; no proxy variable is set,
+/// so a program's own requests are never routed by OpenMind.
 pub(crate) async fn process_env(state: &AppState) -> Vec<(String, String)> {
     let resolution = refresh(state).await;
     env_of(state, &resolution)
 }
 
 pub(crate) fn env_of(state: &AppState, resolution: &Resolution) -> Vec<(String, String)> {
+    let (mut vars, _) =
+        crate::commands::broker::gateway_env(state, resolution.config.gateway_enabled);
     let wheelhouse = crate::commands::network_offline::cache(state).wheelhouse();
-    let use_wheels = resolution.config.use_wheelhouse && wheelhouse.is_dir();
-    let go_proxy = resolution.config.go_proxy.as_str();
-    let extras = EnvExtras {
-        go_proxy: (!go_proxy.is_empty()).then_some(go_proxy),
-        pip_find_links: use_wheels.then_some(wheelhouse.as_path()),
-    };
-    proxy_env(&resolution.proxy, resolution.credentials.as_ref(), &extras)
+    if resolution.config.use_wheelhouse && wheelhouse.is_dir() {
+        // pip splits this variable on spaces: a file URL never has one.
+        vars.push(("PIP_FIND_LINKS".to_string(), file_url(&wheelhouse)));
+    }
+    vars
 }
 
 /// A diagnostic with its severity (`warning` or `info`), for the Network window.
@@ -340,20 +353,31 @@ pub async fn network_test(
     Ok(outcome)
 }
 
-/// The proxy variables a new terminal gets, with the password replaced by `****`.
+/// The package settings a new terminal gets, with the gateway's session token replaced by `****`.
 #[tauri::command]
 pub async fn network_terminal_env(
     state: State<'_, AppState>,
 ) -> Result<Vec<(String, String)>, String> {
     let resolution = refresh(&state).await;
     let vars = env_of(&state, &resolution);
-    Ok(redact_env(&vars, resolution.credentials.as_ref()))
+    let token = state.broker.endpoints().map(|endpoints| endpoints.token);
+    Ok(mask_token(vars, token.as_deref()))
+}
+
+/// Hides the gateway's per-run token in values shown to the user.
+fn mask_token(vars: Vec<(String, String)>, token: Option<&str>) -> Vec<(String, String)> {
+    match token.filter(|token| !token.is_empty()) {
+        Some(token) => vars
+            .into_iter()
+            .map(|(name, value)| (name, value.replace(token, "****")))
+            .collect(),
+        None => vars,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use openmind_network::proxy::{resolve_manual, ProxySettings};
-    use openmind_network::redact::redact_env;
 
     #[test]
     fn a_hand_edited_address_with_credentials_is_reported_without_the_password() {
@@ -369,6 +393,7 @@ mod tests {
                 go_proxy: String::new(),
                 test_url: String::new(),
                 use_wheelhouse: false,
+                gateway_enabled: true,
             },
             proxy,
             credentials: None,
@@ -386,28 +411,25 @@ mod tests {
     }
 
     #[test]
-    fn the_env_shown_to_the_user_never_contains_the_password() {
-        let proxy = resolve_manual(&ProxySettings {
-            http: "proxy.lab:3128".into(),
-            ..ProxySettings::default()
-        });
-        let creds = openmind_network::proxy::Credentials {
-            username: "ivan".into(),
-            password: "s3cr3t!".into(),
-        };
-        let vars = openmind_network::env::proxy_env(&proxy, Some(&creds), &Default::default());
+    fn the_env_shown_to_the_user_hides_the_gateway_token() {
+        let vars = vec![
+            (
+                "PIP_INDEX_URL".to_string(),
+                "http://127.0.0.1:4000/abc123/pypi/simple/".to_string(),
+            ),
+            (
+                "CARGO_HTTP_PROXY".to_string(),
+                "http://cargo:abc123@127.0.0.1:4000".to_string(),
+            ),
+        ];
+        let shown = super::mask_token(vars, Some("abc123"));
         assert!(
-            vars.iter().any(|(_, v)| v.contains("s3cr3t")),
-            "the process gets the password"
-        );
-        let shown = redact_env(&vars, Some(&creds));
-        assert!(
-            shown
-                .iter()
-                .all(|(_, v)| !v.contains("s3cr3t") && !v.contains("s3cr3t%21")),
+            shown.iter().all(|(_, v)| !v.contains("abc123")),
             "{shown:?}"
         );
+        assert_eq!(shown[0].1, "http://127.0.0.1:4000/****/pypi/simple/");
     }
+
     #[test]
     fn a_record_that_cant_be_read_is_unreadable_not_none() {
         use super::{credential_state, CredentialState};
@@ -474,6 +496,7 @@ mod tests {
                     go_proxy: String::new(),
                     test_url: String::new(),
                     use_wheelhouse: false,
+                    gateway_enabled: true,
                 },
                 proxy,
                 credentials: None,

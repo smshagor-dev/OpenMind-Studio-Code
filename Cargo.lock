@@ -3163,6 +3163,7 @@ dependencies = [
  "base64 0.23.1",
  "getrandom 0.3.4",
  "openmind-ai",
+ "openmind-broker",
  "openmind-core",
  "openmind-dap",
  "openmind-db",

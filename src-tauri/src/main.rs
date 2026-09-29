@@ -250,6 +250,9 @@ fn main() {
             commands::network::network_clear_credentials,
             commands::network::network_test,
             commands::network::network_terminal_env,
+            commands::broker::broker_status,
+            commands::broker::broker_cancel,
+            commands::network_diag::network_diagnostics_export,
             commands::network_offline::network_offline_inspect,
             commands::network_offline::network_offline_import,
             commands::network_offline::network_offline_list,
@@ -336,7 +339,16 @@ fn main() {
                 openmind_runtime_manager::current_platform(),
             );
 
+            // The package gateway: a loopback bind and the start-up recovery of <app>/temp; nothing is downloaded.
+            let network_config = commands::network::read_config_file(&app_paths.settings_file);
+            let broker = commands::broker::BrokerRuntime::start(
+                app.handle(),
+                &app_paths.root_dir,
+                &network_config.go_proxy,
+            );
+
             app.manage(AppState {
+                broker,
                 runtime,
                 search: SearchRegistry::new(),
                 index: commands::index::new_manager(

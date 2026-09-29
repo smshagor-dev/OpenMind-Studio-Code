@@ -75,10 +75,12 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
             RunEnvironment::default()
         }
     };
-    let mut path_prepend = crate::commands::toolchains::bundled_dirs(state).await;
+    // OpenMind's own launchers (`openmind-fetch`) first, then the bundled tools and the portable runtimes.
+    let mut path_prepend = vec![state.broker.shims_dir().to_path_buf()];
+    path_prepend.extend(crate::commands::toolchains::bundled_dirs(state).await);
     path_prepend.extend(std::mem::take(&mut environment.path_prepend));
     environment.path_prepend = path_prepend;
-    // The proxy the user configured (Network settings), for this process only; nothing when there is none.
+    // Package tools pointed at the package gateway, for this process only.
     environment
         .vars
         .extend(crate::commands::network::process_env(state).await);

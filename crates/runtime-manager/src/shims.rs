@@ -22,6 +22,27 @@ pub fn shim_file_name(shim: &Shim) -> String {
 /// Names, targets and arguments are validated by the manifest (no quotes,
 /// `%`, `&`, ...), so they can be written into a script as they are.
 pub fn render(shim: &Shim, version: &str) -> String {
+    let text = render_plain(shim, version);
+    let Some(var) = &shim.proxy_env else {
+        return text;
+    };
+    // The proxy is set for this command only: `setlocal` keeps it out of the shell that ran it.
+    if cfg!(windows) {
+        text.replacen(
+            "@echo off\r\n",
+            &format!("@echo off\r\nsetlocal\r\nif defined {var} set \"HTTPS_PROXY=%{var}%\"\r\n"),
+            1,
+        )
+    } else {
+        text.replacen(
+            "#!/bin/sh\n",
+            &format!("#!/bin/sh\n[ -n \"${var}\" ] && export HTTPS_PROXY=\"${var}\"\n"),
+            1,
+        )
+    }
+}
+
+fn render_plain(shim: &Shim, version: &str) -> String {
     let args: String = shim.args.iter().map(|arg| format!(" {arg}")).collect();
     if let Some(var) = &shim.via_env {
         return render_via(shim, version, var, &args);
@@ -74,12 +95,13 @@ pub fn write_shims(
     Ok(())
 }
 
-/// Whether every declared shim exists in `shim_dir` (trivially true with none).
-pub fn shims_present(manifest: &RuntimeManifest, shim_dir: &Path) -> bool {
-    manifest
-        .shims
-        .iter()
-        .all(|shim| shim_dir.join(shim_file_name(shim)).is_file())
+/// Whether every declared shim exists in `shim_dir` with the text this version of OpenMind writes, so a launcher
+/// written by an older version is rewritten (trivially true with none).
+pub fn shims_present(manifest: &RuntimeManifest, version: &str, shim_dir: &Path) -> bool {
+    manifest.shims.iter().all(|shim| {
+        fs::read_to_string(shim_dir.join(shim_file_name(shim)))
+            .is_ok_and(|text| text == render(shim, version))
+    })
 }
 
 #[cfg(unix)]
@@ -104,6 +126,7 @@ mod tests {
             target: "python.exe".into(),
             args: vec!["-m".into(), "pip".into()],
             via_env: None,
+            proxy_env: None,
         }
     }
 
@@ -124,6 +147,7 @@ mod tests {
             target: "composer.phar".into(),
             args: vec![],
             via_env: Some("OPENMIND_PHP".into()),
+            proxy_env: None,
         };
 
         let text = render(&shim, "2.10.3");
@@ -145,12 +169,55 @@ mod tests {
             target: "cmd/git.exe".into(),
             args: vec![],
             via_env: None,
+            proxy_env: None,
         };
 
         let text = render(&shim, "2.55.0.5");
 
         assert!(text.contains("versions\\2.55.0.5\\cmd\\git.exe"), "{text}");
         assert!(!text.contains(":\\"), "{text}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_proxy_env_shim_sets_the_proxy_for_its_own_command_only() {
+        let shim = Shim {
+            name: "composer".into(),
+            target: "composer.phar".into(),
+            args: vec![],
+            via_env: Some("OPENMIND_PHP".into()),
+            proxy_env: Some("OPENMIND_COMPOSER_PROXY".into()),
+        };
+        let text = render(&shim, "2.10.3");
+        assert!(
+            text.starts_with("@echo off\r\nsetlocal\r\nif defined OPENMIND_COMPOSER_PROXY set \"HTTPS_PROXY=%OPENMIND_COMPOSER_PROXY%\"\r\n"),
+            "{text}"
+        );
+        assert!(text.contains("\"%OPENMIND_PHP%\""), "{text}");
+        let plain = Shim {
+            proxy_env: None,
+            ..shim
+        };
+        assert!(
+            !render(&plain, "2.10.3").contains("setlocal"),
+            "unchanged without proxyEnv"
+        );
+    }
+
+    #[test]
+    fn an_outdated_launcher_is_not_counted_as_present() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let manifest: RuntimeManifest =
+            serde_json::from_str(include_str!("../manifests/composer.json")).expect("manifest");
+        assert_eq!(
+            manifest.shims[0].proxy_env.as_deref(),
+            Some("OPENMIND_COMPOSER_PROXY")
+        );
+        let file = tmp.path().join(shim_file_name(&manifest.shims[0]));
+        std::fs::write(&file, "@echo off\r\nold launcher\r\n").expect("old");
+        assert!(!shims_present(&manifest, "2.10.3", tmp.path()));
+        write_shims(&manifest, "2.10.3", tmp.path()).expect("write");
+        assert!(shims_present(&manifest, "2.10.3", tmp.path()));
     }
 
     #[cfg(unix)]

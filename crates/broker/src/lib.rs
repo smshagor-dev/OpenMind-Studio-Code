@@ -5,6 +5,7 @@
 //! and TLS verification is never turned off.
 
 pub mod broker;
+pub mod env;
 pub mod error;
 pub mod events;
 pub mod gateway;

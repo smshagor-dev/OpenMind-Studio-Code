@@ -1,5 +1,6 @@
 pub mod about;
 pub mod ai;
+pub mod broker;
 pub mod database;
 pub mod debug;
 pub mod deps;
@@ -16,6 +17,7 @@ pub mod language;
 pub mod lsp;
 pub mod marketplace;
 pub mod network;
+pub mod network_diag;
 pub mod network_offline;
 pub mod notebook;
 pub mod panel;

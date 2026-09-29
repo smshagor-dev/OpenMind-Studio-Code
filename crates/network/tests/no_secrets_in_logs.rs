@@ -1,5 +1,5 @@
-//! A proxy password may reach the process that needs it (the proxy variables) and nothing else: not a log line, not an
-//! error text, not what the UI shows. This runs alone in its own process with one global subscriber, so every log
+//! A proxy password is used by OpenMind's own client (the Download Manager and the package gateway) and nothing else: not
+//! a process environment (no proxy variables are set any more), not a log line, not an error text, not what the UI shows. This runs alone in its own process with one global subscriber, so every log
 //! line the crate writes while it runs is captured.
 
 use std::io::Write;
@@ -7,7 +7,6 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use openmind_network::env::{proxy_env, EnvExtras};
 use openmind_network::http::HttpProxy;
 use openmind_network::probe::test_connection;
 use openmind_network::problem::{NetError, NetProblem};
@@ -40,7 +39,7 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
 }
 
 #[test]
-fn the_proxy_password_reaches_the_process_environment_only() {
+fn the_proxy_password_never_reaches_a_log_or_an_error() {
     let captured = Captured::default();
     tracing::subscriber::set_global_default(
         tracing_subscriber::fmt()
@@ -67,13 +66,12 @@ fn the_proxy_password_reaches_the_process_environment_only() {
         credentials: Some(creds.clone()),
     };
 
-    // The process gets it (percent-encoded in the URL) ...
-    let vars = proxy_env(&resolved, Some(&creds), &EnvExtras::default());
-    assert!(vars
-        .iter()
-        .any(|(k, v)| k == "HTTPS_PROXY" && v.contains("ivan:Pa%24%24w0rd%21secret@")));
-    // ... what the user is shown doesn't.
-    for (_, value) in redact_env(&vars, Some(&creds)) {
+    // A value that quotes the proxy address with the password (a tool's own message) is shown without it.
+    let quoted = vec![(
+        "MESSAGE".to_string(),
+        format!("connect via http://ivan:{PASSWORD}@proxy failed (ivan:Pa%24%24w0rd%21secret)"),
+    )];
+    for (_, value) in redact_env(&quoted, Some(&creds)) {
         assert!(!value.contains("w0rd"), "{value}");
     }
 

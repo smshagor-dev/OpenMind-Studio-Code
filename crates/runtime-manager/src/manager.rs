@@ -253,7 +253,7 @@ impl RuntimeManager {
         if recorded && is_healthy(&manifest, &dir) {
             // Files are fine; the only thing that can be missing is a shim.
             let shim_dir = self.paths.shim_dir(kind, version)?;
-            if shims_present(&manifest, &shim_dir) {
+            if shims_present(&manifest, version, &shim_dir) {
                 return Ok(false);
             }
             write_shims(&manifest, version, &shim_dir)?;
@@ -377,7 +377,7 @@ impl RuntimeManager {
         if !is_healthy(manifest, &dir) {
             return false;
         }
-        if shims_present(manifest, &shim_dir) {
+        if shims_present(manifest, version, &shim_dir) {
             return true;
         }
         match write_shims(manifest, version, &shim_dir) {

@@ -73,4 +73,6 @@ pub struct AppState {
     pub notebooks: crate::commands::notebook::NotebookRuntime,
     /// Geometry of secondary windows (the PHP Server window).
     pub window_states: openmind_settings::WindowStateService,
+    /// The Unified Download Broker and its package gateway (loopback only; downloads only when a tool asks).
+    pub broker: crate::commands::broker::BrokerRuntime,
 }

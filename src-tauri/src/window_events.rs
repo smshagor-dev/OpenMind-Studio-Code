@@ -124,8 +124,9 @@ pub async fn shutdown(app: AppHandle) {
     state.terminal.kill_all();
     state.search.cancel_all();
     state.index.stop_all();
-    // A request to an AI provider may not outlive the app.
+    // A request to an AI provider may not outlive the app, nor a package download.
     state.ai.cancel_all();
+    state.broker.stop();
     // Nothing a run started may outlive the app.
     state.runner.stop_all();
     state.php_server.stop_all();
