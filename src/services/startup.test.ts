@@ -7,13 +7,16 @@ import { describe, expect, it } from "vitest";
 import { StartupTimings } from "./startupTimings";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const read = (path: string) => readFileSync(join(root, path), "utf8");
+/** A source file's text with LF line endings (a Windows checkout with `core.autocrlf` has CRLF). */
+const read = (path: string) => readFileSync(join(root, path), "utf8").replace(/\r\n/g, "\n");
 
 /** The text of `async function name(...) { ... }` in `source` (up to the next top-level closing brace). */
 function functionBody(source: string, name: string): string {
   const start = source.indexOf(`function ${name}(`);
   expect(start, `${name} exists`).toBeGreaterThan(-1);
   const end = source.indexOf("\n}\n", start);
+  // Without its end the "body" would be the rest of the file: say so instead of checking the wrong text.
+  expect(end, `the end of ${name}`).toBeGreaterThan(start);
   return source.slice(start, end);
 }
 
