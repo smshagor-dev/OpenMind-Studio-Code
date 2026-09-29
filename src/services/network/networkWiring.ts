@@ -27,6 +27,9 @@ export const NETWORK_SETTINGS = [
   "network.offline.useWheelhouse",
 ];
 
+/** How much of a terminal's previous output chunk is looked at again with the next one. */
+const TAIL_CHARS = 300;
+
 /** Output channels of tools that talk to the network: every network problem there is worth the card. */
 const TOOL_CHANNELS = new Set([
   "Git",
@@ -226,12 +229,17 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
       watched.set(session.id, generation);
       network.terminalStarted();
       const decoder = new TextDecoder();
+      // The end of the previous chunk: a message split across two chunks (or a line the terminal wrapped at a chunk
+      // boundary) is still seen whole.
+      let tail = "";
       deps.terminal.onOutput(session.id, (data) => {
         const text = terminalPlainText(decoder.decode(data, { stream: true }));
         if (text.length === 0) return;
+        const context = tail + text;
+        tail = context.slice(-TAIL_CHARS);
         const command = trackers.get(session.id)?.last() ?? null;
         network.report(
-          text,
+          context,
           t("network.failure.sourceTerminal"),
           command === null ? null : () => void terminals.retry(command, session.id),
           true,

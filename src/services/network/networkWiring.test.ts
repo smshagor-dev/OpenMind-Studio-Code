@@ -184,6 +184,17 @@ describe("wireNetwork", () => {
     expect(r.confirm).not.toHaveBeenCalled();
   });
 
+  it("a 407 wrapped by a narrow terminal, and split across two output chunks, is still proxy authentication", async () => {
+    const r = rig();
+    await r.network.load();
+    r.addTerminal("t1", "powerShell", "E:/My Projects/site");
+    r.type("t1", "python -m pip download six\r");
+    // What ConPTY sent in the smoke: the line broken at the terminal's width, the break at a chunk boundary.
+    r.print("t1", "WARNING: Retrying after connection broken by 'ProxyError('Cannot connect to proxy.', OSError('Tunnel connection failed: 407 Proxy Authenticatio");
+    r.print("t1", "\r\nn Required'))': /simple/six/\r\nERROR: No matching distribution found for six\r\n");
+    expect(r.network.getState().failure).toMatchObject({ problem: "proxyAuthRequired", pip: true });
+  });
+
   it("Retry Command keeps the shell and folder of the terminal it failed in", async () => {
     const r = rig();
     await r.network.load();

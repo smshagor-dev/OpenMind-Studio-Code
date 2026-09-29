@@ -203,6 +203,10 @@ describe("labels", () => {
     expect(diagnoseNetwork("npm ERR! code ENOTFOUND")).toBe("dns");
     expect(diagnoseNetwork("getaddrinfo ENOTFOUND registry.npmjs.org")).toBe("dns");
     expect(diagnoseNetwork("npm ERR! code E407")).toBe("proxyAuthRequired");
+    // A narrow terminal wraps pip's line in the middle of the phrase (seen in the 22.7 smoke): still authentication.
+    expect(
+      diagnoseNetwork("OSError('Tunnel connection failed: 407 Proxy Authenticatio\r\nn Required')': /simple/six/"),
+    ).toBe("proxyAuthRequired");
     expect(isPipOutput("ERROR: No matching distribution found for djangoo")).toBe(true);
     expect(isPipOutput("npm ERR! code E407")).toBe(false);
     // The messages the fixed Rust classifier also knows.

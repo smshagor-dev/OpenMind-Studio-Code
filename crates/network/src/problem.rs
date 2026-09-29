@@ -178,7 +178,14 @@ pub fn classify_via(error: &ureq::Error, through_proxy: bool) -> NetProblem {
 /// The order matters: an authentication answer from a proxy is more specific than "could not connect".
 pub fn diagnose(output: &str) -> Option<NetProblem> {
     let text = output.to_ascii_lowercase();
-    let any = |needles: &[&str]| needles.iter().any(|needle| text.contains(needle));
+    // A terminal hard-wraps long lines at its width ("…407 Proxy Authenticatio" / "n Required"): the text without
+    // its line breaks still holds the whole phrase.
+    let unwrapped: String = text.chars().filter(|c| *c != '\r' && *c != '\n').collect();
+    let any = |needles: &[&str]| {
+        needles
+            .iter()
+            .any(|needle| text.contains(needle) || unwrapped.contains(needle))
+    };
     if any(&[
         "407 proxy authentication",
         "proxy authentication required",
@@ -345,6 +352,11 @@ mod tests {
             ERROR: Could not find a version that satisfies the requirement requests (from versions: none)\n\
             ERROR: No matching distribution found for requests";
         assert_eq!(diagnose(university), Some(NetProblem::ProxyAuthRequired));
+        // A narrow terminal wraps pip's line in the middle of the phrase: still proxy authentication, not "the proxy is
+        // unavailable" (from "Tunnel connection failed").
+        let wrapped = "OSError('Tunnel connection failed: 407 Proxy Authenticatio\r\n\
+            n Required')': /simple/six/";
+        assert_eq!(diagnose(wrapped), Some(NetProblem::ProxyAuthRequired));
         // Python's ModuleNotFoundError contains "enotfound" but is not npm's ENOTFOUND (a DNS failure).
         assert_eq!(
             diagnose("ModuleNotFoundError: No module named 'tkinter'"),

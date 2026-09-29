@@ -123,8 +123,9 @@ export function npmPackageOf(specifier: string): string | null {
 
 /** What a failed program's (or terminal's) output says is missing, or `null`. */
 export function diagnoseDependency(output: string): DependencyIssue | null {
-  const py = /(?:ModuleNotFoundError: No module named|ImportError: No module named) ['"]?([A-Za-z_][\w.]*)['"]?/.exec(output);
-  if (py?.[1] !== undefined) return pythonIssue(py[1]);
+  // Both quotes are required: a terminal that wraps "No module named 'reques" / "ts'" must not offer to install "reques".
+  const py = /(?:ModuleNotFoundError: No module named|ImportError: No module named) (['"])([A-Za-z_][\w.]*)\1/.exec(output);
+  if (py?.[2] !== undefined) return pythonIssue(py[2]);
   if (/_tkinter\.TclError: Can't find a usable (?:init|tk)\.tcl|Tcl\/Tk .*not (?:found|installed)/i.test(output)) {
     return { kind: "pythonComponent", module: "tkinter", tk: true };
   }

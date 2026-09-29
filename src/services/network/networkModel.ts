@@ -112,8 +112,11 @@ const NEEDLES: [NetProblem, string[]][] = [
 /** The network problem a tool's output shows, or `null`. */
 export function diagnoseNetwork(output: string): NetProblem | null {
   const text = output.toLowerCase();
+  // A terminal hard-wraps long lines at its width ("…407 Proxy Authenticatio" / "n Required"): the text without its
+  // line breaks still holds the whole phrase.
+  const unwrapped = text.replace(/[\r\n]+/g, "");
   for (const [problem, needles] of NEEDLES) {
-    if (needles.some((needle) => text.includes(needle))) return problem;
+    if (needles.some((needle) => text.includes(needle) || unwrapped.includes(needle))) return problem;
   }
   return null;
 }

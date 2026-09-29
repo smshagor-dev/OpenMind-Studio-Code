@@ -17,7 +17,11 @@ describe("diagnoseDependency: Python", () => {
     // Import names that differ from the package, and the old ImportError wording.
     expect(diagnoseDependency("ModuleNotFoundError: No module named 'cv2'")).toMatchObject({ package: "opencv-python", guessed: false });
     expect(diagnoseDependency("ModuleNotFoundError: No module named 'PIL'")).toMatchObject({ package: "Pillow" });
-    expect(diagnoseDependency("ImportError: No module named yaml")).toMatchObject({ package: "PyYAML" });
+    expect(diagnoseDependency("ImportError: No module named 'yaml'")).toMatchObject({ package: "PyYAML" });
+    // A name the terminal wrapped (no closing quote on the line) is never guessed from its first half; nor is Python 2's
+    // unquoted form, which can't be told apart from a cut one.
+    expect(diagnoseDependency("ModuleNotFoundError: No module named 'reques")).toBeNull();
+    expect(diagnoseDependency("ImportError: No module named yaml")).toBeNull();
     // A sub-module is the top-level package; an unknown name is only a guess.
     expect(diagnoseDependency("ModuleNotFoundError: No module named 'sklearn.linear_model'")).toMatchObject({ package: "scikit-learn" });
     expect(diagnoseDependency("ModuleNotFoundError: No module named 'foobarlib'")).toMatchObject({ package: "foobarlib", guessed: true });
