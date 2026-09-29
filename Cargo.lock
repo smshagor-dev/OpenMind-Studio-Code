@@ -2930,6 +2930,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-deps"
+version = "0.1.0"
+dependencies = [
+ "openmind-language",
+ "openmind-network",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml 1.1.6+spec-1.1.0",
+]
+
+[[package]]
 name = "openmind-extensions"
 version = "0.1.0"
 dependencies = [
@@ -3136,6 +3149,7 @@ dependencies = [
  "openmind-core",
  "openmind-dap",
  "openmind-db",
+ "openmind-deps",
  "openmind-extensions",
  "openmind-file-watch",
  "openmind-format",
