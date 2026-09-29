@@ -7,9 +7,11 @@
 pub mod broker;
 pub mod error;
 pub mod events;
+pub mod gateway;
 pub mod staging;
 
 pub use broker::{Artifact, ArtifactRequest, Broker, Lease};
 pub use error::{BrokerError, FailureKind};
 pub use events::{BrokerEvent, EventSink, Phase};
+pub use gateway::{Gateway, GatewayConfig};
 pub use staging::{Provider, RecoveryReport, Staging};

@@ -11,6 +11,7 @@ openmind-network = { version = "0.1.0", path = "../network" }
 openmind-runtime-manager = { version = "0.1.0", path = "../runtime-manager" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+getrandom = "0.3"
 sha2 = "0.11.0"
 thiserror.workspace = true
 tracing.workspace = true
