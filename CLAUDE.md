@@ -192,6 +192,16 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   PATH. Known limitation: launchers that *other tools* generate later (e.g. `pip install black`
   creates `Scripts/black.exe`) still bake in absolute paths and break after a move — run them as
   `python -m black`; venvs created in a project are likewise not relocatable (Python's own design).
+  **Add-ons (Milestone 22.5)**: a manifest version may list `addons` — optional parts installed *into* an installed version
+  from their own pinned, checksum-verified artifact (`manager/addons.rs`): extracted to a staging folder, then only files the
+  install lacks are moved in (the runtime's own files are never overwritten), the list is recorded in
+  `<install>/.openmind-addons/<id>.json`, and Remove deletes exactly those files and the now-empty folders it created (paths
+  re-checked, so a tampered record can't reach outside). `InstalledVersion.addons` reports them; `runtime_addon_install|remove`.
+  Archive kind `msi` (`msi_archive.rs`, crates `msi` + `cab`): a Windows Installer package read as an archive — the
+  `Directory`/`Component`/`File` tables name each file's folder, the embedded cabinet supplies the bytes, every path goes through
+  `select_entry`; nothing runs through Windows Installer (registry rows, shortcuts, custom actions are ignored). Python 3.14.7's
+  add-on `tcltk` is python.org's own PSF-signed `tcltk.msi` (Tcl/Tk 9.0.4 keeps its script library inside `tcl90.dll`, so it is
+  relocatable); the `tkinter` feature reports it.
   **PHP stack (Milestone 5.7)**: `php` (official windows.php.net NTS x64 zip from downloads.php.net,
   SHA256 from its `releases.json`) and `composer` (`composer.phar` from getcomposer.org, SHA256 from
   its `.sha256sum`) are ordinary manifests, using three general manifest features added for them:
@@ -279,7 +289,8 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) that kills a process *and its descendants*. Extracted from
   `openmind-terminal` so the terminal and the runner share one implementation.
 - `openmind-runner` (Milestone 5.6.2) — runs the active file. `kind::detect` maps an extension to
-  Python/Node/PHP/TypeScript or a "not runnable" reason (Markdown is flagged previewable). `plan`
+  Python/Node/PHP/TypeScript, the compiled C/C++/Java/Rust (Milestone 22.5, `compiled.rs`, see the tracker entry) or a
+  "not runnable" reason (Markdown is flagged previewable). `plan`
   validates the file (absolute, exists, not binary), picks the cwd (workspace → file's folder → app
   root), tokenizes the command template (quotes only — no shell syntax) and expands `${file}`/
   `${fileDir}`/`${fileBasename}`/`${workspaceFolder}` *per token*, then resolves the program, which
@@ -451,7 +462,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   comment marker, the Monaco grammar to use and whether it is `exact`, `approximate` (Vue/Svelte/Astro coloured as HTML, TOML/.env as INI, Gradle as Java) or `none` (Dart,
   Prisma, LaTeX, CMake, Makefile: shown plain), formatter/linter/language-server candidates, toolchain tools, and `levels`: syntax, lsp, format, lint, run, build, debug, test).
   Levels are conservative: `lsp` only where OpenMind starts a server (TypeScript/JavaScript/JSX/TSX, Python, PHP, HTML, CSS/SCSS/Less, JSON), `debug` only Python and
-  JavaScript, `run` (Run Code on one file) only JavaScript, TypeScript, Python and PHP; a test asserts these sets. `tools` (~75 named tools: runtimes, package managers, SDKs,
+  JavaScript, `run` (Run Code on one file) JavaScript, TypeScript, Python, PHP and — since Milestone 22.5 — C, C++, Java and Rust; a test asserts these sets. `tools` (~75 named tools: runtimes, package managers, SDKs,
   formatters, linters, language servers, `ANDROID_HOME`) and how they are found — **the project's own copy first (`node_modules/.bin`, `.venv`, `vendor/bin`), then OpenMind's
   portable runtimes, then the machine's PATH**, reporting which one (a bare file without `.exe/.cmd/.bat` isn't runnable on Windows); nothing is executed to ask a version.
   `project` + `detect/{web,backend,native}` detect what a folder is from marker files/manifests (bounded: the folder plus two levels, 400 folders, never `node_modules`, `.git`,
@@ -2532,6 +2543,46 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   replaces it, Dismiss quiets the same problem for 2 minutes); the prompt-folder rule knows PowerShell and cmd prompts (Git Bash/WSL use the terminal's
   starting folder); package names guessed from import names can be wrong (the card says so). Left on disk: `E:\openmind-runtime-smoke`, LLVM-MinGW
   (750 MB) in `E:\omm222`.
+- [x] **Milestone 22.5** — Multi-language Run Code and portable Tkinter (`feat: run c cpp java and rust files and add portable tkinter`).
+  **One execution path** (`openmind_runner::compiled`): C (`clang`, else `gcc`), C++ (`clang++`/`g++`), Java (`javac` + `java` from the same
+  JDK) and Rust (`rustc --edition 2021 --crate-name <sanitized>`; Rust stays external — rustup is never invoked) are `RunnableKind`s whose
+  `RunPlan` carries a `build: Option<BuildStep>` (compiler argv, display, compiler path, build folder). Compilers are found like interpreters:
+  OpenMind's portable toolchains (LLVM-MinGW, JDK) first, then PATH; none -> `RunError::CompilerMissing` with where to get one (routed like a
+  missing runtime; Rust: "managed outside OpenMind Studio: install it with rustup"). A custom run command is refused for these kinds. Java's
+  class is `package` + file name (`java_main_class`). `RunRegistry::start` runs the build first in the run's Job Object, output lines carry
+  `phase: build|run`, events `building` -> `built` -> `started` -> `exited{buildFailed}`; a failed build never runs the program. Builds go to
+  `<app>/cache/run-builds/run-<n>` (removed when the run ends, retried while Windows still holds the exe; only folders inside a `run-builds`
+  folder can ever be cleared; stale ones older than a day are swept) — never into the project. Run in Terminal types a quoted build-then-run
+  chain (`display::shell_chain`: PowerShell `; if ($LASTEXITCODE -eq 0) { ... }`, cmd/bash `&&`) with a reused per-file folder
+  `run-builds/terminal/<stem>-<hash>`. Input detection (`needsInteractiveInput`) now covers C (`scanf`, `getchar`, `gets`, `fgets`/`fscanf`/
+  `getc`/`fgetc`/`getline` on `stdin`), C++ (`cin >>`, `std::cin`, `getline(cin, ...)`), Java (`System.in`, `System.console()`) and Rust
+  (`stdin()`, `io::stdin`); Run Anyway on such a file ends with the "needs interactive input" note (C/Rust print no error of their own), and
+  Java's `NoSuchElementException: No line found` is recognized like Python's EOFError. The Output shows the build (compiler, command, its
+  diagnostics, "Build succeeded/failed") apart from the program (`> hello.exe`). Language levels: C, C++, Java, Rust gained `run`.
+  **Portable Tkinter**: the Runtime Manager add-on mechanism (see "Add-ons (Milestone 22.5)") plus the `tcltk` add-on for Python 3.14.7; the
+  dependency card for a missing tkinter offers "Add Tcl/Tk GUI support" (the confirmation names what, where — this Python only —, the
+  python.org download and the licence) when the active portable Python can take it, otherwise keeps the 22.4 explanation; the Runtime Manager
+  lists the add-on under the version with Add / Remove. **Shell folder tracking**: `readPrompt` also reads Git Bash's
+  `user@host MINGW64 /e/dir (branch)` and WSL's `user@host:/mnt/e/dir$` prompt lines; a prompt folder that isn't on a Windows drive (`~`,
+  `/home/...`) falls back to the terminal's own folder (the install confirmation always shows the folder). Also fixed: add-on failures are
+  logged and the card shows the backend's reason; the MSI decompressors (`lzxd`, `cab`) are optimized in dev builds. **Verified by hand**
+  (debug build in `E:\omm222`, workspace `E:\openmind-runtime-smoke`): Run Code built and ran C/C++ (portable LLVM-MinGW clang/clang++, a
+  file name with a space), Java (system javac 17) and Rust (rustup rustc 1.97.1), removed the build folder afterwards and wrote nothing into
+  the project; a C compile error showed clang's diagnostic and "The program was not run."; each input program offered the terminal and ran
+  there (C Shagor/23 Adult and "abc" stops at scanf; C++ Test/15/Finland Minor and "abc" -> age 0; Java Adult and "abc" ->
+  NumberFormatException; Rust Minor and "abc" -> age 0; Python Adult/Minor/ValueError and Node Adult/Minor unchanged); Run Anyway explained
+  Java's and C's missing input; C MessageBoxW, Rust MessageBoxW and Java JOptionPane popups ran via Run Code; the Tkinter card offered the
+  add-on, the confirmed install (python.org tcltk.msi, SHA-256 checked) made the Tkinter program run on the portable Python (empty-submit
+  warning, "Hello Shagor! / Your age is 23.", closing ended the run with code 0, no python left); Runtime Manager Remove restored the install's
+  exact file list and Add brought it back (~7 s from the cache); after deleting LLVM-MinGW the Run button for C/C++ was disabled with the
+  Runtime Manager reason. User/Machine PATH, proxy, git/npm config, pip/cargo/go/composer configs, the user's Python site-packages, system
+  site-packages, npm globals and the user pip cache were unchanged. **Limitations**: the first add-on install through the card once failed
+  with no recorded reason and could not be reproduced in five later installs (failures are now logged and shown); `cab` restarts
+  decompression for every file (quadratic: ~5.5 s in release, 39 s in an unoptimized build, for tcltk.msi); only Python 3.14.7 has the Tcl/Tk
+  add-on; Run Code for compiled languages is single-file (no projects, compiler flags, `cargo`, Maven/Gradle — use the project commands);
+  Configure Run Command doesn't apply to them; Java needs the public class named like the file; a Rust file with dependencies needs Cargo;
+  missing JDK/rustc were verified by tests, not by uninstalling them; Git Bash tracking needs the default prompt (a custom PS1 falls back to
+  the terminal's folder). Left on disk: `E:\openmind-runtime-smoke`, the Tcl/Tk add-on in `E:\omm222`'s Python.
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 
