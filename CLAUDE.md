@@ -691,6 +691,25 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   `commands::workloads`: `workloads_catalog|plan|first_run|first_run_done`, `runtime_verify` (the active install's version command with
   the runtimes' environment, 30 s limit, only on a click).
 
+- `openmind-deps` (Milestone 22.6) — project dependencies and environments, Tauri-agnostic and **side-effect free** (reads files, builds plans; runs nothing).
+  `inspect(root, portable_python)` takes the project folders from `openmind_language::project::detect_projects` (its bounded scan: two levels, never
+  `node_modules`/`.git`/`target`/`vendor`/environments/build output) plus the workspace itself, and reads per folder: **Python** (`requirements.txt` named lines —
+  options/URLs/paths listed as skipped —, `pyproject.toml` `[project] dependencies` via `toml` — markers/URL requirements skipped, Poetry noted —, `setup.py` noted, environments
+  `.venv`/`venv`/`env`/`.env` with `pyvenv.cfg` + interpreter, installed packages from `*.dist-info` names, PEP 503 name matching, missing = declared but not installed),
+  **Node** (`package.json` deps/devDeps with `node_modules/<name>/package.json` versions, scripts — runnable only with a safe name —, package manager from lock files /
+  `packageManager`, **never guessed**: several lock kinds or a disagreeing `packageManager` is a `conflict`; bun is listed as unsupported), **Composer** (`require`/`require-dev`,
+  platform `php`/`ext-*` apart, versions from `vendor/composer/installed.json`), **Cargo** (package, dependencies, dev-dependencies, features, workspace-only), **Maven/Gradle**
+  (`pom.xml`, `build.gradle(.kts)`, wrapper), **CMake** (`CMakeLists.txt`, safe `configurePresets` names, configured = `build/CMakeCache.txt`), and setup hints
+  (`pythonNoEnv`, `nodeNotInstalled`, `composerNotInstalled`). Files are untrusted: 512 KB cap, links not followed, lists capped, control characters stripped. `plan(op, ctx)`
+  turns an `Op` (pythonCreateEnv/InstallRequirements/InstallPyproject/Add/Remove/Update, nodeInstall/Add/Remove/Update/RunScript, composerInstall/Require/Remove/Update/
+  DumpAutoload, cargo check|build|test|run, maven compile|test|package, gradle build|test, cmakeConfigure/Build/Clean) into a `Plan`: manager, action, packages, the absolute
+  program and its source, args, display command, cwd, target, `network` (required/offline/may/none) and notes. Python goes into the chosen or first project environment, else
+  OpenMind's portable Python (none -> refused: never the user's Python), with pip's `--cache-dir` in the app; `.venv` is created only by OpenMind's portable Python and never over
+  an existing one; pyproject installs only the listed dependencies (the project isn't built). npm/pnpm/yarn commands are project-local (`install --save-dev`, `add -D`,
+  `add --dev`, `uninstall`/`remove`, `update`/`up`/`upgrade`, `run <script>`), Composer never `global`, Gradle prefers the project wrapper. Names are validated (pip requirements,
+  npm names, `vendor/package`, script and preset names); for a `.cmd`/`.bat` program any argument with `" % ^ & | < > !` or a line break is refused. No `--user`, `-g`,
+  `--global`, `global` anywhere (tests check).
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
@@ -2583,6 +2602,36 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   Configure Run Command doesn't apply to them; Java needs the public class named like the file; a Rust file with dependencies needs Cargo;
   missing JDK/rustc were verified by tests, not by uninstalling them; Git Bash tracking needs the default prompt (a custom PS1 falls back to
   the terminal's folder). Left on disk: `E:\openmind-runtime-smoke`, the Tcl/Tk add-on in `E:\omm222`'s Python.
+- [x] **Milestone 22.6** — Project dependencies and environment manager (`feat: add project dependencies and environment manager`). See `openmind-deps`.
+  **One backend, one runner**: `commands::deps` has `deps_scan` (the window's folder, on `spawn_blocking`), `deps_plan` and `deps_run`. A request is `{base, op, pythonEnv?,
+  nodeManager?}` (`deny_unknown_fields`: it can't carry a program or arguments); the project is the nearest folder with the op's markers from `base`, never above the open
+  folder; programs are found OpenMind runtimes/bundled tools first, then PATH (a project can't swap in its own package manager). `deps_run` **plans the request again** and starts
+  the program as a new terminal's own process (`CreateTerminalRequest.program`, like tasks), with the runtime environment (proxy, `PYTHONNOUSERSITE`) and app-local caches
+  (`npm_config_cache` / `COMPOSER_CACHE_DIR` in `<app>/cache`), so the exit code reported is the program's. Frontend: `DependencyActions` (`src/services/deps/`) = plan ->
+  confirmation (Package(s), Action, Package manager, Executable + source, Command, Working directory, Target, Network, notes) -> `createTaskTerminal` + `waitForExit` ->
+  "done" / "failed with exit code N" / "stopped"; **the 22.4 missing-package card now uses it** (`DependencyService.install` maps its buttons to ops; its own installer and the typed
+  terminal line are gone), and so does the Dependencies view. `DependenciesService` (+ `DependenciesView`, `dependencySections`, activity bar item "Dependencies",
+  `view.showDependencies`, View menu) reads the folder at start (background phase), after a manifest is saved and after every operation; shows only the ecosystems a project uses:
+  Python (environment and its base, environment choice incl. OpenMind Python, Create .venv, Install requirements.txt / pyproject dependencies, declared with installed/missing,
+  installed list with Update/Remove, Add with "offline wheelhouse", skipped lines and notes), Node (package manager with a conflict warning and a required choice, Install
+  Dependencies, dependencies/devDependencies with installed versions, Update/Remove, Add (+dev), scripts with ▶ — unsafe names disabled), Composer (install, dump-autoload, lists,
+  add/add dev/update/remove), Cargo (check/build/test/run), Maven/Gradle (goals/tasks, wrapper preferred), CMake (Configure / presets, Build, Clean). `DependencySetupCard`
+  offers the first setup gap ("Python project detected in X. No project environment exists." [Create .venv] [Not Now], node_modules / vendor missing) — never acted on alone;
+  Not Now is remembered in `editor_settings` `deps.dismissedHints`. **Run Code uses the project's environment**: a Python file inside a project with `.venv`/`venv`/`env`
+  (`pyvenv.cfg`, never above the workspace) runs with that interpreter ("Project environment .venv"), so a package installed there is seen on the rerun. **Verified by hand**
+  (debug build in `E:\omm222`, workspace `E:\openmind deps smoke`, every project path with a space): all seven projects detected (py req, py project, web app, php app, rust app,
+  java app, cmake app); the Composer setup card appeared by itself and nothing ran; Create .venv (confirmation with every detail, exit 0); Run Code of a file needing colorama ran in
+  the project `.venv`, failed, the card offered "Install colorama into the project's .venv", installed with `--cache-dir` in the app, rerun printed `colorama 0.4.6`; pyproject:
+  `.venv` + `pip install tabulate>=0.9` + the program's table; Update / Remove (a cancelled one ran nothing) / Install requirements.txt; Node: missing left-pad -> card -> `npm
+  install left-pad` in the project -> rerun `***ok`; script `hello` ran (`npm run hello`, exit 0); a second lock file showed the conflict and disabled Install; a nonexistent
+  package failed with "exit code 1" and npm's 404 in the terminal; `composer install` (system Composer, labelled) created `vendor` with its cache in the app; `cargo check` (rustup
+  cargo) exit 0; Maven absent -> refused with the Runtime Manager route before any confirmation; CMake configure (VS generator) + build. User/Machine PATH, proxy, git/npm config,
+  pip/cargo/go/composer configs, the user's Python site-packages, system site-packages, npm globals, the user pip cache and Composer's user folders unchanged; no process left.
+  **Limitations**: the Network page's offline wheelhouse install still types its command into a shell (not moved to the runner); pnpm/yarn stores and Cargo/Maven/Gradle caches
+  stay where those tools keep them; npm's cache fix came after four small files (8 KB) had been written to `%LOCALAPPDATA%\npm-cache` in this smoke; no CMake run target, no
+  Conda/Poetry, bun unsupported; setup.py and Poetry dependencies aren't read; installed Node versions are read only from top-level `node_modules`; a venv made by OpenMind records
+  the portable Python's path (recreate it after moving the app); debugging still uses OpenMind's/system Python, not the project environment; Maven and a portable Node/Composer
+  weren't installed in the test copy (the system Node/Composer were used, labelled).
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 
