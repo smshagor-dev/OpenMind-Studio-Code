@@ -42,12 +42,61 @@ describe("installer and the Apache licence agreement", () => {
 
   it("the MSI source is checked: no PATH change, a licence page and a launch option", () => {
     const good =
-      '<WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf"/><Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/>';
+      '<WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf"/><Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/><Icon Id="OpenMindStudioIcon" SourceFile="icons/icon.ico"/><Property Id="ARPPRODUCTICON" Value="OpenMindStudioIcon"/>';
     expect(checkWixSource(good)).toEqual([]);
     expect(checkWixSource(`${good}<Environment Id="PATH" Name="PATH"/>`).join(" ")).toContain(
       "PATH",
     );
-    expect(checkWixSource("<Wix/>")).toHaveLength(2);
+    expect(checkWixSource("<Wix/>")).toHaveLength(3);
+  });
+
+  it("the installer artwork is 24-bit BMP at the sizes NSIS and WiX expect", () => {
+    const windows = (
+      tauri.bundle as {
+        windows: {
+          nsis: {
+            headerImage: string;
+            sidebarImage: string;
+            installerIcon: string;
+            uninstallerIcon: string;
+          };
+          wix: { bannerPath: string; dialogImagePath: string };
+        };
+      }
+    ).windows;
+    const expected: [string, number, number][] = [
+      [windows.nsis.headerImage, 150, 57],
+      [windows.nsis.sidebarImage, 164, 314],
+      [windows.wix.bannerPath, 493, 58],
+      [windows.wix.dialogImagePath, 493, 312],
+    ];
+    for (const [path, width, height] of expected) {
+      const bmp = readFileSync(join(root, "src-tauri", path));
+      expect(bmp.toString("latin1", 0, 2), path).toBe("BM");
+      expect(bmp.readInt32LE(18), path).toBe(width);
+      expect(Math.abs(bmp.readInt32LE(22)), path).toBe(height);
+      expect(bmp.readUInt16LE(28), path).toBe(24);
+    }
+    expect(existsSync(join(root, "src-tauri", windows.nsis.installerIcon))).toBe(true);
+    expect(windows.nsis.uninstallerIcon).toBe("icons/icon.ico");
+    expect(existsSync(join(root, "src-tauri", windows.nsis.uninstallerIcon))).toBe(true);
+  });
+
+  it("the app and installer product icons are pinned to the custom icon", () => {
+    const bundle = tauri.bundle as {
+      icon: string[];
+      windows: {
+        nsis: { installerIcon: string; uninstallerIcon: string };
+        wix: { fragmentPaths: string[] };
+      };
+    };
+    expect(bundle.icon).toContain("icons/icon.ico");
+    expect(bundle.windows.nsis.installerIcon).toBe("icons/icon.ico");
+    expect(bundle.windows.nsis.uninstallerIcon).toBe("icons/icon.ico");
+    expect(bundle.windows.wix.fragmentPaths).toContain("wix/product-icon.wxs");
+    const fragment = text("src-tauri/wix/product-icon.wxs");
+    expect(fragment).toContain('SourceFile="icons/icon.ico"');
+    expect(fragment).toContain("ARPPRODUCTICON");
   });
 
   it("no installer setting changes PATH or asks for admin rights beyond the per-user install", () => {
@@ -150,6 +199,7 @@ describe("release artifacts", () => {
     expect(releaseName("setup", "0.1.0")).toBe("OpenMind-Studio-Setup-0.1.0-x64.exe");
     expect(releaseName("msi", "0.1.0")).toBe("OpenMind-Studio-0.1.0-x64.msi");
     expect(releaseName("portable", "0.1.0")).toBe("OpenMind-Studio-Portable-0.1.0-x64.zip");
+    expect(releaseName("setup", "0.1.0", "x86")).toBe("OpenMind-Studio-Setup-0.1.0-x86.exe");
     expect(() => releaseName("setup", "v1")).toThrow();
   });
 

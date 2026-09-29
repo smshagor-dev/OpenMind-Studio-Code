@@ -35,6 +35,7 @@ fn main() {
     tracing::info!(db_path = %app_paths.db_path.display(), "starting OpenMind Studio");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![

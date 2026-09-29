@@ -39,7 +39,32 @@ fn both_installers_package_the_licence_and_the_metadata_agrees() {
         targets.contains(&"nsis") && targets.contains(&"msi"),
         "{targets:?}"
     );
+    let icons: Vec<&str> = bundle["icon"]
+        .as_array()
+        .expect("icons")
+        .iter()
+        .filter_map(|icon| icon.as_str())
+        .collect();
+    assert!(icons.contains(&"icons/icon.ico"), "{icons:?}");
     assert_eq!(bundle["windows"]["nsis"]["installMode"], "currentUser");
+    assert_eq!(bundle["windows"]["nsis"]["installerIcon"], "icons/icon.ico");
+    assert_eq!(
+        bundle["windows"]["nsis"]["uninstallerIcon"],
+        "icons/icon.ico"
+    );
+    let wix_fragments: Vec<&str> = bundle["windows"]["wix"]["fragmentPaths"]
+        .as_array()
+        .expect("wix fragmentPaths")
+        .iter()
+        .filter_map(|fragment| fragment.as_str())
+        .collect();
+    assert!(
+        wix_fragments.contains(&"wix/product-icon.wxs"),
+        "{wix_fragments:?}"
+    );
+    let wix_icon = read("src-tauri/wix/product-icon.wxs");
+    assert!(wix_icon.contains("ARPPRODUCTICON"));
+    assert!(wix_icon.contains("icons/icon.ico"));
     assert!(read("Cargo.toml").contains("license = \"Apache-2.0\""));
 }
 

@@ -55,7 +55,17 @@ export const DEFAULT_ICON_THEME = "material";
 
 /** The theme with this id, or the default when the id is unknown (a removed or mistyped setting). */
 export function iconThemeById(id: string): IconThemeDef {
-  return ICON_THEMES.find((theme) => theme.id === id) ?? (ICON_THEMES[0] as IconThemeDef);
+  const builtIn = ICON_THEMES.find((theme) => theme.id === id);
+  if (builtIn) return builtIn;
+  if (id.startsWith("extension:")) {
+    return {
+      id,
+      label: id.split("/").pop() || "Extension Icons",
+      fileIcons: true,
+      folderIcons: true,
+    };
+  }
+  return ICON_THEMES[0] as IconThemeDef;
 }
 
 let currentId = DEFAULT_ICON_THEME;

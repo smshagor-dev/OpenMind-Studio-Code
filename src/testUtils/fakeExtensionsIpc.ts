@@ -22,6 +22,7 @@ export function emptyContributions(): ExtensionContributions {
     themes: [],
     iconThemes: [],
     taskDefinitions: [],
+    productIconThemes: [],
     debuggers: [],
     problemMatchers: [],
     views: { containers: [], elsewhere: 0, otherContainers: 0 },

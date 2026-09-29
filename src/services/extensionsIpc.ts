@@ -116,6 +116,7 @@ export interface ExtensionContributions {
   iconThemes: { id: string; label: string; path: string }[];
   /** Task types the extension's task provider serves (Milestone 18). */
   taskDefinitions: { type: string; required: string[] }[];
+  productIconThemes: { id: string; label: string; path: string }[];
   debuggers: { kind: string; label: string | null }[];
   problemMatchers: string[];
   views: ExtensionViews;

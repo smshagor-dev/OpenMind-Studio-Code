@@ -42,12 +42,21 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "icons/installer/nsis-header.bmp",
+        "sidebarImage": "icons/installer/nsis-sidebar.bmp",
         "languages": [
           "English"
         ]
       },
       "wix": {
-        "language": "en-US"
+        "language": "en-US",
+        "fragmentPaths": [
+          "wix/product-icon.wxs"
+        ],
+        "bannerPath": "icons/installer/wix-banner.bmp",
+        "dialogImagePath": "icons/installer/wix-dialog.bmp"
       }
     },
     "icon": [
@@ -61,6 +70,11 @@
     "licenseFile": "../LICENSE",
     "resources": {
       "../lsp-bundle/": "lsp/"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "requireSignedVersion": true
     }
   }
 }

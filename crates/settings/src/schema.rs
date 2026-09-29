@@ -332,6 +332,7 @@ fn app_definitions() -> Vec<SettingDef> {
         def("network.offline.useWheelhouse", "Network", "Use Offline Python Packages", "Let pip in processes OpenMind starts also look in the imported offline wheels (PIP_FIND_LINKS). pip's own configuration is not changed.", SettingKind::Bool, json!(false), User),
         def("workbench.colorTheme", "Workbench", "Color Theme", "Colors of the workbench, the editor and the terminal. System follows Windows.", opts(&[("system", "System"), ("dark", "Dark"), ("light", "Light"), ("high-contrast", "High Contrast")]), json!("dark"), User),
         def("workbench.iconTheme", "Workbench", "Icon Theme", "The icons in the Explorer, tabs and search. The built-in themes are bundled with the app; an extension's icon theme uses the images inside that extension. Nothing is downloaded.", opts(&[("material", "Material Icons (files and folders)"), ("material-files", "Material Icons (files only)"), ("minimal", "Minimal (one file icon, no folder icons)")]), json!("material"), User),
+        def("workbench.productIconTheme", "Workbench", "Product Icon Theme", "The icons used by workbench buttons and views.", opts(&[("default", "Default")]), json!("default"), User),
         def("workbench.language", "Workbench", "Display Language", "The language of OpenMind Studio's own menus, dialogs and messages. System Default follows the language of Windows; English is used for anything a language doesn't translate. Code, file paths and extensions keep their own text.", opts(&[("system", "System Default"), ("en", "English"), ("ru", "Русский (Russian)"), ("bn", "বাংলা (Bangla)")]), json!("system"), User),
         def("workbench.welcomeOnStartup", "Workbench", "Show Welcome Page on Startup", "Open the Welcome page when the app starts.", SettingKind::Bool, json!(true), User),
     ]
@@ -345,6 +346,7 @@ pub struct Extras {
     pub settings: Vec<SettingDef>,
     pub themes: Vec<EnumOption>,
     pub icon_themes: Vec<EnumOption>,
+    pub product_icon_themes: Vec<EnumOption>,
 }
 
 impl Extras {
@@ -374,6 +376,11 @@ pub fn definitions(extras: &Extras) -> Vec<SettingDef> {
         if def.id == "workbench.iconTheme" {
             if let SettingKind::Enum { options } = &mut def.kind {
                 options.extend(extras.icon_themes.iter().cloned());
+            }
+        }
+        if def.id == "workbench.productIconTheme" {
+            if let SettingKind::Enum { options } = &mut def.kind {
+                options.extend(extras.product_icon_themes.iter().cloned());
             }
         }
     }
@@ -534,6 +541,7 @@ mod extras_tests {
             settings: vec![extension_setting()],
             themes: Vec::new(),
             icon_themes: Vec::new(),
+            product_icon_themes: Vec::new(),
         };
         let all = definitions(&extras);
         assert_eq!(
@@ -559,6 +567,7 @@ mod extras_tests {
             settings: vec![hijack],
             themes: Vec::new(),
             icon_themes: Vec::new(),
+            product_icon_themes: Vec::new(),
         };
         let def = find("editor.fontSize", &extras).expect("built in");
         assert_eq!(def.default, json!(14));
@@ -580,6 +589,7 @@ mod extras_tests {
                 value: "extension:acme.pack/icons".to_string(),
                 label: "Acme Icons".to_string(),
             }],
+            product_icon_themes: Vec::new(),
         };
         let theme = find("workbench.colorTheme", &extras).expect("defined");
         assert_eq!(
@@ -595,5 +605,31 @@ mod extras_tests {
         );
         let plain_icons = find("workbench.iconTheme", &Extras::default()).expect("defined");
         assert!(validate(&plain_icons, &json!("extension:acme.pack/icons")).is_err());
+    }
+
+    #[test]
+    fn extension_icon_themes_become_choices_of_their_workbench_settings() {
+        let extras = Extras {
+            settings: Vec::new(),
+            themes: Vec::new(),
+            icon_themes: vec![EnumOption {
+                value: "extension:acme.pack/icons".to_string(),
+                label: "Acme Icons".to_string(),
+            }],
+            product_icon_themes: vec![EnumOption {
+                value: "extension:acme.pack/product".to_string(),
+                label: "Acme Product Icons".to_string(),
+            }],
+        };
+        let icons = find("workbench.iconTheme", &extras).expect("icons");
+        assert_eq!(
+            validate(&icons, &json!("extension:acme.pack/icons")),
+            Ok(json!("extension:acme.pack/icons"))
+        );
+        let product = find("workbench.productIconTheme", &extras).expect("product");
+        assert_eq!(
+            validate(&product, &json!("extension:acme.pack/product")),
+            Ok(json!("extension:acme.pack/product"))
+        );
     }
 }

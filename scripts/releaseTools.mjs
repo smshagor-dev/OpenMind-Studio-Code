@@ -158,6 +158,9 @@ export function checkWixSource(wxs) {
   if (!/WixUILicenseRtf/.test(wxs)) problems.push("The MSI has no licence page.");
   if (!/WIXUI_EXITDIALOGOPTIONALCHECKBOX/.test(wxs))
     problems.push("The MSI has no launch-after-install option.");
+  if (!/ARPPRODUCTICON/.test(wxs) || !/<Icon\b[^>]*SourceFile=/.test(wxs)) {
+    problems.push("The MSI has no custom product icon.");
+  }
   return problems;
 }
 
@@ -178,12 +181,26 @@ export function checkInstallerConfig(tauri, licenseText) {
   if (bundle.windows?.nsis?.installMode !== "currentUser") {
     problems.push("The NSIS installer must install per user (no administrator rights).");
   }
+  if (!bundle.icon?.includes("icons/icon.ico")) {
+    problems.push("bundle.icon must include icons/icon.ico for the installed app executable.");
+  }
+  if (bundle.windows?.nsis?.installerIcon !== "icons/icon.ico") {
+    problems.push("The NSIS installer must use icons/icon.ico.");
+  }
+  if (bundle.windows?.nsis?.uninstallerIcon !== "icons/icon.ico") {
+    problems.push("The NSIS uninstaller must use icons/icon.ico.");
+  }
+  if (!bundle.windows?.wix?.fragmentPaths?.includes("wix/product-icon.wxs")) {
+    problems.push("The MSI must include wix/product-icon.wxs for the product icon.");
+  }
   if (!/Apache License\s+Version 2\.0, January 2004/.test(licenseText)) {
     problems.push("LICENSE is not the Apache License 2.0 text.");
   }
   if (!licenseText.includes("END OF TERMS AND CONDITIONS")) problems.push("LICENSE is incomplete.");
   if (bundle.resources?.["../lsp-bundle/"] !== "lsp/") {
-    problems.push('bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).');
+    problems.push(
+      'bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).',
+    );
   }
   return problems;
 }
