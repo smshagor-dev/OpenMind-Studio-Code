@@ -2686,8 +2686,30 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   packs, 50 components, Heavy / Admin / External / Planned statuses, offline import), Skip didn't reopen it, Ninja installed from its card and deleted
   on the Runtimes tab turned the card back to Available; Dependencies scan of the 22.6 smoke folder and `-g` refused. User/Machine PATH, proxy,
   git/npm config, pip/cargo/go/composer configs, user and system site-packages, npm globals and the user pip/npm caches unchanged; no process left.
-- [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
-  keybindings, signing, auto-update).
+- [x] **Milestone 22.7 release readiness** (`feat: complete milestone 22.7 release readiness`, `fix: leave the unconfigured updater out of the release`).
+  The commit was made on Milestone 17 and replayed onto master (7 conflicts with Milestone 18 kept both sides; a duplicated icon-theme loop
+  removed; `src-tauri/new.py` left out; rustfmt, a lint type and the product-icon catalog entries fixed). Installer artwork, icons, x64/x86
+  scripts, profiles with keybindings, extension product icon themes (setting only: nothing draws product icons yet). The updater plugin was
+  removed: no pubkey or endpoint, unused, and its npm/Rust versions differed so `tauri build` refused.
+- [x] **Milestone 23** — Unified Terminal Download System (`feat(broker): …` ×3, `feat(broker): wire …`, `feat(network): …`, `fix(network): …`).
+  See `openmind-broker` and `docs/download-broker.md`. **Why**: on the university PC the Download Manager works while pip/npm/git fail in any
+  terminal; package tools now download through the Download Manager's own code, client, route and TLS via a loopback gateway, and the old
+  blanket proxy variables are gone (program code is not routed). **Migration**: none needed — OpenMind never persisted terminal proxy values or
+  wrote a tool's configuration (Milestone 21 policy tests), so there was nothing OpenMind-owned to remove. **Verified by hand** (developer PC,
+  example server and then the release build from a fresh portable copy `E:\omm23-smoke`, workspace `My Work`): pip `download requests` (+4
+  deps, all SHA-256-checked, staging empty after) and `pip install six` into a project `.venv` from an OpenMind terminal; npm install express +
+  left-pad (70 tarballs through the broker) with `package-lock.json` naming only registry.npmjs.org, `npm ci` from it (lock byte-identical);
+  pnpm 11 (needs `PNPM_CONFIG_REGISTRY`; lock clean); `git clone` (real `.git`, history, branches, `.git/config` origin = the https address),
+  fetch, pull, a 5.7 MB clone with `git fsck` clean; `go mod download`/`tidy` with sumdb lookups through the gateway; `cargo fetch` through the
+  tunnel (wrong token -> 407); `openmind-fetch` of a GitHub file; the Downloads tab (gateway, "go: GOPROXY is set" skipped, six operations
+  complete); Save Network Diagnostics (all hosts reachable over route A; B-E and F all ok; no token in the file or the logs); close left no
+  process, the gateway port closed, no staged file; PATH, Windows/WinHTTP proxy, git/npm config, site-packages and npm globals unchanged.
+  Found and fixed on the way: pnpm 10+ ignores `npm_config_registry`; the tunnel refused a proxy on 127.0.0.1 (Px/CNTLM); host checks of
+  folder addresses read as failures. **Not verified**: the university network itself — the issue is **not resolved** until the live checklist
+  passes there. Limitations: see `docs/download-broker.md` (private Git repos over the gateway, push/SSH not routed, Cargo/Composer tunnelled,
+  system Composer and Yarn 1 tarballs not routed, a project `.npmrc` default registry is overridden, the Go module proxy is read at start-up).
+- [ ] Milestone 24 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
+  keybindings, signing, auto-update; the university live test of Milestone 23).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.
