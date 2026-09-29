@@ -408,7 +408,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         ["cargo"],
         ["rust-analyzer"],
         ["cargo"],
-        [Hl, Lsp, Format, Lint, Build, Test]
+        [Hl, Lsp, Format, Run, Lint, Build, Test]
     ),
     lang!(
         "java",
@@ -423,7 +423,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["jdtls"],
         ["java", "javac", "mvn", "gradle"],
-        [Hl, Build, Test]
+        [Hl, Run, Build, Test]
     ),
     lang!(
         "kotlin",
@@ -529,7 +529,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["clangd"],
         ["gcc", "clang", "cmake", "make"],
-        [Hl, Lsp, Format, Build]
+        [Hl, Lsp, Format, Run, Build]
     ),
     lang!(
         "cpp",
@@ -544,7 +544,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["clangd"],
         ["gcc", "clang", "cmake", "make"],
-        [Hl, Lsp, Format, Build]
+        [Hl, Lsp, Format, Run, Build]
     ),
     // Shell / scripting
     lang!(
@@ -1050,7 +1050,19 @@ mod tests {
             .filter(|l| l.levels.contains(&Level::Run))
             .map(|l| l.id)
             .collect();
-        assert_eq!(run, ["javascript", "typescript", "python", "php"]);
+        assert_eq!(
+            run,
+            [
+                "javascript",
+                "typescript",
+                "python",
+                "php",
+                "rust",
+                "java",
+                "c",
+                "cpp"
+            ]
+        );
         // A language with no highlighting says so.
         assert_eq!(by_id("dart").map(|l| l.syntax), Some(Syntax::None));
         assert_eq!(by_id("vue").map(|l| l.syntax), Some(Syntax::Approximate));

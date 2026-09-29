@@ -10,6 +10,11 @@ pub enum RunnableKind {
     Node,
     Php,
     TypeScript,
+    /// Compiled languages: built into a temporary folder first (see `compiled.rs`).
+    C,
+    Cpp,
+    Java,
+    Rust,
     /// Not a file Run Code can run: the database server's own processes.
     MariaDb,
 }
@@ -22,6 +27,10 @@ impl RunnableKind {
             Self::Node => "Node.js",
             Self::Php => "PHP",
             Self::TypeScript => "TypeScript",
+            Self::C => "C",
+            Self::Cpp => "C++",
+            Self::Java => "Java",
+            Self::Rust => "Rust",
             Self::MariaDb => "MariaDB",
         }
     }
@@ -32,6 +41,10 @@ impl RunnableKind {
             Self::Python => "python",
             Self::Node | Self::TypeScript => "node",
             Self::Php => "php",
+            Self::C | Self::Cpp => "llvm-mingw",
+            Self::Java => "jdk",
+            // Not a Runtime Manager download: rustup manages Rust.
+            Self::Rust => "rust",
             Self::MariaDb => "mariadb",
         }
     }
@@ -44,9 +57,19 @@ impl RunnableKind {
             Self::Node => "node \"${file}\"",
             Self::Php => "php \"${file}\"",
             Self::TypeScript => "tsx \"${file}\"",
+            // Never used: compiled languages are planned by `compiled.rs`.
+            Self::C => "clang",
+            Self::Cpp => "clang++",
+            Self::Java => "javac",
+            Self::Rust => "rustc",
             // Never used: MariaDB's commands are built by `stack.rs`, not from a template.
             Self::MariaDb => "mysqld",
         }
+    }
+
+    /// Built before it runs (C, C++, Java, Rust).
+    pub fn is_compiled(self) -> bool {
+        matches!(self, Self::C | Self::Cpp | Self::Java | Self::Rust)
     }
 
     /// Extra environment for the child so its output isn't held back by pipe buffering.
@@ -83,6 +106,10 @@ pub fn detect(path: &Path) -> Detection {
         Some("js" | "mjs" | "cjs") => Detection::Runnable(RunnableKind::Node),
         Some("php") => Detection::Runnable(RunnableKind::Php),
         Some("ts") => Detection::Runnable(RunnableKind::TypeScript),
+        Some("c") => Detection::Runnable(RunnableKind::C),
+        Some("cpp" | "cc" | "cxx" | "c++") => Detection::Runnable(RunnableKind::Cpp),
+        Some("java") => Detection::Runnable(RunnableKind::Java),
+        Some("rs") => Detection::Runnable(RunnableKind::Rust),
         Some("md" | "markdown") => not(
             "Markdown files aren't run — open the preview instead.",
             true,
@@ -124,6 +151,15 @@ mod tests {
         }
         assert_eq!(kind("a.php"), Detection::Runnable(RunnableKind::Php));
         assert_eq!(kind("a.ts"), Detection::Runnable(RunnableKind::TypeScript));
+        assert_eq!(kind("a.c"), Detection::Runnable(RunnableKind::C));
+        for name in ["a.cpp", "a.CC", "a.cxx"] {
+            assert_eq!(kind(name), Detection::Runnable(RunnableKind::Cpp), "{name}");
+        }
+        assert_eq!(kind("A.java"), Detection::Runnable(RunnableKind::Java));
+        assert_eq!(kind("main.rs"), Detection::Runnable(RunnableKind::Rust));
+        assert!(RunnableKind::Rust.is_compiled() && !RunnableKind::Python.is_compiled());
+        // A header is not a program.
+        assert!(matches!(kind("a.h"), Detection::NotRunnable { .. }));
     }
 
     #[test]

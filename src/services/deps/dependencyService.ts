@@ -30,7 +30,18 @@ export interface DependencyHost {
   openRuntimeManager: () => void;
   /** Run Code in Terminal for the active file. */
   runActiveInTerminal: () => void;
+  /** Tcl/Tk GUI support for OpenMind's portable Python (a Runtime Manager add-on), when it can be added now. */
+  pythonGui?: PythonGuiHost;
   now?: () => number;
+}
+
+export interface PythonGuiHost {
+  /** The active portable Python's version and the add-on's details, or `null` when it can't be added. */
+  addable: () => { version: string; label: string; downloadBytes: number | null; license: string | null } | null;
+  /** Downloads (checksum-verified) and adds it; `null` when it worked, otherwise why not. */
+  add: (version: string) => Promise<string | null>;
+  /** Reloads what the Runtime Manager knows (the list may not have been loaded yet). */
+  refresh: () => Promise<void>;
 }
 
 /** A dismissed issue stays quiet this long. */
@@ -102,6 +113,7 @@ export class DependencyService {
     if ((this.quietUntil.get(key) ?? 0) > this.now()) return false;
     this.set({ issue, base, source, fromRunCode, info: null, error: null, notice: null });
     if (base !== null) void this.loadInfo(base);
+    if (issue.kind === "pythonComponent" && issue.tk) void this.loadPythonGui();
     return true;
   }
 
@@ -113,6 +125,16 @@ export class DependencyService {
     } catch {
       // Without project details the card still offers the Runtime Manager and manual guidance.
     }
+  }
+
+  /** The card asks `pythonGui()` when it draws; a fresh runtime list makes the answer current. */
+  private async loadPythonGui(): Promise<void> {
+    try {
+      await this.host.pythonGui?.refresh();
+    } catch {
+      // Without the list the card still explains and offers the Runtime Manager.
+    }
+    this.set({});
   }
 
   dismiss(): void {
@@ -174,6 +196,47 @@ export class DependencyService {
         return t("deps.target.openmindPython", { path: plan.interpreter ?? "" });
       default:
         return t("deps.target.npm", { folder: plan.cwd });
+    }
+  }
+
+  /** The Tcl/Tk add-on for the tkinter card, when OpenMind's Python can take it. */
+  pythonGui(): ReturnType<PythonGuiHost["addable"]> {
+    return this.state.issue?.kind === "pythonComponent" && this.state.issue.tk
+      ? (this.host.pythonGui?.addable() ?? null)
+      : null;
+  }
+
+  /** Adds Tcl/Tk GUI support to OpenMind's portable Python, after a confirmation that says what and from where. */
+  async addPythonGui(): Promise<boolean> {
+    const gui = this.pythonGui();
+    const host = this.host.pythonGui;
+    if (gui === null || host === undefined) return false;
+    const size = gui.downloadBytes === null ? "" : ` (${(gui.downloadBytes / 1_048_576).toFixed(1)} MB)`;
+    const answer = await this.host.confirm({
+      extension: t("deps.title"),
+      title: t("deps.tk.confirm.title", { version: gui.version }),
+      details: [
+        { label: t("deps.tk.confirm.what"), value: gui.label },
+        { label: t("deps.confirm.into"), value: t("deps.tk.confirm.into", { version: gui.version }) },
+        { label: t("deps.tk.confirm.download"), value: `python.org tcltk.msi${size}` },
+        ...(gui.license === null ? [] : [{ label: t("deps.tk.confirm.license"), value: gui.license }]),
+      ],
+      notes: [t("deps.tk.confirm.note")],
+      buttons: [t("deps.tk.add")],
+    });
+    if (answer === null) return false;
+    this.set({ busy: true, error: null });
+    try {
+      const failure = await host.add(gui.version);
+      if (failure !== null) {
+        this.set({ error: `${t("deps.tk.failed")} ${failure}` });
+        return false;
+      }
+      this.set({ issue: null, info: null, notice: t("deps.tk.added") });
+      this.host.events.emit("appNotice", { message: t("deps.tk.added") });
+      return true;
+    } finally {
+      this.set({ busy: false });
     }
   }
 

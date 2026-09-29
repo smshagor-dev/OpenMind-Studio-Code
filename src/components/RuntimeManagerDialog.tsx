@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
-import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
+import type { AddonStatus, InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { describeProgress, injectionStatus } from "../services/runtimeService";
 import "../styles/toolchains.css";
 import { ToolsPanel } from "./toolchains/ToolsPanel";
@@ -372,7 +372,45 @@ function VersionRow({ runtime, entry }: { runtime: RuntimeStatus; entry: Install
           </span>
         ))}
       </div>
+      {(entry.addons ?? []).map((addon) => (
+        <AddonRow key={addon.id} runtime={runtime} version={entry.version} addon={addon} />
+      ))}
     </li>
+  );
+}
+
+/** An optional part of this version (Tcl/Tk for Python): what it is, and Add / Remove. */
+function AddonRow({ runtime, version, addon }: { runtime: RuntimeStatus; version: string; addon: AddonStatus }) {
+  const service = container.runtime;
+  const busy = service.isBusy(runtime.id);
+  const size = addon.downloadBytes === null ? "" : ` · ${(addon.downloadBytes / 1_048_576).toFixed(1)} MB`;
+  const license = addon.license === null ? "" : ` · ${addon.license.name}`;
+  const reason = busy
+    ? t("runtimes.addon.busy", { name: runtime.displayName })
+    : !addon.available && !addon.installed
+      ? t("runtimes.addon.noDownload")
+      : null;
+  return (
+    <div className="runtime-addon" title={addon.description}>
+      <span className={addon.installed ? "runtime-feature" : "runtime-feature runtime-feature--missing"}>
+        {addon.installed
+          ? t("runtimes.addon.installed", { name: addon.label })
+          : t("runtimes.addon.notInstalled", { name: addon.label })}
+        <span className="runtime-addon__meta">{`${size}${license}`}</span>
+      </span>
+      <button
+        type="button"
+        disabled={reason !== null}
+        title={reason ?? (addon.installed ? t("runtimes.addon.removeTitle") : addon.description)}
+        onClick={() => {
+          void (addon.installed
+            ? service.removeAddon(runtime.id, version, addon.id)
+            : service.installAddon(runtime.id, version, addon.id));
+        }}
+      >
+        {addon.installed ? t("runtimes.addon.remove") : t("runtimes.addon.add")}
+      </button>
+    </div>
   );
 }
 

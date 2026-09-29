@@ -168,12 +168,31 @@ export function needsInteractiveInput(extension: string, text: string): boolean 
       return /readline|process\.stdin|prompt-sync|inquirer|\bprompt\s*\(/.test(text);
     case "php":
       return /STDIN|readline\s*\(|php:\/\/stdin/.test(text);
+    // Compiled languages: only calls that read standard input (`sscanf`, `new Scanner(file)`, a file's
+    // `read_line` don't count).
+    case "c":
+      return C_STDIN.test(text);
+    case "cpp":
+    case "cc":
+    case "cxx":
+      return C_STDIN.test(text) || /\bcin\s*>>|\bstd::cin\b|getline\s*\(\s*(?:std::)?cin\b/.test(text);
+    case "java":
+      return /\bSystem\.in\b|\bSystem\.console\s*\(/.test(text);
+    case "rs":
+      return /\bstdin\s*\(\s*\)|\bio::stdin\b|\bstd::io::Stdin\b/.test(text);
     default:
       return false;
   }
 }
 
-/** Python's error when a program asked for input and got none (Run Code's Output has no keyboard). */
+/** C's ways of reading the keyboard: `scanf`, `getchar`, `gets`, and `fgets`/`fscanf`/`getc`/`fgetc`/`getline` on `stdin`. */
+const C_STDIN =
+  /\bscanf\s*\(|\bgetchar\s*\(|\bgets\s*\(|\b(?:fgets|fscanf|getc|fgetc|getline)\s*\([^)]*\bstdin\b/;
+
+/**
+ * The error a program shows when it asked for input and got none (Run Code's Output has no keyboard): Python's
+ * EOFError and Java's `Scanner` ("No line found"). C, C++ and Rust just read nothing, with no error to recognize.
+ */
 export function isMissingInputError(line: string): boolean {
-  return /EOFError: EOF when reading a line/.test(line);
+  return /EOFError: EOF when reading a line|java\.util\.NoSuchElementException: No line found/.test(line);
 }

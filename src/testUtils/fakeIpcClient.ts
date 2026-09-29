@@ -172,6 +172,8 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     runtimeList: vi.fn().mockResolvedValue([]),
     runtimeInstall: vi.fn(),
     runtimeRepair: vi.fn().mockResolvedValue(false),
+    runtimeAddonInstall: vi.fn().mockResolvedValue(undefined),
+    runtimeAddonRemove: vi.fn().mockResolvedValue(undefined),
     runtimeSetActive: vi.fn().mockResolvedValue(undefined),
     runtimeDelete: vi.fn().mockResolvedValue(undefined),
     onRuntimeProgress: vi.fn().mockResolvedValue(() => undefined),

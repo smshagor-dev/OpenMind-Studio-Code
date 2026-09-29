@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io::Read;
-use std::process::{Child, Command, Stdio};
+use std::path::Path;
+use std::process::{Child, ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -23,14 +24,41 @@ pub enum Stream {
     Stderr,
 }
 
+/// Which step a line of output came from: the compiler (C, C++, Java, Rust) or the program itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Phase {
+    Build,
+    Run,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum RunEventKind {
+    /// A compiled language's build started (before `Started`).
+    #[serde(rename_all = "camelCase")]
+    Building {
+        file: String,
+        command_line: String,
+        /// The absolute path of the compiler.
+        compiler: String,
+        cwd: String,
+        runtime: String,
+        language: String,
+        pid: u32,
+    },
+    /// The build ended; the program starts only after a successful one.
+    #[serde(rename_all = "camelCase")]
+    Built {
+        success: bool,
+        code: Option<i32>,
+        duration_ms: u64,
+    },
     #[serde(rename_all = "camelCase")]
     Started {
         file: String,
         command_line: String,
-        /// The absolute path of the interpreter that was started.
+        /// The absolute path of the interpreter (or built program) that was started.
         resolved: String,
         cwd: String,
         runtime: String,
@@ -40,6 +68,7 @@ pub enum RunEventKind {
     Output {
         stream: Stream,
         line: String,
+        phase: Phase,
     },
     #[serde(rename_all = "camelCase")]
     Exited {
@@ -47,6 +76,8 @@ pub enum RunEventKind {
         duration_ms: u64,
         /// The user asked to stop it (so a missing exit code isn't a crash).
         stopped: bool,
+        /// The build failed, so the program never ran (`code` is the compiler's).
+        build_failed: bool,
     },
 }
 
@@ -68,12 +99,18 @@ pub struct RunInfo {
     pub pid: u32,
 }
 
+#[cfg(windows)]
+type Tree = Option<Arc<openmind_process::ProcessTree>>;
+#[cfg(not(windows))]
+type Tree = ();
+
 struct ActiveRun {
     info: RunInfo,
+    /// The process running now: the compiler, then the program.
     child: Arc<Mutex<Child>>,
     stopped: Arc<AtomicBool>,
-    #[cfg(windows)]
-    tree: Option<Arc<openmind_process::ProcessTree>>,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    tree: Tree,
 }
 
 impl ActiveRun {
@@ -90,6 +127,17 @@ impl ActiveRun {
     }
 }
 
+/// What the watcher thread needs to finish a run.
+struct Watch {
+    run_id: String,
+    plan: RunPlan,
+    child: Arc<Mutex<Child>>,
+    stopped: Arc<AtomicBool>,
+    tree: Tree,
+    readers: Vec<thread::JoinHandle<()>>,
+    sink: EventSink,
+}
+
 /// The runs in progress: at most one per file, each in its own process tree,
 /// all killed when the app shuts down.
 #[derive(Clone, Default)]
@@ -98,13 +146,77 @@ pub struct RunRegistry {
     counter: Arc<AtomicU64>,
 }
 
+fn command_for(argv: &[String], plan: &RunPlan) -> Command {
+    let mut command = Command::new(&argv[0]);
+    command
+        .args(&argv[1..])
+        .current_dir(&plan.cwd)
+        .env("PATH", &plan.path_var)
+        .envs(plan.env.iter().cloned())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    command
+}
+
+fn elapsed_ms(since: Instant) -> u64 {
+    u64::try_from(since.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+/// A fresh, empty build folder. Only folders inside a `run-builds` folder are ever cleared.
+fn prepare_build_dir(dir: &Path) -> Result<(), RunError> {
+    let fail = |reason: String| RunError::StartFailed {
+        command: dir.display().to_string(),
+        reason,
+    };
+    if !is_build_dir(dir) {
+        return Err(fail("not a Run Code build folder".into()));
+    }
+    if dir.exists() {
+        std::fs::remove_dir_all(dir).map_err(|err| fail(err.to_string()))?;
+    }
+    std::fs::create_dir_all(dir).map_err(|err| fail(err.to_string()))
+}
+
+/// A build folder lives under `.../run-builds/`: nothing else is ever deleted by a run.
+pub fn is_build_dir(dir: &Path) -> bool {
+    dir.is_absolute()
+        && dir
+            .parent()
+            .into_iter()
+            .flat_map(Path::ancestors)
+            .any(|ancestor| ancestor.file_name().is_some_and(|name| name == BUILD_ROOT))
+}
+
+/// The folder name build folders live in (`<app>/cache/run-builds`).
+pub const BUILD_ROOT: &str = "run-builds";
+
+/// Removes a finished run's build folder. The program may hold its file for a moment after exiting, so this retries.
+fn remove_build_dir(dir: &Path) {
+    if !is_build_dir(dir) || !dir.exists() {
+        return;
+    }
+    for _ in 0..20 {
+        if std::fs::remove_dir_all(dir).is_ok() || !dir.exists() {
+            return;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    tracing::warn!(dir = %dir.display(), "couldn't remove a Run Code build folder");
+}
+
 impl RunRegistry {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Starts the plan's process and streams its output to `sink`. Nothing is
-    /// run through a shell: the argument list goes straight to the OS.
+    /// Starts the plan (its build first, for a compiled language) and streams its output to `sink`. Nothing is
+    /// run through a shell: each argument list goes straight to the OS.
     pub fn start(&self, plan: &RunPlan, sink: EventSink) -> Result<RunInfo, RunError> {
         let file_key = plan.file.to_string_lossy().into_owned();
         let mut runs = self.runs.lock().map_err(|_| busy(&file_key))?;
@@ -112,30 +224,26 @@ impl RunRegistry {
             return Err(RunError::AlreadyRunning(file_key));
         }
 
-        let mut command = Command::new(&plan.argv[0]);
-        command
-            .args(&plan.argv[1..])
-            .current_dir(&plan.cwd)
-            .env("PATH", &plan.path_var)
-            .envs(plan.env.iter().cloned())
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        }
-        let mut child = command.spawn().map_err(|err| RunError::StartFailed {
-            command: plan.display.clone(),
-            reason: err.to_string(),
-        })?;
+        let (argv, display) = match &plan.build {
+            Some(build) => {
+                prepare_build_dir(&build.dir)?;
+                (&build.argv, &build.display)
+            }
+            None => (&plan.argv, &plan.display),
+        };
+        let mut child = command_for(argv, plan)
+            .spawn()
+            .map_err(|err| RunError::StartFailed {
+                command: display.clone(),
+                reason: err.to_string(),
+            })?;
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let pid = child.id();
-
         #[cfg(windows)]
         let tree = assign_to_job(&child);
+        #[cfg(not(windows))]
+        let tree = ();
 
         let run_id = format!("run-{}", self.counter.fetch_add(1, Ordering::SeqCst) + 1);
         let info = RunInfo {
@@ -151,32 +259,42 @@ impl RunRegistry {
                 info: info.clone(),
                 child: child.clone(),
                 stopped: stopped.clone(),
-                #[cfg(windows)]
-                tree,
+                tree: tree.clone(),
             },
         );
         drop(runs);
 
-        sink(RunEvent {
-            run_id: run_id.clone(),
-            event: RunEventKind::Started {
-                file: info.file.clone(),
-                command_line: plan.display.clone(),
-                resolved: plan.resolved.to_string_lossy().into_owned(),
-                cwd: plan.cwd.to_string_lossy().into_owned(),
-                runtime: plan.runtime_label.clone(),
-                language: plan.kind.display_name().to_string(),
-                pid,
-            },
+        let phase = match &plan.build {
+            Some(build) => {
+                sink(RunEvent {
+                    run_id: run_id.clone(),
+                    event: RunEventKind::Building {
+                        file: info.file.clone(),
+                        command_line: build.display.clone(),
+                        compiler: build.compiler.to_string_lossy().into_owned(),
+                        cwd: plan.cwd.to_string_lossy().into_owned(),
+                        runtime: plan.runtime_label.clone(),
+                        language: plan.kind.display_name().to_string(),
+                        pid,
+                    },
+                });
+                Phase::Build
+            }
+            None => {
+                sink(started_event(&run_id, plan, pid));
+                Phase::Run
+            }
+        };
+        let readers = pumps(stdout, stderr, phase, &run_id, &sink);
+        self.watch(Watch {
+            run_id,
+            plan: plan.clone(),
+            child,
+            stopped,
+            tree,
+            readers,
+            sink,
         });
-        let readers: Vec<_> = [
-            stdout.map(|pipe| pump(pipe, Stream::Stdout, &run_id, &sink)),
-            stderr.map(|pipe| pump(pipe, Stream::Stderr, &run_id, &sink)),
-        ]
-        .into_iter()
-        .flatten()
-        .collect();
-        self.watch(run_id, child, stopped, readers, sink);
         Ok(info)
     }
 
@@ -210,43 +328,145 @@ impl RunRegistry {
         infos
     }
 
-    fn watch(
-        &self,
-        run_id: String,
-        child: Arc<Mutex<Child>>,
-        stopped: Arc<AtomicBool>,
-        readers: Vec<thread::JoinHandle<()>>,
-        sink: EventSink,
-    ) {
+    fn watch(&self, watch: Watch) {
         let runs = self.runs.clone();
         let started = Instant::now();
         thread::spawn(move || {
-            let code = loop {
-                let status = child.lock().ok().and_then(|mut c| c.try_wait().ok());
-                match status {
-                    Some(Some(status)) => break status.code(),
-                    Some(None) => thread::sleep(POLL_INTERVAL),
-                    None => break None,
+            let mut code = wait_for(&watch.child, &watch.readers);
+            let mut build_failed = false;
+            if watch.plan.build.is_some() {
+                let stopped = watch.stopped.load(Ordering::SeqCst);
+                let success = code == Some(0) && !stopped;
+                watch.sink(RunEvent {
+                    run_id: watch.run_id.clone(),
+                    event: RunEventKind::Built {
+                        success,
+                        code,
+                        duration_ms: elapsed_ms(started),
+                    },
+                });
+                if success {
+                    code = run_program(&watch);
+                } else {
+                    build_failed = !stopped;
                 }
-            };
-            // Let what the process wrote before dying reach the sink first.
-            let deadline = Instant::now() + DRAIN_GRACE;
-            while Instant::now() < deadline && readers.iter().any(|r| !r.is_finished()) {
-                thread::sleep(Duration::from_millis(10));
             }
             if let Ok(mut runs) = runs.lock() {
-                runs.remove(&run_id);
+                runs.remove(&watch.run_id);
             }
-            sink(RunEvent {
-                run_id,
+            if let Some(build) = &watch.plan.build {
+                remove_build_dir(&build.dir);
+            }
+            (watch.sink)(RunEvent {
+                run_id: watch.run_id,
                 event: RunEventKind::Exited {
                     code,
-                    duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-                    stopped: stopped.load(Ordering::SeqCst),
+                    duration_ms: elapsed_ms(started),
+                    stopped: watch.stopped.load(Ordering::SeqCst),
+                    build_failed,
                 },
             });
         });
     }
+}
+
+impl Watch {
+    fn sink(&self, event: RunEvent) {
+        (self.sink)(event);
+    }
+}
+
+fn started_event(run_id: &str, plan: &RunPlan, pid: u32) -> RunEvent {
+    RunEvent {
+        run_id: run_id.to_string(),
+        event: RunEventKind::Started {
+            file: plan.file.to_string_lossy().into_owned(),
+            command_line: plan.display.clone(),
+            resolved: plan.resolved.to_string_lossy().into_owned(),
+            cwd: plan.cwd.to_string_lossy().into_owned(),
+            runtime: plan.runtime_label.clone(),
+            language: plan.kind.display_name().to_string(),
+            pid,
+        },
+    }
+}
+
+/// Waits until the current process ends and its output has been read (briefly).
+fn wait_for(child: &Mutex<Child>, readers: &[thread::JoinHandle<()>]) -> Option<i32> {
+    let code = loop {
+        let status = child.lock().ok().and_then(|mut c| c.try_wait().ok());
+        match status {
+            Some(Some(status)) => break status.code(),
+            Some(None) => thread::sleep(POLL_INTERVAL),
+            None => break None,
+        }
+    };
+    // Let what the process wrote before dying reach the sink first.
+    let deadline = Instant::now() + DRAIN_GRACE;
+    while Instant::now() < deadline && readers.iter().any(|r| !r.is_finished()) {
+        thread::sleep(Duration::from_millis(10));
+    }
+    code
+}
+
+/// After a successful build: starts the program in the same process tree and waits for it.
+fn run_program(watch: &Watch) -> Option<i32> {
+    if watch.stopped.load(Ordering::SeqCst) {
+        return None;
+    }
+    let mut program = match command_for(&watch.plan.argv, &watch.plan).spawn() {
+        Ok(program) => program,
+        Err(err) => {
+            watch.sink(RunEvent {
+                run_id: watch.run_id.clone(),
+                event: RunEventKind::Output {
+                    stream: Stream::Stderr,
+                    line: format!("Couldn't start \"{}\": {err}", watch.plan.display),
+                    phase: Phase::Run,
+                },
+            });
+            return None;
+        }
+    };
+    #[cfg(windows)]
+    if let Some(tree) = &watch.tree {
+        use std::os::windows::io::AsRawHandle;
+        if let Err(err) = tree.assign(program.as_raw_handle()) {
+            tracing::warn!(
+                ?err,
+                "couldn't put a built program into its run's job object"
+            );
+        }
+    }
+    let stdout = program.stdout.take();
+    let stderr = program.stderr.take();
+    let pid = program.id();
+    if let Ok(mut current) = watch.child.lock() {
+        *current = program;
+        // Stopped while it was starting: don't leave it running.
+        if watch.stopped.load(Ordering::SeqCst) {
+            let _ = current.kill();
+        }
+    }
+    watch.sink(started_event(&watch.run_id, &watch.plan, pid));
+    let readers = pumps(stdout, stderr, Phase::Run, &watch.run_id, &watch.sink);
+    wait_for(&watch.child, &readers)
+}
+
+fn pumps(
+    stdout: Option<ChildStdout>,
+    stderr: Option<ChildStderr>,
+    phase: Phase,
+    run_id: &str,
+    sink: &EventSink,
+) -> Vec<thread::JoinHandle<()>> {
+    [
+        stdout.map(|pipe| pump(pipe, Stream::Stdout, phase, run_id, sink)),
+        stderr.map(|pipe| pump(pipe, Stream::Stderr, phase, run_id, sink)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 fn busy(file: &str) -> RunError {
@@ -279,6 +499,7 @@ fn assign_to_job(child: &Child) -> Option<Arc<openmind_process::ProcessTree>> {
 fn pump<R: Read + Send + 'static>(
     mut pipe: R,
     stream: Stream,
+    phase: Phase,
     run_id: &str,
     sink: &EventSink,
 ) -> thread::JoinHandle<()> {
@@ -294,6 +515,7 @@ fn pump<R: Read + Send + 'static>(
                 event: RunEventKind::Output {
                     stream,
                     line: text.trim_end_matches(['\r', '\n']).to_string(),
+                    phase,
                 },
             });
         };

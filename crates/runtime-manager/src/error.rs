@@ -43,6 +43,10 @@ pub enum RuntimeError {
     #[error("setup step \"{description}\" failed: {detail}")]
     PostInstall { description: String, detail: String },
 
+    /// An add-on can't be installed or removed; the text says why.
+    #[error("{0}")]
+    Addon(String),
+
     #[error("invalid runtime manifest: {0}")]
     InvalidManifest(String),
 
@@ -105,6 +109,7 @@ impl RuntimeError {
             }
             Self::Busy { .. } => "Wait for the current operation on this runtime to finish.",
             Self::NotInstalled { .. } => "Install it first.",
+            Self::Addon(_) => "Refresh the Runtime Manager; the runtime version itself is unchanged.",
             Self::Io { .. } => {
                 "Close any terminal or program that is using this runtime, make sure the folder isn't read-only, then try again."
             }

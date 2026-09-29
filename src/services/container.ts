@@ -663,6 +663,24 @@ const deps = wireDeps({
   },
   activeFilePath: () => runCode.activeEditor()?.path ?? null,
   workspaceRoot: () => workspace.getActiveWorkspace()?.path ?? null,
+  pythonGui: {
+    addable: () => {
+      const found = runtime.addableAddon("python", "tcltk");
+      return found === null
+        ? null
+        : {
+            version: found.version,
+            label: found.status.label,
+            downloadBytes: found.status.downloadBytes,
+            license: found.status.license?.name ?? null,
+          };
+    },
+    add: async (version) =>
+      (await runtime.installAddon("python", version, "tcltk"))
+        ? null
+        : (runtime.getState().errors.python ?? t("runtimes.addon.busy", { name: "Python" })),
+    refresh: () => runtime.refresh(),
+  },
 });
 // Run Code's Output can't type into a program: a file that reads the keyboard is offered the terminal.
 runCode.setInteractiveHost({

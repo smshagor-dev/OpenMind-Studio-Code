@@ -81,6 +81,8 @@ fn main() {
             commands::terminal::terminal_close,
             commands::runtime::runtime_list,
             commands::runtime::runtime_install,
+            commands::runtime::runtime_addon_install,
+            commands::runtime::runtime_addon_remove,
             commands::runtime::runtime_repair,
             commands::runtime::runtime_set_active,
             commands::runtime::runtime_delete,

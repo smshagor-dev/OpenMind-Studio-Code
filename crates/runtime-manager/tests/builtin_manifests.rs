@@ -108,7 +108,7 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
             .map(|f| f.id.clone())
             .collect()
     };
-    assert_eq!(ids("python"), ["pip", "venv"]);
+    assert_eq!(ids("python"), ["pip", "venv", "tkinter"]);
     assert_eq!(ids("node"), ["npm", "npx"]);
     assert_eq!(ids("git"), ["git"]);
     assert_eq!(ids("php"), ["cli", "server", "ini"]);
@@ -200,7 +200,27 @@ fn python_is_the_nuget_distribution_with_relocatable_pip_and_venv() {
     );
 
     let features: Vec<&str> = python.features.iter().map(|f| f.id.as_str()).collect();
-    assert_eq!(features, ["pip", "venv"]);
+    assert_eq!(features, ["pip", "venv", "tkinter"]);
+    // Tcl/Tk is an optional add-on of the default version only: python.org's signed tcltk.msi, extracted.
+    for version in &python.versions {
+        let addons: Vec<&str> = version.addons.iter().map(|a| a.id.as_str()).collect();
+        let expected: &[&str] = if version.version == "3.14.7" {
+            &["tcltk"]
+        } else {
+            &[]
+        };
+        assert_eq!(addons, expected, "{}", version.version);
+    }
+    let tcltk = &python.versions[0].addons[0];
+    assert_eq!(tcltk.verify_file, "DLLs/_tkinter.pyd");
+    assert_eq!(
+        tcltk.artifacts[0].url,
+        "https://www.python.org/ftp/python/3.14.7/amd64/tcltk.msi"
+    );
+    assert_eq!(
+        tcltk.artifacts[0].archive,
+        openmind_runtime_manager::manifest::ArchiveKind::Msi
+    );
     assert_eq!(python.bin_dirs, [".", "Scripts"]);
     assert_eq!(
         python.env.get("PYTHONNOUSERSITE").map(String::as_str),

@@ -126,6 +126,7 @@ mod tests {
             cwd: std::env::temp_dir(),
             env: vec![("OM_ONESHOT".into(), "yes".into())],
             path_var: std::env::var_os("PATH").unwrap_or_else(|| OsString::from("")),
+            build: None,
             runtime_label: "test".into(),
             source: RuntimeSource::Portable,
         }

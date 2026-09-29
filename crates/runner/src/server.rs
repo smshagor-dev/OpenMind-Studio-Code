@@ -96,6 +96,7 @@ pub fn php_server_plan(
         cwd: root,
         env: environment.vars.clone(),
         path_var,
+        build: None,
         runtime_label: runtime_label(RunnableKind::Php, &resolved),
         source: resolved.source,
         display,

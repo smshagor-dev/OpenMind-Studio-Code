@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 
 use crate::*;
 
+mod compiled;
+
 fn plan_for(file: &str, argv: &[&str]) -> RunPlan {
     RunPlan {
         kind: RunnableKind::Python,
@@ -22,6 +24,7 @@ fn plan_for(file: &str, argv: &[&str]) -> RunPlan {
         source: RuntimeSource::Portable,
         display: argv.join(" "),
         resolved: PathBuf::from(argv[0]),
+        build: None,
     }
 }
 
@@ -64,7 +67,9 @@ impl Collector {
         self.snapshot()
             .into_iter()
             .filter_map(|e| match e.event {
-                RunEventKind::Output { stream: s, line } if s == stream => Some(line),
+                RunEventKind::Output {
+                    stream: s, line, ..
+                } if s == stream => Some(line),
                 _ => None,
             })
             .collect()
@@ -252,6 +257,7 @@ fn events_serialize_with_a_type_tag_for_the_frontend() {
         event: RunEventKind::Output {
             stream: Stream::Stderr,
             line: "boom".into(),
+            phase: Phase::Run,
         },
     };
 
@@ -259,7 +265,7 @@ fn events_serialize_with_a_type_tag_for_the_frontend() {
 
     assert_eq!(
         json,
-        serde_json::json!({ "runId": "run-1", "type": "output", "stream": "stderr", "line": "boom" })
+        serde_json::json!({ "runId": "run-1", "type": "output", "stream": "stderr", "line": "boom", "phase": "run" })
     );
     let exit = RunEvent {
         run_id: "run-2".into(),
@@ -267,10 +273,11 @@ fn events_serialize_with_a_type_tag_for_the_frontend() {
             code: Some(0),
             duration_ms: 12,
             stopped: false,
+            build_failed: false,
         },
     };
     assert_eq!(
         serde_json::to_value(&exit).expect("json"),
-        serde_json::json!({ "runId": "run-2", "type": "exited", "code": 0, "durationMs": 12, "stopped": false })
+        serde_json::json!({ "runId": "run-2", "type": "exited", "code": 0, "durationMs": 12, "stopped": false, "buildFailed": false })
     );
 }

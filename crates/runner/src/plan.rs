@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
+use crate::compiled::{plan_compiled, BuildStep};
 use crate::display::command_line;
 use crate::error::RunError;
 use crate::kind::{detect, Detection, RunnableKind};
@@ -45,8 +46,11 @@ pub struct RunPlan {
     /// The command as the user would type it (`python hello.py`): the program's
     /// plain name and paths inside the working folder made relative. Display only.
     pub display: String,
-    /// The absolute path of the interpreter that will actually run.
+    /// The absolute path of the interpreter that will actually run (for a compiled language: the program the build
+    /// produces, or `java`).
     pub resolved: PathBuf,
+    /// For C, C++, Java and Rust: the compile step that runs first, in the same process tree.
+    pub build: Option<BuildStep>,
 }
 
 const BINARY_SNIFF_BYTES: usize = 8000;
@@ -54,11 +58,13 @@ const BINARY_SNIFF_BYTES: usize = 8000;
 /// Validates `request` and resolves how to run it, without starting anything.
 /// Order of priority for the interpreter: portable runtime, project-local
 /// tool, system PATH. Fails with a plain-language reason the UI can show.
+/// `build_dir` is where a compiled language's output goes (nothing is created here).
 pub fn plan(
     request: &RunRequest,
     environment: &RunEnvironment,
     app_root: &Path,
     system_path: Option<OsString>,
+    build_dir: &Path,
 ) -> Result<RunPlan, RunError> {
     let file = validate_file(&request.file)?;
     let kind = match detect(&file) {
@@ -66,6 +72,15 @@ pub fn plan(
         Detection::NotRunnable { reason, .. } => return Err(RunError::NotRunnable(reason)),
     };
     let cwd = working_directory(request.workspace.as_deref(), &file, app_root)?;
+    if kind.is_compiled() {
+        if request.template.is_some() {
+            return Err(RunError::BadCommand(format!(
+                "a custom run command isn't supported for {} files",
+                kind.display_name()
+            )));
+        }
+        return plan_compiled(kind, &file, cwd, environment, system_path, build_dir);
+    }
 
     let custom = request.template.is_some();
     let template = request
@@ -118,6 +133,7 @@ pub fn plan(
         cwd,
         env,
         path_var,
+        build: None,
     })
 }
 
@@ -219,6 +235,10 @@ fn default_program(kind: RunnableKind) -> &'static str {
         RunnableKind::Node => "node",
         RunnableKind::Php => "php",
         RunnableKind::TypeScript => "tsx",
+        RunnableKind::C => "clang",
+        RunnableKind::Cpp => "clang++",
+        RunnableKind::Java => "javac",
+        RunnableKind::Rust => "rustc",
         RunnableKind::MariaDb => "mysqld",
     }
 }
@@ -299,7 +319,13 @@ mod tests {
     }
 
     fn make(fx: &Fixture, req: &RunRequest) -> Result<RunPlan, RunError> {
-        plan(req, &fx.env, fx.dir.path(), Some(fx.system.clone()))
+        plan(
+            req,
+            &fx.env,
+            fx.dir.path(),
+            Some(fx.system.clone()),
+            &fx.dir.path().join("build"),
+        )
     }
 
     #[test]

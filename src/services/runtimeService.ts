@@ -1,6 +1,6 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
+import type { AddonStatus, InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
 import { t } from "../i18n";
 
 export type RuntimeOperation = "install" | "repair" | "delete" | "activate";
@@ -170,6 +170,26 @@ export class RuntimeService {
       repaired = await this.ipc.runtimeRepair(kind, version);
     });
     return repaired;
+  }
+
+  /** Adds an optional part (an add-on such as Tcl/Tk for Python) to an installed version. */
+  installAddon(kind: string, version: string, addon: string): Promise<boolean> {
+    return this.run(kind, "install", () => this.ipc.runtimeAddonInstall(kind, version, addon));
+  }
+
+  /** Removes exactly the files an add-on added. */
+  removeAddon(kind: string, version: string, addon: string): Promise<boolean> {
+    return this.run(kind, "delete", () => this.ipc.runtimeAddonRemove(kind, version, addon));
+  }
+
+  /** The add-on `addon` of the active version of `kind` when it can be added now (known, downloadable, not there). */
+  addableAddon(kind: string, addon: string): { version: string; status: AddonStatus } | null {
+    const runtime = this.state.runtimes.find((candidate) => candidate.id === kind);
+    const active = runtime?.installed.find((installed) => installed.active && installed.healthy);
+    const status = active?.addons?.find((candidate) => candidate.id === addon);
+    return active !== undefined && status !== undefined && status.available && !status.installed
+      ? { version: active.version, status }
+      : null;
   }
 
   remove(kind: string, version: string): Promise<boolean> {

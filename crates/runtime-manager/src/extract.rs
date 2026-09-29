@@ -5,7 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::error::RuntimeError;
 
 /// Upper bound on what one archive may write, so a zip bomb can't fill the disk.
-const MAX_EXTRACTED_BYTES: u64 = 6 * 1024 * 1024 * 1024;
+pub(crate) const MAX_EXTRACTED_BYTES: u64 = 6 * 1024 * 1024 * 1024;
 
 /// Maps an archive entry name to a path *inside* the destination, or `None`
 /// if nothing is left after stripping. Anything that could land outside —

@@ -62,6 +62,9 @@ pub enum ArchiveKind {
     /// The download is the one file to install (Composer's `composer.phar`),
     /// stored under the artifact's `installAs` name.
     File,
+    /// A Windows Installer package read as an archive (`msi_archive.rs`): its files are extracted, nothing is
+    /// installed through Windows Installer.
+    Msi,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,6 +162,22 @@ pub struct Feature {
     pub missing_note: String,
 }
 
+/// An optional part installed *into* an installed version of a runtime, from its own pinned download (Tcl/Tk for
+/// Python's tkinter). Only files the install doesn't have yet are added, the list of them is recorded, and removing
+/// the add-on deletes exactly those files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Addon {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    /// Relative to the install: present means the add-on is there.
+    pub verify_file: String,
+    pub artifacts: Vec<Artifact>,
+    #[serde(default)]
+    pub license: Option<License>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeVersion {
@@ -168,6 +187,9 @@ pub struct RuntimeVersion {
     /// zip built in, so their `php.ini` must not load `php_zip.dll`).
     #[serde(default)]
     pub seed_files: Vec<SeedFile>,
+    /// Optional parts for this exact version (see [`Addon`]).
+    #[serde(default)]
+    pub addons: Vec<Addon>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -381,37 +403,100 @@ impl RuntimeManifest {
                 return bad(format!("\"{}\" is not a valid version", version.version));
             }
             for artifact in &version.artifacts {
-                if let Some(root) = &artifact.extract_root {
-                    if !is_safe_relative(root) || root == "." {
-                        return bad(format!("extractRoot \"{root}\" must be a folder name"));
-                    }
-                }
-                match (artifact.archive, artifact.install_as.as_deref()) {
-                    (ArchiveKind::File, Some(name)) if is_safe_component(name) => {}
-                    (ArchiveKind::File, _) => {
-                        return bad("a \"file\" artifact needs a plain installAs file name".into());
-                    }
-                    (ArchiveKind::Zip | ArchiveKind::TarGz, None) => {}
-                    (ArchiveKind::Zip | ArchiveKind::TarGz, Some(_)) => {
-                        return bad("installAs only applies to \"file\" artifacts".into());
-                    }
-                }
-                for url in artifact.urls() {
-                    if !url.to_ascii_lowercase().starts_with("https://") {
-                        return Err(RuntimeError::InsecureUrl(url));
-                    }
-                }
-                let hash = &artifact.sha256;
-                if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
-                    return bad(format!(
-                        "{} {}: sha256 must be 64 hex characters",
-                        version.version, artifact.platform
-                    ));
-                }
+                validate_artifact(artifact, &version.version).map_err(|err| self.named(err))?;
+            }
+            for addon in &version.addons {
+                validate_addon(addon, &version.version).map_err(|err| self.named(err))?;
             }
         }
         Ok(())
     }
+
+    /// Prefixes a manifest error with this runtime's id.
+    fn named(&self, error: RuntimeError) -> RuntimeError {
+        match error {
+            RuntimeError::InvalidManifest(message) => {
+                RuntimeError::InvalidManifest(format!("{}: {message}", self.id))
+            }
+            other => other,
+        }
+    }
+}
+
+fn invalid_manifest(message: String) -> RuntimeError {
+    RuntimeError::InvalidManifest(message)
+}
+
+fn validate_artifact(artifact: &Artifact, version: &str) -> Result<(), RuntimeError> {
+    if let Some(root) = &artifact.extract_root {
+        if !is_safe_relative(root) || root == "." {
+            return Err(invalid_manifest(format!(
+                "extractRoot \"{root}\" must be a folder name"
+            )));
+        }
+    }
+    match (artifact.archive, artifact.install_as.as_deref()) {
+        (ArchiveKind::File, Some(name)) if is_safe_component(name) => {}
+        (ArchiveKind::File, _) => {
+            return Err(invalid_manifest(
+                "a \"file\" artifact needs a plain installAs file name".into(),
+            ));
+        }
+        (ArchiveKind::Zip | ArchiveKind::TarGz | ArchiveKind::Msi, None) => {}
+        (ArchiveKind::Zip | ArchiveKind::TarGz | ArchiveKind::Msi, Some(_)) => {
+            return Err(invalid_manifest(
+                "installAs only applies to \"file\" artifacts".into(),
+            ));
+        }
+    }
+    for url in artifact.urls() {
+        if !url.to_ascii_lowercase().starts_with("https://") {
+            return Err(RuntimeError::InsecureUrl(url));
+        }
+    }
+    let hash = &artifact.sha256;
+    if hash.len() != 64 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(invalid_manifest(format!(
+            "{version} {}: sha256 must be 64 hex characters",
+            artifact.platform
+        )));
+    }
+    Ok(())
+}
+
+fn validate_addon(addon: &Addon, version: &str) -> Result<(), RuntimeError> {
+    let bad = |message: &str| {
+        Err(invalid_manifest(format!(
+            "{version} add-on \"{}\": {message}",
+            addon.id
+        )))
+    };
+    if !is_safe_component(&addon.id) {
+        return bad("the id may only use letters, digits and . - _ +");
+    }
+    if addon.label.trim().is_empty()
+        || !is_safe_relative(&addon.verify_file)
+        || addon.verify_file == "."
+    {
+        return bad("needs a label and a verifyFile inside the install");
+    }
+    if addon.artifacts.is_empty() {
+        return bad("has no download");
+    }
+    if let Some(license) = &addon.license {
+        if license.name.trim().is_empty()
+            || !license.url.to_ascii_lowercase().starts_with("https://")
+        {
+            return bad("license needs a name and an https:// url");
+        }
+    }
+    for artifact in &addon.artifacts {
+        if artifact.archive == ArchiveKind::File {
+            return bad("an add-on must be an archive (zip, tar.gz or msi)");
+        }
+        validate_artifact(artifact, version)?;
+    }
+    Ok(())
 }
 
 /// A single folder name that can't escape its parent: no separators, no `..`.

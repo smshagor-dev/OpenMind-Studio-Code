@@ -217,6 +217,20 @@
   color: var(--warning-fg);
 }
 
+/* An optional part of an installed version (Tcl/Tk for Python): its state and Add / Remove. */
+.runtime-addon {
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.runtime-addon__meta {
+  margin-left: 6px;
+  color: var(--fg-muted);
+}
+
 .runtime-version__spacer {
   flex: 1 1 auto;
 }

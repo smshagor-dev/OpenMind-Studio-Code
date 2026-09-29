@@ -177,6 +177,8 @@ fn service_sink(
                         &format!("[exit] code {code:?}, stopped by user: {stopped}"),
                     );
                 }
+                // Services are never compiled, so they have no build events.
+                RunEventKind::Building { .. } | RunEventKind::Built { .. } => {}
             }
         }
         if matches!(event.event, RunEventKind::Exited { .. }) {

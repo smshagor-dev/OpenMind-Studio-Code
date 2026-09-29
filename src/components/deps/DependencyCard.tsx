@@ -30,7 +30,10 @@ function useMessage(state: DependencyState): { text: string; hint: string | null
       };
     case "pythonComponent":
       return issue.tk
-        ? { text: t("deps.tk.title"), hint: t("deps.tk.explain") }
+        ? {
+            text: t("deps.tk.title"),
+            hint: container.deps.pythonGui() !== null ? t("deps.tk.explainAddon") : t("deps.tk.explain"),
+          }
         : { text: t("deps.stdlib.title", { module: issue.module }), hint: t("deps.stdlib.explain") };
     case "nodePackage":
       return { text: t("deps.node.missing", { module: issue.module }), hint: null };
@@ -72,6 +75,9 @@ export function DependencyCard() {
   if (issue.kind === "nodePackage") {
     actions.push({ label: t("deps.action.npm", { package: issue.package }), run: () => void deps.install("npm") });
     if (info?.packageJson) actions.push({ label: t("deps.action.npmProject"), run: () => void deps.install("npmProject") });
+  }
+  if (deps.pythonGui() !== null) {
+    actions.push({ label: t("deps.tk.add"), run: () => void deps.addPythonGui() });
   }
   const runtimeHelp =
     issue.kind === "pythonComponent" ||

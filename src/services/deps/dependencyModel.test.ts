@@ -109,9 +109,40 @@ describe("interactive input", () => {
     expect(needsInteractiveInput("js", "const rl = readline.createInterface({ input: process.stdin })")).toBe(true);
     expect(needsInteractiveInput("ts", "console.log(1)")).toBe(false);
     expect(needsInteractiveInput("php", "$name = trim(fgets(STDIN));")).toBe(true);
-    // Not a Run Code language: the terminal is the place anyway.
-    expect(needsInteractiveInput("c", "scanf(\"%d\", &age);")).toBe(false);
     expect(isMissingInputError("EOFError: EOF when reading a line")).toBe(true);
     expect(isMissingInputError("Status: Adult")).toBe(false);
+  });
+
+  it("recognizes standard input in C, C++, Java and Rust, and nothing that only looks like it", () => {
+    const reads: [string, string][] = [
+      ["c", 'scanf("%99s", name);'],
+      [".c", "int c = getchar();"],
+      ["c", "fgets(line, sizeof line, stdin);"],
+      ["c", "fscanf(stdin, \"%d\", &n);"],
+      ["cpp", "std::cin >> age;"],
+      ["cpp", "using namespace std;\ncin >> age;"],
+      ["cpp", "std::getline(std::cin, name);"],
+      ["cc", "getline(cin, country);"],
+      ["cpp", 'scanf("%d", &n);'],
+      ["java", "Scanner scanner = new Scanner(System.in);"],
+      ["java", "new BufferedReader(new InputStreamReader(System.in))"],
+      ["java", "String line = System.console().readLine();"],
+      ["rs", "io::stdin().read_line(&mut line).expect(\"read\");"],
+      ["rs", "let mut input = std::io::stdin().lock();"],
+      ["rs", "use std::io::stdin;\nstdin().read_line(&mut s);"],
+    ];
+    for (const [extension, text] of reads) expect(needsInteractiveInput(extension, text), text).toBe(true);
+    const notReads: [string, string][] = [
+      ["c", 'sscanf(text, "%d", &n);'],
+      ["c", 'fgets(line, sizeof line, file);\nprintf("stdin is closed");'],
+      ["c", "int getchar_count = 0;"],
+      ["cpp", 'std::cout << "cin >> is how you read" ;'.replace("cin >>", "c-in")],
+      ["java", "Scanner scanner = new Scanner(new File(\"data.txt\"));"],
+      ["java", 'System.out.println("Hello");'],
+      ["rs", "let reader = BufReader::new(File::open(path)?);\nreader.read_line(&mut line)?;"],
+      ["rs", 'println!("no input");'],
+    ];
+    for (const [extension, text] of notReads) expect(needsInteractiveInput(extension, text), text).toBe(false);
+    expect(isMissingInputError('Exception in thread "main" java.util.NoSuchElementException: No line found')).toBe(true);
   });
 });

@@ -49,6 +49,49 @@ pub async fn runtime_install(
     result
 }
 
+/// Adds an optional part to an installed version (Tcl/Tk for Python 3.14.7): a pinned, checksum-verified download
+/// whose files go into that install only. Nothing starts until the user asks for it.
+#[tauri::command]
+pub async fn runtime_addon_install(
+    kind: String,
+    version: String,
+    addon: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let result = state
+        .runtime
+        .install_addon(&kind, &version, &addon, progress_sink(app.clone()))
+        .await
+        .map_err(|err| {
+            tracing::warn!(%kind, %version, %addon, error = %err, "runtime add-on install failed");
+            err.user_message()
+        });
+    notify_changed(&app);
+    result
+}
+
+/// Removes exactly the files an add-on added.
+#[tauri::command]
+pub async fn runtime_addon_remove(
+    kind: String,
+    version: String,
+    addon: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let result = state
+        .runtime
+        .remove_addon(&kind, &version, &addon)
+        .await
+        .map_err(|err| {
+            tracing::warn!(%kind, %version, %addon, error = %err, "runtime add-on removal failed");
+            err.user_message()
+        });
+    notify_changed(&app);
+    result
+}
+
 #[tauri::command]
 pub async fn runtime_repair(
     kind: String,

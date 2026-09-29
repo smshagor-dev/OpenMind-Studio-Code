@@ -51,9 +51,15 @@
       "label": "venv",
       "verifyFile": "Lib/venv/__init__.py",
       "missingNote": "This install has no venv module."
+    },
+    {
+      "id": "tkinter",
+      "label": "tkinter (Tcl/Tk GUI)",
+      "verifyFile": "DLLs/_tkinter.pyd",
+      "missingNote": "This Python doesn't include Tcl/Tk GUI support. Add \"Tcl/Tk GUI support\" for this version (below) to use tkinter."
     }
   ],
-  "notes": "python.org's NuGet package: full standard library with venv and pip (the embeddable ZIP has no pip). `pip` and `pip3` are small launchers OpenMind Studio writes next to the runtime; they find Python relative to themselves, so they keep working if you move the whole OpenMind Studio folder. Packages you install stay inside this install, and the system Python's user packages are hidden from it (PYTHONNOUSERSITE=1). Command launchers that pip itself creates for other packages (for example `black.exe`) record absolute paths and stop working after a move; run them as `python -m <name>`. tkinter/IDLE aren't included. python.org publishes no SHA256 for these packages, so each hash was computed from the official download when the version was pinned.",
+  "notes": "python.org's NuGet package: full standard library with venv and pip (the embeddable ZIP has no pip). `pip` and `pip3` are small launchers OpenMind Studio writes next to the runtime; they find Python relative to themselves, so they keep working if you move the whole OpenMind Studio folder. Packages you install stay inside this install, and the system Python's user packages are hidden from it (PYTHONNOUSERSITE=1). Command launchers that pip itself creates for other packages (for example `black.exe`) record absolute paths and stop working after a move; run them as `python -m <name>`. tkinter (Tcl/Tk) isn't in the NuGet package; for 3.14.7 it can be added as the optional \"Tcl/Tk GUI support\" add-on, python.org's own signed tcltk.msi extracted into this install (nothing is installed through Windows Installer and nothing is registered). python.org publishes no SHA256 for these packages, so each hash was computed from the official download when the version was pinned.",
   "versions": [
     {
       "version": "3.14.7",
@@ -67,6 +73,28 @@
           "archive": "zip",
           "stripComponents": 0,
           "extractRoot": "tools"
+        }
+      ],
+      "addons": [
+        {
+          "id": "tcltk",
+          "label": "Tcl/Tk GUI support (tkinter)",
+          "description": "python.org's Tcl/Tk 9.0 package for Python 3.14.7 (tcltk.msi, signed by the Python Software Foundation): the tkinter module, _tkinter and the Tcl/Tk libraries, plus IDLE and turtledemo. Its files are extracted into this Python install only; files the install already has are kept.",
+          "verifyFile": "DLLs/_tkinter.pyd",
+          "license": {
+            "name": "Tcl/Tk License (BSD-style) and PSF License",
+            "url": "https://www.tcl-lang.org/software/tcltk/license.html"
+          },
+          "artifacts": [
+            {
+              "platform": "windows-x64",
+              "url": "https://www.python.org/ftp/python/3.14.7/amd64/tcltk.msi",
+              "sha256": "4ae542ab046b3a1b2f10e6c1ee91a215cb4d0638aae373d6e0687472eb7170bd",
+              "sizeBytes": 5414912,
+              "installBytes": 10939413,
+              "archive": "msi"
+            }
+          ]
         }
       ]
     },

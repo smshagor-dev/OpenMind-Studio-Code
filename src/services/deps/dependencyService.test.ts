@@ -128,3 +128,60 @@ describe("DependencyService", () => {
     expect(commandPreview(["npm", "install", "left pad"])).toBe('npm install "left pad"');
   });
 });
+
+describe("Tcl/Tk GUI support for the portable Python (Milestone 22.5)", () => {
+  const TK = "ModuleNotFoundError: No module named 'tkinter'";
+  const gui = (addable: ReturnType<NonNullable<DependencyHost["pythonGui"]>["addable"]>, ok = true) => ({
+    addable: vi.fn().mockReturnValue(addable),
+    add: vi.fn().mockResolvedValue(ok ? null : "checksum mismatch: expected a, got b."),
+    refresh: vi.fn().mockResolvedValue(undefined),
+  });
+  const ADDABLE = { version: "3.14.7", label: "Tcl/Tk GUI support (tkinter)", downloadBytes: 5_414_912, license: "Tcl/Tk License (BSD-style) and PSF License" };
+
+  it("offers the add-on for tkinter only, and adds it only after a confirmation that says what and where", async () => {
+    const pythonGui = gui(ADDABLE);
+    const r = rig({ pythonGui });
+    r.service.report("ModuleNotFoundError: No module named 'requests'", "E:\\work\\app", "Python");
+    expect(r.service.pythonGui()).toBeNull();
+    r.service.report(TK, "E:\\work\\app", "Python");
+    // The card appearing reloads the runtime list, so the offer is current.
+    expect(pythonGui.refresh).toHaveBeenCalledOnce();
+    expect(r.service.pythonGui()).toEqual(ADDABLE);
+
+    expect(await r.service.addPythonGui()).toBe(true);
+
+    const request = (r.host.confirm as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { title: string; details: { label: string; value: string }[] };
+    expect(request.title).toBe("Add Tcl/Tk GUI support to Python 3.14.7?");
+    expect(request.details.map((d) => d.value)).toEqual([
+      "Tcl/Tk GUI support (tkinter)",
+      "OpenMind's portable Python 3.14.7 only",
+      "python.org tcltk.msi (5.2 MB)",
+      "Tcl/Tk License (BSD-style) and PSF License",
+    ]);
+    expect(pythonGui.add).toHaveBeenCalledWith("3.14.7");
+    expect(r.service.getState()).toMatchObject({ issue: null, notice: "Tcl/Tk GUI support was added. Run the program again." });
+    // Never pip, never a terminal.
+    expect(r.host.runInTerminal).not.toHaveBeenCalled();
+    expect(r.host.ipc.depsInstallPlan).not.toHaveBeenCalled();
+  });
+
+  it("cancelling adds nothing; a failure is shown; without an addable add-on only the explanation remains", async () => {
+    const cancelled = rig({ pythonGui: gui(ADDABLE), confirm: vi.fn().mockResolvedValue(null) });
+    cancelled.service.report(TK, null, "Terminal");
+    expect(await cancelled.service.addPythonGui()).toBe(false);
+    expect(cancelled.host.pythonGui?.add).not.toHaveBeenCalled();
+
+    const failing = rig({ pythonGui: gui(ADDABLE, false) });
+    failing.service.report(TK, null, "Terminal");
+    expect(await failing.service.addPythonGui()).toBe(false);
+    expect(failing.service.getState().error).toBe(
+      "Tcl/Tk GUI support couldn't be added: checksum mismatch: expected a, got b.",
+    );
+
+    const none = rig({ pythonGui: gui(null) });
+    none.service.report(TK, null, "Terminal");
+    expect(none.service.pythonGui()).toBeNull();
+    expect(await none.service.addPythonGui()).toBe(false);
+    expect(none.host.confirm).not.toHaveBeenCalled();
+  });
+});

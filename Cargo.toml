@@ -19,6 +19,14 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# The MSI reader's decompressors (Tcl/Tk for Python, a Runtime Manager add-on) are far too slow unoptimized; debug
+# builds and tests optimize just these two crates.
+[profile.dev.package.lzxd]
+opt-level = 3
+
+[profile.dev.package.cab]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true

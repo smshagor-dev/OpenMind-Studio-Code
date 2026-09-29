@@ -4,7 +4,7 @@ import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { CommandRegistry } from "./commandRegistry";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { IpcClient, RunAvailability, RunEvent, ShellInfo } from "./ipc";
+import type { CodeRunEvent, IpcClient, RunAvailability, ShellInfo } from "./ipc";
 import { KeybindingService } from "./keybindings";
 import { buildMenuBar, collectCommandIds } from "./menus";
 import { OutputService } from "./outputService";
@@ -69,7 +69,7 @@ interface Rig {
   /** What Run Code opened beside the editor (the secondary side bar). */
   showBeside: ReturnType<typeof vi.fn>;
   workspace: { tabs: EditorTabView[]; save: ReturnType<typeof vi.fn> };
-  emit: (event: RunEvent) => void;
+  emit: (event: CodeRunEvent) => void;
   errors: string[];
   open: (t: EditorTabView | null) => void;
 }
@@ -80,7 +80,7 @@ async function rig(
   overrides: Partial<IpcClient> = {},
   prefs?: { saveBeforeRun: () => boolean; clearOutputBeforeRun: () => boolean },
 ): Promise<Rig> {
-  let handler: (event: RunEvent) => void = () => undefined;
+  let handler: (event: CodeRunEvent) => void = () => undefined;
   const ipc = createFakeIpc({
     runResolve: vi.fn().mockResolvedValue(RUNNABLE),
     runStart: vi.fn().mockResolvedValue({ runId: "run-1", file: "C:/p/hello.py", pid: 7 }),
@@ -991,5 +991,100 @@ describe("Run Code and interactive input (Milestone 22.4)", () => {
     const lines = r.output.getLines(channelFor("Python"));
     expect(lines).toContain("This program needs interactive input. Run it in the integrated terminal.");
     expect(notices).toEqual(["This program needs interactive input. Run it in the integrated terminal."]);
+  });
+});
+
+describe("Run Code for compiled languages (Milestone 22.5)", () => {
+  const building = {
+    type: "building",
+    runId: "run-1",
+    file: "C:/p/hello.c",
+    language: "C",
+    commandLine: "clang hello.c -o hello.exe",
+    cwd: "C:/p",
+    runtime: "OpenMind portable clang (llvm-mingw 20260922)",
+    compiler: "C:/app/runtimes/llvm-mingw/versions/20260922/bin/clang.exe",
+    pid: 5,
+  } as const;
+
+  it("shows the build, then the program's own output apart from it", async () => {
+    const r = await rig();
+    r.emit(building);
+    r.emit({ type: "output", runId: "run-1", stream: "stderr", line: "hello.c:2: warning: unused", phase: "build" });
+    r.emit({ type: "built", runId: "run-1", success: true, code: 0, durationMs: 420 });
+    r.emit({ type: "started", runId: "run-1", file: "C:/p/hello.c", language: "C", commandLine: "hello.exe", cwd: "C:/p", runtime: building.runtime, resolved: "C:/app/cache/run-builds/run-1/hello.exe", pid: 6 });
+    expect(r.service.getState().running).toEqual({ "C:/p/hello.c": "run-1" });
+    r.emit({ type: "output", runId: "run-1", stream: "stdout", line: "Status: Adult", phase: "run" });
+    r.emit({ type: "exited", runId: "run-1", code: 0, stopped: false, durationMs: 900, buildFailed: false });
+    expect(r.output.getLines("C")).toEqual([
+      "[Run Code] clang hello.c -o hello.exe",
+      "cwd: C:/p",
+      `compiler: ${building.runtime}`,
+      `resolved: ${building.compiler}`,
+      "",
+      "Building...",
+      "hello.c:2: warning: unused",
+      "Build succeeded. (0.42s)",
+      "",
+      "> hello.exe",
+      "",
+      "Status: Adult",
+      "",
+      "Process exited with code 0. (0.90s)",
+    ]);
+    expect(r.service.getState().running).toEqual({});
+  });
+
+  it("a failed build says the program was not run", async () => {
+    const r = await rig();
+    r.emit(building);
+    r.emit({ type: "output", runId: "run-1", stream: "stderr", line: "hello.c:3: error: use of undeclared identifier", phase: "build" });
+    r.emit({ type: "built", runId: "run-1", success: false, code: 1, durationMs: 300 });
+    r.emit({ type: "exited", runId: "run-1", code: 1, stopped: false, durationMs: 310, buildFailed: true });
+    const lines = r.output.getLines("C");
+    expect(lines).toContain("Build failed with exit code 1. The program was not run.");
+    expect(lines[lines.length - 1]).toBe("Build failed. (0.31s)");
+    expect(lines.some((line) => line.startsWith("Process exited"))).toBe(false);
+    expect(r.service.getState().lastRun).toMatchObject({ path: "C:/p/hello.c", code: 1 });
+  });
+
+  it("a C, C++, Java or Rust file that reads the keyboard is offered the terminal first", async () => {
+    for (const [path, text] of [
+      ["C:/p/hello.c", 'scanf("%d", &age);'],
+      ["C:/p/hello.cpp", "std::cin >> age;"],
+      ["C:/p/Hello.java", "Scanner in = new Scanner(System.in);"],
+      ["C:/p/hello.rs", "std::io::stdin().read_line(&mut s).unwrap();"],
+    ] as const) {
+      const r = await rig();
+      r.open(tab(path));
+      const choose = vi.fn().mockResolvedValue("terminal");
+      r.service.setInteractiveHost({ text: () => text, choose });
+      await r.service.run();
+      expect(choose, path).toHaveBeenCalledWith(path);
+      expect(r.ipc.runStart, path).not.toHaveBeenCalled();
+      expect(r.ipc.runTerminalCommand, path).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("Java's Scanner without input is explained like Python's EOFError", async () => {
+    const r = await rig();
+    r.emit({ type: "started", runId: "run-1", file: "C:/p/Hello.java", language: "Java", commandLine: "java Hello", cwd: "C:/p", runtime: "System javac", resolved: "C:/jdk/bin/java.exe", pid: 7 });
+    r.emit({ type: "output", runId: "run-1", stream: "stderr", line: 'Exception in thread "main" java.util.NoSuchElementException: No line found' });
+    r.emit({ type: "exited", runId: "run-1", code: 1, stopped: false, durationMs: 40 });
+    expect(r.output.getLines("Java")).toContain("This program needs interactive input. Run it in the integrated terminal.");
+  });
+});
+
+describe("Run Anyway for a program that reads input (Milestone 22.5)", () => {
+  it("says at the end why it got no input, even when the program printed no error (C, Rust)", async () => {
+    const r = await rig();
+    r.open(tab("C:/p/hello.c"));
+    r.service.setInteractiveHost({ text: () => 'scanf("%d", &age);', choose: vi.fn().mockResolvedValue("output") });
+    await r.service.run();
+    expect(r.ipc.runStart).toHaveBeenCalledOnce();
+    r.emit({ type: "started", runId: "run-1", file: "C:/p/hello.c", language: "C", commandLine: "hello.exe", cwd: "C:/p", runtime: "System clang", resolved: "C:/b/hello.exe", pid: 7 });
+    r.emit({ type: "output", runId: "run-1", stream: "stdout", line: "Enter your age: " });
+    r.emit({ type: "exited", runId: "run-1", code: 1, stopped: false, durationMs: 20 });
+    expect(r.output.getLines("C")).toContain("This program needs interactive input. Run it in the integrated terminal.");
   });
 });

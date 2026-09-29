@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "../services/eventBus";
@@ -251,6 +251,37 @@ describe("RuntimeManagerDialog", () => {
         ],
         activeVersion: "3.14.7",
       });
+
+    it("offers an add-on of an installed version (Tcl/Tk) with Add, then Remove once it is there", async () => {
+      const addon = {
+        id: "tcltk",
+        label: "Tcl/Tk GUI support (tkinter)",
+        description: "python.org's Tcl/Tk package.",
+        installed: false,
+        available: true,
+        downloadBytes: 5_414_912,
+        installBytes: 10_939_413,
+        license: { name: "Tcl/Tk License", url: "https://example.com" },
+      };
+      await open([python({ addons: [addon] })]);
+
+      expect(screen.getByText("Tcl/Tk GUI support (tkinter): not installed")).toBeInTheDocument();
+      expect(screen.getByText("· 5.2 MB · Tcl/Tk License")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await waitFor(() => {
+        expect(ipc.runtimeAddonInstall).toHaveBeenCalledWith("python", "3.14.7", "tcltk");
+      });
+      expect(service.addableAddon("python", "tcltk")).toMatchObject({ version: "3.14.7" });
+
+      cleanup();
+      await open([python({ addons: [{ ...addon, installed: true }] })]);
+      expect(screen.getByText("Tcl/Tk GUI support (tkinter): installed")).toBeInTheDocument();
+      expect(service.addableAddon("python", "tcltk")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+      await waitFor(() => {
+        expect(ipc.runtimeAddonRemove).toHaveBeenCalledWith("python", "3.14.7", "tcltk");
+      });
+    });
 
     it("shows pip and venv as available, and that new terminals get the active version", async () => {
       await open([python()]);

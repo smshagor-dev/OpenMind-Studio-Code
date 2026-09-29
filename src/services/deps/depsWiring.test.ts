@@ -5,7 +5,7 @@ import type { AppEvents } from "../events";
 import { OutputService } from "../outputService";
 import type { TerminalService } from "../terminalService";
 import type { DepsIpc } from "./depsIpc";
-import { promptFolder, wireDeps } from "./depsWiring";
+import { promptFolder, readPrompt, wireDeps } from "./depsWiring";
 
 function rig() {
   const listeners = new Set<() => void>();
@@ -92,6 +92,31 @@ describe("wireDeps", () => {
     for (const line of ["Hello > world", "Status: Adult", "  File \"E:\\x.py\", line 1", "PS> echo", "a => b"]) {
       expect(promptFolder(line), line).toBeNull();
     }
+  });
+
+  it("reads Git Bash and WSL prompts; a folder outside the Windows drives is unknown, not guessed", () => {
+    expect(readPrompt("smsha@PC MINGW64 /e/My Work/node app (main)")).toEqual({ folder: "E:\\My Work\\node app" });
+    expect(readPrompt("smsha@PC MINGW64 /c")).toEqual({ folder: "C:\\" });
+    expect(readPrompt("smsha@PC MINGW64 ~/projects")).toEqual({ folder: null });
+    expect(readPrompt("me@box:/mnt/e/My Work/api$ node x.js")).toEqual({ folder: "E:\\My Work\\api" });
+    expect(readPrompt("me@box:~$ ls")).toEqual({ folder: null });
+    expect(readPrompt("me@box:/home/me/src$ ")).toEqual({ folder: null });
+    expect(readPrompt("PS E:\\x> dir")).toEqual({ folder: "E:\\x" });
+    for (const line of ["$ npm install", "Status: Adult", "user@example.com", "error: a@b: not found", "https://a@b.com/x$y"]) {
+      expect(readPrompt(line), line).toBeNull();
+    }
+  });
+
+  it("follows a cd in a Git Bash terminal, and falls back to the terminal's folder in the WSL home", () => {
+    const r = rig();
+    r.addTerminal("t1", "E:\\smoke");
+    r.print("t1", "\r\nsmsha@PC MINGW64 /e/smoke/node-console\r\n$ node needs_left_pad.js\r\n");
+    r.print("t1", "Error: Cannot find module 'left-pad'\r\n");
+    expect(r.deps.getState()).toMatchObject({ issue: { kind: "nodePackage" }, base: "E:\\smoke\\node-console" });
+    r.addTerminal("t2", "E:\\smoke");
+    r.print("t2", "me@box:/mnt/e/smoke/py$ cd ~\r\nme@box:~$ python3 a.py\r\n");
+    r.print("t2", "ModuleNotFoundError: No module named 'pandas'\r\n");
+    expect(r.deps.getState()).toMatchObject({ issue: { kind: "pythonPackage" }, base: "E:\\smoke" });
   });
 
   it("Run Code's Output uses the active file and offers Run in Terminal; other channels are ignored", () => {

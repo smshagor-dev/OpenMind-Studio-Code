@@ -1,8 +1,13 @@
 use std::sync::Arc;
 
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime};
+
 use openmind_runner::{
-    detect, plan, shell_command_line, Detection, RunEnvironment, RunError, RunInfo, RunRequest,
-    RunnableKind, ShellStyle,
+    detect, plan, shell_chain, shell_command_line, Detection, RunEnvironment, RunError, RunInfo,
+    RunRequest, RunnableKind, ShellStyle, BUILD_ROOT,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -80,9 +85,80 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
     environment
 }
 
+/// `<app>/cache/run-builds`: where C, C++, Java and Rust files are compiled. Never the project folder.
+fn build_root(state: &AppState) -> PathBuf {
+    state.app_root.join("cache").join(BUILD_ROOT)
+}
+
+/// Which build folder a plan gets.
+enum BuildFolder {
+    /// Only for checking whether the file can run: nothing is created.
+    Check,
+    /// A folder of its own for a Run Code run, removed when the run ends.
+    Run,
+    /// One folder per file for runs typed into a terminal, reused (and overwritten) by the next one.
+    Terminal,
+}
+
+static BUILD_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn build_dir(state: &AppState, file: &Path, folder: &BuildFolder) -> PathBuf {
+    let root = build_root(state);
+    match folder {
+        BuildFolder::Check => root.join("check"),
+        BuildFolder::Run => {
+            let millis = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_millis())
+                .unwrap_or_default();
+            let n = BUILD_COUNTER.fetch_add(1, Ordering::SeqCst);
+            root.join(format!("run-{millis}-{n}"))
+        }
+        BuildFolder::Terminal => {
+            let stem: String = file
+                .file_stem()
+                .map(|stem| stem.to_string_lossy().into_owned())
+                .unwrap_or_default()
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+                .take(40)
+                .collect();
+            // A folder name only (a clash would just share a folder), so the std hasher is enough.
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            file.hash(&mut hasher);
+            root.join("terminal")
+                .join(format!("{stem}-{:016x}", hasher.finish()))
+        }
+    }
+}
+
+/// Run folders left behind by a crash (a normal run removes its own): anything older than a day goes.
+fn sweep_stale_builds(root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let day = Duration::from_secs(24 * 60 * 60);
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with("run-") {
+            continue;
+        }
+        let old = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age > day);
+        if old {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 async fn make_plan(
     request: &RunRequest,
     state: &AppState,
+    folder: BuildFolder,
 ) -> Result<openmind_runner::RunPlan, RunError> {
     let environment = environment(state).await;
     plan(
@@ -90,6 +166,7 @@ async fn make_plan(
         &environment,
         &state.app_root,
         std::env::var_os("PATH"),
+        &build_dir(state, &request.file, &folder),
     )
 }
 
@@ -105,26 +182,30 @@ pub async fn run_resolve(
     {
         return Ok(RunAvailability::refused(reason, previewable, false));
     }
-    Ok(match make_plan(&request, &state).await {
-        Ok(plan) => RunAvailability {
-            runnable: true,
-            kind: Some(plan.kind),
-            language: Some(plan.kind.display_name().to_string()),
-            reason: None,
-            previewable: false,
-            runtime_missing: false,
-            runtime: Some(plan.runtime_label),
-            command: Some(plan.display),
-            resolved: Some(plan.resolved.to_string_lossy().into_owned()),
+    Ok(
+        match make_plan(&request, &state, BuildFolder::Check).await {
+            Ok(plan) => RunAvailability {
+                runnable: true,
+                kind: Some(plan.kind),
+                language: Some(plan.kind.display_name().to_string()),
+                reason: None,
+                previewable: false,
+                runtime_missing: false,
+                runtime: Some(plan.runtime_label),
+                command: Some(plan.display),
+                resolved: Some(plan.resolved.to_string_lossy().into_owned()),
+            },
+            Err(err) => {
+                let missing = matches!(
+                    err,
+                    RunError::RuntimeMissing { .. }
+                        | RunError::NoTypeScriptRunner
+                        | RunError::CompilerMissing(_)
+                );
+                RunAvailability::refused(err.to_string(), false, missing)
+            }
         },
-        Err(err) => {
-            let missing = matches!(
-                err,
-                RunError::RuntimeMissing { .. } | RunError::NoTypeScriptRunner
-            );
-            RunAvailability::refused(err.to_string(), false, missing)
-        }
-    })
+    )
 }
 
 /// Starts the run in a managed child process; output arrives as `run:event`s.
@@ -134,7 +215,8 @@ pub async fn run_start(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<RunInfo, String> {
-    let plan = make_plan(&request, &state)
+    sweep_stale_builds(&build_root(&state));
+    let plan = make_plan(&request, &state, BuildFolder::Run)
         .await
         .map_err(|err| err.to_string())?;
     let sink: openmind_runner::EventSink = Arc::new(move |event| {
@@ -166,13 +248,24 @@ pub async fn run_terminal_command(
     shell: ShellStyle,
     state: State<'_, AppState>,
 ) -> Result<TerminalCommand, String> {
-    let plan = make_plan(&request, &state)
+    let plan = make_plan(&request, &state, BuildFolder::Terminal)
         .await
         .map_err(|err| err.to_string())?;
-    let line = shell_command_line(&plan.argv, shell).map_err(|err| err.to_string())?;
+    let (line, display) = match &plan.build {
+        Some(build) => {
+            // The compiler writes into this folder, so it must exist before the line runs in the terminal.
+            std::fs::create_dir_all(&build.dir).map_err(|err| err.to_string())?;
+            (
+                shell_chain(&[build.argv.clone(), plan.argv.clone()], shell),
+                format!("{} && {}", build.display, plan.display),
+            )
+        }
+        None => (shell_command_line(&plan.argv, shell), plan.display.clone()),
+    };
+    let line = line.map_err(|err| err.to_string())?;
     Ok(TerminalCommand {
         line,
-        display: plan.display,
+        display,
         runtime: plan.runtime_label,
         resolved: plan.resolved.to_string_lossy().into_owned(),
         language: plan.kind.display_name().to_string(),

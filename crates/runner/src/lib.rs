@@ -4,6 +4,7 @@
 //! whole process tree dies on Stop or on app shutdown. Nothing goes through a
 //! shell: a run is an argument list, so a file name can't become a command.
 
+pub mod compiled;
 pub mod display;
 pub mod error;
 pub mod kind;
@@ -17,7 +18,8 @@ pub mod stack;
 pub mod template;
 pub mod webroot;
 
-pub use display::{command_line, shell_command_line, ShellStyle};
+pub use compiled::{java_main_class, missing_compiler, BuildStep};
+pub use display::{command_line, shell_chain, shell_command_line, ShellStyle};
 pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};
 pub use netstat::{name_processes, parse_netstat, parse_tasklist, ListeningPort};
@@ -28,7 +30,10 @@ pub use server::{
     php_server_plan, port_is_free, server_url, validate_port, validate_root, PhpServerRequest,
     DEFAULT_PORT, LOOPBACK,
 };
-pub use session::{EventSink, RunEvent, RunEventKind, RunInfo, RunRegistry, Stream};
+pub use session::{
+    is_build_dir, EventSink, Phase, RunEvent, RunEventKind, RunInfo, RunRegistry, Stream,
+    BUILD_ROOT,
+};
 pub use stack::{
     composer_plan, mariadb_admin_plan, mariadb_init_plan, mariadb_start_plan,
     render_mariadb_config, render_phpmyadmin_config, resolve_portable, validate_service_port,

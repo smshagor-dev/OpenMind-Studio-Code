@@ -19,6 +19,8 @@ tokio = { version = "1.53.1", features = ["rt", "macros", "rt-multi-thread"] }
 tracing.workspace = true
 ureq = { version = "3.4.2", features = ["rustls"] }
 zip = { version = "7.2.0", default-features = false, features = ["deflate"] }
+msi = "0.8"
+cab = "0.6"
 
 [dev-dependencies]
 tempfile = "3.27.0"

@@ -58,9 +58,56 @@ pub fn shell_command_line(argv: &[String], style: ShellStyle) -> Result<String, 
     })
 }
 
+/// Several commands typed as one terminal line, each run only if the one before succeeded (a build, then the
+/// program). Every command is quoted by `shell_command_line`; PowerShell 5.1 has no `&&`, so it checks
+/// `$LASTEXITCODE` instead.
+pub fn shell_chain(steps: &[Vec<String>], style: ShellStyle) -> Result<String, RunError> {
+    let lines = steps
+        .iter()
+        .map(|argv| shell_command_line(argv, style))
+        .collect::<Result<Vec<_>, _>>()?;
+    let Some((first, rest)) = lines.split_first() else {
+        return Err(RunError::BadCommand("nothing to run".into()));
+    };
+    Ok(match style {
+        ShellStyle::PowerShell => rest.iter().fold(first.clone(), |line, next| {
+            format!("{line}; if ($LASTEXITCODE -eq 0) {{ {next} }}")
+        }),
+        ShellStyle::Cmd | ShellStyle::Bash => lines.join(" && "),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_build_and_run_chain_runs_the_program_only_after_a_successful_build() {
+        let steps = vec![
+            argv(&[
+                r"C:\llvm\bin\clang.exe",
+                r"C:\My Work\it's.c",
+                "-o",
+                r"C:\out\it's.exe",
+            ]),
+            argv(&[r"C:\out\it's.exe"]),
+        ];
+        assert_eq!(
+            shell_chain(&steps, ShellStyle::PowerShell).expect("line"),
+            r"& 'C:\llvm\bin\clang.exe' 'C:\My Work\it''s.c' '-o' 'C:\out\it''s.exe'; if ($LASTEXITCODE -eq 0) { & 'C:\out\it''s.exe' }"
+        );
+        assert_eq!(
+            shell_chain(&steps, ShellStyle::Bash).expect("line"),
+            r"'C:\llvm\bin\clang.exe' 'C:\My Work\it'\''s.c' '-o' 'C:\out\it'\''s.exe' && 'C:\out\it'\''s.exe'"
+        );
+        let plain = vec![argv(&["javac", "A.java"]), argv(&["java", "A"])];
+        assert_eq!(
+            shell_chain(&plain, ShellStyle::Cmd).expect("line"),
+            r#""javac" "A.java" && "java" "A""#
+        );
+        assert!(shell_chain(&[], ShellStyle::Cmd).is_err());
+        assert!(shell_chain(&[argv(&["a", "b\nc"])], ShellStyle::Bash).is_err());
+    }
 
     fn argv(parts: &[&str]) -> Vec<String> {
         parts.iter().map(ToString::to_string).collect()

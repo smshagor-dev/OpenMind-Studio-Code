@@ -401,6 +401,21 @@ export interface InstalledVersion {
   healthy: boolean;
   /** What this install can do (pip, venv, ...), from what is actually on disk. */
   features: FeatureStatus[];
+  /** Optional parts for this version (Tcl/Tk GUI support for Python 3.14.7) and whether each is installed. */
+  addons?: AddonStatus[];
+}
+
+/** An optional part installed into one installed runtime version, from its own pinned download. */
+export interface AddonStatus {
+  id: string;
+  label: string;
+  description: string;
+  installed: boolean;
+  /** There is a download for this platform. */
+  available: boolean;
+  downloadBytes: number | null;
+  installBytes: number | null;
+  license: { name: string; url: string } | null;
 }
 
 export interface FeatureStatus {
@@ -539,6 +554,9 @@ export interface IpcClient
   /** `acceptLicense`: the user accepted the runtime's vendor licence (required for some, e.g. the Android SDK). */
   runtimeInstall: (kind: string, version: string | null, acceptLicense?: boolean) => Promise<InstalledVersion>;
   runtimeRepair: (kind: string, version: string) => Promise<boolean>;
+  /** Adds / removes an optional part (see `AddonStatus`) of an installed version; progress arrives like an install's. */
+  runtimeAddonInstall: (kind: string, version: string, addon: string) => Promise<void>;
+  runtimeAddonRemove: (kind: string, version: string, addon: string) => Promise<void>;
   runtimeSetActive: (kind: string, version: string) => Promise<void>;
   runtimeDelete: (kind: string, version: string) => Promise<void>;
   onRuntimeProgress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
@@ -562,7 +580,7 @@ export interface IpcClient
   runStop: (runId: string) => Promise<boolean>;
   runActive: () => Promise<RunInfo[]>;
   runTerminalCommand: (request: RunRequestArgs, shell: ShellStyle) => Promise<TerminalCommand>;
-  onRunEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
+  onRunEvent: (handler: (event: CodeRunEvent) => void) => Promise<() => void>;
 
   // PHP built-in server (portable PHP only, bound to 127.0.0.1; events share the run event shape)
   phpServerStart: (request: PhpServerRequest) => Promise<PhpServerInfo>;
@@ -733,7 +751,7 @@ export interface RunRequestArgs {
   template: string | null;
 }
 
-export type RunnableKind = "python" | "node" | "php" | "typeScript";
+export type RunnableKind = "python" | "node" | "php" | "typeScript" | "c" | "cpp" | "java" | "rust";
 
 /** Whether a file can be run right now, and exactly why not when it can't. */
 export interface RunAvailability {
@@ -768,9 +786,30 @@ export type RunEvent = { runId: string } & (
       language: string;
       pid: number;
     }
-  | { type: "output"; stream: "stdout" | "stderr"; line: string }
-  | { type: "exited"; code: number | null; durationMs: number; stopped: boolean }
+  /** `phase` is "build" for the compiler's output, "run" (or absent) for the program's. */
+  | { type: "output"; stream: "stdout" | "stderr"; line: string; phase?: "build" | "run" }
+  /** `buildFailed`: the build failed, so the program never ran (`code` is the compiler's). */
+  | { type: "exited"; code: number | null; durationMs: number; stopped: boolean; buildFailed?: boolean }
 );
+
+/**
+ * Run Code's events: a service's (`RunEvent`) plus a compiled language's build (C, C++, Java, Rust) — `building`,
+ * then `built`, and `started` only after a successful build. Services (PHP server, MariaDB ...) never build.
+ */
+export type CodeRunEvent =
+  | RunEvent
+  | {
+      runId: string;
+      type: "building";
+      file: string;
+      commandLine: string;
+      compiler: string;
+      cwd: string;
+      runtime: string;
+      language: string;
+      pid: number;
+    }
+  | { runId: string; type: "built"; success: boolean; code: number | null; durationMs: number };
 
 export interface PhpServerRequest {
   root: string;
@@ -1120,6 +1159,10 @@ export const tauriIpcClient: IpcClient = {
     invoke<InstalledVersion>("runtime_install", { kind, version, acceptLicense: acceptLicense ?? false }),
 
   runtimeRepair: (kind, version) => invoke<boolean>("runtime_repair", { kind, version }),
+
+  runtimeAddonInstall: (kind, version, addon) => invoke("runtime_addon_install", { kind, version, addon }),
+
+  runtimeAddonRemove: (kind, version, addon) => invoke("runtime_addon_remove", { kind, version, addon }),
 
   runtimeSetActive: (kind, version) => invoke("runtime_set_active", { kind, version }),
 

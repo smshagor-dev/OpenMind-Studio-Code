@@ -13,6 +13,10 @@ pub enum RunError {
     #[error("{runtime} runtime is not installed yet.")]
     RuntimeMissing { runtime: String },
 
+    /// No compiler for a C/C++/Java/Rust file; the text says where to get one.
+    #[error("{0}")]
+    CompilerMissing(String),
+
     #[error("No TypeScript runner configured.")]
     NoTypeScriptRunner,
 

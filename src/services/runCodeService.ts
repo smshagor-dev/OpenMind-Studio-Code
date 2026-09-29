@@ -4,9 +4,9 @@ import { extensionOf } from "./editorAssociationService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type {
+  CodeRunEvent,
   IpcClient,
   RunAvailability,
-  RunEvent,
   RunRequestArgs,
   ShellKind,
   ShellStyle,
@@ -175,6 +175,8 @@ export class RunCodeService {
   private interactive: RunInteractiveHost | null = null;
   /** Runs whose program asked for input it couldn't get (Python's EOFError). */
   private readonly missedInput = new Set<string>();
+  /** Files that read input and were run in the Output anyway ("Run Anyway"). */
+  private readonly withoutInput = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribers: (() => void)[] = [];
   /** Process id -> the file it runs and the Output channel its lines go to. */
@@ -344,6 +346,8 @@ export class RunCodeService {
         const choice = await this.interactive.choose(editor.path);
         if (choice === null) return false;
         target = choice === "terminal" ? "terminal" : target;
+        // Run Anyway: the program reads input it won't get, so its end says why (C and Rust print no error for it).
+        if (choice === "output") this.withoutInput.add(editor.path);
       }
     }
     const request = this.requestFor(editor.path);
@@ -432,33 +436,86 @@ export class RunCodeService {
     this.showBeside(channel);
   }
 
-  private handleEvent(event: RunEvent): void {
-    if (event.type === "started") {
-      const channel = channelFor(event.language);
-      this.processes.set(event.runId, { path: event.file, channel });
-      this.output.ensureChannel(channel);
-      if (this.prefs.clearOutputBeforeRun()) this.output.clear(channel);
-      const header = `[Run Code] ${event.commandLine}`;
-      this.output.append(RUN_CHANNEL, stamped(header));
-      this.output.append(channel, header);
-      this.output.append(channel, `cwd: ${event.cwd}`);
-      this.output.append(channel, `runtime: ${event.runtime}`);
-      this.output.append(channel, `resolved: ${event.resolved}`);
-      this.output.append(channel, "");
-      this.update({ running: { ...this.state.running, [event.file]: event.runId } });
-      if (this.wantOutput.delete(event.file)) this.revealOutput(channel);
+  private handleEvent(event: CodeRunEvent): void {
+    switch (event.type) {
+      case "building":
+        this.onBuilding(event);
+        return;
+      case "started":
+        this.onStarted(event);
+        return;
+      case "built": {
+        const channel = this.processes.get(event.runId)?.channel ?? RUN_CHANNEL;
+        const seconds = (event.durationMs / 1000).toFixed(2);
+        this.output.append(
+          channel,
+          event.success
+            ? `Build succeeded. (${seconds}s)`
+            : `Build failed${event.code === null ? "" : ` with exit code ${String(event.code)}`}. The program was not run.`,
+        );
+        return;
+      }
+      case "output": {
+        const channel = this.processes.get(event.runId)?.channel ?? RUN_CHANNEL;
+        this.output.append(channel, event.line);
+        if (isMissingInputError(event.line)) this.missedInput.add(event.runId);
+        return;
+      }
+      case "exited":
+        this.onExited(event);
+    }
+  }
+
+  /** Registers a run's process: its file, its channel, the running state, and the Output panel when asked for. */
+  private track(runId: string, file: string, language: string): string {
+    const channel = channelFor(language);
+    this.processes.set(runId, { path: file, channel });
+    this.output.ensureChannel(channel);
+    if (this.prefs.clearOutputBeforeRun()) this.output.clear(channel);
+    this.update({ running: { ...this.state.running, [file]: runId } });
+    if (this.wantOutput.delete(file)) this.revealOutput(channel);
+    return channel;
+  }
+
+  /** A compiled language (C, C++, Java, Rust): the compile command comes first, its output under it. */
+  private onBuilding(event: Extract<CodeRunEvent, { type: "building" }>): void {
+    const channel = this.track(event.runId, event.file, event.language);
+    const header = `[Run Code] ${event.commandLine}`;
+    this.output.append(RUN_CHANNEL, stamped(header));
+    this.output.append(channel, header);
+    this.output.append(channel, `cwd: ${event.cwd}`);
+    this.output.append(channel, `compiler: ${event.runtime}`);
+    this.output.append(channel, `resolved: ${event.compiler}`);
+    this.output.append(channel, "");
+    this.output.append(channel, "Building...");
+  }
+
+  private onStarted(event: Extract<CodeRunEvent, { type: "started" }>): void {
+    const header = `[Run Code] ${event.commandLine}`;
+    this.output.append(RUN_CHANNEL, stamped(header));
+    const built = this.processes.get(event.runId);
+    if (built !== undefined) {
+      // After a successful build: the program's own output follows, apart from the compiler's.
+      this.output.append(built.channel, "");
+      this.output.append(built.channel, `> ${event.commandLine}`);
+      this.output.append(built.channel, "");
       return;
     }
+    const channel = this.track(event.runId, event.file, event.language);
+    this.output.append(channel, header);
+    this.output.append(channel, `cwd: ${event.cwd}`);
+    this.output.append(channel, `runtime: ${event.runtime}`);
+    this.output.append(channel, `resolved: ${event.resolved}`);
+    this.output.append(channel, "");
+  }
+
+  private onExited(event: Extract<CodeRunEvent, { type: "exited" }>): void {
     const process = this.processes.get(event.runId);
     const path = process?.path ?? null;
     const channel = process?.channel ?? RUN_CHANNEL;
-    if (event.type === "output") {
-      this.output.append(channel, event.line);
-      if (isMissingInputError(event.line)) this.missedInput.add(event.runId);
-      return;
-    }
     this.processes.delete(event.runId);
-    if (this.missedInput.delete(event.runId)) {
+    const ranWithoutInput = path !== null && this.withoutInput.delete(path) && event.buildFailed !== true;
+    if (this.missedInput.delete(event.runId) || ranWithoutInput) {
       // The program asked for input; Run Code's Output can't answer it.
       this.output.append(channel, "");
       this.output.append(channel, t("run.interactive.eof"));
@@ -467,7 +524,9 @@ export class RunCodeService {
     const seconds = (event.durationMs / 1000).toFixed(2);
     const summary = event.stopped
       ? `Process stopped. (${seconds}s)`
-      : `Process exited with code ${event.code === null ? "unknown" : String(event.code)}. (${seconds}s)`;
+      : event.buildFailed === true
+        ? `Build failed. (${seconds}s)`
+        : `Process exited with code ${event.code === null ? "unknown" : String(event.code)}. (${seconds}s)`;
     this.output.append(channel, "");
     this.output.append(channel, summary);
     this.output.append(RUN_CHANNEL, stamped(`[Run Code] ${summary}`));

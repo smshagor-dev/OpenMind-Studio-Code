@@ -47,6 +47,8 @@ pub struct InstalledVersion {
     pub healthy: bool,
     /// What this particular install can do (pip for Python, ...), from what's actually on disk.
     pub features: Vec<FeatureStatus>,
+    /// Optional parts for this version (Tcl/Tk for Python) and whether each is installed.
+    pub addons: Vec<AddonStatus>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -183,6 +185,7 @@ impl RuntimeManager {
                     active: entry.is_active,
                     healthy: self.ensure_shims(&manifest, &manifest.id, &entry.version),
                     features: feature_statuses(&manifest, &dir),
+                    addons: addons::addon_statuses(&manifest, &entry.version, &self.platform, &dir),
                 });
             }
             statuses.push(RuntimeStatus {
@@ -503,6 +506,7 @@ impl RuntimeManager {
             active: entry.is_active,
             healthy: true,
             features: feature_statuses(&manifest, &final_dir),
+            addons: addons::addon_statuses(&manifest, version, &self.platform, &final_dir),
         })
     }
 
@@ -588,6 +592,11 @@ fn install_files(
             report(Extract, c, t);
         })?,
         ArchiveKind::File => place_file(archive, staging, artifact.install_as.as_deref())?,
+        ArchiveKind::Msi => {
+            crate::msi_archive::extract_msi(archive, staging, selection, &mut |c, t| {
+                report(Extract, c, t);
+            })?
+        }
     }
     write_seed_files(manifest, staging)?;
     // Files a setup step is going to create can't be checked yet; those installs
@@ -683,6 +692,9 @@ fn remove_dir_if_exists(dir: &Path) -> Result<(), RuntimeError> {
         Err(err) => Err(RuntimeError::io(dir, err)),
     }
 }
+
+mod addons;
+pub use addons::AddonStatus;
 
 #[cfg(test)]
 mod tests;

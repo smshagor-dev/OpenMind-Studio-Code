@@ -7,7 +7,7 @@ import { terminalPlainText } from "../network/networkWiring";
 import type { OutputService } from "../outputService";
 import { typeInNewTerminal } from "../terminalCommand";
 import type { TerminalService } from "../terminalService";
-import { DependencyService } from "./dependencyService";
+import { DependencyService, type PythonGuiHost } from "./dependencyService";
 import { tauriDepsIpc, type DepsIpc } from "./depsIpc";
 
 /** Run Code's Output channels: a program's own errors land there. */
@@ -24,6 +24,8 @@ export interface DepsWiringDeps {
   activeFilePath: () => string | null;
   workspaceRoot: () => string | null;
   ipc?: DepsIpc;
+  /** Tcl/Tk for OpenMind's portable Python (see `PythonGuiHost`). */
+  pythonGui?: PythonGuiHost;
   terminalLine?: (argv: string[], style: TerminalShellStyle) => Promise<string>;
 }
 
@@ -49,6 +51,7 @@ export function wireDeps(deps: DepsWiringDeps): DependencyService {
     runActiveInTerminal: () => {
       deps.run("run.codeInTerminal");
     },
+    pythonGui: deps.pythonGui,
   });
 
   deps.output.onAppend((channel, line) => {
@@ -72,7 +75,9 @@ export function wireDeps(deps: DepsWiringDeps): DependencyService {
         const lines = pending.split(/\r?\n|\r/);
         pending = (lines.pop() ?? "").slice(-2000);
         for (const line of lines) {
-          folder = promptFolder(line) ?? folder;
+          const prompt = readPrompt(line);
+          // A prompt whose folder isn't a Windows path (`~`, `/home/me` in WSL) resets to the terminal's own folder.
+          if (prompt !== null) folder = prompt.folder;
           if (line.trim() !== "") service.report(line, folder ?? session.cwd, t("network.failure.sourceTerminal"));
         }
       });
@@ -88,4 +93,30 @@ export function wireDeps(deps: DepsWiringDeps): DependencyService {
 export function promptFolder(line: string): string | null {
   const match = /^(?:PS )?([A-Za-z]:\\[^<>|"?*\r\n]*?)>/.exec(line.trimStart());
   return match?.[1] ?? null;
+}
+
+/**
+ * A shell prompt line and the Windows folder it shows (`folder: null` when the prompt's folder isn't on a Windows
+ * drive), or `null` when the line isn't a prompt. Besides PowerShell and cmd: Git Bash's default prompt line
+ * `user@host MINGW64 /e/My Work (main)` and WSL's `user@host:/mnt/e/My Work$ ...`. Only the prompt text is read —
+ * nothing is typed into the shell to ask.
+ */
+export function readPrompt(line: string): { folder: string | null } | null {
+  const windows = promptFolder(line);
+  if (windows !== null) return { folder: windows };
+  const text = line.trimEnd();
+  const gitBash = /^[\w.-]+@[\w.-]+ (?:MINGW64|MINGW32|MSYS|UCRT64|CLANG64|CLANGARM64) (\/.*?|~.*?)(?: \([^()]*\))?$/.exec(text)?.[1];
+  if (gitBash !== undefined) return { folder: windowsPath(gitBash, /^\/([A-Za-z])(\/.*)?$/) };
+  const wsl = /^[\w.-]+@[\w.-]+:(\/[^$#]*|~[^$#]*)[$#](?:\s|$)/.exec(text)?.[1];
+  if (wsl !== undefined) return { folder: windowsPath(wsl, /^\/mnt\/([A-Za-z])(\/.*)?$/) };
+  return null;
+}
+
+/** `/e/My Work` (Git Bash) or `/mnt/e/My Work` (WSL) -> `E:\My Work`; anything else (`~`, `/home/me`) -> `null`. */
+function windowsPath(path: string, drive: RegExp): string | null {
+  const match = drive.exec(path.trim());
+  const letter = match?.[1];
+  if (match === null || letter === undefined) return null;
+  const rest = (match[2] ?? "").replace(/\/+$/, "").replace(/\//g, "\\");
+  return `${letter.toUpperCase()}:\\${rest.replace(/^\\/, "")}`;
 }
