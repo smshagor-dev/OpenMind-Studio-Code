@@ -954,3 +954,42 @@ describe("Run commands and shortcuts", () => {
     }
   });
 });
+
+describe("Run Code and interactive input (Milestone 22.4)", () => {
+  it("a file that reads the keyboard is offered the terminal; Cancel runs nothing; Run Anyway uses the Output", async () => {
+    for (const [answer, started, typed] of [
+      ["terminal", false, true],
+      ["output", true, false],
+      [null, false, false],
+    ] as const) {
+      const r = await rig();
+      const choose = vi.fn().mockResolvedValue(answer);
+      r.service.setInteractiveHost({ text: () => 'name = input("Enter your name: ")', choose });
+      await r.service.run();
+      expect(choose).toHaveBeenCalledWith("C:/p/hello.py");
+      expect(r.ipc.runStart).toHaveBeenCalledTimes(started ? 1 : 0);
+      expect(r.ipc.runTerminalCommand).toHaveBeenCalledTimes(typed ? 1 : 0);
+    }
+  });
+
+  it("a file without input runs in the Output as before, without asking", async () => {
+    const r = await rig();
+    const choose = vi.fn();
+    r.service.setInteractiveHost({ text: () => "print('hello')", choose });
+    await r.service.run();
+    expect(choose).not.toHaveBeenCalled();
+    expect(r.ipc.runStart).toHaveBeenCalledOnce();
+  });
+
+  it("a run that hit EOFError says it needs the terminal", async () => {
+    const r = await rig();
+    const notices: string[] = [];
+    r.events.on("appNotice", ({ message }) => notices.push(message));
+    r.emit({ type: "started", runId: "run-1", file: "C:/p/hello.py", language: "Python", commandLine: "python hello.py", cwd: "C:/p", runtime: "OpenMind portable Python 3.14.7", resolved: "C:/py/python.exe", pid: 7 });
+    r.emit({ type: "output", runId: "run-1", stream: "stderr", line: "EOFError: EOF when reading a line" });
+    r.emit({ type: "exited", runId: "run-1", code: 1, stopped: false, durationMs: 40 });
+    const lines = r.output.getLines(channelFor("Python"));
+    expect(lines).toContain("This program needs interactive input. Run it in the integrated terminal.");
+    expect(notices).toEqual(["This program needs interactive input. Run it in the integrated terminal."]);
+  });
+});

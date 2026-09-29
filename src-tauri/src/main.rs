@@ -259,6 +259,8 @@ fn main() {
             commands::network_offline::network_offline_import_wheels,
             commands::network_offline::network_wheelhouse,
             commands::network_offline::network_wheelhouse_command,
+            commands::deps::deps_install_plan,
+            commands::deps::deps_project_info,
             commands::toolchains::toolchains_list,
             commands::toolchains::toolchains_set_active,
             commands::toolchains::toolchains_verify,

@@ -2499,6 +2499,39 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   field is `inUse` — a test caught `in_use`). UI: Clear enabled for saved or unreadable, disabled for none; the decrypt reason only under Details; the
   diagnostic reads "Saved proxy credentials could not be read. Clear them or save them again." (en/ru/bn). Also added `docs/smoke-testing.md` and
   `scripts/check-python-isolation.py` after the 22.2 smoke removed packages from the user's own Python (see "Manual smoke tests").
+- [x] **Milestone 22.4** — Runtime execution smoke test and dependency helper (`fix: improve runtime execution and dependency helper`).
+  **Run Code and input**: Run Code's process has no keyboard (stdin is closed), so a Python/JS/TS/PHP file that reads input (`input(`, `sys.stdin`,
+  `getpass(`; `readline`, `process.stdin`, `prompt(`; `STDIN`, `php://stdin` — `needsInteractiveInput`, a heuristic on the text) first asks "This program
+  needs interactive input. Run it in the integrated terminal." with **Run in Terminal** / Run Anyway / Cancel (`RunCodeService.setInteractiveHost`); a
+  Python run that still ends with `EOFError: EOF when reading a line` gets the same explanation in Output and a notice. Interactive input is not faked.
+  **Dependency helper** (`src/services/deps/`: `dependencyModel.ts` pure, `DependencyService`, `depsWiring.ts`, `DependencyCard`; Rust
+  `openmind_network::packages` + `commands::deps` `deps_install_plan|deps_project_info`): Run Code's Output channels and every terminal (lines rebuilt from
+  chunks; the shell's current folder followed through its PowerShell/cmd prompt, so an install runs where the failing command ran) are watched for
+  missing things. Python `ModuleNotFoundError` -> "Python package/module is missing: X" (import names mapped to packages: cv2 -> opencv-python, PIL -> Pillow
+  ..., an unknown one is flagged as a guess) with Install into OpenMind Python / Install from Offline Wheelhouse / Open Runtime Manager / Edit
+  requirements.txt / Run in Terminal; a standard-library module (tkinter, sqlite3, venv, ssl, ctypes ...) never gets pip — tkinter says "Tkinter is part of
+  Python's standard library, but this portable Python build does not include Tcl/Tk GUI support." with only Open Runtime Manager. Node `Cannot find module
+  'X'` -> `npm install X` in the project folder (built-ins and relative paths ignored); `npm install` for a package.json. A missing `javac`/`gcc`/`g++`/
+  `clang`/`cmake`/... points to its Runtime Manager card (JDK, LLVM-MinGW ...); Rust/`cargo` is external (rustup); a missing C/C++ header is reported only.
+  **Every install is confirmed** with the exact command, folder and target, then typed into a *new* OpenMind terminal (proxy applied like any terminal);
+  pip runs as `<absolute interpreter> -m pip install --cache-dir=<app>/cache/pip ...` — the project's `.venv` first, else OpenMind's portable Python, never a
+  bare `python`, never `--user`/`--target`/`-g`, and pip's download cache stays in the app folder (it used to land in `%LOCALAPPDATA%\pip\cache`); names are
+  validated (requirement syntax, npm name rules, no URLs/options/shell characters); no portable Python -> the plan is refused with the reason. Also fixed:
+  npm's `ENOTFOUND`/`E407`/`E403` needles matched inside Python's `ModuleNotFoundError` and showed a DNS network card (now matched as whole codes, Rust and TS),
+  and the wheelhouse command uses the same interpreter rule (the old bare-`python` argv was removed). **Smoke** (debug build in `E:\omm222`, workspace
+  `E:\openmind-runtime-smoke`): versions — Python 3.14.7 portable; Node 24.16/npm 11.13, Git 2.55, Java/javac 17 (Oracle), CMake 4.4, Go 1.26, rustc/cargo 1.97
+  (rustup), PHP 8.2 (XAMPP), Composer 2.10 all system; gcc/g++/clang/ninja/dotnet missing until LLVM-MinGW 20260922 was installed from the Runtime Manager
+  (35 s, verified clang 23.1.2). Python console program in the terminal (Adult / Minor / ValueError), Run Code's dialog and Run in Terminal; Tkinter: the
+  portable Python has no Tcl/Tk (card with the explanation), the system Python ran the GUI (empty-submit warning, "Hello Shagor! / Your age is 23.", closing
+  returned the prompt, no process left); `requests` and `tabulate` installed into the portable Python from the card and imported; `left-pad` into
+  `node-console/node_modules` only after `cd` in the terminal; C with gcc and clang, C++ with g++ and clang++, Java Scanner, Rust stdin — all with input;
+  popups: C and Rust `MessageBoxW`, Java `JOptionPane` input + message; C/C++/Java/Rust highlighted with their status bar language; closing left no process;
+  User/Machine PATH, Internet/WinHTTP proxy, global git/npm config, pip/cargo/go/composer configs, the user's Python site-packages, the system Python's and npm's
+  global packages identical before and after. **Limitations**: Run Code runs only JS/TS/Python/PHP ("Run Code doesn't support .rs files.") — C/C++/Java/Rust are
+  built and run in the terminal; the portable Python has no tkinter (no Tcl/Tk build offered); detection is text-based (one card at a time, a new failure
+  replaces it, Dismiss quiets the same problem for 2 minutes); the prompt-folder rule knows PowerShell and cmd prompts (Git Bash/WSL use the terminal's
+  starting folder); package names guessed from import names can be wrong (the card says so). Left on disk: `E:\openmind-runtime-smoke`, LLVM-MinGW
+  (750 MB) in `E:\omm222`.
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 

@@ -1,0 +1,193 @@
+import { t } from "../../i18n";
+import type { EventBus } from "../eventBus";
+import type { AppEvents } from "../events";
+import type { ConfirmPrompt } from "../extensionPromptService";
+import { diagnoseDependency, type DependencyIssue } from "./dependencyModel";
+import type { DepsIpc, InstallKind, InstallPlan, ProjectInfo } from "./depsIpc";
+
+export interface DependencyState {
+  issue: DependencyIssue | null;
+  /** The failed program's file, or the terminal's folder: the project is found from here. */
+  base: string | null;
+  /** "Terminal", "Python" (Run Code) ... */
+  source: string;
+  /** Run Code's Output reported it (Run in Terminal is offered). */
+  fromRunCode: boolean;
+  info: ProjectInfo | null;
+  busy: boolean;
+  error: string | null;
+  notice: string | null;
+}
+
+export interface DependencyHost {
+  ipc: DepsIpc;
+  events: EventBus<AppEvents>;
+  confirm: (request: Omit<ConfirmPrompt, "kind" | "id">) => Promise<string | null>;
+  /** Types `argv` into a new OpenMind terminal in `cwd`; resolves with an error message or `null`. */
+  runInTerminal: (argv: string[], cwd: string) => Promise<string | null>;
+  openFile: (path: string) => void;
+  /** Runtime Manager (on the Workloads tab). */
+  openRuntimeManager: () => void;
+  /** Run Code in Terminal for the active file. */
+  runActiveInTerminal: () => void;
+  now?: () => number;
+}
+
+/** A dismissed issue stays quiet this long. */
+const QUIET_MS = 2 * 60 * 1000;
+
+function issueKey(issue: DependencyIssue): string {
+  switch (issue.kind) {
+    case "toolMissing":
+      return `tool:${issue.tool}`;
+    case "headerMissing":
+      return `header:${issue.header}`;
+    default:
+      return `${issue.kind}:${issue.module}`;
+  }
+}
+
+/** How an argument list reads in the confirmation (quoted where it has spaces). */
+export function commandPreview(argv: string[]): string {
+  return argv.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(" ");
+}
+
+/**
+ * The dependency helper: when a program fails because something is missing, a card says what and offers a safe way to
+ * get it. Nothing is ever installed without a confirmation that shows the exact command, the folder and where it goes;
+ * Python packages only go into the project's venv or OpenMind's portable Python (the backend refuses anything else),
+ * npm packages into the project; Python's own modules (tkinter ...) and compilers are pointed to the Runtime Manager.
+ */
+export class DependencyService {
+  private state: DependencyState = {
+    issue: null,
+    base: null,
+    source: "",
+    fromRunCode: false,
+    info: null,
+    busy: false,
+    error: null,
+    notice: null,
+  };
+  private readonly listeners = new Set<() => void>();
+  private readonly quietUntil = new Map<string, number>();
+  private infoRequest = 0;
+
+  constructor(private readonly host: DependencyHost) {}
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  getState = (): DependencyState => this.state;
+
+  private set(patch: Partial<DependencyState>): void {
+    this.state = { ...this.state, ...patch };
+    for (const listener of [...this.listeners]) listener();
+  }
+
+  private now(): number {
+    return (this.host.now ?? Date.now)();
+  }
+
+  /** Looks at a failed program's output. Shows the card when something is missing; `true` if it did. */
+  report(text: string, base: string | null, source: string, fromRunCode = false): boolean {
+    const issue = diagnoseDependency(text);
+    if (issue === null) return false;
+    const key = issueKey(issue);
+    if (this.state.issue !== null && issueKey(this.state.issue) === key) return true;
+    if ((this.quietUntil.get(key) ?? 0) > this.now()) return false;
+    this.set({ issue, base, source, fromRunCode, info: null, error: null, notice: null });
+    if (base !== null) void this.loadInfo(base);
+    return true;
+  }
+
+  private async loadInfo(base: string): Promise<void> {
+    const request = ++this.infoRequest;
+    try {
+      const info = await this.host.ipc.depsProjectInfo(base);
+      if (request === this.infoRequest) this.set({ info });
+    } catch {
+      // Without project details the card still offers the Runtime Manager and manual guidance.
+    }
+  }
+
+  dismiss(): void {
+    const issue = this.state.issue;
+    if (issue !== null) this.quietUntil.set(issueKey(issue), this.now() + QUIET_MS);
+    this.set({ issue: null, info: null, error: null, notice: null });
+  }
+
+  /** The package pip / npm would install for the current issue. */
+  packageName(): string | null {
+    const issue = this.state.issue;
+    return issue?.kind === "pythonPackage" || issue?.kind === "nodePackage" ? issue.package : null;
+  }
+
+  /** Install: asks the backend for the exact command, shows it, and types it into a new terminal only if confirmed. */
+  async install(kind: InstallKind): Promise<boolean> {
+    const base = this.state.base;
+    if (base === null) return false;
+    const packages = kind === "pip" || kind === "pipOffline" || kind === "npm" ? this.packageName() : null;
+    this.set({ busy: true, error: null, notice: null });
+    try {
+      let plan: InstallPlan;
+      try {
+        plan = await this.host.ipc.depsInstallPlan(kind, packages, base);
+      } catch (error) {
+        this.set({ error: String(error) });
+        return false;
+      }
+      const answer = await this.host.confirm({
+        extension: t("deps.title"),
+        title: t("deps.confirm.title"),
+        details: [
+          { label: t("deps.confirm.command"), value: commandPreview(plan.argv) },
+          { label: t("deps.confirm.folder"), value: plan.cwd },
+          { label: t("deps.confirm.into"), value: this.targetText(plan) },
+        ],
+        notes: [kind === "pipOffline" ? t("deps.confirm.noteOffline") : t("deps.confirm.note")],
+        buttons: [t("deps.confirm.button")],
+      });
+      if (answer === null) return false;
+      const error = await this.host.runInTerminal(plan.argv, plan.cwd);
+      if (error !== null) {
+        this.set({ error });
+        return false;
+      }
+      this.set({ issue: null, info: null, notice: t("deps.started") });
+      this.host.events.emit("appNotice", { message: t("deps.started") });
+      return true;
+    } finally {
+      this.set({ busy: false });
+    }
+  }
+
+  private targetText(plan: InstallPlan): string {
+    switch (plan.target) {
+      case "projectVenv":
+        return t("deps.target.projectVenv", { path: plan.interpreter ?? "" });
+      case "openmindPython":
+        return t("deps.target.openmindPython", { path: plan.interpreter ?? "" });
+      default:
+        return t("deps.target.npm", { folder: plan.cwd });
+    }
+  }
+
+  openRequirements(): void {
+    const path = this.state.info?.requirementsTxt;
+    if (path) this.host.openFile(path);
+  }
+
+  openRuntimeManager(): void {
+    this.host.openRuntimeManager();
+  }
+
+  runInTerminal(): void {
+    this.set({ issue: null });
+    this.host.runActiveInTerminal();
+  }
+}

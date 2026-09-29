@@ -7,6 +7,7 @@ pub mod diagnostics;
 pub mod env;
 pub mod http;
 pub mod offline;
+pub mod packages;
 pub mod probe;
 pub mod problem;
 pub mod proxy;

@@ -1,0 +1,49 @@
+/* Milestone 22.4: the dependency helper's card (bottom right, where the network card appears; never both). Tokens only. */
+
+.dependency-card {
+  position: fixed;
+  right: 16px;
+  bottom: 44px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(480px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--menu-border);
+  border-left: 3px solid var(--info-fg);
+  border-radius: 6px;
+  background: var(--menu-bg);
+  color: var(--fg-strong);
+  box-shadow: 0 4px 16px var(--widget-shadow);
+  font-size: 13px;
+}
+
+.dependency-card__text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.dependency-card__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.45;
+}
+
+.dependency-card__error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--error-fg);
+}
+
+.dependency-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.dependency-card__dismiss {
+  margin-left: auto;
+}

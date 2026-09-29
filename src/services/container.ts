@@ -93,6 +93,7 @@ import * as monaco from "monaco-editor";
 import { t } from "../i18n";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
+import { wireDeps } from "./deps/depsWiring";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
@@ -650,6 +651,41 @@ const network = wireNetwork({
 });
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
 const workloads = wireWorkloads({ events, commands, runtime, lsp });
+/** The dependency helper: missing modules/commands in Run Code's Output and terminals, installs only after a preview. */
+const deps = wireDeps({
+  events,
+  output,
+  terminal,
+  confirm: (request) => extensions.prompts.confirm(request),
+  openFile: (path) => void workspace.openPath(path),
+  run: (id) => {
+    run(id);
+  },
+  activeFilePath: () => runCode.activeEditor()?.path ?? null,
+  workspaceRoot: () => workspace.getActiveWorkspace()?.path ?? null,
+});
+// Run Code's Output can't type into a program: a file that reads the keyboard is offered the terminal.
+runCode.setInteractiveHost({
+  text: (docId) => {
+    try {
+      return documents.contentOf(docId);
+    } catch {
+      return null;
+    }
+  },
+  choose: async (file) => {
+    const terminalLabel = t("run.interactive.terminal");
+    const answer = await extensions.prompts.confirm({
+      extension: t("run.interactive.source"),
+      title: t("run.interactive.title"),
+      details: [{ label: t("run.interactive.file"), value: file }],
+      notes: [t("run.interactive.note")],
+      buttons: [terminalLabel, t("run.interactive.anyway")],
+    });
+    if (answer === null) return null;
+    return answer === terminalLabel ? "terminal" : "output";
+  },
+});
 const ai = wireAi({
   ipc: tauriIpcClient,
   events,
@@ -905,6 +941,7 @@ export const container = {
   formatting,
   profiles,
   network,
+  deps,
   workloads,
   reportStartup,
   startFormatting,

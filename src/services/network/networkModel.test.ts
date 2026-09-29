@@ -196,6 +196,13 @@ describe("labels", () => {
     expect(diagnoseNetwork("the proxy requires authentication")).toBe("proxyAuthRequired");
     expect(diagnoseNetwork("Tunnel connection failed: 503 Service Unavailable")).toBe("proxyUnavailable");
     expect(diagnoseNetwork("ERROR: No matching distribution found for djangoo")).toBeNull();
+    // Python's ModuleNotFoundError contains "enotfound" but isn't npm's ENOTFOUND (DNS): no network card for it.
+    for (const module of ["tkinter", "requests", "pandas"]) {
+      expect(diagnoseNetwork(`ModuleNotFoundError: No module named '${module}'`)).toBeNull();
+    }
+    expect(diagnoseNetwork("npm ERR! code ENOTFOUND")).toBe("dns");
+    expect(diagnoseNetwork("getaddrinfo ENOTFOUND registry.npmjs.org")).toBe("dns");
+    expect(diagnoseNetwork("npm ERR! code E407")).toBe("proxyAuthRequired");
     expect(isPipOutput("ERROR: No matching distribution found for djangoo")).toBe(true);
     expect(isPipOutput("npm ERR! code E407")).toBe(false);
     // The messages the fixed Rust classifier also knows.

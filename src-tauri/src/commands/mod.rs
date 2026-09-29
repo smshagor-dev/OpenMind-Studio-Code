@@ -2,6 +2,7 @@ pub mod about;
 pub mod ai;
 pub mod database;
 pub mod debug;
+pub mod deps;
 pub mod document;
 pub mod extension_api;
 pub mod extension_host;

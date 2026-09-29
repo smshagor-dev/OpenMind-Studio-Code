@@ -24,7 +24,7 @@ const NEEDLES: [NetProblem, string[]][] = [
       "status code 407",
       "received http code 407",
       "response 407",
-      "e407",
+      " e407",
       "proxyauthenticationrequired",
       "proxy requires authentication",
     ],
@@ -72,7 +72,7 @@ const NEEDLES: [NetProblem, string[]][] = [
       "dns lookup failed",
       "could not resolve host",
       "getaddrinfo",
-      "enotfound",
+      " enotfound",
       "name or service not known",
       "no such host is known",
       "temporary failure in name resolution",
@@ -105,7 +105,7 @@ const NEEDLES: [NetProblem, string[]][] = [
   ],
   [
     "blocked",
-    ["blocked by the network", "403 forbidden", "http 403", "status code 403", "e403", "451 unavailable"],
+    ["blocked by the network", "403 forbidden", "http 403", "status code 403", " e403", "451 unavailable"],
   ],
 ];
 

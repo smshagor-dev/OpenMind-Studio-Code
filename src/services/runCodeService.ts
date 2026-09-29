@@ -1,3 +1,5 @@
+import { t } from "../i18n";
+import { isMissingInputError, needsInteractiveInput } from "./deps/dependencyModel";
 import { extensionOf } from "./editorAssociationService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
@@ -157,8 +159,22 @@ const DEFAULT_RUN_PREFS: RunCodePrefs = {
   clearOutputBeforeRun: () => true,
 };
 
+/**
+ * Interactive programs: Run Code's Output shows a program's output but can't type into it (its stdin is closed), so a
+ * file that reads the keyboard is offered the integrated terminal instead.
+ */
+export interface RunInteractiveHost {
+  /** The current text of an open document. */
+  text: (docId: string) => string | null;
+  /** Asks what to do with a file that needs input: `terminal`, `output` (run anyway) or `null` (cancel). */
+  choose: (file: string) => Promise<"terminal" | "output" | null>;
+}
+
 export class RunCodeService {
   private state: RunState = INITIAL;
+  private interactive: RunInteractiveHost | null = null;
+  /** Runs whose program asked for input it couldn't get (Python's EOFError). */
+  private readonly missedInput = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribers: (() => void)[] = [];
   /** Process id -> the file it runs and the Output channel its lines go to. */
@@ -191,6 +207,11 @@ export class RunCodeService {
 
   getState(): RunState {
     return this.state;
+  }
+
+  /** Wired after the prompts exist (the composition root). */
+  setInteractiveHost(host: RunInteractiveHost): void {
+    this.interactive = host;
   }
 
   subscribe(listener: () => void): () => void {
@@ -316,7 +337,15 @@ export class RunCodeService {
       }
     }
     const extension = extensionOf(editor.path);
-    const target = options.target ?? this.configs.targetFor(extension);
+    let target = options.target ?? this.configs.targetFor(extension);
+    if (target !== "terminal" && this.interactive !== null) {
+      const text = this.interactive.text(editor.docId);
+      if (text !== null && needsInteractiveInput(extension ?? "", text)) {
+        const choice = await this.interactive.choose(editor.path);
+        if (choice === null) return false;
+        target = choice === "terminal" ? "terminal" : target;
+      }
+    }
     const request = this.requestFor(editor.path);
     return target === "terminal"
       ? this.runInTerminal(request)
@@ -425,9 +454,16 @@ export class RunCodeService {
     const channel = process?.channel ?? RUN_CHANNEL;
     if (event.type === "output") {
       this.output.append(channel, event.line);
+      if (isMissingInputError(event.line)) this.missedInput.add(event.runId);
       return;
     }
     this.processes.delete(event.runId);
+    if (this.missedInput.delete(event.runId)) {
+      // The program asked for input; Run Code's Output can't answer it.
+      this.output.append(channel, "");
+      this.output.append(channel, t("run.interactive.eof"));
+      this.events.emit("appNotice", { message: t("run.interactive.eof") });
+    }
     const seconds = (event.durationMs / 1000).toFixed(2);
     const summary = event.stopped
       ? `Process stopped. (${seconds}s)`

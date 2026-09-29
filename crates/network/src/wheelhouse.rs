@@ -5,8 +5,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::env::file_url;
-
 /// Most wheel files read from one folder (a wheelhouse for a whole course is a few hundred).
 pub const MAX_WHEELS: usize = 2_000;
 
@@ -101,21 +99,6 @@ pub fn parse_requirements(text: &str) -> Result<Vec<String>, RequirementError> {
     Ok(items)
 }
 
-/// `python -m pip install --no-index --find-links=file:///... <packages>`: pip looks only in the wheelhouse and
-/// makes no network request (`--no-index`). The folder is a file URL, so a path with spaces works.
-pub fn offline_install_argv(wheelhouse: &Path, requirements: &[String]) -> Vec<String> {
-    let mut argv = vec![
-        "python".to_string(),
-        "-m".to_string(),
-        "pip".to_string(),
-        "install".to_string(),
-        "--no-index".to_string(),
-        format!("--find-links={}", file_url(wheelhouse)),
-    ];
-    argv.extend(requirements.iter().cloned());
-    argv
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,27 +179,5 @@ mod tests {
             parse_requirements("django --pre"),
             Err(RequirementError::Invalid("--pre".into()))
         );
-    }
-
-    #[test]
-    fn the_offline_command_uses_no_index_and_a_file_url_that_survives_spaces() {
-        let argv = offline_install_argv(
-            Path::new(r"E:\My USB\OpenMind Studio\cache\offline\wheels"),
-            &["django".into(), "pandas".into()],
-        );
-        assert_eq!(
-            argv,
-            vec![
-                "python",
-                "-m",
-                "pip",
-                "install",
-                "--no-index",
-                "--find-links=file:///E:/My%20USB/OpenMind%20Studio/cache/offline/wheels",
-                "django",
-                "pandas"
-            ]
-        );
-        assert!(argv.iter().all(|arg| !arg.contains(' ')), "{argv:?}");
     }
 }

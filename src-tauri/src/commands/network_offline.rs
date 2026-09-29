@@ -8,7 +8,8 @@ use openmind_network::env::file_url;
 use openmind_network::offline::{
     extract_source, inspect, CacheEntry, Inspection, KnownArtifact, OfflineCache, PackageKind,
 };
-use openmind_network::wheelhouse::{offline_install_argv, parse_requirements, wheel_files};
+use openmind_network::packages::{pip_offline_argv, with_pip_cache};
+use openmind_network::wheelhouse::{parse_requirements, wheel_files};
 use serde::Serialize;
 use tauri::State;
 
@@ -250,10 +251,11 @@ pub fn network_wheelhouse(state: State<'_, AppState>) -> Wheelhouse {
     }
 }
 
-/// The argument list that installs `requirements` from the wheelhouse only (`--no-index`: no network request). The
+/// The argument list that installs `requirements` from the wheelhouse only (`--no-index`: no network request) into
+/// OpenMind's portable Python, named by its absolute path — a bare `python` could be the user's own Python. The
 /// frontend quotes it for the terminal's shell and types it there when the user clicks Install.
 #[tauri::command]
-pub fn network_wheelhouse_command(
+pub async fn network_wheelhouse_command(
     requirements: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, String> {
@@ -262,5 +264,8 @@ pub fn network_wheelhouse_command(
     if !folder.is_dir() {
         return Err("No wheels are imported yet. Import a wheel folder first.".to_string());
     }
-    Ok(offline_install_argv(&folder, &requirements))
+    let (interpreter, _) = crate::commands::deps::python_target(&state, &folder).await?;
+    pip_offline_argv(&interpreter, &folder, &requirements)
+        .map(|argv| with_pip_cache(argv, &crate::commands::deps::pip_cache_dir(&state)))
+        .map_err(|err| err.to_string())
 }

@@ -7,9 +7,9 @@ import type { ConfirmPrompt } from "../extensionPromptService";
 import type { IpcClient, ShellKind } from "../ipc";
 import { tauriLanguageIpc, type TerminalShellStyle } from "../language/languageIpc";
 import type { OutputService } from "../outputService";
-import { shellStyleFor } from "../runCodeService";
 import type { RuntimeService } from "../runtimeService";
 import type { SettingsService } from "../settingsService";
+import { typeInNewTerminal } from "../terminalCommand";
 import type { TerminalService } from "../terminalService";
 import { tauriNetworkIpc, type NetworkIpc } from "./networkIpc";
 import { CommandLineTracker } from "./commandLine";
@@ -113,20 +113,11 @@ function terminalHost(deps: NetworkWiringDeps): NetworkTerminalHost & {
       await terminal.closeTerminal(id);
       return null;
     },
-    runInNewTerminal: async (argv) => {
-      const state = terminal.getState();
-      const kind =
-        [state.lastShell, ...state.shells.map((shell) => shell.kind)].find(
-          (candidate): candidate is ShellKind => candidate !== null && shellStyleFor(candidate) !== null,
-        ) ?? null;
-      const style = kind === null ? null : shellStyleFor(kind);
-      if (kind === null || style === null) return t("network.wheels.noShell");
-      const text = await line(argv, style);
-      const id = await terminal.createTerminal(kind);
-      if (id === null) return t("network.stale.failed");
-      terminal.write(id, `${text}\r`);
-      return null;
-    },
+    runInNewTerminal: (argv) =>
+      typeInNewTerminal(terminal, line, argv, null, {
+        noShell: t("network.wheels.noShell"),
+        failed: t("network.stale.failed"),
+      }),
     /** Retry Command: the command again in a new terminal like the one it failed in; a risky one asks first. */
     retry: async (command, from) => {
       const like = session(from);
@@ -150,7 +141,7 @@ function terminalHost(deps: NetworkWiringDeps): NetworkTerminalHost & {
 }
 
 /** Removes terminal colour/cursor sequences so the text can be read. */
-function plain(text: string): string {
+export function terminalPlainText(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007/g, "");
 }
@@ -236,7 +227,7 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
       network.terminalStarted();
       const decoder = new TextDecoder();
       deps.terminal.onOutput(session.id, (data) => {
-        const text = plain(decoder.decode(data, { stream: true }));
+        const text = terminalPlainText(decoder.decode(data, { stream: true }));
         if (text.length === 0) return;
         const command = trackers.get(session.id)?.last() ?? null;
         network.report(

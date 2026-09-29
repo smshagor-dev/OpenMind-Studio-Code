@@ -186,7 +186,7 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "status code 407",
         "received http code 407",
         "response 407",
-        "e407",
+        " e407",
         "proxyauthenticationrequired",
         "proxy requires authentication",
     ]) {
@@ -231,7 +231,7 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "dns lookup failed",
         "could not resolve host",
         "getaddrinfo",
-        "enotfound",
+        " enotfound",
         "name or service not known",
         "no such host is known",
         "temporary failure in name resolution",
@@ -281,7 +281,7 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "403 forbidden",
         "http 403",
         "status code 403",
-        "e403",
+        " e403",
         "451 unavailable",
     ]) {
         return Some(NetProblem::Blocked);
@@ -345,6 +345,12 @@ mod tests {
             ERROR: Could not find a version that satisfies the requirement requests (from versions: none)\n\
             ERROR: No matching distribution found for requests";
         assert_eq!(diagnose(university), Some(NetProblem::ProxyAuthRequired));
+        // Python's ModuleNotFoundError contains "enotfound" but is not npm's ENOTFOUND (a DNS failure).
+        assert_eq!(
+            diagnose("ModuleNotFoundError: No module named 'tkinter'"),
+            None
+        );
+        assert_eq!(diagnose("npm ERR! code ENOTFOUND"), Some(NetProblem::Dns));
         // Without a network cause, a missing package is not a network problem at all.
         assert_eq!(
             diagnose("ERROR: No matching distribution found for nosuchpkg"),
