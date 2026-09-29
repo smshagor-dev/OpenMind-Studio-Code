@@ -322,6 +322,7 @@ fn app_definitions() -> Vec<SettingDef> {
         def("php.tray.hideOnClose", "PHP Server", "Keep Servers Running in the Tray", "Closing the main window while a PHP, MariaDB or phpMyAdmin server runs hides the app to the system tray instead of quitting.", SettingKind::Bool, json!(true), User),
         def("workbench.colorTheme", "Workbench", "Color Theme", "Colors of the workbench, the editor and the terminal. System follows Windows.", opts(&[("system", "System"), ("dark", "Dark"), ("light", "Light"), ("high-contrast", "High Contrast")]), json!("dark"), User),
         def("workbench.iconTheme", "Workbench", "Icon Theme", "The icons in the Explorer, tabs and search. All icons are bundled with the app: nothing is downloaded.", opts(&[("material", "Material Icons (files and folders)"), ("material-files", "Material Icons (files only)"), ("minimal", "Minimal (one file icon, no folder icons)")]), json!("material"), User),
+        def("workbench.productIconTheme", "Workbench", "Product Icon Theme", "The icons used by workbench buttons and views.", opts(&[("default", "Default")]), json!("default"), User),
         def("workbench.welcomeOnStartup", "Workbench", "Show Welcome Page on Startup", "Open the Welcome page when the app starts.", SettingKind::Bool, json!(true), User),
     ]
 }
@@ -332,6 +333,8 @@ fn app_definitions() -> Vec<SettingDef> {
 pub struct Extras {
     pub settings: Vec<SettingDef>,
     pub themes: Vec<EnumOption>,
+    pub icon_themes: Vec<EnumOption>,
+    pub product_icon_themes: Vec<EnumOption>,
 }
 
 impl Extras {
@@ -356,6 +359,16 @@ pub fn definitions(extras: &Extras) -> Vec<SettingDef> {
         if def.id == "workbench.colorTheme" {
             if let SettingKind::Enum { options } = &mut def.kind {
                 options.extend(extras.themes.iter().cloned());
+            }
+        }
+        if def.id == "workbench.iconTheme" {
+            if let SettingKind::Enum { options } = &mut def.kind {
+                options.extend(extras.icon_themes.iter().cloned());
+            }
+        }
+        if def.id == "workbench.productIconTheme" {
+            if let SettingKind::Enum { options } = &mut def.kind {
+                options.extend(extras.product_icon_themes.iter().cloned());
             }
         }
     }
@@ -515,6 +528,8 @@ mod extras_tests {
         let extras = Extras {
             settings: vec![extension_setting()],
             themes: Vec::new(),
+            icon_themes: Vec::new(),
+            product_icon_themes: Vec::new(),
         };
         let all = definitions(&extras);
         assert_eq!(
@@ -539,6 +554,8 @@ mod extras_tests {
         let extras = Extras {
             settings: vec![hijack],
             themes: Vec::new(),
+            icon_themes: Vec::new(),
+            product_icon_themes: Vec::new(),
         };
         let def = find("editor.fontSize", &extras).expect("built in");
         assert_eq!(def.default, json!(14));
@@ -556,6 +573,8 @@ mod extras_tests {
                 value: "extension:acme.pack/Night".to_string(),
                 label: "Night".to_string(),
             }],
+            icon_themes: Vec::new(),
+            product_icon_themes: Vec::new(),
         };
         let theme = find("workbench.colorTheme", &extras).expect("defined");
         assert_eq!(
@@ -564,5 +583,31 @@ mod extras_tests {
         );
         let plain = find("workbench.colorTheme", &Extras::default()).expect("defined");
         assert!(validate(&plain, &json!("extension:acme.pack/Night")).is_err());
+    }
+
+    #[test]
+    fn extension_icon_themes_become_choices_of_their_workbench_settings() {
+        let extras = Extras {
+            settings: Vec::new(),
+            themes: Vec::new(),
+            icon_themes: vec![EnumOption {
+                value: "extension:acme.pack/icons".to_string(),
+                label: "Acme Icons".to_string(),
+            }],
+            product_icon_themes: vec![EnumOption {
+                value: "extension:acme.pack/product".to_string(),
+                label: "Acme Product Icons".to_string(),
+            }],
+        };
+        let icons = find("workbench.iconTheme", &extras).expect("icons");
+        assert_eq!(
+            validate(&icons, &json!("extension:acme.pack/icons")),
+            Ok(json!("extension:acme.pack/icons"))
+        );
+        let product = find("workbench.productIconTheme", &extras).expect("product");
+        assert_eq!(
+            validate(&product, &json!("extension:acme.pack/product")),
+            Ok(json!("extension:acme.pack/product"))
+        );
     }
 }

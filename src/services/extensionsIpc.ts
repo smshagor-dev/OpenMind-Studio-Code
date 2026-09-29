@@ -114,6 +114,7 @@ export interface ExtensionContributions {
   snippets: ExtensionSnippetContribution[];
   themes: ExtensionThemeContribution[];
   iconThemes: { id: string; label: string; path: string }[];
+  productIconThemes: { id: string; label: string; path: string }[];
   debuggers: { kind: string; label: string | null }[];
   problemMatchers: string[];
   views: ExtensionViews;

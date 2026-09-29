@@ -25,6 +25,7 @@ pub struct Contributions {
     pub snippets: Vec<SnippetContribution>,
     pub themes: Vec<ThemeContribution>,
     pub icon_themes: Vec<IconThemeContribution>,
+    pub product_icon_themes: Vec<ProductIconThemeContribution>,
     pub debuggers: Vec<DebuggerContribution>,
     pub problem_matchers: Vec<String>,
     /// Activity bar containers and their views (see [`crate::views`]).
@@ -180,6 +181,14 @@ pub struct ThemeContribution {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IconThemeContribution {
+    pub id: String,
+    pub label: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProductIconThemeContribution {
     pub id: String,
     pub label: String,
     pub path: String,
@@ -508,6 +517,16 @@ impl Contributions {
                 })
             })
             .collect();
+        out.product_icon_themes = list(value, "productIconThemes")
+            .iter()
+            .filter_map(|entry| {
+                Some(ProductIconThemeContribution {
+                    id: text(entry, "id")?,
+                    label: text(entry, "label").unwrap_or_default(),
+                    path: text(entry, "path")?,
+                })
+            })
+            .collect();
         out.debuggers = list(value, "debuggers")
             .iter()
             .filter_map(|entry| {
@@ -534,6 +553,7 @@ impl Contributions {
             "snippets",
             "themes",
             "iconThemes",
+            "productIconThemes",
             "debuggers",
             "problemMatchers",
             "viewsContainers",
@@ -597,11 +617,12 @@ impl Contributions {
         );
         add("snippets", self.snippets.len(), Support::Supported, None);
         add("themes", self.themes.len(), Support::Supported, None);
+        add("iconThemes", self.icon_themes.len(), Support::Supported, None);
         add(
-            "iconThemes",
-            self.icon_themes.len(),
-            Support::Unsupported,
-            Some("Icon themes aren't supported yet."),
+            "productIconThemes",
+            self.product_icon_themes.len(),
+            Support::Supported,
+            None,
         );
         add(
             "debuggers",
@@ -784,6 +805,7 @@ mod tests {
             "snippets": [{"language": "hello", "path": "./snippets/hello.json"}],
             "themes": [{"label": "Hello Dark", "uiTheme": "vs-dark", "path": "./themes/hello.json"}],
             "iconThemes": [{"id": "hello-icons", "label": "Hello Icons", "path": "./icons.json"}],
+            "productIconThemes": [{"id": "hello-product", "label": "Hello Product Icons", "path": "./product-icons.json"}],
             "grammars": [{"language": "hello", "scopeName": "source.hello", "path": "./hello.tmLanguage.json"}],
             "debuggers": [{"type": "hello", "label": "Hello Debug"}],
             "problemMatchers": [{"name": "hello"}],
@@ -793,6 +815,8 @@ mod tests {
         assert_eq!(c.languages[0].extensions, [".hello"]);
         assert_eq!(c.snippets[0].path, "./snippets/hello.json");
         assert_eq!(c.themes[0].label, "Hello Dark");
+        assert_eq!(c.icon_themes[0].id, "hello-icons");
+        assert_eq!(c.product_icon_themes[0].label, "Hello Product Icons");
         assert_eq!(c.debuggers[0].kind, "hello");
         // Views in the Explorer aren't shown; they are counted, never dropped.
         assert_eq!(c.views.elsewhere, 2);
@@ -830,6 +854,7 @@ mod tests {
             "commands": [{"command": "a.b", "title": "A"}],
             "grammars": [{"language": "x", "scopeName": "s", "path": "p"}],
             "iconThemes": [{"id": "i", "path": "p"}],
+            "productIconThemes": [{"id": "p", "path": "p"}],
             "debuggers": [{"type": "d"}],
             "menus": {"view/title": []},
             "customThing": {"a": 1, "b": 2}
@@ -843,7 +868,8 @@ mod tests {
         };
         assert_eq!(support("commands"), Some(Support::Supported));
         assert_eq!(support("grammars"), Some(Support::Unsupported));
-        assert_eq!(support("iconThemes"), Some(Support::Unsupported));
+        assert_eq!(support("iconThemes"), Some(Support::Supported));
+        assert_eq!(support("productIconThemes"), Some(Support::Supported));
         assert_eq!(support("debuggers"), Some(Support::Metadata));
         assert_eq!(support("menus: view/title"), Some(Support::Unsupported));
         assert_eq!(support("customThing"), Some(Support::Unsupported));

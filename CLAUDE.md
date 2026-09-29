@@ -1170,6 +1170,14 @@ migration file, check for stray running instances first, not just after somethin
   (blue-to-magenta ribbon with a `</>` glyph); desktop targets only (32/128/128@2x/ico/icns plus
   the Windows Store square tiles) — iOS/Android output from the generator is deleted, this project
   doesn't target mobile.
+- Installer artwork: `src-tauri/icons/installer/` (NSIS header 150x57 / sidebar 164x314, WiX banner 493x58 / dialog
+  493x312, 24-bit BMP) is generated from `icons/icon.png` by `scripts/make-installer-images.ps1`; `tauri.conf.json`
+  points NSIS's `installerIcon` at `icons/icon.ico` so setup.exe and its uninstaller carry the brand icon instead of
+  NSIS's default. The `.msi` file itself always shows Windows' generic MSI icon (that can't be changed).
+  `release.test.ts` checks each configured image is a 24-bit BMP of its size.
+- Per-architecture release builds: `pnpm release:build:x64` / `release:build:x86` (`tauri build --target <triple>`, both
+  behind the LSP bundle `--check`) and `release:collect:all` (`release.mjs --targets <triple,...>`, artifacts named
+  `-x64` / `-x86`). The x86 build is unverified (not built on this machine); see `docs/release.md`.
 
 ## Packaging and startup baseline (Milestone 9)
 

@@ -21,6 +21,7 @@ export function emptyContributions(): ExtensionContributions {
     snippets: [],
     themes: [],
     iconThemes: [],
+    productIconThemes: [],
     debuggers: [],
     problemMatchers: [],
     views: { containers: [], elsewhere: 0, otherContainers: 0 },

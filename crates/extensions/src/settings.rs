@@ -1,5 +1,5 @@
 //! What enabled extensions add to the Settings: their configuration properties (in a category named after
-//! the extension) and their colour themes (extra choices of the Color Theme setting).
+//! the extension), colour themes, file icon themes and product icon themes.
 
 use openmind_settings::{EnumOption, Extras, SettingDef, SettingKind, SettingScope};
 
@@ -9,6 +9,11 @@ use crate::store::InstalledExtension;
 /// The id a colour theme has as a value of `workbench.colorTheme`.
 pub fn theme_value(extension_id: &str, label: &str) -> String {
     format!("extension:{extension_id}/{label}")
+}
+
+/// The id an icon/product icon theme has as a value of a Workbench theme setting.
+pub fn icon_theme_value(extension_id: &str, id: &str) -> String {
+    format!("extension:{extension_id}/{id}")
 }
 
 /// Settings and themes of the enabled extensions, in a stable order.
@@ -32,6 +37,26 @@ pub fn extras_for(extensions: &[InstalledExtension]) -> Extras {
             extras.themes.push(EnumOption {
                 value: theme_value(&extension.id, &theme.label),
                 label: theme.label.clone(),
+            });
+        }
+        for theme in &extension.manifest.contributes.icon_themes {
+            extras.icon_themes.push(EnumOption {
+                value: icon_theme_value(&extension.id, &theme.id),
+                label: if theme.label.is_empty() {
+                    theme.id.clone()
+                } else {
+                    theme.label.clone()
+                },
+            });
+        }
+        for theme in &extension.manifest.contributes.product_icon_themes {
+            extras.product_icon_themes.push(EnumOption {
+                value: icon_theme_value(&extension.id, &theme.id),
+                label: if theme.label.is_empty() {
+                    theme.id.clone()
+                } else {
+                    theme.label.clone()
+                },
             });
         }
     }
@@ -107,7 +132,9 @@ mod tests {
             "sampleConfig.maxLineLength":{"type":"integer","default":80,"minimum":10,"maximum":200},
             "sampleConfig.mode":{"type":"string","enum":["a","b"],"default":"a"},
             "sampleConfig.on":{"type":"boolean","default":true}}},
-          "themes":[{"label":"Night","uiTheme":"vs-dark","path":"./t.json"}]}}"#;
+          "themes":[{"label":"Night","uiTheme":"vs-dark","path":"./t.json"}],
+          "iconThemes":[{"id":"icons","label":"Sample Icons","path":"./icons.json"}],
+          "productIconThemes":[{"id":"product","label":"Sample Product Icons","path":"./product.json"}]}}"#;
 
     #[test]
     fn humanize_makes_readable_titles() {
@@ -155,6 +182,20 @@ mod tests {
                 label: "Night".to_string()
             }]
         );
+        assert_eq!(
+            extras.icon_themes,
+            vec![EnumOption {
+                value: "extension:acme.cfg/icons".to_string(),
+                label: "Sample Icons".to_string()
+            }]
+        );
+        assert_eq!(
+            extras.product_icon_themes,
+            vec![EnumOption {
+                value: "extension:acme.cfg/product".to_string(),
+                label: "Sample Product Icons".to_string()
+            }]
+        );
     }
 
     #[test]
@@ -162,5 +203,7 @@ mod tests {
         let extras = extras_for(&[extension(CONFIG, false)]);
         assert!(extras.settings.is_empty());
         assert!(extras.themes.is_empty());
+        assert!(extras.icon_themes.is_empty());
+        assert!(extras.product_icon_themes.is_empty());
     }
 }

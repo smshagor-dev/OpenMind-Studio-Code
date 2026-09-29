@@ -112,6 +112,7 @@ describe("folder icons", () => {
 describe("icon themes", () => {
   it("an unknown theme id falls back to the default, and every built-in theme is listed once", () => {
     expect(iconThemeById("no-such-theme").id).toBe(DEFAULT_ICON_THEME);
+    expect(iconThemeById("extension:acme.pack/icons").id).toBe("extension:acme.pack/icons");
     expect(new Set(ICON_THEMES.map((theme) => theme.id)).size).toBe(ICON_THEMES.length);
   });
 

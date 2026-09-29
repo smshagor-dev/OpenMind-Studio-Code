@@ -3,8 +3,8 @@ import { useSyncExternalStore } from "react";
 /**
  * Icon themes. Every icon is a bundled SVG (the MIT-licensed Material Icon Theme): nothing is fetched, and a name the
  * theme doesn't know falls back to the generic file / folder icon, so no row ever shows a broken image. Extension
- * icon themes are not supported (an extension's `iconThemes` are listed as unsupported), so only these built-in
- * themes exist.
+ * icon theme choices are accepted from installed extensions and rendered through the bundled file/folder fallback when
+ * their concrete icon map is not loaded.
  */
 export interface IconThemeDef {
   id: string;
@@ -40,7 +40,17 @@ export const DEFAULT_ICON_THEME = "material";
 
 /** The theme with this id, or the default when the id is unknown (a removed or mistyped setting). */
 export function iconThemeById(id: string): IconThemeDef {
-  return ICON_THEMES.find((theme) => theme.id === id) ?? (ICON_THEMES[0] as IconThemeDef);
+  const builtIn = ICON_THEMES.find((theme) => theme.id === id);
+  if (builtIn) return builtIn;
+  if (id.startsWith("extension:")) {
+    return {
+      id,
+      label: id.split("/").pop() || "Extension Icons",
+      fileIcons: true,
+      folderIcons: true,
+    };
+  }
+  return ICON_THEMES[0] as IconThemeDef;
 }
 
 let currentId = DEFAULT_ICON_THEME;

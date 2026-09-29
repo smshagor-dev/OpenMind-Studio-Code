@@ -4,10 +4,10 @@
 //! without any account or network.
 //!
 //! **What a profile holds is a fixed list of settings** ([`PROFILE_SETTINGS`]: appearance, editor, formatting, auto
-//! save, search indexing, the AI master switch, marketplace auto-load, the terminal font ...). Nothing else is claimed:
-//! keybindings, extensions, runtimes, keys and passwords are not part of a profile. Switching writes those settings
-//! into the user's `settings.json` (every other key in it is kept) after saving the current values into the profile
-//! being left, so nothing is lost. A profile file that is damaged or unknown is skipped and never overwritten.
+//! save, search indexing, the AI master switch, marketplace auto-load, the terminal font ...) plus the user's
+//! keybindings. Extensions, runtimes, keys and passwords are not part of a profile. Switching writes those settings into
+//! the user's `settings.json` and the profile's shortcuts into `keybindings.json` after saving the current values into
+//! the profile being left, so nothing is lost. A profile file that is damaged or unknown is skipped and never overwritten.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use thiserror::Error;
 
+use crate::keybindings::{self, KeybindingEntry};
 use crate::schema::{self, Extras};
 use crate::store;
 
@@ -71,6 +72,8 @@ pub struct Profile {
     pub created_at: u64,
     pub updated_at: u64,
     pub settings: Map<String, Value>,
+    #[serde(default)]
+    pub keybindings: Vec<KeybindingEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -182,6 +185,10 @@ pub fn snapshot(values: &Map<String, Value>) -> Map<String, Value> {
     out
 }
 
+pub fn keybindings_snapshot(entries: &[KeybindingEntry]) -> Vec<KeybindingEntry> {
+    keybindings::normalize_entries(entries).unwrap_or_default()
+}
+
 fn preset(id: &str, name: &str, settings: Value) -> Profile {
     let t = now();
     Profile {
@@ -192,6 +199,7 @@ fn preset(id: &str, name: &str, settings: Value) -> Profile {
         created_at: t,
         updated_at: t,
         settings: settings.as_object().cloned().unwrap_or_default(),
+        keybindings: Vec::new(),
     }
 }
 
@@ -317,7 +325,11 @@ impl ProfileStore {
 
     /// First run: Default = the user's current values, plus the ready-made profiles. Done once (deleting a ready-made
     /// profile keeps it deleted).
-    pub fn ensure_seeded(&self, current: &Map<String, Value>) -> Result<(), ProfileError> {
+    pub fn ensure_seeded(
+        &self,
+        current: &Map<String, Value>,
+        keybindings: &[KeybindingEntry],
+    ) -> Result<(), ProfileError> {
         let active = self.read_active();
         if active.seeded {
             return Ok(());
@@ -325,6 +337,7 @@ impl ProfileStore {
         if !self.path(DEFAULT_ID).exists() {
             let mut default = preset(DEFAULT_ID, "Default", json!({}));
             default.settings = snapshot(current);
+            default.keybindings = keybindings_snapshot(keybindings);
             self.save(&default)?;
         }
         for profile in presets() {
@@ -430,6 +443,7 @@ impl ProfileStore {
         &self,
         name: &str,
         settings: Map<String, Value>,
+        keybindings: Vec<KeybindingEntry>,
     ) -> Result<Profile, ProfileError> {
         let name = clean_name(name)?;
         if self.name_taken(&name, None) {
@@ -439,13 +453,14 @@ impl ProfileStore {
         }
         let mut profile = preset(&self.unique_id(&name), &name, json!({}));
         profile.settings = snapshot(&settings);
+        profile.keybindings = keybindings_snapshot(&keybindings);
         self.save(&profile)?;
         Ok(profile)
     }
 
     pub fn duplicate(&self, id: &str, name: &str) -> Result<Profile, ProfileError> {
         let source = self.load(id)?;
-        self.create(name, source.settings)
+        self.create(name, source.settings, source.keybindings)
     }
 
     pub fn rename(&self, id: &str, name: &str) -> Result<Profile, ProfileError> {
@@ -487,6 +502,7 @@ impl ProfileStore {
     pub fn export_text(&self, id: &str) -> Result<String, ProfileError> {
         let mut profile = self.load(id)?;
         profile.settings = snapshot(&profile.settings);
+        profile.keybindings = keybindings_snapshot(&profile.keybindings);
         let text = serde_json::to_string_pretty(&profile).map_err(io)?;
         Ok(format!("{text}\n"))
     }
@@ -500,7 +516,7 @@ impl ProfileStore {
             name = format!("{} ({n})", clean_name(&parsed.name)?);
             n += 1;
         }
-        self.create(&name, parsed.settings)
+        self.create(&name, parsed.settings, parsed.keybindings)
     }
 }
 
@@ -531,12 +547,17 @@ pub fn parse_profile(text: &str, expected_id: Option<&str>) -> Result<Profile, P
     }
     profile.name = clean_name(&profile.name)?;
     profile.settings = snapshot(&profile.settings);
+    profile.keybindings = keybindings_snapshot(&profile.keybindings);
     Ok(profile)
 }
 
 /// Makes the user's `settings.json` carry this profile: each profile setting it has is written, each it doesn't have
 /// is removed (the default applies). Every other key in the file is kept.
-pub fn apply(profile: &Profile, user_file: &Path) -> Result<(), store::StoreError> {
+pub fn apply(
+    profile: &Profile,
+    user_file: &Path,
+    keybindings_file: &Path,
+) -> Result<(), store::StoreError> {
     let extras = Extras::default();
     for id in PROFILE_SETTINGS {
         match profile.settings.get(*id) {
@@ -546,7 +567,9 @@ pub fn apply(profile: &Profile, user_file: &Path) -> Result<(), store::StoreErro
             None => store::reset_value(user_file, id, &extras)?,
         }
     }
-    Ok(())
+    keybindings::write_file(keybindings_file, &profile.keybindings)
+        .map(|_| ())
+        .map_err(|err| store::StoreError::Invalid(err.to_string()))
 }
 
 #[cfg(test)]
@@ -564,6 +587,13 @@ mod tests {
             .as_object()
             .cloned()
             .expect("object")
+    }
+
+    fn binding(key: &str, command: &str) -> KeybindingEntry {
+        KeybindingEntry {
+            key: key.to_string(),
+            command: command.to_string(),
+        }
     }
 
     #[test]
@@ -611,7 +641,8 @@ mod tests {
     #[test]
     fn first_run_seeds_default_from_the_current_values_and_the_five_presets_once() {
         let (_d, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        let keys = [binding("ctrl+alt+s", "file.saveAll")];
+        s.ensure_seeded(&current(), &keys).expect("seed");
         let list = s.summary();
         let names: Vec<&str> = list.profiles.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names[0], "Default");
@@ -627,32 +658,41 @@ mod tests {
         }
         let default = s.load(DEFAULT_ID).expect("default");
         assert_eq!(default.settings.get("editor.fontSize"), Some(&json!(18)));
+        assert_eq!(
+            default.keybindings,
+            [binding("Ctrl+Alt+S", "file.saveAll")]
+        );
         assert!(!default.settings.contains_key("some.unknown"));
         // A deleted ready-made profile stays deleted.
         s.delete("python").expect("delete");
-        s.ensure_seeded(&current()).expect("again");
+        s.ensure_seeded(&current(), &[]).expect("again");
         assert_eq!(s.summary().profiles.len(), 5);
     }
 
     #[test]
     fn create_rename_duplicate_switch_and_delete() {
         let (_d, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         let mine = s
-            .create("  My Setup ", snapshot(&current()))
+            .create(
+                "  My Setup ",
+                snapshot(&current()),
+                vec![binding("ctrl+alt+s", "file.saveAll")],
+            )
             .expect("create");
         assert_eq!(
             (mine.id.as_str(), mine.name.as_str()),
             ("my-setup", "My Setup")
         );
         assert!(
-            s.create("my setup", Map::new()).is_err(),
+            s.create("my setup", Map::new(), Vec::new()).is_err(),
             "names are unique, ignoring case"
         );
         let renamed = s.rename("my-setup", "Work").expect("rename");
         assert_eq!(renamed.name, "Work");
         let copy = s.duplicate("my-setup", "Work copy").expect("duplicate");
         assert_eq!(copy.settings, renamed.settings);
+        assert_eq!(copy.keybindings, renamed.keybindings);
         s.set_active("my-setup").expect("active");
         assert_eq!(s.active_id(), "my-setup");
         assert!(
@@ -667,7 +707,7 @@ mod tests {
     #[test]
     fn default_can_never_be_deleted_and_names_are_checked() {
         let (_d, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         assert!(s
             .delete(DEFAULT_ID)
             .expect_err("refused")
@@ -682,7 +722,7 @@ mod tests {
     #[test]
     fn the_active_profile_persists_and_a_missing_or_damaged_active_file_falls_back_to_default() {
         let (dir, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         s.set_active("minimal").expect("active");
         let again = ProfileStore::new(&dir.path().join("my settings"));
         assert_eq!(again.active_id(), "minimal");
@@ -703,7 +743,7 @@ mod tests {
     #[test]
     fn a_damaged_profile_file_is_skipped_reported_and_never_overwritten() {
         let (dir, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         let bad = dir.path().join("my settings/profiles/broken.json");
         std::fs::write(&bad, "{ not json").expect("write");
         std::fs::write(dir.path().join("my settings/profiles/wrong.json"), r#"{"format":"other","version":1,"id":"wrong","name":"x","createdAt":1,"updatedAt":1,"settings":{}}"#).expect("write");
@@ -716,7 +756,7 @@ mod tests {
     #[test]
     fn export_keeps_only_valid_path_free_profile_settings() {
         let (_d, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         let mut dirty = s.load(DEFAULT_ID).expect("default");
         dirty.settings.insert(
             "editor.fontFamily".into(),
@@ -751,7 +791,7 @@ mod tests {
     #[test]
     fn import_validates_the_schema_and_fails_safely() {
         let (_d, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         let text = s.export_text("minimal").expect("export");
         let imported = s.import_text(&text).expect("import");
         assert_eq!(
@@ -771,7 +811,8 @@ mod tests {
             assert!(s.import_text(bad).is_err(), "{bad}");
         }
         let hostile = r#"{"format":"openmind-profile","version":1,"id":"../../evil","name":"Hostile","createdAt":1,"updatedAt":1,
-            "settings":{"editor.tabSize":"many","workbench.iconTheme":"material","ai.key.openai":"sk-123","editor.fontFamily":"/etc/passwd"}}"#;
+            "settings":{"editor.tabSize":"many","workbench.iconTheme":"material","ai.key.openai":"sk-123","editor.fontFamily":"/etc/passwd"},
+            "keybindings":[{"key":"Ctrl+Alt+H","command":"hello.run"},{"key":"H","command":"bad"}]}"#;
         let p = s
             .import_text(hostile)
             .expect("imported with the bad parts dropped");
@@ -780,6 +821,10 @@ mod tests {
             p.settings.keys().map(String::as_str).collect::<Vec<_>>(),
             ["workbench.iconTheme"]
         );
+        assert!(
+            p.keybindings.is_empty(),
+            "invalid imported keybindings are dropped together"
+        );
         assert!(s.import_text(&"x".repeat(300_000)).is_err());
     }
 
@@ -787,6 +832,12 @@ mod tests {
     fn switching_writes_the_profile_into_settings_json_and_keeps_every_other_key() {
         let dir = tempfile::tempdir().expect("tmp");
         let file = dir.path().join("settings").join("settings.json");
+        let keybindings_file = dir.path().join("settings").join("keybindings.json");
+        keybindings::write_file(
+            &keybindings_file,
+            &[binding("Ctrl+Alt+S", "file.saveAll")],
+        )
+        .expect("keys");
         store::set_value(
             &file,
             "editor.fontSize",
@@ -807,7 +858,7 @@ mod tests {
             .into_iter()
             .find(|p| p.id == "minimal")
             .expect("minimal");
-        apply(&minimal, &file).expect("apply");
+        apply(&minimal, &file, &keybindings_file).expect("apply");
         let layer = store::read_layer(&file);
         assert_eq!(
             layer.values.get("workbench.iconTheme"),
@@ -823,12 +874,16 @@ mod tests {
             Some(&json!("*.rs")),
             "not a profile setting: kept"
         );
+        assert_eq!(
+            keybindings::read_file(&keybindings_file).entries,
+            Vec::<KeybindingEntry>::new()
+        );
     }
 
     #[test]
     fn profiles_live_in_the_settings_folder_next_to_the_app() {
         let (dir, s) = store();
-        s.ensure_seeded(&current()).expect("seed");
+        s.ensure_seeded(&current(), &[]).expect("seed");
         assert!(dir
             .path()
             .join("my settings/profiles/default.json")

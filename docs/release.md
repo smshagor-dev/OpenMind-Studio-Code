@@ -3,11 +3,11 @@
 OpenMind Studio ships in three forms. None of them needs administrator rights except the MSI (see below), none changes
 PATH, and the app keeps all its data next to its own executable.
 
-| Artifact | How | Notes |
-| --- | --- | --- |
-| Setup EXE (NSIS) | `pnpm release:build` | per-user install, no administrator rights |
-| MSI (WiX) | `pnpm release:build` | Windows Installer; may ask for administrator rights |
-| Portable ZIP | `pnpm package:portable` | unzip and run |
+| Artifact         | How                     | Notes                                               |
+| ---------------- | ----------------------- | --------------------------------------------------- |
+| Setup EXE (NSIS) | `pnpm release:build`    | per-user install, no administrator rights           |
+| MSI (WiX)        | `pnpm release:build`    | Windows Installer; may ask for administrator rights |
+| Portable ZIP     | `pnpm package:portable` | unzip and run                                       |
 
 ## Build
 
@@ -18,6 +18,17 @@ pnpm release:build            # checks lsp-bundle/, then tauri build --bundles n
 pnpm package:portable         # optional: OpenMindStudio-<version>-portable-win-x64.zip
 pnpm release:collect -- --portable "<path to the portable zip>"   # copies, signs (if configured), checksums, report
 ```
+
+Per-architecture builds (the Rust target must be installed: `rustup target add i686-pc-windows-msvc`):
+
+```powershell
+pnpm release:build:x64        # tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi
+pnpm release:build:x86        # tauri build --target i686-pc-windows-msvc --bundles nsis,msi (32-bit; untested)
+pnpm release:collect:all      # collects both, named ...-x64 / ...-x86
+```
+
+The offline language server bundle is `windows-x64` only: a 32-bit build still carries it, and its servers run only on
+64-bit Windows (on 32-bit Windows the bundle is ignored and servers fall back to npm installs).
 
 `release:collect` writes to `release/` (git-ignored):
 
@@ -35,8 +46,8 @@ build tooling, not something the app does.
 `LICENSE` is packaged and shown by both installers as the licence page**:
 
 1. Welcome
-2. **Licence agreement** — the NSIS installer's *Next/Install* is blocked until the agreement is accepted; the MSI shows
-   the licence and its *Next* is blocked until the "I accept" box is ticked
+2. **Licence agreement** — the NSIS installer's _Next/Install_ is blocked until the agreement is accepted; the MSI shows
+   the licence and its _Next_ is blocked until the "I accept" box is ticked
 3. Install location
 4. Install
 5. Finish, with a **Launch OpenMind Studio** checkbox
@@ -44,16 +55,22 @@ build tooling, not something the app does.
 `release:collect` refuses to run (and a unit test fails) if `LICENSE` is not the full Apache 2.0 text or the installer
 configuration stops referencing it. Never ship an installer that skips the agreement.
 
+## Installer icons
+
+All Windows app surfaces are pinned to `src-tauri/icons/icon.ico`: the installed executable gets it through
+`bundle.icon`, the NSIS setup and uninstaller use it through `installerIcon`/`uninstallerIcon`, and the MSI includes
+`src-tauri/wix/product-icon.wxs` so Apps & features does not fall back to the generic installer icon.
+
 ## Signing
 
 Signing is optional and configured **only through environment variables** (never commit a certificate or a password):
 
-| Variable | Meaning |
-| --- | --- |
-| `SIGNING_CERT_PATH` | path to the `.pfx` certificate |
-| `SIGNING_CERT_PASSWORD` | its password (never printed or written) |
-| `TIMESTAMP_URL` | optional http(s) timestamp server, e.g. your CA's RFC 3161 address |
-| `SIGNING_CERT_KIND` | set to `test` for a self-signed test certificate |
+| Variable                | Meaning                                                            |
+| ----------------------- | ------------------------------------------------------------------ |
+| `SIGNING_CERT_PATH`     | path to the `.pfx` certificate                                     |
+| `SIGNING_CERT_PASSWORD` | its password (never printed or written)                            |
+| `TIMESTAMP_URL`         | optional http(s) timestamp server, e.g. your CA's RFC 3161 address |
+| `SIGNING_CERT_KIND`     | set to `test` for a self-signed test certificate                   |
 
 `signtool.exe` (Windows SDK) signs the installers after they are built. The result is stated in `RELEASE-REPORT.md`:
 
@@ -70,9 +87,9 @@ could sign it too and is the next step once a real certificate exists).
 
 ## Verify an install
 
-1. Run the setup: the licence page appears; *Next* stays disabled until you accept. Install, tick *Launch*.
+1. Run the setup: the licence page appears; _Next_ stays disabled until you accept. Install, tick _Launch_.
 2. The app opens to the Welcome page; Help > About shows **Apache-2.0**, no commit or build hash.
-3. Apps & features (NSIS: per-user) lists *OpenMind Studio*; uninstall removes it. `data/`, `settings/` and other
+3. Apps & features (NSIS: per-user) lists _OpenMind Studio_; uninstall removes it. `data/`, `settings/` and other
    folders live next to the installed executable.
 4. Confirm the User and Machine `PATH` are unchanged and no `OpenMindStudio`/`node`/`conhost` process is left after closing.
 

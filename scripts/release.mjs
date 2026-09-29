@@ -1,4 +1,7 @@
-// usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--portable <zip>] [--no-sign]
+// usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--no-sign]
+//
+// `--targets` collects cross-target builds (`tauri build --target <triple>`), e.g.
+// `x86_64-pc-windows-msvc,i686-pc-windows-msvc`; without it the host build in `<target dir>/release` is collected as x64.
 //
 // After `pnpm release:build` (tauri build --bundles nsis,msi): copies the installers that exist into `release/` under
 // their release names, signs them when a certificate is configured through the environment (SIGNING_CERT_PATH,
@@ -83,21 +86,45 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-const wixSource = join(targetDir(), "release", "wix", "x64", "main.wxs");
-if (existsSync(wixSource)) {
-  const wixProblems = checkWixSource(readFileSync(wixSource, "utf8"));
-  if (wixProblems.length > 0) {
-    console.error(`MSI configuration problems:\n- ${wixProblems.join("\n- ")}`);
+/** Rust target triple -> release architecture name; `null` = the host build (x64). */
+const ARCH_OF = { "x86_64-pc-windows-msvc": "x64", "i686-pc-windows-msvc": "x86" };
+const triples = option("--targets")?.split(",").filter(Boolean) ?? [null];
+const found = [];
+for (const triple of triples) {
+  if (triple !== null && !(triple in ARCH_OF)) {
+    console.error(`Unknown target "${triple}". Known: ${Object.keys(ARCH_OF).join(", ")}.`);
     process.exit(1);
   }
+  const arch = triple === null ? "x64" : ARCH_OF[triple];
+  const releaseDir =
+    triple === null ? join(targetDir(), "release") : join(targetDir(), triple, "release");
+  const wixDir = join(releaseDir, "wix", arch);
+  const wixSource = join(wixDir, "main.wxs");
+  if (existsSync(wixSource)) {
+    const generatedWix = existsSync(wixDir)
+      ? readdirSync(wixDir)
+          .filter((file) => file.toLowerCase().endsWith(".wxs"))
+          .map((file) => readFileSync(join(wixDir, file), "utf8"))
+          .join("\n")
+      : readFileSync(wixSource, "utf8");
+    const productIconFragment = readFileSync(
+      join(root, "src-tauri", "wix", "product-icon.wxs"),
+      "utf8",
+    );
+    const wixProblems = checkWixSource(`${generatedWix}\n${productIconFragment}`);
+    if (wixProblems.length > 0) {
+      console.error(`MSI configuration problems (${arch}):\n- ${wixProblems.join("\n- ")}`);
+      process.exit(1);
+    }
+  }
+  const bundleDir = join(releaseDir, "bundle");
+  found.push(
+    { kind: "setup", arch, from: newest(join(bundleDir, "nsis"), ".exe") },
+    { kind: "msi", arch, from: newest(join(bundleDir, "msi"), ".msi") },
+  );
 }
-const bundleDir = join(targetDir(), "release", "bundle");
-const found = [
-  { kind: "setup", from: newest(join(bundleDir, "nsis"), ".exe") },
-  { kind: "msi", from: newest(join(bundleDir, "msi"), ".msi") },
-  { kind: "portable", from: option("--portable") ?? null },
-].filter((entry) => entry.from !== null && existsSync(entry.from));
-
+if (option("--portable")) found.push({ kind: "portable", arch: "x64", from: option("--portable") });
+const present = found.filter((entry) => entry.from !== null && existsSync(entry.from));
 const out = join(root, "release");
 mkdirSync(out, { recursive: true });
 const config = readSigningConfig(process.env);
@@ -106,8 +133,8 @@ const secrets = [process.env.SIGNING_CERT_PASSWORD];
 let signedCount = 0;
 const artifacts = [];
 
-for (const entry of found) {
-  const name = releaseName(entry.kind, version);
+for (const entry of present) {
+  const name = releaseName(entry.kind, version, entry.arch);
   const target = join(out, name);
   copyFileSync(entry.from, target);
   const canSign =
@@ -142,7 +169,7 @@ writeFileSync(
   join(out, "RELEASE-REPORT.md"),
   reportText({
     version,
-    arch: "x64",
+    arch: [...new Set(present.map((entry) => entry.arch))].join(", ") || "x64",
     buildType,
     date: new Date().toISOString(),
     artifacts,
