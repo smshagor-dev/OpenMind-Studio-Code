@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use openmind_network::problem::{classify_via, NetError, NetProblem};
+use openmind_network::problem::{NetError, NetProblem};
 use sha2::{Digest, Sha256};
 
 use crate::error::RuntimeError;
@@ -54,27 +54,14 @@ impl UreqClient {
     }
 
     fn agent(url: &str, body: Duration) -> ureq::Agent {
-        let builder = ureq::Agent::config_builder()
-            .https_only(true)
-            .http_status_as_error(false)
-            .timeout_connect(Some(Duration::from_secs(15)))
-            .timeout_recv_response(Some(Duration::from_secs(30)))
-            .timeout_recv_body(Some(body));
-        openmind_network::http::configure(builder, url)
-            .build()
-            .into()
+        use openmind_network::http::{agent, Timeouts};
+        agent(url, Timeouts::download(body), None)
     }
 }
 
 /// A network error of the HTTP client, categorized and free of proxy credentials.
 pub(crate) fn network_error(error: &ureq::Error, url: &str) -> RuntimeError {
-    let credentials = openmind_network::http::current().and_then(|proxy| proxy.credentials);
-    let detail = openmind_network::redact::redact(&error.to_string(), credentials.as_ref());
-    let through_proxy = matches!(
-        openmind_network::http::route(url),
-        openmind_network::http::Route::Proxy(_)
-    );
-    RuntimeError::Network(NetError::new(classify_via(error, through_proxy), detail))
+    RuntimeError::Network(openmind_network::http::net_error(error, url))
 }
 
 fn read_error(error: std::io::Error) -> RuntimeError {

@@ -2894,6 +2894,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-broker"
+version = "0.1.0"
+dependencies = [
+ "openmind-network",
+ "openmind-runtime-manager",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
 name = "openmind-core"
 version = "0.1.0"
 dependencies = [

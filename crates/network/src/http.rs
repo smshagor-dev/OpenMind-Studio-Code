@@ -3,6 +3,7 @@
 //! for each URL. With the mode None nothing is changed, so the HTTP client behaves exactly as before.
 
 use std::sync::RwLock;
+use std::time::Duration;
 
 use crate::proxy::{Credentials, ProxyMode, ResolvedProxy, Scheme};
 
@@ -88,6 +89,51 @@ pub fn route_with(proxy: Option<&HttpProxy>, url: &str) -> Route {
 /// The route for `url` under the proxy in force.
 pub fn route(url: &str) -> Route {
     route_with(current().as_ref(), url)
+}
+
+/// Time limits of one request made by OpenMind. ureq's body limit is the *total* time for the body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Timeouts {
+    pub connect: Duration,
+    pub response: Duration,
+    pub body: Duration,
+}
+
+impl Timeouts {
+    /// The Download Manager's limits: 15 s to connect, 30 s to the first byte, `body` for the rest.
+    pub fn download(body: Duration) -> Self {
+        Timeouts {
+            connect: Duration::from_secs(15),
+            response: Duration::from_secs(30),
+            body,
+        }
+    }
+}
+
+/// The one agent every OpenMind download is made with (the Runtime Manager's `UreqClient`, and the package gateway that
+/// serves pip, npm, Go and Git): https only, HTTP statuses returned instead of turned into errors, the proxy route in
+/// force for `url`, the same TLS roots. `max_redirects` `None` keeps ureq's default (the Download Manager follows
+/// redirects); the gateway passes `Some(0)` so a tool sees the redirect itself.
+pub fn agent(url: &str, timeouts: Timeouts, max_redirects: Option<u32>) -> ureq::Agent {
+    let mut builder = ureq::Agent::config_builder()
+        .https_only(true)
+        .http_status_as_error(false)
+        .timeout_connect(Some(timeouts.connect))
+        .timeout_recv_response(Some(timeouts.response))
+        .timeout_recv_body(Some(timeouts.body));
+    if let Some(redirects) = max_redirects {
+        builder = builder.max_redirects(redirects);
+    }
+    configure(builder, url).build().into()
+}
+
+/// A failed request as a categorized network error, free of the proxy credentials (through a proxy a refused connection or
+/// an unknown name is the proxy's problem).
+pub fn net_error(error: &ureq::Error, url: &str) -> crate::problem::NetError {
+    let credentials = current().and_then(|proxy| proxy.credentials);
+    let detail = crate::redact::redact(&error.to_string(), credentials.as_ref());
+    let through_proxy = matches!(route(url), Route::Proxy(_));
+    crate::problem::NetError::new(crate::problem::classify_via(error, through_proxy), detail)
 }
 
 /// Applies the route for `url` to an agent's configuration.

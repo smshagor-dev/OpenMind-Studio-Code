@@ -1,0 +1,20 @@
+[package]
+name = "openmind-broker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+openmind-network = { version = "0.1.0", path = "../network" }
+openmind-runtime-manager = { version = "0.1.0", path = "../runtime-manager" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+thiserror.workspace = true
+tracing.workspace = true
+ureq = { version = "3.4.2", features = ["rustls"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"
