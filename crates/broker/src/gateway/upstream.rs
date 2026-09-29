@@ -53,6 +53,19 @@ impl UpResponse {
 
 pub trait Upstream: Send + Sync {
     fn send(&self, request: UpRequest) -> Result<UpResponse, BrokerError>;
+
+    /// `send` with a body streamed from `body` (a Git push): sent once, never retried. The default reads it first.
+    fn send_stream(
+        &self,
+        mut request: UpRequest,
+        body: &mut dyn Read,
+    ) -> Result<UpResponse, BrokerError> {
+        let mut bytes = Vec::new();
+        body.read_to_end(&mut bytes)
+            .map_err(|err| BrokerError::new(FailureKind::Connection, err.to_string()))?;
+        request.body = bytes;
+        self.send(request)
+    }
 }
 
 /// Request headers a tool may pass on (everything else — cookies, proxy headers, hop-by-hop — stays behind).
@@ -111,8 +124,8 @@ pub fn response_headers(headers: &[(String, String)]) -> Vec<(String, String)> {
 /// The real upstream: the Download Manager's agent.
 pub struct UreqUpstream;
 
-impl Upstream for UreqUpstream {
-    fn send(&self, request: UpRequest) -> Result<UpResponse, BrokerError> {
+impl UreqUpstream {
+    fn agent_for(request: &UpRequest) -> Result<ureq::Agent, BrokerError> {
         if !request.url.to_ascii_lowercase().starts_with("https://") {
             return Err(BrokerError::new(
                 FailureKind::Refused,
@@ -124,23 +137,28 @@ impl Upstream for UreqUpstream {
             response: Duration::from_secs(60),
             body: Duration::from_secs(60 * 60),
         };
-        let agent = agent(
+        Ok(agent(
             &request.url,
             timeouts,
             Some(if request.follow_redirects { 5 } else { 0 }),
-        );
+        ))
+    }
+
+    fn builder(request: &UpRequest) -> ureq::http::request::Builder {
         let mut builder = ureq::http::Request::builder()
             .method(request.method.as_str())
             .uri(request.url.as_str());
         for (name, value) in request_headers(&request.headers) {
             builder = builder.header(name, value);
         }
-        let http_request = builder
-            .body(request.body)
-            .map_err(|err| BrokerError::new(FailureKind::Refused, err.to_string()))?;
-        let response = agent
-            .run(http_request)
-            .map_err(|err| BrokerError::net(&net_error(&err, &request.url)))?;
+        builder
+    }
+
+    fn answer(
+        result: Result<ureq::http::Response<ureq::Body>, ureq::Error>,
+        url: &str,
+    ) -> Result<UpResponse, BrokerError> {
+        let response = result.map_err(|err| BrokerError::net(&net_error(&err, url)))?;
         let status = response.status().as_u16();
         let headers: Vec<(String, String)> = response
             .headers()
@@ -157,6 +175,28 @@ impl Upstream for UreqUpstream {
             headers: response_headers(&headers),
             body: Box::new(response.into_body().into_reader()),
         })
+    }
+}
+
+impl Upstream for UreqUpstream {
+    fn send(&self, request: UpRequest) -> Result<UpResponse, BrokerError> {
+        let agent = Self::agent_for(&request)?;
+        let http_request = Self::builder(&request)
+            .body(request.body.clone())
+            .map_err(|err| BrokerError::new(FailureKind::Refused, err.to_string()))?;
+        Self::answer(agent.run(http_request), &request.url)
+    }
+
+    fn send_stream(
+        &self,
+        request: UpRequest,
+        body: &mut dyn Read,
+    ) -> Result<UpResponse, BrokerError> {
+        let agent = Self::agent_for(&request)?;
+        let http_request = Self::builder(&request)
+            .body(ureq::SendBody::from_reader(body))
+            .map_err(|err| BrokerError::new(FailureKind::Refused, err.to_string()))?;
+        Self::answer(agent.run(http_request), &request.url)
     }
 }
 

@@ -41,7 +41,7 @@ pub(crate) fn handle(
     if !valid_path(rest) {
         return write_error(out, 400, "not a Go module proxy address");
     }
-    let url = format!("{}/{}", shared.config.go_proxy.trim_end_matches('/'), rest);
+    let url = format!("{}/{}", shared.go_proxy().trim_end_matches('/'), rest);
     if rest.ends_with(".zip") && rest.contains("/@v/") {
         let artifact = ArtifactRequest {
             provider: Provider::Go,

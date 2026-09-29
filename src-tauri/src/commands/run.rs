@@ -79,6 +79,7 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
     let mut path_prepend = vec![state.broker.shims_dir().to_path_buf()];
     path_prepend.extend(crate::commands::toolchains::bundled_dirs(state).await);
     path_prepend.extend(std::mem::take(&mut environment.path_prepend));
+    state.broker.set_tool_dirs(&path_prepend);
     environment.path_prepend = path_prepend;
     // Package tools pointed at the package gateway, for this process only.
     environment

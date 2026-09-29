@@ -4,7 +4,7 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use openmind_broker::env::{fetch_shims, process_env, Endpoints, Inherited, Skipped};
@@ -30,6 +30,9 @@ pub struct BrokerRuntime {
     shims_dir: PathBuf,
     recent: Arc<Mutex<VecDeque<BrokerEvent>>>,
     recovery: Arc<Mutex<Option<RecoveryReport>>>,
+    /// The folders launchers put first on PATH (OpenMind's shims, bundled tools, portable runtimes): the Git that answers
+    /// credential requests is looked up there first, like a terminal would.
+    tool_dirs: Arc<RwLock<Vec<PathBuf>>>,
 }
 
 /// Progress events at most every 250 ms per operation, plus every change of phase.
@@ -115,14 +118,22 @@ impl BrokerRuntime {
         if go_proxy.starts_with("https://") {
             config.go_proxy = go_proxy.split(',').next().unwrap_or(go_proxy).to_string();
         }
-        let (gateway, problem) =
-            match Gateway::start(Arc::new(broker), Arc::new(UreqUpstream), config) {
-                Ok(gateway) => (Some(gateway), None),
-                Err(err) => {
-                    tracing::error!(%err, "the package gateway could not start");
-                    (None, Some(err.to_string()))
-                }
-            };
+        let tool_dirs = Arc::new(RwLock::new(Vec::new()));
+        let credentials = Arc::new(crate::commands::git_credentials::GitCredentialHelper::new(
+            Arc::clone(&tool_dirs),
+        ));
+        let (gateway, problem) = match Gateway::start_with(
+            Arc::new(broker),
+            Arc::new(UreqUpstream),
+            config,
+            credentials,
+        ) {
+            Ok(gateway) => (Some(gateway), None),
+            Err(err) => {
+                tracing::error!(%err, "the package gateway could not start");
+                (None, Some(err.to_string()))
+            }
+        };
         BrokerRuntime {
             gateway,
             problem,
@@ -130,7 +141,30 @@ impl BrokerRuntime {
             shims_dir,
             recent,
             recovery,
+            tool_dirs,
         }
+    }
+
+    /// The folders a launcher puts first on PATH (called whenever one is built).
+    pub fn set_tool_dirs(&self, dirs: &[PathBuf]) {
+        if let Ok(mut current) = self.tool_dirs.write() {
+            if current.as_slice() != dirs {
+                *current = dirs.to_vec();
+            }
+        }
+    }
+
+    /// The Go module proxy the gateway fetches from: the user's `network.goProxy` (https only) or proxy.golang.org.
+    /// Applies at once, also for terminals that are already open.
+    pub fn set_go_proxy(&self, setting: &str) {
+        let Some(gateway) = &self.gateway else { return };
+        let first = setting.trim().split(',').next().unwrap_or_default().trim();
+        let upstream = if first.starts_with("https://") {
+            first
+        } else {
+            "https://proxy.golang.org/"
+        };
+        gateway.set_go_proxy(upstream);
     }
 
     pub fn endpoints(&self) -> Option<Endpoints> {

@@ -3,6 +3,7 @@
 //! listens on 127.0.0.1 only, accepts only requests addressed to 127.0.0.1/localhost with its port (so a web page can't
 //! reach it through DNS rebinding), and every path on the main port carries a per-run random token.
 
+pub mod credentials;
 pub mod fetch;
 pub mod git;
 pub mod goproxy;

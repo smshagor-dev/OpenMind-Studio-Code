@@ -3178,6 +3178,7 @@ dependencies = [
  "openmind-network",
  "openmind-notebook",
  "openmind-preview",
+ "openmind-process",
  "openmind-runner",
  "openmind-runtime-manager",
  "openmind-search",

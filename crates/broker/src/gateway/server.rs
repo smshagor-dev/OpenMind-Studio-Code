@@ -4,10 +4,11 @@ use std::collections::HashMap;
 use std::io::{self, BufReader, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-use super::http1::{read_request, write_error, Request};
+use super::credentials::{CredentialCache, CredentialSource, NoCredentials};
+use super::http1::{expects_continue, read_body, read_head, write_error, BodyReader, Request};
 use super::upstream::Upstream;
 use super::{fetch, pypi};
 use crate::broker::Broker;
@@ -46,6 +47,12 @@ pub(crate) struct Shared {
     pub port: u16,
     pub npm_port: u16,
     pub stop: AtomicBool,
+    /// The user's credential helper, for Git remotes that ask for credentials.
+    pub credentials: Arc<dyn CredentialSource>,
+    /// Credentials the remotes accepted, in memory only.
+    pub git_credentials: CredentialCache,
+    /// The Go module proxy fetched from (changes with the setting, no restart).
+    go_proxy: RwLock<String>,
     active: AtomicUsize,
     hashes: Mutex<HashMap<String, String>>,
 }
@@ -68,6 +75,13 @@ impl Shared {
     pub fn hash_of(&self, url: &str) -> Option<String> {
         self.hashes.lock().ok()?.get(url).cloned()
     }
+
+    pub fn go_proxy(&self) -> String {
+        self.go_proxy
+            .read()
+            .map(|value| value.clone())
+            .unwrap_or_else(|_| self.config.go_proxy.clone())
+    }
 }
 
 pub struct Gateway {
@@ -81,18 +95,32 @@ fn token() -> io::Result<String> {
 }
 
 impl Gateway {
-    /// Binds two loopback ports (the gateway, and npm's registry at the root of its own port) and starts serving.
+    /// Binds two loopback ports (the gateway, and npm's registry at the root of its own port) and starts serving,
+    /// without a credential helper.
     pub fn start(
         broker: Arc<Broker>,
         upstream: Arc<dyn Upstream>,
         config: GatewayConfig,
+    ) -> io::Result<Gateway> {
+        Self::start_with(broker, upstream, config, Arc::new(NoCredentials))
+    }
+
+    /// `start`, with the user's credential helper for Git remotes that ask for credentials.
+    pub fn start_with(
+        broker: Arc<Broker>,
+        upstream: Arc<dyn Upstream>,
+        config: GatewayConfig,
+        credentials: Arc<dyn CredentialSource>,
     ) -> io::Result<Gateway> {
         let main = TcpListener::bind(("127.0.0.1", 0))?;
         let npm = TcpListener::bind(("127.0.0.1", 0))?;
         let shared = Arc::new(Shared {
             broker,
             upstream,
+            go_proxy: RwLock::new(config.go_proxy.clone()),
             config,
+            credentials,
+            git_credentials: CredentialCache::default(),
             token: token()?,
             port: main.local_addr()?.port(),
             npm_port: npm.local_addr()?.port(),
@@ -133,6 +161,34 @@ impl Gateway {
 
     pub fn broker(&self) -> &Arc<Broker> {
         &self.shared.broker
+    }
+
+    /// The Go module proxy to fetch from from now on (an https address; anything else keeps the current one).
+    pub fn set_go_proxy(&self, url: &str) -> bool {
+        let url = url.trim();
+        if !url.starts_with("https://") || url.contains(['@', ' ', ',', '|']) {
+            return false;
+        }
+        match self.shared.go_proxy.write() {
+            Ok(mut current) => {
+                if *current != url {
+                    tracing::info!(upstream = %url, "go module proxy changed");
+                    *current = url.to_string();
+                }
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// The Go module proxy fetched from.
+    pub fn go_proxy(&self) -> String {
+        self.shared.go_proxy()
+    }
+
+    /// Forgets the credentials remotes accepted this session (the helper keeps what it stores).
+    pub fn forget_credentials(&self) {
+        self.shared.git_credentials.clear();
     }
 
     /// Stops accepting connections and cancels running downloads.
@@ -212,14 +268,8 @@ fn serve(stream: TcpStream, shared: &Shared, npm: bool) {
     };
     let mut reader = BufReader::new(stream);
     loop {
-        let mut continue_writer = match writer.try_clone() {
-            Ok(w) => w,
-            Err(_) => return,
-        };
-        let request = match read_request(&mut reader, &mut || {
-            continue_writer.write_all(b"HTTP/1.1 100 Continue\r\n\r\n")
-        }) {
-            Ok(Some(request)) => request,
+        let (mut request, kind) = match read_head(&mut reader) {
+            Ok(Some(head)) => head,
             Ok(None) => return,
             Err(err) => {
                 if err.kind() == io::ErrorKind::InvalidData {
@@ -242,7 +292,26 @@ fn serve(stream: TcpStream, shared: &Shared, npm: bool) {
             let _ = write_error(&mut writer, 403, "requests must be addressed to 127.0.0.1");
             return;
         }
+        if expects_continue(&request, kind)
+            && writer.write_all(b"HTTP/1.1 100 Continue\r\n\r\n").is_err()
+        {
+            return;
+        }
         tracing::debug!(method = %request.method, path = %redact_token(request.path(), &shared.token), npm, "gateway request");
+        if !npm && is_push(&request) {
+            // A push body is streamed to the remote as it arrives; the connection ends with it.
+            let mut body = BodyReader::new(&mut reader, kind);
+            let _ = route_push(shared, &request, &mut body, &mut writer);
+            let _ = writer.shutdown(Shutdown::Both);
+            return;
+        }
+        request.body = match read_body(&mut reader, kind) {
+            Ok(body) => body,
+            Err(err) => {
+                let _ = write_error(&mut writer, 413, &err.to_string());
+                return;
+            }
+        };
         let result = if npm {
             super::npm::handle(shared, &request, &mut writer)
         } else {
@@ -255,20 +324,43 @@ fn serve(stream: TcpStream, shared: &Shared, npm: bool) {
     }
 }
 
+/// `POST <token>/git/.../git-receive-pack`.
+fn is_push(request: &Request) -> bool {
+    request.method == "POST"
+        && request.path().contains("/git/")
+        && request.path().ends_with("/git-receive-pack")
+}
+
+/// The token-checked part of a path: `(section, rest)`.
+fn session<'a>(shared: &Shared, path: &'a str) -> Option<(&'a str, &'a str)> {
+    let (given, rest) = path.strip_prefix('/').and_then(|p| p.split_once('/'))?;
+    if !same(given, &shared.token) {
+        return None;
+    }
+    Some(rest.split_once('/').unwrap_or((rest, "")))
+}
+
+fn route_push(
+    shared: &Shared,
+    request: &Request,
+    body: &mut BodyReader<'_>,
+    out: &mut dyn Write,
+) -> io::Result<()> {
+    match session(shared, request.path()) {
+        Some(("git", rest)) => super::git::handle_push(shared, request, rest, body, out),
+        _ => write_error(out, 403, "unknown session"),
+    }
+}
+
 /// A path for the log, with the session token hidden.
 fn redact_token(path: &str, token: &str) -> String {
     path.replace(token, "<token>")
 }
 
 fn route(shared: &Shared, request: &Request, out: &mut dyn Write) -> io::Result<()> {
-    let path = request.path();
-    let Some((given, rest)) = path.strip_prefix('/').and_then(|p| p.split_once('/')) else {
+    let Some((section, rest)) = session(shared, request.path()) else {
         return write_error(out, 403, "unknown session");
     };
-    if !same(given, &shared.token) {
-        return write_error(out, 403, "unknown session");
-    }
-    let (section, rest) = rest.split_once('/').unwrap_or((rest, ""));
     match section {
         "status" => super::http1::write_full(out, 200, &[], b"ok"),
         "pypi" => pypi::handle(shared, request, rest, out),

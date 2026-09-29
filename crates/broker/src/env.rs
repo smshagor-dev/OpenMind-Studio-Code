@@ -220,7 +220,8 @@ pub fn process_env(endpoints: &Endpoints, inherited: &Inherited) -> ProcessEnv {
     );
     set("OPENMIND_FETCH_URL", format!("{base}/fetch"));
 
-    // Git: fetches through the gateway, pushes on Git's own connection, the gateway never through another proxy.
+    // Git: clone, fetch, pull and push through the gateway (which signs in with the user's credential helper for the
+    // real host); the gateway itself never through another proxy. SSH remotes are untouched (Git's own ssh).
     let first: usize = inherited
         .var("GIT_CONFIG_COUNT")
         .and_then(|count| count.trim().parse().ok())
@@ -228,10 +229,6 @@ pub fn process_env(endpoints: &Endpoints, inherited: &Inherited) -> ProcessEnv {
     let git = [
         (
             format!("url.{base}/git/https/.insteadOf"),
-            "https://".to_string(),
-        ),
-        (
-            "url.https://.pushInsteadOf".to_string(),
             "https://".to_string(),
         ),
         (
@@ -306,20 +303,20 @@ mod tests {
             Some("http://cargo:t0k@127.0.0.1:4000")
         );
         assert_eq!(get(&env, "NO_PROXY"), Some("127.0.0.1,localhost"));
-        assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("3"));
+        assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("2"));
         assert_eq!(
             get(&env, "GIT_CONFIG_KEY_0"),
             Some("url.http://127.0.0.1:4000/t0k/git/https/.insteadOf")
         );
         assert_eq!(
             get(&env, "GIT_CONFIG_KEY_1"),
-            Some("url.https://.pushInsteadOf")
-        );
-        assert_eq!(
-            get(&env, "GIT_CONFIG_KEY_2"),
             Some("http.http://127.0.0.1:4000/.proxy")
         );
-        assert_eq!(get(&env, "GIT_CONFIG_VALUE_2"), Some(""));
+        assert_eq!(get(&env, "GIT_CONFIG_VALUE_1"), Some(""));
+        assert!(
+            env.vars.iter().all(|(_, v)| !v.contains("pushInsteadOf")),
+            "pushes go through the gateway too"
+        );
         assert!(env.skipped.is_empty());
         // The old blanket proxy variables are gone: user code is never routed.
         for old in [
@@ -340,7 +337,7 @@ mod tests {
         inherited.vars.insert("GIT_CONFIG_COUNT".into(), "2".into());
         inherited.vars.insert("NO_PROXY".into(), ".corp".into());
         let env = process_env(&endpoints(), &inherited);
-        assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("5"));
+        assert_eq!(get(&env, "GIT_CONFIG_COUNT"), Some("4"));
         assert!(get(&env, "GIT_CONFIG_KEY_2").is_some_and(|k| k.ends_with(".insteadOf")));
         assert_eq!(
             get(&env, "GIT_CONFIG_KEY_0"),

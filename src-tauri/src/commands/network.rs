@@ -189,6 +189,8 @@ pub(crate) async fn refresh(state: &AppState) -> Resolution {
         resolved: proxy.clone(),
         credentials: credentials.clone(),
     }));
+    // A changed Go module proxy applies to the gateway at once (no restart, open terminals included).
+    state.broker.set_go_proxy(&config.go_proxy);
     Resolution {
         config,
         proxy,

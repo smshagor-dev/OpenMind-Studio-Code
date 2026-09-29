@@ -12,6 +12,7 @@ pub mod extensions;
 pub mod filesystem;
 pub mod format;
 pub mod git;
+pub mod git_credentials;
 pub mod index;
 pub mod language;
 pub mod lsp;

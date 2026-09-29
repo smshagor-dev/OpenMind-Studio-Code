@@ -105,12 +105,17 @@ fn read_line(reader: &mut dyn BufRead, budget: &mut usize) -> io::Result<Option<
     }
 }
 
-/// Reads the next request; `None` when the client closed the connection between requests. `on_continue` is called
-/// before the body is read when the client asked for `100 Continue`.
-pub fn read_request(
-    reader: &mut dyn BufRead,
-    on_continue: &mut dyn FnMut() -> io::Result<()>,
-) -> io::Result<Option<Request>> {
+/// How a request's body is framed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyKind {
+    None,
+    Length(u64),
+    Chunked,
+}
+
+/// Reads the head of the next request (request line and headers); `None` when the client closed the connection between
+/// requests. The body is left in `reader`: read it with [`read_body`] or stream it with [`BodyReader`].
+pub fn read_head(reader: &mut dyn BufRead) -> io::Result<Option<(Request, BodyKind)>> {
     let mut budget = MAX_HEAD;
     let Some(first) = read_line(reader, &mut budget)? else {
         return Ok(None);
@@ -151,33 +156,140 @@ pub fn read_request(
     {
         request.close = true;
     }
-    let chunked = request
-        .header("transfer-encoding")
-        .map(|v| v.to_ascii_lowercase());
-    let length = request.header("content-length").map(str::to_string);
-    let has_body = chunked.is_some() || length.as_deref().is_some_and(|l| l != "0");
-    if has_body
+    let kind = match (
+        request
+            .header("transfer-encoding")
+            .map(|v| v.to_ascii_lowercase()),
+        request.header("content-length"),
+    ) {
+        (Some(te), _) if te == "chunked" => BodyKind::Chunked,
+        (Some(_), _) => return Err(bad("unsupported transfer encoding")),
+        (None, Some(length)) => match length.trim().parse::<u64>() {
+            Ok(0) => BodyKind::None,
+            Ok(length) => BodyKind::Length(length),
+            Err(_) => return Err(bad("bad content length")),
+        },
+        (None, None) => BodyKind::None,
+    };
+    Ok(Some((request, kind)))
+}
+
+/// The client asked to be told before it sends the body.
+pub fn expects_continue(request: &Request, kind: BodyKind) -> bool {
+    kind != BodyKind::None
         && request
             .header("expect")
             .is_some_and(|v| v.eq_ignore_ascii_case("100-continue"))
-    {
-        on_continue()?;
-    }
-    match (chunked.as_deref(), length) {
-        (Some("chunked"), _) => request.body = read_chunked(reader)?,
-        (Some(_), _) => return Err(bad("unsupported transfer encoding")),
-        (None, Some(length)) => {
-            let length: usize = length.parse().map_err(|_| bad("bad content length"))?;
-            if length > MAX_BODY {
+}
+
+/// Reads a whole body into memory (at most [`MAX_BODY`]).
+pub fn read_body(reader: &mut dyn BufRead, kind: BodyKind) -> io::Result<Vec<u8>> {
+    match kind {
+        BodyKind::None => Ok(Vec::new()),
+        BodyKind::Chunked => read_chunked(reader),
+        BodyKind::Length(length) => {
+            if length > MAX_BODY as u64 {
                 return Err(bad("request body too large"));
             }
-            let mut body = vec![0; length];
+            let mut body = vec![0; length as usize];
             reader.read_exact(&mut body)?;
-            request.body = body;
+            Ok(body)
         }
-        (None, None) => {}
     }
+}
+
+/// Reads the next request with its whole body; `None` when the client closed the connection between requests.
+/// `on_continue` is called before the body is read when the client asked for `100 Continue`.
+pub fn read_request(
+    reader: &mut dyn BufRead,
+    on_continue: &mut dyn FnMut() -> io::Result<()>,
+) -> io::Result<Option<Request>> {
+    let Some((mut request, kind)) = read_head(reader)? else {
+        return Ok(None);
+    };
+    if expects_continue(&request, kind) {
+        on_continue()?;
+    }
+    request.body = read_body(reader, kind)?;
     Ok(Some(request))
+}
+
+/// A body streamed as it arrives (a Git push can be larger than anything worth holding in memory).
+pub struct BodyReader<'a> {
+    reader: &'a mut dyn BufRead,
+    kind: BodyKind,
+    /// Bytes left in the current chunk (chunked) or in the body (length).
+    left: u64,
+    done: bool,
+}
+
+impl<'a> BodyReader<'a> {
+    pub fn new(reader: &'a mut dyn BufRead, kind: BodyKind) -> Self {
+        let (left, done) = match kind {
+            BodyKind::None => (0, true),
+            BodyKind::Length(length) => (length, false),
+            BodyKind::Chunked => (0, false),
+        };
+        BodyReader {
+            reader,
+            kind,
+            left,
+            done,
+        }
+    }
+
+    /// Whether the whole body was read (so the connection could serve another request).
+    pub fn finished(&self) -> bool {
+        self.done
+    }
+}
+
+impl Read for BodyReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.done || buf.is_empty() {
+            return Ok(0);
+        }
+        if self.kind == BodyKind::Chunked && self.left == 0 {
+            let mut budget = 1024;
+            let line = read_line(self.reader, &mut budget)?
+                .ok_or_else(|| bad("closed in chunked body"))?;
+            let size_text = line.split(';').next().unwrap_or_default().trim();
+            let size = u64::from_str_radix(size_text, 16).map_err(|_| bad("bad chunk size"))?;
+            if size == 0 {
+                loop {
+                    let mut budget = MAX_HEAD;
+                    match read_line(self.reader, &mut budget)? {
+                        Some(line) if !line.is_empty() => continue,
+                        _ => break,
+                    }
+                }
+                self.done = true;
+                return Ok(0);
+            }
+            self.left = size;
+        }
+        let want = buf
+            .len()
+            .min(usize::try_from(self.left).unwrap_or(usize::MAX));
+        let read = self.reader.read(&mut buf[..want])?;
+        if read == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "the body ended early",
+            ));
+        }
+        self.left -= read as u64;
+        if self.left == 0 {
+            match self.kind {
+                BodyKind::Length(_) => self.done = true,
+                _ => {
+                    let mut crlf = [0u8; 2];
+                    self.reader.read_exact(&mut crlf)?;
+                }
+            }
+        }
+        Ok(read)
+    }
 }
 
 fn read_chunked(reader: &mut dyn BufRead) -> io::Result<Vec<u8>> {
@@ -389,6 +501,37 @@ mod tests {
         );
         assert!(parse(big.as_bytes()).is_err());
         assert!(parse(b"POST / HTTP/1.1\r\nTransfer-Encoding: gzip\r\n\r\n").is_err());
+    }
+
+    #[test]
+    fn a_body_can_be_streamed_as_it_arrives() {
+        for raw in [
+            &b"POST /x HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nwiki\r\n5\r\npedia\r\n0\r\n\r\nNEXT"[..],
+            &b"POST /x HTTP/1.1\r\nContent-Length: 9\r\n\r\nwikipediaNEXT"[..],
+        ] {
+            let mut reader = BufReader::new(Cursor::new(raw.to_vec()));
+            let (_, kind) = read_head(&mut reader).expect("ok").expect("head");
+            let mut body = BodyReader::new(&mut reader, kind);
+            let mut out = Vec::new();
+            body.read_to_end(&mut out).expect("read");
+            assert!(body.finished());
+            assert_eq!(out, b"wikipedia");
+            let mut rest = String::new();
+            reader.read_to_string(&mut rest).expect("rest");
+            assert_eq!(rest, "NEXT", "the next request is left untouched");
+        }
+    }
+
+    #[test]
+    fn a_body_that_ends_early_is_an_error() {
+        let mut reader = BufReader::new(Cursor::new(
+            b"POST /x HTTP/1.1\r\nContent-Length: 9\r\n\r\nwiki".to_vec(),
+        ));
+        let (_, kind) = read_head(&mut reader).expect("ok").expect("head");
+        let mut out = Vec::new();
+        assert!(BodyReader::new(&mut reader, kind)
+            .read_to_end(&mut out)
+            .is_err());
     }
 
     #[test]
