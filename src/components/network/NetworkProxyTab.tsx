@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useT } from "../../i18n";
 import { container } from "../../services/container";
 import type { NetworkStatus } from "../../services/network/networkIpc";
-import { sourceText, testText } from "../../services/network/networkModel";
+import { diagnosticText, sourceText, testSummary } from "../../services/network/networkModel";
 import type { NetworkState } from "../../services/network/networkService";
 
 const MODES = ["none", "system", "manual"] as const;
@@ -52,7 +52,6 @@ function Field({ id, label, placeholder }: { id: string; label: string; placehol
 }
 
 function Detected({ status }: { status: NetworkStatus }) {
-  const t = useT();
   const rows: [string, string | null][] = [
     ["HTTP", status.http],
     ["HTTPS", status.https],
@@ -68,8 +67,57 @@ function Detected({ status }: { status: NetworkStatus }) {
             {name}: <code>{value}</code>
           </p>
         ))}
-      {status.pacUrl !== null ? (
-        <p className="network__warning">{t("network.pacNotSupported", { url: status.pacUrl })}</p>
+    </div>
+  );
+}
+
+/**
+ * What the backend ignores or can't do with these settings (an address with credentials in it, a PAC script, a
+ * SOCKS-only proxy ...), and terminals that still have the old settings: nothing is dropped without saying so.
+ */
+function Diagnostics({ state }: { state: NetworkState }) {
+  const t = useT();
+  const items = (state.status?.diagnostics ?? []).map((diagnostic) => ({
+    severity: diagnostic.severity,
+    text: diagnosticText(diagnostic),
+  }));
+  if (state.staleTerminals.length > 0) items.push({ severity: "warning", text: t("network.diag.staleTerminals") });
+  if (items.length === 0) return null;
+  return (
+    <section className="network__section" aria-label={t("network.diag.title")}>
+      <h3>{t("network.diag.title")}</h3>
+      <ul className="network__diagnostics">
+        {items.map((item) => (
+          <li
+            key={item.text}
+            className={item.severity === "warning" ? "network__diagnostic network__diagnostic--warning" : "network__diagnostic"}
+          >
+            {item.text}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Test Connection's answer: an actionable headline, route/status/time, what to do, and the raw error on request. */
+function TestResult({ state }: { state: NetworkState }) {
+  const t = useT();
+  if (state.test === null) return null;
+  const summary = testSummary(state.test);
+  return (
+    <div className={summary.ok ? "network__result network__result--ok" : "network__result"} role="status">
+      <p className="network__result-title">
+        {summary.ok ? "✓ " : "✗ "}
+        {summary.title}
+      </p>
+      <p className="network__meta">{summary.line}</p>
+      {summary.hint !== null ? <p className="network__meta">{summary.hint}</p> : null}
+      {summary.detail !== null ? (
+        <details className="network__details">
+          <summary>{t("network.test.details")}</summary>
+          <code>{summary.detail}</code>
+        </details>
       ) : null}
     </div>
   );
@@ -147,6 +195,7 @@ export function NetworkProxyTab({ state }: { state: NetworkState }) {
   return (
     <>
       <p className="network__lead">{t("network.lead")}</p>
+      <Diagnostics state={state} />
       <fieldset className="network__modes">
         <legend>{t("setting.network.proxy.mode.title")}</legend>
         {MODES.map((value) => (
@@ -203,11 +252,7 @@ export function NetworkProxyTab({ state }: { state: NetworkState }) {
             {state.testing ? t("network.test.running") : t("network.test.button")}
           </button>
         </div>
-        {state.test !== null ? (
-          <p className={state.test.ok ? "network__ok" : "network__warning"} role="status">
-            {testText(state.test)}
-          </p>
-        ) : null}
+        <TestResult state={state} />
       </section>
       <section className="network__section">
         <button

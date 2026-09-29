@@ -94,22 +94,6 @@ pub fn file_url(path: &Path) -> String {
     url
 }
 
-/// `-c http.proxy=...` arguments for one Git command (Git also honours the environment above; this form is for a
-/// single command and writes no configuration).
-pub fn git_proxy_args(resolved: &ResolvedProxy, credentials: Option<&Credentials>) -> Vec<String> {
-    resolved
-        .https
-        .as_ref()
-        .or(resolved.http.as_ref())
-        .map(|url| {
-            vec![
-                "-c".to_string(),
-                format!("http.proxy={}", url.url(credentials)),
-            ]
-        })
-        .unwrap_or_default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,18 +179,14 @@ mod tests {
     }
 
     #[test]
-    fn socks_goes_to_all_proxy_and_git_gets_a_one_command_flag() {
+    fn socks_goes_to_all_proxy_in_both_spellings() {
         let resolved = resolve_manual(&ProxySettings {
             socks: "socks5://s:1080".into(),
             ..ProxySettings::default()
         });
         let vars = proxy_env(&resolved, None, &EnvExtras::default());
         assert_eq!(get(&vars, "ALL_PROXY"), Some("socks5://s:1080"));
-        assert_eq!(
-            git_proxy_args(&manual("p:8080"), None),
-            vec!["-c", "http.proxy=http://p:8080"]
-        );
-        assert!(git_proxy_args(&ResolvedProxy::off(), None).is_empty());
+        assert_eq!(get(&vars, "all_proxy"), Some("socks5://s:1080"));
     }
 
     #[test]

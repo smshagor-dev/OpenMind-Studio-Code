@@ -19,6 +19,8 @@ pub struct SystemProxy {
     pub user_proxy: Option<String>,
     pub user_bypass: Option<String>,
     pub user_pac: Option<String>,
+    /// "Automatically detect settings" is on (WPAD).
+    pub user_auto_detect: bool,
     /// The WinHTTP (machine) proxy.
     pub winhttp_proxy: Option<String>,
     pub winhttp_bypass: Option<String>,
@@ -169,6 +171,7 @@ pub fn resolve_system(found: &SystemProxy) -> (ResolvedProxy, Option<Credentials
                 socks,
                 no_proxy: parse_no_proxy(&no_proxy_env),
                 pac_url: found.user_pac.clone(),
+                auto_detect: found.user_auto_detect,
                 problems,
             },
             credentials,
@@ -184,6 +187,7 @@ pub fn resolve_system(found: &SystemProxy) -> (ResolvedProxy, Option<Credentials
             socks,
             no_proxy: parse_no_proxy(bypass.as_deref().unwrap_or_default()),
             pac_url: found.user_pac.clone(),
+            auto_detect: found.user_auto_detect,
             problems: Vec::new(),
         })
     };
@@ -205,6 +209,7 @@ pub fn resolve_system(found: &SystemProxy) -> (ResolvedProxy, Option<Credentials
     none.mode = ProxyMode::System;
     none.source = ProxySource::NoneDetected;
     none.pac_url = found.user_pac.clone();
+    none.auto_detect = found.user_auto_detect;
     none.problems = problems;
     (none, None)
 }
@@ -246,6 +251,7 @@ mod windows {
             let mut user: WINHTTP_CURRENT_USER_IE_PROXY_CONFIG = std::mem::zeroed();
             if WinHttpGetIEProxyConfigForCurrentUser(&mut user) != FALSE {
                 found.user_pac = take(user.lpszAutoConfigUrl);
+                found.user_auto_detect = user.fAutoDetect != FALSE;
                 found.user_proxy = take(user.lpszProxy);
                 found.user_bypass = take(user.lpszProxyBypass);
             }
@@ -345,6 +351,15 @@ mod tests {
         assert_eq!(none.source, ProxySource::NoneDetected);
         assert!(!none.active());
         assert_eq!(none.pac_url.as_deref(), Some("http://wpad/wpad.dat"));
+        assert!(!none.auto_detect);
+        let detect = SystemProxy {
+            user_auto_detect: true,
+            ..SystemProxy::default()
+        };
+        assert!(
+            resolve_system(&detect).0.auto_detect,
+            "WPAD is reported, never evaluated"
+        );
     }
 
     #[test]

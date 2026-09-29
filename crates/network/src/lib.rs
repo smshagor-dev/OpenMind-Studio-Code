@@ -3,6 +3,7 @@
 //! test and the offline package cache. Nothing here changes the system proxy, PATH, the Registry or a package
 //! manager's global configuration, and nothing makes a request unless a caller asks for one.
 
+pub mod diagnostics;
 pub mod env;
 pub mod http;
 pub mod offline;
@@ -12,3 +13,4 @@ pub mod proxy;
 pub mod redact;
 pub mod retry;
 pub mod system;
+pub mod wheelhouse;

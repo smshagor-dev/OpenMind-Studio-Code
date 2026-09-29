@@ -643,6 +643,7 @@ const network = wireNetwork({
   },
   runtime,
   editor,
+  confirm: (request) => extensions.prompts.confirm(request),
   run: (id) => {
     run(id);
   },

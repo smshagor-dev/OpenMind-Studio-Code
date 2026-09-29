@@ -84,21 +84,41 @@ The terminal panel's header shows **Network: No Proxy / Manual Proxy / System Pr
 force the first terminal of the session shows "Proxy environment applied to this terminal session." once.
 **A terminal that is already open keeps the environment it started with** — open a new one after changing the proxy.
 
+## Diagnostics
+
+The Proxy tab starts with a **Diagnostics** list whenever the backend ignores or can't do something with the settings, so
+nothing is dropped silently:
+
+- an address that is ignored, and why: credentials in the URL (for example an `https` value hand-edited into `settings.json` as
+  `http://user:pass@host:port` — *"HTTPS proxy is ignored because it contains credentials in the URL. Store credentials in the
+  secure username/password fields instead."*), an unsupported scheme, a bad port, not a `host:port`;
+- a PAC script or "Automatically detect settings" (WPAD) in Windows: reported, never evaluated;
+- only a SOCKS proxy set (pip, npm, pnpm, Yarn and Cargo read `HTTP_PROXY`/`HTTPS_PROXY` and won't use it);
+- saved credentials that can't be read (another Windows user, damaged), and — as information — no credentials saved;
+- open terminals that still have the old proxy settings.
+
+A diagnostic never contains the ignored address itself.
+
 ## Test Connection
 
 One GET to the address you type (or the *Connection Test Address* setting, `https://pypi.org/` by default), through the
-proxy in force, no redirects, 10 s to connect / 15 s to answer, no retries. The result says the route (through which
-proxy, or directly) and a category:
+proxy in force, no redirects, 10 s to connect / 15 s to answer, no retries. The result leads with an actionable label, then
+the route (through which proxy, or directly), the HTTP status and the time, a hint, and the raw error under **Details**:
 
-| Category | Typical cause |
+| Label | Typical cause |
 | --- | --- |
-| DNS | the name can't be resolved (a network that resolves names only through its proxy) |
-| Timeout / connection failed | nothing answers; a firewall drops the traffic |
-| Proxy unavailable | wrong proxy address or port (through a proxy, a refused connection or an unknown name means the proxy itself), or the proxy refused the tunnel |
+| DNS lookup failed | the name can't be resolved (a network that resolves names only through its proxy) |
+| Connection timed out / Connection refused | nothing answers; a firewall drops the traffic |
+| Network unreachable | no network, or no route to the address |
+| Proxy server unavailable | wrong proxy address or port (through a proxy, a refused connection or an unknown name means the proxy itself), or the proxy refused the tunnel |
 | Proxy authentication required | HTTP 407: enter the credentials |
-| TLS / certificate | a network that inspects HTTPS, or a wrong clock |
-| Blocked | HTTP 403/451 from the network or server |
+| TLS certificate verification failed | a network that inspects HTTPS, an expired certificate, a wrong clock |
+| TLS handshake failed | the server doesn't speak HTTPS on that port, or the network cuts HTTPS |
+| Blocked by the network or server | HTTP 403/451 |
 | Checksum mismatch | (downloads) the file isn't the expected one |
+
+Name lookups and TLS handshakes fail as I/O errors in the HTTP client; since Milestone 22.2 they are classified by the Windows
+error code (11001-11004 = DNS) and the error text, so they no longer show as "reading from the network failed".
 
 ## Downloads (Runtime Manager, Language Tools, extensions)
 
@@ -128,6 +148,21 @@ drive, shared folder); OpenMind shows what it is before anything is copied:
 | Composer package `.zip` | a `composer.json` at the top | `cache/offline/composer/` (use as a Composer `artifact` repository) |
 | Source ZIP (e.g. GitHub "Download ZIP") | any other ZIP | *Extract to Folder...* into an **empty** folder — a fallback when `git clone` can't reach the server |
 
+### Python wheelhouse (no network)
+
+**Import Wheels Folder...** imports every `.whl` directly in a folder (a USB drive, or `pip download django pandas -d <folder>` run on
+another computer): the ones for this computer are copied into `cache/offline/wheels/`, the others are listed with the reason. The
+**Python wheelhouse** section lists the recognized packages; type the packages (`django pandas`, `pandas==3.0.6`, `requests[socks]`)
+and **Install from Wheelhouse** types this into a new terminal:
+
+```
+python -m pip install --no-index --find-links=file:///E:/.../OpenMind%20Studio/cache/offline/wheels django pandas
+```
+
+`--no-index` means pip looks only in the wheelhouse and makes no network request; the folder is a `file:///` URL, so a path with
+spaces works. Only package names with extras and one version clause are accepted — no options, URLs, paths or shell characters.
+The command uses the `python` first on the new terminal's PATH (the portable runtime first).
+
 Packages for another platform (a `manylinux` wheel, a `linux-arm64` extension, a runtime for another architecture) are
 refused with the reason. Extraction refuses `..`/absolute/drive names and links, and caps size and entry count. The
 source file is never moved or changed. Nothing is written to npm's, pip's or Composer's global caches.
@@ -139,13 +174,26 @@ Offline Cache**; Remove, Clear Cache and Open Package Cache Folder are in the ta
 
 When Git, the Runtime Manager, Composer, a task, the LSP installer, Run Code or a terminal prints a network failure,
 a card appears with **Configure Proxy**, **Retry** (when the failed action can be repeated, e.g. a runtime install),
-**Import Package** and **Use Offline Cache**. Terminal output only counts unmistakable problems (proxy 407, proxy
+**Open New Proxy-Ready Terminal**, **Import Wheels / Offline Package** and **Use Offline Cache**.
+
+**pip** ending with `No matching distribution found` after `407 Proxy Authentication Required` / `Tunnel connection failed` is a
+proxy problem, not a missing package, and the card says so: *"pip could not reach PyPI because the network proxy requires
+authentication. This is not a missing Python package."* (the proxy indicators always win over pip's closing lines, even when they
+arrive in a later chunk of terminal output). A tunnel failure without 407 is "proxy unavailable". Without any network cause, a
+missing package raises no card. Terminal output only counts unmistakable problems (proxy 407, proxy
 unreachable, TLS, DNS), so a `ping` timing out doesn't raise it. A dismissed problem stays quiet for two minutes.
 Details stay in the Output channels, with the proxy password removed.
 
-Card actions for a terminal failure: **Retry Command** runs the command you typed again in a new terminal with the current proxy
-variables, and **Open New Proxy-Ready Terminal** opens one. Terminals opened before a proxy change keep the old variables: the
-terminal header shows `⚠ Network: ...` for them and a notice says so once.
+Card actions for a terminal failure: **Retry Command** runs the command you typed again — only after the click — in a new terminal
+with the current proxy variables, the same shell and the folder the failed terminal started in. A command that can delete or
+change files or system settings (`Remove-Item`, `rm -rf`, `del /s`, `format`, `reg`, `git clean`, a redirection `>`, `| sh` ...)
+asks first, showing the command and folder. **Open New Proxy-Ready Terminal** opens one.
+
+Terminals opened before a proxy change keep the old variables. They are marked stale: the header shows `⚠ Network: ...` and the
+terminal shows a banner *"Proxy settings changed. Open a new terminal to apply them."* with **Open New Proxy-Ready Terminal** (same
+shell and folder), **Restart This Terminal With Proxy** (asks first; the new terminal is started before the old one is closed, so a
+failure keeps it) and **Keep Current Terminal** (no warning for it until the next change). A notice says so once, except while the
+failure card is up (it would cover the card's buttons).
 
 ## Troubleshooting
 
@@ -167,3 +215,7 @@ terminal header shows `⚠ Network: ...` for them and a notice says so once.
 - Already-running processes (open terminals, a running language server) keep their environment until restarted.
 - Offline npm/Composer packages are cached, not installed: you run the install command with the local path.
 - Pause/resume of a download is automatic (a failed download resumes on the next attempt); there is no Pause button.
+- Retry Command and Restart use the folder the terminal *started* in; a `cd` typed later isn't known.
+- The risky-command check is a word list: it asks for more than necessary rather than less, but it is not a parser.
+- A bare "Tunnel connection failed" without a 407 is reported as proxy unavailable, not as authentication.
+- pip's own download cache (`%LOCALAPPDATA%\pip\cache`) is pip's default; OpenMind doesn't redirect it.

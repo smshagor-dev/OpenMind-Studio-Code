@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { useT } from "../../i18n";
 import { container } from "../../services/container";
 import type { CacheEntry, Inspection } from "../../services/network/networkIpc";
@@ -99,6 +101,73 @@ function Entry({ entry, busy }: { entry: CacheEntry; busy: boolean }) {
   );
 }
 
+/**
+ * The offline Python wheelhouse: the wheels imported for this computer, the ones a folder import refused (and why),
+ * and Install from Wheelhouse — pip with `--no-index`, so it looks only here and makes no network request.
+ */
+function WheelhouseSection({ state }: { state: NetworkState }) {
+  const t = useT();
+  const network = container.network;
+  const wheels = state.wheelhouse?.wheels ?? [];
+  const [requirements, setRequirements] = useState("");
+  return (
+    <section className="network__section" aria-label={t("network.wheels.title")}>
+      <h3>{t("network.wheels.title")}</h3>
+      <p className="network__lead">{t("network.wheels.lead")}</p>
+      {state.wheelImport !== null && state.wheelImport.refused.length > 0 ? (
+        <div className="network__warning" role="alert">
+          <p>{t("network.wheels.refused")}</p>
+          <ul className="network__refused">
+            {state.wheelImport.refused.map((wheel) => (
+              <li key={wheel.file}>
+                <code>{wheel.file}</code>: {wheel.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {wheels.length === 0 ? (
+        <p className="network__meta">{t("network.wheels.none")}</p>
+      ) : (
+        <>
+          <p className="network__meta">{t("network.wheels.recognized")}</p>
+          <ul className="network__wheels" aria-label={t("network.wheels.recognized")}>
+            {wheels.map((wheel) => (
+              <li key={wheel.id}>
+                {wheel.name}
+                {wheel.version !== null ? ` ${wheel.version}` : ""}
+                <span className="network__meta"> · {wheel.architecture ?? "any"}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="network__row">
+            <input
+              className="network__input"
+              aria-label={t("network.wheels.packages")}
+              placeholder="django pandas"
+              spellCheck={false}
+              value={requirements}
+              onChange={(event) => {
+                setRequirements(event.target.value);
+              }}
+            />
+            <button
+              type="button"
+              className="modal__confirm--primary"
+              disabled={state.busy || requirements.trim() === ""}
+              onClick={() => {
+                void network.installFromWheelhouse(requirements);
+              }}
+            >
+              {t("network.wheels.install")}
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 /** Offline packages: import from a USB drive or folder, what is in the cache, and what to do with each. */
 export function NetworkOfflineTab({ state }: { state: NetworkState }) {
   const t = useT();
@@ -116,6 +185,15 @@ export function NetworkOfflineTab({ state }: { state: NetworkState }) {
           }}
         >
           {t("network.palette.importOffline")}
+        </button>
+        <button
+          type="button"
+          disabled={state.busy}
+          onClick={() => {
+            void network.importWheelFolder();
+          }}
+        >
+          {t("network.wheels.importFolder")}
         </button>
         <button
           type="button"
@@ -146,6 +224,7 @@ export function NetworkOfflineTab({ state }: { state: NetworkState }) {
         {t("setting.network.offline.useWheelhouse.title")}
       </label>
       {state.inspection !== null ? <Pending inspection={state.inspection} busy={state.busy} /> : null}
+      <WheelhouseSection state={state} />
       {state.offline.length === 0 ? (
         <p className="network__meta">{t("network.offline.empty")}</p>
       ) : (

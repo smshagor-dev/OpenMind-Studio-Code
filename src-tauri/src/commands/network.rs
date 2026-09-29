@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use openmind_db::EditorSettingsRepository;
+use openmind_network::diagnostics::{diagnose_settings, Diagnostic};
 use openmind_network::env::{proxy_env, EnvExtras};
 use openmind_network::http::{self, HttpProxy};
 use openmind_network::probe::{test_connection, TestOutcome};
@@ -146,11 +147,13 @@ pub(crate) fn env_of(state: &AppState, resolution: &Resolution) -> Vec<(String, 
     proxy_env(&resolution.proxy, resolution.credentials.as_ref(), &extras)
 }
 
+/// A diagnostic with its severity (`warning` or `info`), for the Network window.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ProxyProblemInfo {
-    field: String,
-    problem: String,
+pub struct DiagnosticInfo {
+    severity: &'static str,
+    #[serde(flatten)]
+    diagnostic: Diagnostic,
 }
 
 #[derive(Serialize)]
@@ -167,7 +170,9 @@ pub struct NetworkStatus {
     no_proxy: Vec<String>,
     /// A proxy auto-configuration script Windows uses; OpenMind can't evaluate one.
     pac_url: Option<String>,
-    problems: Vec<ProxyProblemInfo>,
+    /// What is ignored or can't be done with these settings (an address with credentials in it, a PAC script, ...),
+    /// so nothing is dropped without telling the user.
+    diagnostics: Vec<DiagnosticInfo>,
     has_credentials: bool,
     /// The saved user name (never the password).
     username: Option<String>,
@@ -193,14 +198,17 @@ fn status_of(resolution: &Resolution) -> NetworkStatus {
         socks: proxy.socks.as_ref().map(|p| p.display()),
         no_proxy: proxy.no_proxy.clone(),
         pac_url: proxy.pac_url.clone(),
-        problems: proxy
-            .problems
-            .iter()
-            .map(|(field, problem)| ProxyProblemInfo {
-                field: field.clone(),
-                problem: format!("{problem:?}"),
-            })
-            .collect(),
+        diagnostics: diagnose_settings(
+            proxy,
+            resolution.stored_username.is_some(),
+            resolution.credential_problem.is_some(),
+        )
+        .into_iter()
+        .map(|diagnostic| DiagnosticInfo {
+            severity: diagnostic.severity(),
+            diagnostic,
+        })
+        .collect(),
         has_credentials: resolution.stored_username.is_some(),
         username: resolution.stored_username.clone(),
         credential_problem: resolution.credential_problem.clone(),
@@ -286,6 +294,35 @@ pub async fn network_terminal_env(
 mod tests {
     use openmind_network::proxy::{resolve_manual, ProxySettings};
     use openmind_network::redact::redact_env;
+
+    #[test]
+    fn a_hand_edited_address_with_credentials_is_reported_without_the_password() {
+        let proxy = resolve_manual(&ProxySettings {
+            http: "proxy.lab:3128".into(),
+            https: "http://ivan:s3cr3t@proxy.lab:3128".into(),
+            ..ProxySettings::default()
+        });
+        let resolution = super::Resolution {
+            config: super::NetworkConfig {
+                mode: openmind_network::proxy::ProxyMode::Manual,
+                settings: ProxySettings::default(),
+                go_proxy: String::new(),
+                test_url: String::new(),
+                use_wheelhouse: false,
+            },
+            proxy,
+            credentials: None,
+            credential_problem: None,
+            stored_username: None,
+        };
+        let json = serde_json::to_string(&super::status_of(&resolution)).expect("json");
+        assert!(
+            json.contains(r#"{"severity":"warning","kind":"ignoredField","field":"https","problem":"credentialsInAddress"}"#),
+            "{json}"
+        );
+        assert!(json.contains(r#""kind":"noCredentials""#), "{json}");
+        assert!(!json.contains("s3cr3t"), "{json}");
+    }
 
     #[test]
     fn the_env_shown_to_the_user_never_contains_the_password() {

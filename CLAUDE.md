@@ -632,7 +632,11 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   env vars, `WinHttpGetIEProxyConfigForCurrentUser`, `WinHttpGetDefaultProxyConfiguration`; a PAC URL is reported, not run), `env`
   (`proxy_env`: `HTTP(S)_PROXY`/`ALL_PROXY`/`NO_PROXY` in both cases, `NPM_CONFIG_*`, `PIP_PROXY`, `CARGO_HTTP_PROXY`, `GOPROXY` only if set,
   `PIP_FIND_LINKS` for the offline wheels as a `file:///` URL — pip splits the variable on spaces), `redact` (password -> `****`, literal and percent-encoded), `problem` (`NetProblem` categories,
-  `classify` of a ureq error, `classify_via` = through a proxy a refused connection/unknown name is `ProxyUnavailable`, `diagnose` of git/pip/npm/composer/cargo/go/curl output, `label`), `http` (the process-wide proxy in force,
+  `classify` of a ureq error, `classify_io` (since 22.2: Windows DNS error codes 11001-11004, unreachable kinds and the message — name lookups and TLS
+  handshakes arrive as I/O errors), `classify_via` = through a proxy a refused connection/unknown name is `ProxyUnavailable`, `diagnose` of git/pip/npm/composer/cargo/go/curl output, `label`),
+  `diagnostics` (22.2: `diagnose_settings` -> ignored field + reason, PAC / WPAD not evaluated, SOCKS only, no/unreadable credentials; shown in the Network
+  window), `wheelhouse` (22.2: `wheel_files`, `valid_requirement`/`parse_requirements`, `offline_install_argv` = `python -m pip install --no-index
+  --find-links=<file URL>`), `http` (the process-wide proxy in force,
   `set_current`, `configure(builder, url)`: mode None leaves a client unchanged), `retry` (`with_mirrors`: 3 attempts per address with
   1 s/2 s pauses for retryable failures, then the next mirror; 407/cancel stop at once; every retry logged), `probe` (`test_connection`:
   one GET, no redirects, categorized, redacted) and `offline` (`inspect`: runtime archives by SHA-256 against the manifests, `.vsix` with
@@ -641,7 +645,8 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   per URL through `http::configure`, errors are `RuntimeError::Network(NetError)`, artifacts may list `mirrors`, `fetch::fetch_verified` does
   retry/mirror/checksum; the AI transport uses the same route (loopback direct). App: `commands::network` (`network_status|set_credentials|
   clear_credentials|test|terminal_env`; credentials DPAPI-encrypted as `network.proxy.credentials`; `refresh` at start-up is local reads only)
-  and `commands::network_offline` (`network_offline_inspect|import|list|remove|clear|folder|path|extract`; a runtime archive goes to the Runtime
+  and `commands::network_offline` (`network_offline_inspect|import|list|remove|clear|folder|path|extract`, 22.2: `network_offline_import_wheels`,
+  `network_wheelhouse`, `network_wheelhouse_command`; a runtime archive goes to the Runtime
   Manager's `download_path`). `run::environment` appends `process_env` (every launcher: terminal, tasks, Run Code, debug, LSP, extension host,
   notebook, PHP, database/Composer, panel shell); Git gets it through `GitClient::with_env` (its log lines are redacted); the LSP `npm ci` gets
   it through `LspManager::install_package_env`.
@@ -2450,6 +2455,34 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   another window would) updated the card in ~0.6 s; with only Maven selected, deleting the JDK put "Java JDK 21.0.12.1, 196 MB" in the summary and
   reinstalling it cleared it. No request at launch; PATH, Windows proxy and global git/npm/pip/cargo config unchanged; no process left after close.
   Limitation: a bundled-toolchain switch (Language Tools' version selector) doesn't invalidate the catalog (it only changes which copy is found).
+- [x] **Milestone 22.2** — Proxy auto-apply polish for terminals and package tools (`fix: polish proxy auto apply for developer tools`). See `docs/network-proxy.md`.
+  Not a bypass: the proxy the user set (or Windows names) applied to processes OpenMind starts, better diagnostics, retry UX and an offline wheelhouse.
+  **Found by reading the code**: DNS and certificate failures showed "reading from the network failed" (ureq resolves with `to_socket_addrs` and rustls
+  reports through the stream, so both are `Error::Io`; `classify` only looked at the error kind; the Runtime Manager had a second copy of that mapping) —
+  now `classify_io`; the Network window never showed the backend's ignored-address list; `env::git_proxy_args` would have put the proxy password on a
+  command line (unused — removed, and a repo-wide policy test forbids `http.proxy=`/`--proxy` and global config writes). **Added**: Diagnostics section,
+  Test Connection headline + hint + raw Details (new `Unreachable` category; TLS says "certificate verification failed" only for certificate errors,
+  otherwise "handshake failed"), pip-specific card text ("pip could not reach PyPI because the network proxy requires authentication. This is not a
+  missing Python package.") that also upgrades when pip's closing lines arrive in a later chunk, a stale-terminal banner (Open New / Restart With Proxy
+  after confirmation, new terminal first / Keep), Retry Command in the failed terminal's shell and folder with a confirmation for risky commands, Import
+  Wheels Folder + Python wheelhouse section + Install from Wheelhouse, "Import Wheels / Offline Package" on the card; 69 new strings in en/ru/bn.
+  Automatic proxy application needed no change: every launcher already used `run::environment`, Git and Language Tools their own env, and the app's
+  downloads `openmind_network::http`. **Verified by hand** (debug build, fresh copy `E:\omm222`, workspace `My Work`, a local proxy that demands Basic
+  auth): no app request at launch; a runtime install without credentials hit 407 and showed the card, saving credentials once and Retry installed it;
+  portable Python 3.14.7 installed through the proxy; `pip install django` in a terminal without credentials gave the pip card with the exact text;
+  after saving credentials the terminal showed the stale banner and ⚠ label; Retry Command reran it (no confirmation, same folder) and installed
+  django, then pandas and `pip download django pandas` worked with no proxy variable typed; a No Proxy For change marked terminals stale, Keep
+  silenced one, Restart asked (shell + folder) and replaced the other; Test Connection read "Proxy server unavailable" (dead port), "DNS lookup
+  failed", "TLS handshake failed" (plain HTTP on https) with Details; a hand-written `https` with credentials showed the diagnostic and leaked into
+  neither status nor terminal env; Import Wheels (backend command; the native folder dialog can't be scripted) took 8 wheels and refused a manylinux
+  one with the reason; Install from Wheelhouse installed django + pandas with the proxy dead and the test proxy logging no request; the typed line was
+  `python -m pip install --no-index '--find-links=file:///E:/omm222/OpenMind%20Studio/cache/offline/wheels' django pandas`; regressions (offline
+  TypeScript server, preview, search, 12 workload cards, PHP window, AI item absent) fine. A scan of all 12 425 files of the copy (database, WAL, logs,
+  settings, WebView2 profile) found the password in no form (plain, URL-encoded, Base64, UTF-16); it is stored `dpapi1:`. PATH, Windows/WinHTTP proxy
+  and global git/npm/pip/cargo/go/Composer config unchanged; no process left. **Found and fixed by hand**: the "proxy settings changed" toast covered the
+  failure card's buttons; a non-TLS server was called a certificate failure. pip's own cache (`%LOCALAPPDATA%\pip\cache`) received the online test
+  downloads (pip's default; removed afterwards). **Limitations**: Retry/Restart use the folder the terminal started in; the risky-command check is a
+  word list; NTLM/Kerberos, PAC/WPAD evaluation still not done; the native Import Wheels folder dialog was not driven by hand. Left on disk: `E:\omm222`.
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 

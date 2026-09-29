@@ -14,6 +14,7 @@ export type NetProblem =
   | "dns"
   | "timeout"
   | "connectionFailed"
+  | "unreachable"
   | "proxyUnavailable"
   | "proxyAuthRequired"
   | "tls"
@@ -26,6 +27,24 @@ export type NetProblem =
   | "io"
   | "other";
 
+/** Why a proxy address is ignored (`openmind_network::proxy::ProxyProblem`). */
+export type ProxyProblem = "empty" | "invalidAddress" | "unsupportedScheme" | "badPort" | "credentialsInAddress";
+
+/** Something about the proxy settings the user should know (`openmind_network::diagnostics::Diagnostic`). */
+export type NetworkDiagnostic = { severity: "warning" | "info" } & (
+  | {
+      kind: "ignoredField";
+      /** `http`, `https`, `socks`, or an environment variable name in System mode. */
+      field: string;
+      problem: ProxyProblem;
+    }
+  | { kind: "pacNotEvaluated"; url: string }
+  | { kind: "autoDetectNotEvaluated" }
+  | { kind: "socksOnly" }
+  | { kind: "noCredentials" }
+  | { kind: "credentialsUnreadable" }
+);
+
 export interface NetworkStatus {
   mode: "none" | "system" | "manual";
   source: ProxySource;
@@ -35,7 +54,7 @@ export interface NetworkStatus {
   socks: string | null;
   noProxy: string[];
   pacUrl: string | null;
-  problems: { field: string; problem: string }[];
+  diagnostics: NetworkDiagnostic[];
   hasCredentials: boolean;
   username: string | null;
   credentialProblem: string | null;
@@ -91,6 +110,24 @@ export interface CacheEntry {
   runtime: [string, string] | null;
 }
 
+/** A wheel file of an imported folder that wasn't imported, and why. */
+export interface RefusedWheel {
+  file: string;
+  reason: string;
+}
+
+export interface WheelFolderImport {
+  imported: CacheEntry[];
+  refused: RefusedWheel[];
+}
+
+export interface Wheelhouse {
+  folder: string;
+  /** The folder as the file URL pip reads (works with spaces). */
+  url: string;
+  wheels: CacheEntry[];
+}
+
 export interface NetworkIpc {
   networkStatus: () => Promise<NetworkStatus>;
   networkSetCredentials: (username: string, password: string) => Promise<NetworkStatus>;
@@ -105,6 +142,10 @@ export interface NetworkIpc {
   offlineFolder: () => Promise<string>;
   offlinePath: (id: string) => Promise<string>;
   offlineExtract: (id: string, destination: string) => Promise<number>;
+  offlineImportWheels: (folder: string) => Promise<WheelFolderImport>;
+  wheelhouse: () => Promise<Wheelhouse>;
+  /** The argument list that installs `requirements` from the wheelhouse only (`--no-index`). */
+  wheelhouseCommand: (requirements: string) => Promise<string[]>;
 }
 
 export const tauriNetworkIpc: NetworkIpc = {
@@ -123,4 +164,7 @@ export const tauriNetworkIpc: NetworkIpc = {
   offlinePath: (id) => invoke<string>("network_offline_path", { id }),
   offlineExtract: (id, destination) =>
     invoke<number>("network_offline_extract", { id, destination }),
+  offlineImportWheels: (folder) => invoke<WheelFolderImport>("network_offline_import_wheels", { folder }),
+  wheelhouse: () => invoke<Wheelhouse>("network_wheelhouse"),
+  wheelhouseCommand: (requirements) => invoke<string[]>("network_wheelhouse_command", { requirements }),
 };

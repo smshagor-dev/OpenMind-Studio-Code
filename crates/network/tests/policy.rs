@@ -63,3 +63,77 @@ fn only_read_only_windows_proxy_calls_are_used() {
     assert!(!system.contains("WinHttpGetProxyForUrl"));
     assert!(!system.contains("WinHttpDetectAutoProxyConfigUrl"));
 }
+
+/// Every Rust source file of the app (all crates and the Tauri app), without its test module.
+fn app_sources() -> Vec<(String, String)> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut dirs = vec![root.join("src-tauri/src")];
+    for entry in fs::read_dir(root.join("crates"))
+        .expect("crates")
+        .filter_map(Result::ok)
+    {
+        dirs.push(entry.path().join("src"));
+    }
+    let mut out = Vec::new();
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for path in entries.filter_map(Result::ok).map(|e| e.path()) {
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "rs")
+                && !path.to_string_lossy().ends_with("_tests.rs")
+            {
+                let text = fs::read_to_string(&path).expect("read");
+                let code = text
+                    .split("#[cfg(test)]")
+                    .next()
+                    .unwrap_or_default()
+                    .to_string();
+                out.push((path.display().to_string(), code));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn nothing_in_the_app_changes_windows_proxy_path_or_a_tools_global_configuration() {
+    let sources = app_sources();
+    assert!(sources.len() > 100, "the scan found the app's sources");
+    let forbidden = [
+        // Windows' proxy (per user and WinHTTP) and the environment of the user or machine.
+        "WinHttpSetDefaultProxyConfiguration",
+        "InternetSetOption",
+        "netsh",
+        "setx",
+        // Global tool configuration.
+        "\"--global\"",
+        "config --global",
+        "npm config set",
+        "pip config",
+        "go env -w",
+        "\"env\", \"-w\"",
+        // A proxy (and so its password) on a command line, where other processes can read it.
+        "http.proxy=",
+        "\"--proxy\"",
+        "--proxy=",
+    ];
+    for (path, code) in &sources {
+        for needle in forbidden {
+            assert!(!code.contains(needle), "{path} contains {needle}");
+        }
+    }
+    // The Registry is never written.
+    for (path, code) in &sources {
+        for call in [
+            "RegSetValue",
+            "RegCreateKey",
+            "RegDeleteValue",
+            "RegDeleteKey",
+        ] {
+            assert!(!code.contains(call), "{path} calls {call}");
+        }
+    }
+}

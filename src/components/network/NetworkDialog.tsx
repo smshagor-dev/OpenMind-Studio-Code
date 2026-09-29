@@ -93,9 +93,11 @@ export function NetworkFailureCard() {
   const { failure } = useSyncExternalStore(container.network.subscribe, container.network.getState);
   if (failure === null) return null;
   const network = container.network;
+  const hint = network.failureHint(failure);
   return (
     <div className="network-failure" role="alert">
       <p className="network-failure__text">{network.failureText(failure)}</p>
+      {hint !== null ? <p className="network-failure__hint">{hint}</p> : null}
       <div className="network-failure__actions">
         <button
           type="button"
@@ -119,7 +121,7 @@ export function NetworkFailureCard() {
         <button
           type="button"
           onClick={() => {
-            container.run("terminal.new");
+            void network.openProxyReadyTerminal();
           }}
         >
           {t("network.failure.newTerminal")}
@@ -179,5 +181,49 @@ export function NetworkStatusButton() {
     >
       {stale ? `⚠ ${label}` : label}
     </button>
+  );
+}
+
+/**
+ * Above a terminal opened before the last proxy change: it still has the old proxy variables. The user decides:
+ * a new terminal, a restart of this one (asked first), or keep it as it is.
+ */
+export function StaleTerminalBanner() {
+  const t = useT();
+  const { staleTerminals } = useSyncExternalStore(container.network.subscribe, container.network.getState);
+  const activeId = useSyncExternalStore(
+    (listener) => container.terminal.subscribe(listener),
+    () => container.terminal.getState().activeId,
+  );
+  if (activeId === null || !staleTerminals.includes(activeId)) return null;
+  const network = container.network;
+  return (
+    <div className="network-stale" role="status">
+      <span className="network-stale__text">{t("network.stale.banner")}</span>
+      <button
+        type="button"
+        onClick={() => {
+          void network.openProxyReadyTerminal(activeId);
+        }}
+      >
+        {t("network.failure.newTerminal")}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void network.restartTerminal(activeId);
+        }}
+      >
+        {t("network.stale.restart")}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          network.keepTerminal(activeId);
+        }}
+      >
+        {t("network.stale.keep")}
+      </button>
+    </div>
   );
 }

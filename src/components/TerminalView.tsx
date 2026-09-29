@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { TerminalSession } from "../services/terminalService";
 import { CloseIcon } from "./icons";
+import { StaleTerminalBanner } from "./network/NetworkDialog";
 import { XtermHost } from "./XtermHost";
 
 interface TerminalViewProps {
@@ -34,6 +35,7 @@ export function TerminalView({ themeKind, visible }: TerminalViewProps) {
           ))}
         </div>
       ) : null}
+      <StaleTerminalBanner />
       <div className="terminal-view__body">
         {state.sessions.length === 0 ? (
           <div className="terminal-panel__empty">

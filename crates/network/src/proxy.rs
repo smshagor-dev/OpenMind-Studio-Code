@@ -277,6 +277,8 @@ pub struct ResolvedProxy {
     pub no_proxy: Vec<String>,
     /// A PAC script address Windows uses; OpenMind can't evaluate PAC files and says so.
     pub pac_url: Option<String>,
+    /// Windows is set to detect the proxy automatically (WPAD); OpenMind doesn't do that lookup and says so.
+    pub auto_detect: bool,
     /// Addresses that were refused, as `(field, problem)`.
     pub problems: Vec<(String, ProxyProblem)>,
 }
@@ -291,6 +293,7 @@ impl ResolvedProxy {
             socks: None,
             no_proxy: parse_no_proxy(""),
             pac_url: None,
+            auto_detect: false,
             problems: Vec::new(),
         }
     }
@@ -340,6 +343,7 @@ pub fn resolve_manual(settings: &ProxySettings) -> ResolvedProxy {
         socks,
         no_proxy: parse_no_proxy(&settings.no_proxy),
         pac_url: None,
+        auto_detect: false,
         problems,
     }
 }

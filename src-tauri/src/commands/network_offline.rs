@@ -4,9 +4,12 @@
 
 use std::path::{Path, PathBuf};
 
+use openmind_network::env::file_url;
 use openmind_network::offline::{
-    extract_source, inspect, CacheEntry, Inspection, KnownArtifact, OfflineCache,
+    extract_source, inspect, CacheEntry, Inspection, KnownArtifact, OfflineCache, PackageKind,
 };
+use openmind_network::wheelhouse::{offline_install_argv, parse_requirements, wheel_files};
+use serde::Serialize;
 use tauri::State;
 
 use crate::app_state::AppState;
@@ -154,4 +157,110 @@ pub async fn network_offline_extract(
         .await
         .map_err(|err| err.to_string())?
         .map_err(|err| err.to_string())
+}
+
+/// A wheel that wasn't imported, and why (another platform, not a wheel file name ...).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefusedWheel {
+    file: String,
+    reason: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WheelFolderImport {
+    imported: Vec<CacheEntry>,
+    refused: Vec<RefusedWheel>,
+}
+
+/// Import Wheels: every `.whl` directly in `folder` is inspected; the ones for this computer are copied into the
+/// wheelhouse (checked by SHA-256), the others are listed with the reason. Nothing is installed.
+#[tauri::command]
+pub async fn network_offline_import_wheels(
+    folder: String,
+    state: State<'_, AppState>,
+) -> Result<WheelFolderImport, String> {
+    let folder = absolute_file(&folder)?;
+    let platform = state.runtime.platform().to_string();
+    let cache = cache(&state);
+    let result =
+        tauri::async_runtime::spawn_blocking(move || -> Result<WheelFolderImport, String> {
+            let files =
+                wheel_files(&folder).map_err(|err| format!("{}: {err}", folder.display()))?;
+            if files.is_empty() {
+                return Err("There are no .whl files in that folder.".to_string());
+            }
+            let mut imported = Vec::new();
+            let mut refused = Vec::new();
+            for file in files {
+                let name = file
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let outcome = inspect(&file, &[], &platform)
+                    .map_err(|err| err.to_string())
+                    .and_then(|found| {
+                        if found.kind != Some(PackageKind::Wheel) {
+                            return Err(found
+                                .reason
+                                .unwrap_or_else(|| "This isn't a wheel.".to_string()));
+                        }
+                        cache.import(&found, None).map_err(|err| err.to_string())
+                    });
+                match outcome {
+                    Ok(entry) => imported.push(entry),
+                    Err(reason) => refused.push(RefusedWheel { file: name, reason }),
+                }
+            }
+            Ok(WheelFolderImport { imported, refused })
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+    tracing::info!(
+        imported = result.imported.len(),
+        refused = result.refused.len(),
+        "offline wheels imported"
+    );
+    Ok(result)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Wheelhouse {
+    folder: String,
+    /// The folder as the file URL pip reads (works with spaces).
+    url: String,
+    wheels: Vec<CacheEntry>,
+}
+
+/// The imported wheels and where they are (local reads only).
+#[tauri::command]
+pub fn network_wheelhouse(state: State<'_, AppState>) -> Wheelhouse {
+    let cache = cache(&state);
+    let folder = cache.wheelhouse();
+    Wheelhouse {
+        url: file_url(&folder),
+        folder: folder.display().to_string(),
+        wheels: cache
+            .list()
+            .into_iter()
+            .filter(|entry| entry.kind == PackageKind::Wheel)
+            .collect(),
+    }
+}
+
+/// The argument list that installs `requirements` from the wheelhouse only (`--no-index`: no network request). The
+/// frontend quotes it for the terminal's shell and types it there when the user clicks Install.
+#[tauri::command]
+pub fn network_wheelhouse_command(
+    requirements: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, String> {
+    let requirements = parse_requirements(&requirements).map_err(|err| err.to_string())?;
+    let folder = cache(&state).wheelhouse();
+    if !folder.is_dir() {
+        return Err("No wheels are imported yet. Import a wheel folder first.".to_string());
+    }
+    Ok(offline_install_argv(&folder, &requirements))
 }

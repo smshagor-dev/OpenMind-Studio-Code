@@ -1,8 +1,17 @@
 import { t } from "../../i18n";
 import type { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
-import type { CacheEntry, Inspection, NetProblem, NetworkIpc, NetworkStatus, TestOutcome } from "./networkIpc";
-import { diagnoseNetwork, problemText, STRONG_PROBLEMS, validateProxyAddress } from "./networkModel";
+import type {
+  CacheEntry,
+  Inspection,
+  NetProblem,
+  NetworkIpc,
+  NetworkStatus,
+  TestOutcome,
+  WheelFolderImport,
+  Wheelhouse,
+} from "./networkIpc";
+import { diagnoseNetwork, isPipOutput, problemText, STRONG_PROBLEMS, validateProxyAddress } from "./networkModel";
 
 export type NetworkTab = "proxy" | "offline";
 
@@ -15,6 +24,8 @@ export interface NetworkFailure {
   retry: (() => void) | null;
   /** Retry runs the failed terminal command again, in a new proxy-ready terminal. */
   retryIsCommand: boolean;
+  /** pip printed it: its closing "No matching distribution" is about the network, not a missing package. */
+  pip: boolean;
 }
 
 export interface NetworkState {
@@ -32,6 +43,10 @@ export interface NetworkState {
   failure: NetworkFailure | null;
   /** Terminals opened before the last proxy change: they still have the old proxy variables. */
   staleTerminals: string[];
+  /** The offline Python wheelhouse (loaded with the Offline Packages tab). */
+  wheelhouse: Wheelhouse | null;
+  /** The result of the last Import Wheels Folder (what was imported, what was refused and why). */
+  wheelImport: WheelFolderImport | null;
   error: string | null;
   notice: string | null;
 }
@@ -48,7 +63,19 @@ export interface NetworkHost {
   /** Hands a .vsix to the extension installer (which shows its trust dialog). */
   installVsix: (path: string) => Promise<void>;
   openRuntimeManager: () => void;
+  /** Stale terminal actions and running a command in a new terminal (the terminal wiring does the work). */
+  terminals: NetworkTerminalHost;
   now?: () => number;
+}
+
+/** What the Network feature asks of the terminals. Each resolves with an error message, or `null` when done. */
+export interface NetworkTerminalHost {
+  /** A new terminal with the current proxy variables, like `from` (same shell and folder) when given. */
+  openProxyReady: (from: string | null) => Promise<string | null>;
+  /** Asks, then replaces terminal `id` by a new one (same shell and folder) with the current proxy variables. */
+  restart: (id: string) => Promise<string | null>;
+  /** Types `argv` (quoted for the shell) into a new terminal. */
+  runInNewTerminal: (argv: string[]) => Promise<string | null>;
 }
 
 const FIELDS = ["network.proxy.http", "network.proxy.https", "network.proxy.socks"] as const;
@@ -73,11 +100,15 @@ export class NetworkService {
     inspection: null,
     failure: null,
     staleTerminals: [],
+    wheelhouse: null,
+    wheelImport: null,
     error: null,
     notice: null,
   };
   private readonly listeners = new Set<() => void>();
   private readonly quietUntil = new Map<NetProblem, number>();
+  /** Stale terminals the user chose to keep as they are (until the next proxy change). */
+  private readonly kept = new Set<string>();
   private terminalNoticeShown = false;
 
   constructor(private readonly host: NetworkHost) {}
@@ -116,6 +147,7 @@ export class NetworkService {
   async openWindow(tab: NetworkTab = "proxy"): Promise<void> {
     this.set({ open: true, tab, error: null, notice: null });
     await this.load();
+    if (tab === "offline") await this.loadWheelhouse();
   }
 
   closeWindow(): void {
@@ -124,6 +156,7 @@ export class NetworkService {
 
   setTab(tab: NetworkTab): void {
     this.set({ tab });
+    if (tab === "offline") void this.loadWheelhouse();
   }
 
   /** A proxy address field's problem, for the form (`null` = fine). Other fields (lists, GOPROXY) aren't addresses. */
@@ -225,10 +258,19 @@ export class NetworkService {
     strongOnly = false,
     retryIsCommand = false,
   ): boolean {
-    const problem = diagnoseNetwork(text);
-    if (problem === null || (strongOnly && !STRONG_PROBLEMS.has(problem))) return false;
     const current = this.state.failure;
-    if (current?.problem === problem && (retry === null || current.retry !== null)) return true;
+    const pip = isPipOutput(text);
+    const problem = diagnoseNetwork(text);
+    if (problem === null || (strongOnly && !STRONG_PROBLEMS.has(problem))) {
+      // pip's closing lines ("No matching distribution found") often arrive after the network error: they only tell
+      // us which tool it was.
+      if (pip && current !== null && !current.pip) this.set({ failure: { ...current, pip: true } });
+      return false;
+    }
+    if (current?.problem === problem && (retry === null || current.retry !== null)) {
+      if (pip && !current.pip) this.set({ failure: { ...current, pip: true } });
+      return true;
+    }
     if (current === null && (this.quietUntil.get(problem) ?? 0) > this.now()) return false;
     const keep = retry === null && current !== null;
     this.set({
@@ -237,14 +279,38 @@ export class NetworkService {
         source,
         retry: retry ?? current?.retry ?? null,
         retryIsCommand: keep ? current.retryIsCommand : retryIsCommand,
+        pip: pip || (current?.problem === problem && current.pip),
       },
     });
     return true;
   }
 
-  /** Marks the terminals that still have the proxy variables of before the last change. */
+  /** Marks the terminals that still have the proxy variables of before the last change (except the kept ones). */
   setStaleTerminals(ids: string[]): void {
-    this.set({ staleTerminals: ids });
+    this.set({ staleTerminals: ids.filter((id) => !this.kept.has(id)) });
+  }
+
+  /** A new proxy change: terminals kept before are out of date again. */
+  proxyChanged(): void {
+    this.kept.clear();
+  }
+
+  /** Keep Current Terminal: no more warning for it until the next proxy change. */
+  keepTerminal(id: string): void {
+    this.kept.add(id);
+    this.set({ staleTerminals: this.state.staleTerminals.filter((stale) => stale !== id) });
+  }
+
+  /** Open New Proxy-Ready Terminal (like terminal `from` when given: same shell and folder). */
+  async openProxyReadyTerminal(from: string | null = null): Promise<void> {
+    const error = await this.host.terminals.openProxyReady(from);
+    if (error !== null) this.host.events.emit("appError", { message: error });
+  }
+
+  /** Restart This Terminal With Proxy: asks first; the old terminal is closed only after the user confirms. */
+  async restartTerminal(id: string): Promise<void> {
+    const error = await this.host.terminals.restart(id);
+    if (error !== null) this.host.events.emit("appError", { message: error });
   }
 
   /** A fingerprint of what new terminals get: when it changes, open terminals are out of date. */
@@ -262,7 +328,20 @@ export class NetworkService {
   }
 
   failureText(failure: NetworkFailure): string {
+    if (failure.pip) {
+      const sentence =
+        failure.problem === "proxyAuthRequired"
+          ? t("network.failure.pipProxyAuth")
+          : t("network.failure.pipNetwork", { problem: problemText(failure.problem) });
+      return `${failure.source}: ${sentence}`;
+    }
     return t("network.failure.title", { source: failure.source, problem: problemText(failure.problem) });
+  }
+
+  /** A second line for the card, when there is something more to say. */
+  failureHint(failure: NetworkFailure): string | null {
+    if (failure.problem !== "proxyAuthRequired") return null;
+    return failure.pip ? t("network.failure.pipNotMissing") : t("network.failure.authHint");
   }
 
   retryFailure(): void {
@@ -276,6 +355,58 @@ export class NetworkService {
     this.set({ failure: null });
     await this.host.setSetting("network.offline.useWheelhouse", true);
     await this.openWindow("offline");
+  }
+
+  // --- offline Python wheelhouse ----------------------------------------------------------------------------
+
+  async loadWheelhouse(): Promise<void> {
+    try {
+      this.set({ wheelhouse: await this.host.ipc.wheelhouse() });
+    } catch (error) {
+      this.set({ error: String(error) });
+    }
+  }
+
+  /** Import Wheels Folder: every .whl directly in a folder the user picks; the incompatible ones are listed. */
+  async importWheelFolder(): Promise<void> {
+    if (!this.state.open || this.state.tab !== "offline") await this.openWindow("offline");
+    const folder = await this.host.pickFolder();
+    if (folder === null) return;
+    this.set({ busy: true, error: null, notice: null, wheelImport: null });
+    try {
+      const result = await this.host.ipc.offlineImportWheels(folder);
+      this.set({
+        wheelImport: result,
+        notice: t("network.wheels.imported", { count: result.imported.length }),
+        offline: await this.host.ipc.offlineList(),
+      });
+      await this.loadWheelhouse();
+    } catch (error) {
+      this.set({ error: String(error) });
+    } finally {
+      this.set({ busy: false });
+    }
+  }
+
+  /**
+   * Install from Wheelhouse: `python -m pip install --no-index --find-links=<wheelhouse> <packages>`, typed into a new
+   * terminal. pip looks only in the wheelhouse, so no network request is made.
+   */
+  async installFromWheelhouse(requirements: string): Promise<boolean> {
+    this.set({ error: null, notice: null });
+    try {
+      const argv = await this.host.ipc.wheelhouseCommand(requirements);
+      const error = await this.host.terminals.runInNewTerminal(argv);
+      if (error !== null) {
+        this.set({ error });
+        return false;
+      }
+      this.set({ notice: t("network.wheels.started") });
+      return true;
+    } catch (error) {
+      this.set({ error: String(error) });
+      return false;
+    }
   }
 
   // --- offline cache ----------------------------------------------------------------------------------------

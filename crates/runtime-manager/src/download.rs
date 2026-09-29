@@ -78,10 +78,7 @@ pub(crate) fn network_error(error: &ureq::Error, url: &str) -> RuntimeError {
 }
 
 fn read_error(error: std::io::Error) -> RuntimeError {
-    let problem = match error.kind() {
-        std::io::ErrorKind::TimedOut => NetProblem::Timeout,
-        _ => NetProblem::Io,
-    };
+    let problem = openmind_network::problem::classify_io(&error);
     RuntimeError::Network(NetError::new(problem, error.to_string()))
 }
 

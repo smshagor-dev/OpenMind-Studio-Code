@@ -11,6 +11,8 @@ pub enum NetProblem {
     Timeout,
     /// Nothing answered at the address.
     ConnectionFailed,
+    /// The network has no route to the address (no network, or the network doesn't let it through).
+    Unreachable,
     /// The proxy couldn't be reached or refused the tunnel.
     ProxyUnavailable,
     /// The proxy wants a user name and password (HTTP 407).
@@ -54,6 +56,7 @@ impl NetProblem {
             NetProblem::Dns => "DNS lookup failed",
             NetProblem::Timeout => "timed out",
             NetProblem::ConnectionFailed => "connection failed",
+            NetProblem::Unreachable => "network unreachable",
             NetProblem::ProxyUnavailable => "proxy unavailable",
             NetProblem::ProxyAuthRequired => "proxy authentication required",
             NetProblem::Tls => "TLS/certificate error",
@@ -125,18 +128,39 @@ pub fn classify(error: &ureq::Error) -> NetProblem {
         E::InvalidProxyUrl => NetProblem::ProxyUnavailable,
         E::Tls(_) | E::Pem(_) | E::Rustls(_) | E::TlsRequired => NetProblem::Tls,
         E::RequireHttpsOnly(_) => NetProblem::InsecureUrl,
-        E::Io(io) => match io.kind() {
-            std::io::ErrorKind::TimedOut => NetProblem::Timeout,
-            std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::ConnectionReset => {
-                NetProblem::ConnectionFailed
-            }
-            _ => NetProblem::Io,
-        },
+        E::Io(io) => classify_io(io),
         _ => {
             let text = error.to_string().to_ascii_lowercase();
             diagnose(&text).unwrap_or(NetProblem::Other)
         }
     }
+}
+
+/// Windows Sockets errors of a failed name lookup: host not found, try again, no recovery, no data.
+const WSA_DNS_ERRORS: [i32; 4] = [11001, 11002, 11003, 11004];
+
+/// Classifies an I/O error. Name lookups and TLS handshakes fail as I/O errors (ureq resolves with the standard
+/// library, rustls reports a bad certificate through the stream), so the error code and the message decide before
+/// falling back to "network read/write error".
+pub fn classify_io(error: &std::io::Error) -> NetProblem {
+    use std::io::ErrorKind as K;
+    if error
+        .raw_os_error()
+        .is_some_and(|code| WSA_DNS_ERRORS.contains(&code))
+    {
+        return NetProblem::Dns;
+    }
+    match error.kind() {
+        K::TimedOut => return NetProblem::Timeout,
+        K::ConnectionRefused | K::ConnectionReset | K::ConnectionAborted => {
+            return NetProblem::ConnectionFailed
+        }
+        K::NetworkUnreachable | K::HostUnreachable | K::NetworkDown => {
+            return NetProblem::Unreachable
+        }
+        _ => {}
+    }
+    diagnose(&error.to_string()).unwrap_or(NetProblem::Io)
 }
 
 /// [`classify`] for a request that went through a proxy: failing to reach anything then means the proxy itself
@@ -164,6 +188,7 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "response 407",
         "e407",
         "proxyauthenticationrequired",
+        "proxy requires authentication",
     ]) {
         return Some(NetProblem::ProxyAuthRequired);
     }
@@ -194,6 +219,11 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "invalid peer certificate",
         "schannel",
         "x509: certificate",
+        "unknownissuer",
+        "invalid certificate",
+        "certificate verification failed",
+        "received fatal alert",
+        "corrupt message",
     ]) {
         return Some(NetProblem::Tls);
     }
@@ -209,6 +239,10 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "failed to resolve",
         "dns error",
         "no such host",
+        "failed to lookup address",
+        "nodename nor servname",
+        "no address associated",
+        "host not found",
     ]) {
         return Some(NetProblem::Dns);
     }
@@ -223,6 +257,15 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         return Some(NetProblem::Timeout);
     }
     if any(&[
+        "network is unreachable",
+        "no route to host",
+        "enetunreach",
+        "ehostunreach",
+        "network unreachable",
+    ]) {
+        return Some(NetProblem::Unreachable);
+    }
+    if any(&[
         "connection refused",
         "connection failed",
         "econnrefused",
@@ -230,8 +273,6 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
         "could not connect to server",
         "econnreset",
         "connection reset",
-        "network is unreachable",
-        "no route to host",
     ]) {
         return Some(NetProblem::ConnectionFailed);
     }
@@ -292,6 +333,7 @@ mod tests {
             NetProblem::ProxyAuthRequired,
             NetProblem::Tls,
             NetProblem::Blocked,
+            NetProblem::Unreachable,
         ] {
             let text = format!("download failed ({}): x", problem.label());
             assert_eq!(diagnose(&text), Some(problem), "{text}");
@@ -350,6 +392,96 @@ mod tests {
         assert_eq!(
             classify(&ureq::Error::ConnectProxyFailed("refused".into())),
             NetProblem::ProxyUnavailable
+        );
+    }
+    #[test]
+    fn io_errors_of_name_lookups_and_certificates_are_not_a_generic_read_error() {
+        use std::io::{Error, ErrorKind};
+        // What ureq returns when Windows can't resolve a name (to_socket_addrs): "No such host is known. (os error 11001)".
+        for code in [11001, 11002, 11004] {
+            assert_eq!(
+                classify_io(&Error::from_raw_os_error(code)),
+                NetProblem::Dns,
+                "{code}"
+            );
+            assert_eq!(
+                classify(&ureq::Error::Io(Error::from_raw_os_error(code))),
+                NetProblem::Dns
+            );
+        }
+        // Other systems word it differently.
+        let unix = Error::other("failed to lookup address information: Name or service not known");
+        assert_eq!(classify_io(&unix), NetProblem::Dns);
+        // rustls reports a certificate it doesn't trust through the stream as InvalidData.
+        for text in [
+            "invalid peer certificate: UnknownIssuer",
+            "invalid peer certificate: certificate expired",
+            "received fatal alert: HandshakeFailure",
+            "received corrupt message of type InvalidContentType",
+        ] {
+            let error = ureq::Error::Io(Error::new(ErrorKind::InvalidData, text));
+            assert_eq!(classify(&error), NetProblem::Tls, "{text}");
+        }
+        assert_eq!(
+            classify_io(&Error::from(ErrorKind::NetworkUnreachable)),
+            NetProblem::Unreachable
+        );
+        assert_eq!(
+            classify_io(&Error::from(ErrorKind::HostUnreachable)),
+            NetProblem::Unreachable
+        );
+        assert_eq!(
+            classify_io(&Error::from(ErrorKind::ConnectionAborted)),
+            NetProblem::ConnectionFailed
+        );
+        assert_eq!(
+            classify_io(&Error::from(ErrorKind::TimedOut)),
+            NetProblem::Timeout
+        );
+        // Only something truly unknown stays a read/write error.
+        assert_eq!(
+            classify_io(&Error::other("unexpected end of file")),
+            NetProblem::Io
+        );
+    }
+
+    #[test]
+    fn pip_output_with_a_proxy_cause_is_never_a_missing_package() {
+        // Every indicator of an authenticating proxy wins over pip's closing "No matching distribution".
+        let causes = [
+            "OSError('Tunnel connection failed: 407 Proxy Authentication Required')",
+            "ProxyError('Cannot connect to proxy.', OSError('Tunnel connection failed: 407 Proxy Authentication Required'))",
+            "urllib3 ... Proxy Authentication Required",
+            "the proxy requires authentication",
+        ];
+        for package in ["django", "pandas"] {
+            for cause in causes {
+                let output = format!(
+                    "WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after \
+                     connection broken by '{cause}': /simple/{package}/\n\
+                     ERROR: Could not find a version that satisfies the requirement {package} (from versions: none)\n\
+                     ERROR: No matching distribution found for {package}"
+                );
+                assert_eq!(
+                    diagnose(&output),
+                    Some(NetProblem::ProxyAuthRequired),
+                    "{output}"
+                );
+            }
+        }
+        // A tunnel failure without 407 is a proxy that doesn't work: still not a missing package.
+        let unavailable =
+            "after connection broken by 'ProxyError('Unable to connect to proxy', OSError('Tunnel \
+            connection failed: 503 Service Unavailable'))': /simple/django/\n\
+            ERROR: No matching distribution found for django";
+        assert_eq!(diagnose(unavailable), Some(NetProblem::ProxyUnavailable));
+        // A really missing package, with no network cause, isn't a network problem.
+        assert_eq!(
+            diagnose(
+                "ERROR: Could not find a version that satisfies the requirement djangoo (from versions: none)\n\
+                 ERROR: No matching distribution found for djangoo"
+            ),
+            None
         );
     }
 }

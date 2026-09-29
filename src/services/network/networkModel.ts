@@ -1,5 +1,12 @@
 import { t } from "../../i18n";
-import type { CacheEntry, NetProblem, NetworkStatus, ProxySource, TestOutcome } from "./networkIpc";
+import type {
+  CacheEntry,
+  NetProblem,
+  NetworkDiagnostic,
+  NetworkStatus,
+  ProxySource,
+  TestOutcome,
+} from "./networkIpc";
 
 /**
  * Pure helpers of the Network feature: the status bar label, validation of a proxy address as the backend reads it,
@@ -19,6 +26,7 @@ const NEEDLES: [NetProblem, string[]][] = [
       "response 407",
       "e407",
       "proxyauthenticationrequired",
+      "proxy requires authentication",
     ],
   ],
   [
@@ -51,6 +59,11 @@ const NEEDLES: [NetProblem, string[]][] = [
       "invalid peer certificate",
       "schannel",
       "x509: certificate",
+      "unknownissuer",
+      "invalid certificate",
+      "certificate verification failed",
+      "received fatal alert",
+      "corrupt message",
     ],
   ],
   [
@@ -67,12 +80,17 @@ const NEEDLES: [NetProblem, string[]][] = [
       "failed to resolve",
       "dns error",
       "no such host",
+      "failed to lookup address",
+      "nodename nor servname",
+      "no address associated",
+      "host not found",
     ],
   ],
   [
     "timeout",
     ["timed out", "etimedout", "timeout was reached", "operation timed out", "i/o timeout", "read timed out"],
   ],
+  ["unreachable", ["network is unreachable", "no route to host", "enetunreach", "ehostunreach", "network unreachable"]],
   [
     "connectionFailed",
     [
@@ -83,8 +101,6 @@ const NEEDLES: [NetProblem, string[]][] = [
       "could not connect to server",
       "econnreset",
       "connection reset",
-      "network is unreachable",
-      "no route to host",
     ],
   ],
   [
@@ -108,6 +124,7 @@ export const STRONG_PROBLEMS: ReadonlySet<NetProblem> = new Set([
   "proxyUnavailable",
   "tls",
   "dns",
+  "unreachable",
 ]);
 
 /** The status bar / terminal label: "Network: Manual Proxy" and so on. */
@@ -155,19 +172,149 @@ export function validateProxyAddress(text: string, socks = false): string | null
   return null;
 }
 
-/** One line for the result of Test Connection. */
-export function testText(outcome: TestOutcome): string {
+/** The short, actionable name of a problem: "DNS lookup failed", "Proxy authentication required" ... */
+export function problemTitle(problem: NetProblem): string {
+  return t(`network.label.${problem}`);
+}
+
+/** What to do about a problem, when there is something to do (`null` otherwise). */
+export function problemHint(problem: NetProblem): string | null {
+  const hinted: NetProblem[] = [
+    "dns",
+    "tls",
+    "proxyAuthRequired",
+    "proxyUnavailable",
+    "timeout",
+    "connectionFailed",
+    "unreachable",
+    "blocked",
+  ];
+  return hinted.includes(problem) ? t(`network.hint.${problem}`) : null;
+}
+
+/** The result of Test Connection: a headline, the route/status/time line, a hint, and the raw error for Details. */
+export interface TestSummary {
+  ok: boolean;
+  title: string;
+  line: string;
+  hint: string | null;
+  detail: string | null;
+}
+
+export function testSummary(outcome: TestOutcome): TestSummary {
   const via =
     outcome.route === "proxy" && outcome.proxy !== null
       ? t("network.test.viaProxy", { proxy: outcome.proxy })
       : t("network.test.direct");
-  if (outcome.ok) {
-    return t("network.test.ok", { status: outcome.status ?? 0, ms: outcome.elapsedMs, via });
+  const parts = [via];
+  if (outcome.status !== null) parts.push(`HTTP ${String(outcome.status)}`);
+  parts.push(`${String(outcome.elapsedMs)} ms`);
+  const problem = outcome.problem ?? "other";
+  // A TLS failure that isn't about a certificate (the server doesn't speak TLS on that port, the network cuts the
+  // handshake) must not be called a certificate problem.
+  if (!outcome.ok && problem === "tls" && !isCertificateError(outcome.detail)) {
+    return {
+      ok: false,
+      title: t("network.label.tlsHandshake"),
+      line: parts.join(" · "),
+      hint: t("network.hint.tlsHandshake"),
+      detail: outcome.detail,
+    };
   }
-  const problem = problemText(outcome.problem ?? "other");
-  return outcome.status !== null
-    ? t("network.test.failedStatus", { problem, status: outcome.status, via })
-    : t("network.test.failed", { problem, via });
+  return {
+    ok: outcome.ok,
+    title: outcome.ok ? t("network.test.connected") : problemTitle(problem),
+    line: parts.join(" · "),
+    hint: outcome.ok ? null : problemHint(problem),
+    detail: outcome.detail,
+  };
+}
+
+/** The error is about the server's certificate (untrusted issuer, expired, wrong name ...). Unknown detail: assume so. */
+function isCertificateError(detail: string | null): boolean {
+  if (detail === null) return true;
+  return /certificat|issuer|x509|self[- ]signed|expired|notvalidforname/i.test(detail);
+}
+
+/** One sentence for a diagnostic of the proxy settings. */
+export function diagnosticText(diagnostic: NetworkDiagnostic): string {
+  switch (diagnostic.kind) {
+    case "ignoredField":
+      return t(`network.diag.ignored.${diagnostic.problem}`, { field: fieldName(diagnostic.field) });
+    case "pacNotEvaluated":
+      return t("network.diag.pacNotEvaluated", { url: diagnostic.url });
+    default:
+      return t(`network.diag.${diagnostic.kind}`);
+  }
+}
+
+/** `https` -> `HTTPS`; an environment variable (System mode) keeps its name. */
+function fieldName(field: string): string {
+  return field === "http" || field === "https" || field === "socks" ? field.toUpperCase() : field;
+}
+
+/** pip printed this (its index path, its "no matching distribution" ending, its own modules). */
+export function isPipOutput(text: string): boolean {
+  const lower = text.toLowerCase();
+  return [
+    "no matching distribution found",
+    "could not find a version that satisfies the requirement",
+    "/simple/",
+    "pip._vendor",
+    "pip install",
+    "python -m pip",
+  ].some((needle) => lower.includes(needle));
+}
+
+/**
+ * A command that can delete or change files, disks or system settings. Retry Command never runs one without asking.
+ * Deliberately broad: a false alarm costs one click, a miss could cost files.
+ */
+export function isRiskyCommand(command: string): boolean {
+  const text = ` ${command.toLowerCase()} `;
+  const words = [
+    "remove-item",
+    " rm ",
+    " rmdir ",
+    " rd ",
+    " del ",
+    " erase ",
+    " format ",
+    "format-volume",
+    " diskpart",
+    "clear-disk",
+    " reg ",
+    "set-itemproperty",
+    " setx ",
+    " netsh ",
+    " shutdown",
+    "restart-computer",
+    "stop-computer",
+    " takeown",
+    " icacls",
+    " cipher ",
+    " move-item",
+    " mv ",
+    " move ",
+    " rename-item",
+    " ren ",
+    "git clean",
+    "git reset --hard",
+    "git push --force",
+    " --force",
+    " -rf",
+    " /s ",
+    " /q ",
+    " sudo ",
+    "runas",
+    "invoke-expression",
+    " iex ",
+    "| sh",
+    "| bash",
+    "| iex",
+    ">",
+  ];
+  return words.some((word) => text.includes(word));
 }
 
 export function kindText(kind: CacheEntry["kind"]): string {

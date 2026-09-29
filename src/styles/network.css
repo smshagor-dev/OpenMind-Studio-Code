@@ -224,3 +224,68 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Milestone 22.2: settings diagnostics, the Test Connection result, the wheelhouse and the stale-terminal banner. */
+.network__diagnostics,
+.network__wheels,
+.network__refused {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.network__diagnostic--warning {
+  color: var(--warning-fg);
+}
+
+.network__result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+}
+
+.network__result-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--warning-fg);
+}
+
+.network__result--ok .network__result-title {
+  color: var(--success-fg);
+}
+
+.network__details code {
+  display: block;
+  margin-top: 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+}
+
+.network-failure__hint {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.network-stale {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--menu-border);
+  background: var(--warning-bg);
+  color: var(--fg-strong);
+  font-size: 12px;
+}
+
+.network-stale__text {
+  flex: 1 1 240px;
+}
+

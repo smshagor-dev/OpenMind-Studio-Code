@@ -149,4 +149,14 @@ mod tests {
             Some(NetProblem::InsecureUrl)
         );
     }
+
+    #[test]
+    fn a_failed_tls_handshake_is_labelled_tls_not_a_read_error() {
+        // https:// to a server that answers plain HTTP: the handshake really fails, on this computer only.
+        let url = serve_once("200 OK").replacen("http://", "https://", 1);
+        let outcome = test_connection(&url, None);
+        assert!(!outcome.ok);
+        assert_eq!(outcome.problem, Some(NetProblem::Tls), "{outcome:?}");
+        assert!(outcome.detail.is_some(), "the raw error stays available");
+    }
 }
