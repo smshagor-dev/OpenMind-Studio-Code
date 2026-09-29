@@ -96,19 +96,37 @@ pub fn plan(
         tokens.push(expand(&token, &variables)?);
     }
 
-    let project_dirs: Vec<PathBuf> = request
-        .workspace
-        .iter()
-        .map(|workspace| workspace.join("node_modules").join(".bin"))
-        .collect();
-    let resolved = resolve_program(
-        kind,
-        custom,
-        &tokens,
-        environment,
-        &project_dirs,
-        system_path.as_deref(),
-    )?;
+    // A Python file inside a project with its own environment runs with that environment (where the Dependencies
+    // view and the missing-package card install packages), before OpenMind's portable Python.
+    let venv = (kind == RunnableKind::Python && tokens.first().is_some_and(|p| p == "python"))
+        .then(|| project_python(&file, request.workspace.as_deref()))
+        .flatten();
+    let project_dirs: Vec<PathBuf> = match &venv {
+        Some(interpreter) => interpreter
+            .parent()
+            .map(Path::to_path_buf)
+            .into_iter()
+            .collect(),
+        None => request
+            .workspace
+            .iter()
+            .map(|workspace| workspace.join("node_modules").join(".bin"))
+            .collect(),
+    };
+    let resolved = match venv {
+        Some(path) => ResolvedExecutable {
+            path,
+            source: RuntimeSource::Project,
+        },
+        None => resolve_program(
+            kind,
+            custom,
+            &tokens,
+            environment,
+            &project_dirs,
+            system_path.as_deref(),
+        )?,
+    };
 
     let display = friendly_command(&tokens, &cwd);
     let mut argv = tokens;
@@ -135,6 +153,35 @@ pub fn plan(
         path_var,
         build: None,
     })
+}
+
+/// Folder names a project's own Python environment is looked for in (a folder with `pyvenv.cfg`).
+const PYTHON_ENVS: [&str; 3] = [".venv", "venv", "env"];
+
+/// The project's own Python environment for `file`: in the file's folder or a parent, never above the workspace (without
+/// a workspace, only the file's own folder). Links are not followed.
+pub fn project_python(file: &Path, workspace: Option<&Path>) -> Option<PathBuf> {
+    let mut dir = file.parent();
+    while let Some(current) = dir {
+        for name in PYTHON_ENVS {
+            let env = current.join(name);
+            let interpreter = if cfg!(windows) {
+                env.join("Scripts").join("python.exe")
+            } else {
+                env.join("bin").join("python")
+            };
+            let real =
+                |path: &Path| fs::symlink_metadata(path).is_ok_and(|m| !m.file_type().is_symlink());
+            if env.join("pyvenv.cfg").is_file() && interpreter.is_file() && real(&env) {
+                return Some(interpreter);
+            }
+        }
+        match workspace {
+            Some(root) if current != root && current.starts_with(root) => dir = current.parent(),
+            _ => break,
+        }
+    }
+    None
 }
 
 /// `python "C:\ws\hello.py"` in `C:\ws` -> `python hello.py`.
@@ -326,6 +373,48 @@ mod tests {
             Some(fx.system.clone()),
             &fx.dir.path().join("build"),
         )
+    }
+
+    #[test]
+    fn a_python_file_in_a_project_with_its_own_environment_runs_with_it() {
+        let fx = fixture();
+        let workspace = fx.dir.path().join("My Work");
+        let project = workspace.join("py app");
+        let file = script(&project.join("src"), "main.py", "import requests");
+        let env = project.join(".venv");
+        let interpreter = if cfg!(windows) {
+            exe(&env.join("Scripts"), "python")
+        } else {
+            exe(&env.join("bin"), "python")
+        };
+        // Without pyvenv.cfg it isn't an environment.
+        let portable = make(&fx, &request(file.clone(), Some(workspace.clone()))).expect("plan");
+        assert_eq!(portable.source, RuntimeSource::Portable);
+        fs::write(env.join("pyvenv.cfg"), "version = 3.14.7\n").expect("cfg");
+
+        let plan = make(&fx, &request(file.clone(), Some(workspace.clone()))).expect("plan");
+        assert_eq!(plan.resolved, interpreter);
+        assert_eq!(plan.source, RuntimeSource::Project);
+        assert_eq!(plan.runtime_label, "Project environment .venv");
+        let dirs: Vec<PathBuf> = std::env::split_paths(&plan.path_var).collect();
+        assert_eq!(
+            dirs[1],
+            interpreter.parent().expect("dir"),
+            "portable first, then the environment's folder"
+        );
+
+        // Never above the workspace: an environment beside the workspace isn't the project's.
+        let outside = fx.dir.path().join("elsewhere");
+        let loose = script(&outside.join("deep"), "a.py", "1");
+        let env2 = outside.join(".venv");
+        if cfg!(windows) {
+            exe(&env2.join("Scripts"), "python");
+        } else {
+            exe(&env2.join("bin"), "python");
+        }
+        fs::write(env2.join("pyvenv.cfg"), "").expect("cfg");
+        let other = make(&fx, &request(loose, Some(outside.join("deep")))).expect("plan");
+        assert_eq!(other.source, RuntimeSource::Portable);
     }
 
     #[test]

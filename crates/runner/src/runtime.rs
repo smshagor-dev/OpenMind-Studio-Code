@@ -98,6 +98,17 @@ pub fn runtime_label(kind: RunnableKind, resolved: &ResolvedExecutable) -> Strin
                 None => format!("OpenMind portable {}", kind.display_name()),
             }
         }
+        // `<project>/.venv/Scripts/python.exe` -> "Project environment .venv".
+        RuntimeSource::Project if kind == RunnableKind::Python => {
+            let env = resolved
+                .path
+                .parent()
+                .and_then(Path::parent)
+                .and_then(Path::file_name)
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            format!("Project environment {env}")
+        }
         RuntimeSource::Project => format!("project-local {}", file_stem(&resolved.path)),
         RuntimeSource::System => format!("System {}", kind.display_name()),
     }
