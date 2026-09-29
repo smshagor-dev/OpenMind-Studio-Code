@@ -86,6 +86,16 @@ const NEEDLES: [NetProblem, string[]][] = [
       "host not found",
     ],
   ],
+  // ssh's own words when the network doesn't let SSH through (before the generic "timed out").
+  [
+    "unreachable",
+    [
+      "port 22: connection timed out",
+      "port 22: connection refused",
+      "port 22: network is unreachable",
+      "port 22: no route to host",
+    ],
+  ],
   [
     "timeout",
     ["timed out", "etimedout", "timeout was reached", "operation timed out", "i/o timeout", "read timed out"],

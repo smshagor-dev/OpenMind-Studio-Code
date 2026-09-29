@@ -61,6 +61,13 @@ describe("diagnoseNetwork", () => {
     ).toBe("proxyAuthRequired");
     expect(diagnoseNetwork("ERROR: No matching distribution found for nosuchpkg")).toBeNull();
   });
+
+  it("SSH blocked by the network is unreachable; SSH keys and host keys are not network problems", () => {
+    expect(diagnoseNetwork("ssh: connect to host github.com port 22: Connection timed out")).toBe("unreachable");
+    expect(diagnoseNetwork("ssh: connect to host github.com port 22: Connection refused")).toBe("unreachable");
+    expect(diagnoseNetwork("git@github.com: Permission denied (publickey).")).toBeNull();
+    expect(diagnoseNetwork("Host key verification failed.")).toBeNull();
+  });
 });
 
 describe("validateProxyAddress", () => {

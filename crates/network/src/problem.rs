@@ -253,6 +253,15 @@ pub fn diagnose(output: &str) -> Option<NetProblem> {
     ]) {
         return Some(NetProblem::Dns);
     }
+    // ssh's own words when the network doesn't let SSH through (before the generic "timed out").
+    if any(&[
+        "port 22: connection timed out",
+        "port 22: connection refused",
+        "port 22: network is unreachable",
+        "port 22: no route to host",
+    ]) {
+        return Some(NetProblem::Unreachable);
+    }
     if any(&[
         "timed out",
         "etimedout",
@@ -461,6 +470,25 @@ mod tests {
             classify_io(&Error::other("unexpected end of file")),
             NetProblem::Io
         );
+    }
+
+    #[test]
+    fn ssh_blocked_by_the_network_is_unreachable_but_ssh_authentication_is_not_a_network_problem() {
+        assert_eq!(
+            diagnose("ssh: connect to host github.com port 22: Connection timed out\r\nfatal: Could not read from remote repository."),
+            Some(NetProblem::Unreachable)
+        );
+        assert_eq!(
+            diagnose("ssh: connect to host github.com port 22: Connection refused"),
+            Some(NetProblem::Unreachable)
+        );
+        for not_network in [
+            "git@github.com: Permission denied (publickey).",
+            "Host key verification failed.",
+            "WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!",
+        ] {
+            assert_eq!(diagnose(not_network), None, "{not_network}");
+        }
     }
 
     #[test]

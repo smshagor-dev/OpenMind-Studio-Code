@@ -30,6 +30,7 @@ pub mod run;
 pub mod runtime;
 pub mod search;
 pub mod settings;
+pub mod ssh_diag;
 pub mod system;
 pub mod tasks;
 pub mod terminal;

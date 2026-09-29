@@ -92,6 +92,37 @@ fn find(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     })
 }
 
+/// Where a program comes from: OpenMind's own folder (its runtimes, bundled tools, shims), the user's profile, or the
+/// computer. Compared without regard to case (Windows paths).
+pub(crate) fn tool_source(path: &Path) -> &'static str {
+    let text = path
+        .display()
+        .to_string()
+        .to_ascii_lowercase()
+        .replace('/', "\\");
+    let under = |root: Option<PathBuf>| {
+        root.map(|root| {
+            root.display()
+                .to_string()
+                .to_ascii_lowercase()
+                .replace('/', "\\")
+        })
+        .is_some_and(|root| {
+            !root.is_empty() && text.starts_with(&format!("{}\\", root.trim_end_matches('\\')))
+        })
+    };
+    let app = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf));
+    if under(app) {
+        "openmind-managed"
+    } else if under(std::env::var_os("USERPROFILE").map(PathBuf::from)) {
+        "user-installed"
+    } else {
+        "system-installed"
+    }
+}
+
 fn inherited_path() -> Vec<PathBuf> {
     std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).collect())
@@ -282,11 +313,25 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
         openmind_path.extend(inherited_path());
         let external_path = inherited_path();
         let program = |name: &str, dirs: &[PathBuf]| find(name, dirs);
-        let selected: Value = ["git", "python", "node", "npm", "php", "composer", "go", "cargo"]
-            .iter()
-            .map(|name| (name.to_string(), json!(program(name, &openmind_path).map(|p| p.display().to_string()))))
-            .collect::<serde_json::Map<_, _>>()
-            .into();
+        let selected: Value = [
+            "git", "ssh", "python", "pip", "node", "npm", "pnpm", "yarn", "php", "composer", "go", "cargo",
+            "rustup",
+        ]
+        .iter()
+        .map(|name| {
+            let found = program(name, &openmind_path);
+            (
+                name.to_string(),
+                json!({
+                    "path": found.as_ref().map(|p| p.display().to_string()),
+                    "source": found.as_ref().map_or("unavailable", |p| tool_source(p)),
+                }),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>()
+        .into();
+        let ssh = program("ssh", &openmind_path);
+        let git_ssh = crate::commands::ssh_diag::ssh_capability(ssh.as_deref());
         // Exactly what an OpenMind terminal gets (runtime variables and the gateway settings).
         let openmind_env = run_env.vars.clone();
         let cache = work.join("tool-cache");
@@ -368,6 +413,7 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
                 "openmindDownloadManager": "rustls with the bundled Mozilla root certificates (webpki-roots); certificate checks always on",
                 "gitHttpSslBackend": git_backend,
             },
+            "gitSsh": git_ssh,
             "stagingPath": staging,
             "conpty": if cfg!(windows) { "Windows pseudo console (ConPTY) through portable-pty" } else { "Unix pseudo terminal" },
             "hosts": hosts,
@@ -404,6 +450,29 @@ mod tests {
         assert!(
             !clean.contains("s3cr3t") && !clean.contains("abcdef0123"),
             "{clean}"
+        );
+    }
+
+    #[test]
+    fn a_tool_under_the_app_folder_is_openmind_managed_and_a_profile_one_is_user_installed() {
+        let app = std::env::current_exe().expect("exe");
+        let app_dir = app.parent().expect("dir");
+        assert_eq!(
+            tool_source(&app_dir.join("runtimes").join("python.exe")),
+            "openmind-managed"
+        );
+        if let Some(profile) = std::env::var_os("USERPROFILE") {
+            let profile = PathBuf::from(profile);
+            if !app_dir.starts_with(&profile) {
+                assert_eq!(
+                    tool_source(&profile.join(".cargo").join("bin").join("cargo.exe")),
+                    "user-installed"
+                );
+            }
+        }
+        assert_eq!(
+            tool_source(Path::new(r"C:\Windows\System32\OpenSSH\ssh.exe")),
+            "system-installed"
         );
     }
 
