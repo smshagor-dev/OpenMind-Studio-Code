@@ -72,7 +72,11 @@ them. No password, token or credential is written.
   pnpm, git clone/fetch/pull, go mod download, cargo fetch through the gateway). Whether it fixes the university case
   depends on why the tools fail there; the diagnostics file is how to find out.
 - Git over the gateway: a private repository asks for credentials for `127.0.0.1` (a saved Git credential for the real
-  host doesn't match); SSH remotes and pushes are not routed.
+  host doesn't match); SSH remotes and pushes are not routed. Inside an OpenMind terminal `git remote -v` / `get-url` print
+  the gateway address, because Git applies `insteadOf` when it prints; `.git/config` keeps the real `https://` address.
+- The per-run gateway token is visible in some tool output inside OpenMind's terminals (pip's "Looking in indexes", Git's
+  rewritten address). It only works on this computer while this OpenMind runs; the diagnostics file and the app's logs
+  never contain it.
 - Cargo and Composer are tunnelled: they reach the network over OpenMind's route but do their own TLS. A system Composer
   (not OpenMind's) isn't routed. rustup's own toolchain downloads aren't routed.
 - Yarn 1 tarballs, Yarn Berry, conda, NuGet, Maven/Gradle, Dart/Flutter, Docker are not routed.

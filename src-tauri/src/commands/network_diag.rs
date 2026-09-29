@@ -35,7 +35,10 @@ const HOSTS: &[(&str, &str)] = &[
     ),
     ("sum.golang.org", "https://sum.golang.org/latest"),
     ("index.crates.io", "https://index.crates.io/config.json"),
-    ("static.crates.io", "https://static.crates.io/"),
+    (
+        "static.crates.io",
+        "https://static.crates.io/crates/itoa/itoa-1.0.18.crate",
+    ),
     (
         "repo.packagist.org",
         "https://repo.packagist.org/packages.json",
@@ -299,6 +302,8 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
                 let mut entry = dns_and_tcp(host);
                 entry["host"] = json!(host);
                 entry["A_downloadManager"] = json!({
+                    // Any HTTP answer means the route reaches the host (a 404 of a folder address is still an answer).
+                    "reachable": a.status.is_some(),
                     "ok": a.ok, "status": a.status, "problem": a.problem, "route": a.route,
                     "elapsedMs": a.elapsed_ms, "detail": a.detail.map(|d| scrub.text(&d)),
                 });
