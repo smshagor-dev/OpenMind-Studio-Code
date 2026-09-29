@@ -2632,6 +2632,26 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   Conda/Poetry, bun unsupported; setup.py and Poetry dependencies aren't read; installed Node versions are read only from top-level `node_modules`; a venv made by OpenMind records
   the portable Python's path (recreate it after moving the app); debugging still uses OpenMind's/system Python, not the project environment; Maven and a portable Node/Composer
   weren't installed in the test copy (the system Node/Composer were used, labelled).
+- [x] **Milestone 22.7** — Milestone 22 completion audit and fixes (`fix: …` ×3). Master was fast-forwarded to 22.6 (`c32e48a`) and validated in a fresh
+  CRLF checkout (`E:\wt-master`); the runtime smoke and a 22–22.6 audit were run on its debug build. **Fixed**: (1) `startup.test.ts` failed in any
+  Windows checkout with `core.autocrlf` — its `"\n}\n"` end marker was never found, so a function "body" was the rest of `container.ts`; source is now
+  read with LF endings and a missing end fails by name. (2) **pip's 407 card said "the proxy is unavailable"** instead of "requires authentication": pip
+  wraps every 407 in `ProxyError('Cannot connect to proxy.')` and a terminal repaint re-sends single screen rows, so a later chunk replaced the precise
+  problem with the generic one; `NetworkService.report` no longer lets `proxyUnavailable` replace `proxyAuthRequired` on the open card (any other new
+  problem still replaces it). Also: network diagnosis (TypeScript and Rust) reads the text without line breaks too, and the terminal watcher looks at
+  each chunk with the previous chunk's last 300 characters (a phrase split across chunks or repainted rows). (3) The missing-module pattern requires
+  both quotes, so a wrapped `No module named 'reques` never offers to install `reques` (Python 2's unquoted form is no longer read). **Verified by
+  hand** (debug build, test copy `E:\omm222`): versions in an OpenMind terminal (portable Python 3.14.7 with `PYTHONNOUSERSITE=1`; system Node 24.16,
+  Git 2.55, Java 17, CMake 4.4, Go 1.26, rustup 1.97, XAMPP PHP 8.2, Composer 2.10; gcc/clang/ninja/dotnet absent — LLVM-MinGW was removed in 22.5);
+  Python, Node (incl. a readline sum), Java and Rust input programs through Run Code's Run in Terminal (adult/minor/invalid); C/C++ Run Code disabled
+  with the LLVM-MinGW reason; non-interactive Java/Rust/Python runs printed once with the workspace cwd; Tkinter on the portable Python (warning,
+  "Hello Shagor! / Your age is 23.", closing returned control, also from the terminal); Java Swing and Rust MessageBoxW popups; highlighting of six
+  languages; proxy: Test Connection labels (proxy unavailable, DNS, TLS), the pip card now reads "requires authentication", saving credentials marked
+  the terminals stale, Retry Command downloaded through the local authenticating proxy (`auth=ok`), unreadable credentials -> diagnostic + Clear ->
+  none, the offline wheelhouse tab; workloads: a fresh copy opened the first-run page (Minimal / Skip / Install selected, 12 workloads, 12 language
+  packs, 50 components, Heavy / Admin / External / Planned statuses, offline import), Skip didn't reopen it, Ninja installed from its card and deleted
+  on the Runtimes tab turned the card back to Available; Dependencies scan of the 22.6 smoke folder and `-g` refused. User/Machine PATH, proxy,
+  git/npm config, pip/cargo/go/composer configs, user and system site-packages, npm globals and the user pip/npm caches unchanged; no process left.
 - [ ] Milestone 23 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update).
 
