@@ -9,6 +9,9 @@ use openmind_broker::{Broker, BrokerEvent, Gateway, GatewayConfig, Staging};
 use openmind_runtime_manager::UreqClient;
 
 fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter("openmind_broker=debug")
+        .init();
     let folder = std::env::args()
         .nth(1)
         .unwrap_or_else(|| "gateway-staging".into());
@@ -45,6 +48,13 @@ fn main() {
         gateway.npm_port()
     );
     println!("BASE={}", gateway.base());
+    println!("GOPROXY={}/go", gateway.base());
+    println!("GIT_INSTEAD_OF={}/git/https/", gateway.base());
+    println!(
+        "CARGO_HTTP_PROXY=http://cargo:{}@127.0.0.1:{}",
+        gateway.token(),
+        gateway.port()
+    );
     loop {
         std::thread::park();
     }

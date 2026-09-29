@@ -4,10 +4,13 @@
 //! reach it through DNS rebinding), and every path on the main port carries a per-run random token.
 
 pub mod fetch;
+pub mod git;
+pub mod goproxy;
 pub mod http1;
 pub mod npm;
 pub mod pypi;
 pub mod server;
+pub mod tunnel;
 pub mod upstream;
 
 pub use server::{Gateway, GatewayConfig};

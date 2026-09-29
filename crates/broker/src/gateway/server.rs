@@ -232,10 +232,17 @@ fn serve(stream: TcpStream, shared: &Shared, npm: bool) {
             let _ = write_error(&mut writer, 503, "OpenMind Studio is closing");
             return;
         }
+        if request.method == "CONNECT" && !npm {
+            // A CONNECT names its target in Host; the token in Proxy-Authorization is what admits it.
+            let _ = reader.get_ref().set_read_timeout(None);
+            super::tunnel::serve(shared, &request, reader, writer);
+            return;
+        }
         if !host_ok(&request, port) {
             let _ = write_error(&mut writer, 403, "requests must be addressed to 127.0.0.1");
             return;
         }
+        tracing::debug!(method = %request.method, path = %redact_token(request.path(), &shared.token), npm, "gateway request");
         let result = if npm {
             super::npm::handle(shared, &request, &mut writer)
         } else {
@@ -246,6 +253,11 @@ fn serve(stream: TcpStream, shared: &Shared, npm: bool) {
             return;
         }
     }
+}
+
+/// A path for the log, with the session token hidden.
+fn redact_token(path: &str, token: &str) -> String {
+    path.replace(token, "<token>")
 }
 
 fn route(shared: &Shared, request: &Request, out: &mut dyn Write) -> io::Result<()> {
@@ -261,6 +273,8 @@ fn route(shared: &Shared, request: &Request, out: &mut dyn Write) -> io::Result<
         "status" => super::http1::write_full(out, 200, &[], b"ok"),
         "pypi" => pypi::handle(shared, request, rest, out),
         "fetch" => fetch::handle(shared, request, out),
+        "git" => super::git::handle(shared, request, rest, out),
+        "go" => super::goproxy::handle(shared, request, rest, out),
         _ => write_error(out, 404, "not served"),
     }
 }
