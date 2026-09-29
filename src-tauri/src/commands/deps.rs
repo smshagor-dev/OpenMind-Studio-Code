@@ -1,53 +1,49 @@
-//! Dependency helper: the command that installs a missing Python or npm package for a project. Only a plan is made
-//! here — the argument list, the folder and where the package goes; the user sees it in a confirmation and the app
-//! types it into a new OpenMind terminal (which has the proxy and `PYTHONNOUSERSITE=1`). Python packages go into the
-//! project's virtual environment or OpenMind's portable Python, named by absolute path — never the user's own Python,
-//! never `--user`, never `npm -g`. Nothing is installed without that confirmation.
+//! Project dependencies and environments (Milestones 22.4-22.6): the Dependencies view and the missing-package card
+//! use the same three steps — `deps_scan` reads the workspace's manifests, `deps_plan` turns a request into the exact
+//! program, arguments, folder and target (shown to the user), and `deps_run` re-plans that same request here (the
+//! frontend never sends a command) and starts the program as a terminal's own process, so its exit code is the real
+//! one. Python packages go into the project's environment or OpenMind's portable Python, named by absolute path — never
+//! the user's own Python, never `--user`; npm/pnpm/yarn/Composer stay project-local; nothing is global.
 
 use std::path::{Path, PathBuf};
 
-use openmind_network::packages::{
-    npm_install_argv, pip_install_argv, pip_offline_argv, pip_requirements_argv, project_dir,
-    venv_python, with_pip_cache, NODE_MARKERS, PYTHON_MARKERS,
-};
-use openmind_network::wheelhouse::parse_requirements;
-use serde::Serialize;
-use tauri::State;
+use openmind_deps::{DepsSnapshot, Op, Plan, PlanContext, Resolved};
+use openmind_network::packages::{project_dir, NODE_MARKERS, PYTHON_MARKERS};
+use openmind_runner::{RunEnvironment, RuntimeSource};
+use openmind_terminal::{CreateTerminalRequest, ShellKind, TerminalRegistry, TerminalSessionInfo};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, State};
 
 use crate::app_state::AppState;
 
-/// Where an install goes and the exact command.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstallPlan {
-    argv: Vec<String>,
-    /// The project folder the command runs in.
-    cwd: String,
-    /// `projectVenv`, `openmindPython` or `npm`.
-    target: &'static str,
-    /// The interpreter a Python package goes into.
-    interpreter: Option<String>,
-}
+pub(crate) const NO_OPENMIND_PYTHON: &str = openmind_deps::plan::NO_OPENMIND_PYTHON;
 
-pub(crate) const NO_OPENMIND_PYTHON: &str = "OpenMind's Python runtime isn't installed. Install Python from the Runtime \
-     Manager (or create a .venv in the project) — packages are never installed into your own Python.";
-
-/// The Python a package for `project` goes into: the project's `.venv`/`venv`, else OpenMind's active portable Python.
-pub(crate) async fn python_target(
-    state: &AppState,
-    project: &Path,
-) -> Result<(PathBuf, &'static str), String> {
-    if let Some(venv) = venv_python(project) {
-        return Ok((venv, "projectVenv"));
-    }
+/// OpenMind's active portable Python interpreter, if installed.
+async fn portable_python(state: &AppState) -> Option<PathBuf> {
     let exe = if cfg!(windows) {
         "python.exe"
     } else {
         "bin/python3"
     };
-    match state.runtime.installed_dir("python").await {
-        Some(dir) if dir.join(exe).is_file() => Ok((dir.join(exe), "openmindPython")),
-        _ => Err(NO_OPENMIND_PYTHON.to_string()),
+    state
+        .runtime
+        .installed_dir("python")
+        .await
+        .map(|dir| dir.join(exe))
+        .filter(|path| path.is_file())
+}
+
+/// The Python a package for `project` goes into: the project's environment, else OpenMind's active portable Python.
+pub(crate) async fn python_target(
+    state: &AppState,
+    project: &Path,
+) -> Result<(PathBuf, &'static str), String> {
+    if let Some(env) = openmind_deps::python::environments(project).first() {
+        return Ok((PathBuf::from(&env.interpreter), "projectVenv"));
+    }
+    match portable_python(state).await {
+        Some(path) => Ok((path, "openmindPython")),
+        None => Err(NO_OPENMIND_PYTHON.to_string()),
     }
 }
 
@@ -64,6 +60,15 @@ fn start_dir(base: &str) -> Result<PathBuf, String> {
     })
 }
 
+async fn workspace_root(
+    state: &AppState,
+    window: &tauri::Window,
+) -> Result<Option<PathBuf>, String> {
+    Ok(crate::windows::window_workspace(state, window.label())
+        .await?
+        .map(|workspace| PathBuf::from(workspace.path)))
+}
+
 /// The project folder for `start`, never above the window's open folder.
 async fn project_of(
     state: &AppState,
@@ -71,16 +76,14 @@ async fn project_of(
     start: &Path,
     markers: &[&str],
 ) -> Result<PathBuf, String> {
-    let workspace = crate::windows::window_workspace(state, window.label())
+    let stop = workspace_root(state, window)
         .await?
-        .map(|workspace| PathBuf::from(workspace.path));
-    let stop = workspace
         .filter(|root| start.starts_with(root))
         .unwrap_or_else(|| start.to_path_buf());
     Ok(project_dir(start, &stop, markers))
 }
 
-/// pip's download cache for installs the helper starts: `<app>/cache/pip`, never the user's own pip cache.
+/// pip's download cache for installs OpenMind starts: `<app>/cache/pip`, never the user's own pip cache.
 pub(crate) fn pip_cache_dir(state: &AppState) -> PathBuf {
     let downloads = state.runtime.paths().downloads_dir();
     downloads
@@ -89,77 +92,161 @@ pub(crate) fn pip_cache_dir(state: &AppState) -> PathBuf {
         .join("pip")
 }
 
-/// The install plan for `kind`: `pip` / `pipOffline` (packages, space- or comma-separated), `pipRequirements`
-/// (the project's requirements.txt), `npm` (one package) or `npmProject` (the project's package.json).
-#[tauri::command]
-pub async fn deps_install_plan(
-    kind: String,
-    packages: Option<String>,
-    base: String,
-    window: tauri::Window,
-    state: State<'_, AppState>,
-) -> Result<InstallPlan, String> {
-    let start = start_dir(&base)?;
-    let plan = match kind.as_str() {
-        "pip" | "pipOffline" | "pipRequirements" => {
-            let project = project_of(&state, &window, &start, PYTHON_MARKERS).await?;
-            let (interpreter, target) = python_target(&state, &project).await?;
-            let argv = match kind.as_str() {
-                "pipRequirements" => {
-                    if !project.join("requirements.txt").is_file() {
-                        return Err("This project has no requirements.txt.".to_string());
-                    }
-                    pip_requirements_argv(&interpreter)
-                }
-                _ => {
-                    let requirements = parse_requirements(packages.as_deref().unwrap_or_default())
-                        .map_err(|err| err.to_string())?;
-                    if kind == "pipOffline" {
-                        let wheelhouse =
-                            crate::commands::network_offline::cache(&state).wheelhouse();
-                        if !wheelhouse.is_dir() {
-                            return Err("No wheels are imported yet. Import a wheel folder first."
-                                .to_string());
-                        }
-                        pip_offline_argv(&interpreter, &wheelhouse, &requirements)
-                    } else {
-                        pip_install_argv(&interpreter, &requirements)
-                    }
-                    .map_err(|err| err.to_string())?
-                }
-            };
-            InstallPlan {
-                argv: with_pip_cache(argv, &pip_cache_dir(&state)),
-                cwd: project.display().to_string(),
-                target,
-                interpreter: Some(interpreter.display().to_string()),
-            }
-        }
-        "npm" | "npmProject" => {
-            let project = project_of(&state, &window, &start, NODE_MARKERS).await?;
-            let package = if kind == "npm" {
-                Some(packages.as_deref().map(str::trim).unwrap_or_default())
-            } else {
-                if !project.join("package.json").is_file() {
-                    return Err("This project has no package.json.".to_string());
-                }
-                None
-            };
-            InstallPlan {
-                argv: npm_install_argv(package).map_err(|err| err.to_string())?,
-                cwd: project.display().to_string(),
-                target: "npm",
-                interpreter: None,
-            }
-        }
-        _ => return Err(format!("Unknown install kind: {kind}")),
-    };
-    tracing::info!(target = plan.target, cwd = %plan.cwd, "dependency install planned");
-    Ok(plan)
+/// Package-manager download caches for the processes OpenMind starts: inside `<app>/cache`, like pip's, instead of the
+/// user's own `%LOCALAPPDATA%\npm-cache` / Composer cache. Only that one process's environment; nothing global changes.
+fn cache_env(manager: &str, cache: &Path) -> Vec<(String, String)> {
+    let dir = |name: &str| cache.join(name).to_string_lossy().into_owned();
+    match manager {
+        "npm" => vec![("npm_config_cache".into(), dir("npm"))],
+        "composer" => vec![("COMPOSER_CACHE_DIR".into(), dir("composer"))],
+        _ => Vec::new(),
+    }
 }
 
-/// What the dependency card can offer for `base`: the Python and npm project folders and their manifests, and whether
-/// OpenMind's Python (or a project venv) is there to install into. Local reads only.
+/// The files that mark a project for each kind of operation.
+fn markers(op: &Op) -> &'static [&'static str] {
+    match op {
+        Op::PythonCreateEnv
+        | Op::PythonInstallRequirements
+        | Op::PythonInstallPyproject
+        | Op::PythonAdd { .. }
+        | Op::PythonRemove { .. }
+        | Op::PythonUpdate { .. } => PYTHON_MARKERS,
+        Op::NodeInstall
+        | Op::NodeAdd { .. }
+        | Op::NodeRemove { .. }
+        | Op::NodeUpdate { .. }
+        | Op::NodeRunScript { .. } => NODE_MARKERS,
+        Op::ComposerInstall
+        | Op::ComposerRequire { .. }
+        | Op::ComposerRemove { .. }
+        | Op::ComposerUpdate { .. }
+        | Op::ComposerDumpAutoload => &["composer.json"],
+        Op::Cargo { .. } => &["Cargo.toml"],
+        Op::Maven { .. } | Op::Gradle { .. } => &["pom.xml", "build.gradle", "build.gradle.kts"],
+        Op::CmakeConfigure { .. } | Op::CmakeBuild | Op::CmakeClean => &["CMakeLists.txt"],
+    }
+}
+
+/// What the Dependencies view or the card asks for: an operation, in the project that contains `base`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DepsRequest {
+    /// A file or folder inside the project (the project folder itself from the view, the failed program from the card).
+    base: String,
+    op: Op,
+    /// `openmind` or an environment folder name of the project.
+    #[serde(default)]
+    python_env: Option<String>,
+    /// The package manager the user chose when the project's lock files disagree.
+    #[serde(default)]
+    node_manager: Option<String>,
+}
+
+/// Finds a program: OpenMind's runtimes and bundled tools first, then the system PATH. Project-local copies are not
+/// used for package managers (a project can't swap in its own `npm`).
+fn resolver(environment: RunEnvironment) -> impl Fn(&str) -> Option<Resolved> {
+    let system = std::env::var_os("PATH");
+    move |name| {
+        openmind_runner::runtime::resolve_executable(name, &environment, &[], system.as_deref())
+            .map(|found| Resolved {
+                path: found.path,
+                source: match found.source {
+                    RuntimeSource::Portable => "OpenMind runtime",
+                    RuntimeSource::Project => "project",
+                    RuntimeSource::System => "system PATH",
+                }
+                .into(),
+            })
+    }
+}
+
+async fn make_plan(
+    state: &AppState,
+    window: &tauri::Window,
+    request: &DepsRequest,
+) -> Result<(Plan, RunEnvironment), String> {
+    let start = start_dir(&request.base)?;
+    let project = project_of(state, window, &start, markers(&request.op)).await?;
+    let environment = crate::commands::run::environment(state).await;
+    let tool = resolver(environment.clone());
+    let ctx = PlanContext {
+        project: &project,
+        python_env: request.python_env.clone(),
+        portable_python: portable_python(state).await,
+        node_manager: request.node_manager.clone(),
+        tool: &tool,
+        pip_cache: pip_cache_dir(state),
+        wheelhouse: crate::commands::network_offline::cache(state).wheelhouse(),
+    };
+    let plan = openmind_deps::plan(&request.op, &ctx).map_err(|err| err.to_string())?;
+    Ok((plan, environment))
+}
+
+/// The workspace's projects and their dependencies (local reads only; nothing runs).
+#[tauri::command]
+pub async fn deps_scan(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<DepsSnapshot, String> {
+    let Some(root) = workspace_root(&state, &window).await? else {
+        return Ok(DepsSnapshot::default());
+    };
+    let python = portable_python(&state)
+        .await
+        .and_then(|exe| exe.parent().map(Path::to_path_buf));
+    tauri::async_runtime::spawn_blocking(move || openmind_deps::inspect(&root, python.as_deref()))
+        .await
+        .map_err(|err| err.to_string())
+}
+
+/// Exactly what `request` would run, for the confirmation. Nothing is executed.
+#[tauri::command]
+pub async fn deps_plan(
+    request: DepsRequest,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+) -> Result<Plan, String> {
+    Ok(make_plan(&state, &window, &request).await?.0)
+}
+
+/// Runs `request` (after the user confirmed its plan) as a new terminal's own program in the project folder: the
+/// terminal's output is the program's and its exit code is reported. Planned again here, from the request.
+#[tauri::command]
+pub async fn deps_run(
+    request: DepsRequest,
+    cols: u16,
+    rows: u16,
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<TerminalSessionInfo, String> {
+    let (plan, runtime) = make_plan(&state, &window, &request).await?;
+    let mut env = openmind_terminal::default_environment();
+    env.extend(runtime.vars);
+    let cache = pip_cache_dir(&state)
+        .parent()
+        .map_or_else(|| state.app_root.join("cache"), Path::to_path_buf);
+    env.extend(cache_env(&plan.manager, &cache));
+    let owner = window.label().to_string();
+    let id = TerminalRegistry::generate_id();
+    state.editor_windows.track_terminal(&id, &owner);
+    let terminal = CreateTerminalRequest {
+        shell: Some(ShellKind::PowerShell),
+        cwd: Some(PathBuf::from(&plan.cwd)),
+        cols,
+        rows,
+        env,
+        path_prepend: runtime.path_prepend,
+        program: Some(PathBuf::from(&plan.program)),
+        args: plan.args.clone(),
+    };
+    tracing::info!(manager = %plan.manager, action = %plan.action, cwd = %plan.cwd, "running a confirmed dependency operation");
+    crate::commands::terminal::start_session(&state, app, id, owner, terminal)
+}
+
+/// What the missing-package card can offer for `base`: the Python and npm project folders and their manifests, and
+/// whether OpenMind's Python (or a project environment) is there to install into. Local reads only.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectInfo {
@@ -223,5 +310,53 @@ mod tests {
     fn the_message_without_openmind_python_names_the_runtime_manager_and_never_the_users_python() {
         assert!(NO_OPENMIND_PYTHON.contains("Runtime Manager"));
         assert!(NO_OPENMIND_PYTHON.contains("never installed into your own Python"));
+    }
+
+    #[test]
+    fn package_manager_caches_stay_in_the_app_folder() {
+        let cache = Path::new(r"E:\My Apps\OpenMind Studio\cache");
+        assert_eq!(
+            cache_env("npm", cache),
+            [(
+                "npm_config_cache".to_string(),
+                r"E:\My Apps\OpenMind Studio\cache\npm".to_string()
+            )]
+        );
+        assert_eq!(cache_env("composer", cache)[0].0, "COMPOSER_CACHE_DIR");
+        // pip gets --cache-dir in its arguments; the others keep their own behaviour.
+        assert!(cache_env("pip", cache).is_empty());
+        assert!(cache_env("cargo", cache).is_empty());
+    }
+
+    #[test]
+    fn requests_arrive_as_operations_never_as_commands() {
+        let request: DepsRequest = serde_json::from_str(
+            r#"{"base":"E:\\p","op":{"op":"nodeAdd","package":"lodash","dev":true},"nodeManager":"pnpm"}"#,
+        )
+        .expect("request");
+        assert_eq!(
+            request.op,
+            Op::NodeAdd {
+                package: "lodash".into(),
+                dev: true
+            }
+        );
+        // A request can't carry a program, arguments or an unknown operation.
+        for bad in [
+            r#"{"base":"E:\\p","op":{"op":"shell","command":"calc"}}"#,
+            r#"{"base":"E:\\p","op":{"op":"nodeInstall"},"program":"calc.exe","args":["/c"]}"#,
+        ] {
+            assert!(serde_json::from_str::<DepsRequest>(bad).is_err(), "{bad}");
+        }
+        for op in [
+            Op::CmakeBuild,
+            Op::Cargo {
+                command: "check".into(),
+            },
+            Op::PythonCreateEnv,
+            Op::ComposerInstall,
+        ] {
+            assert!(!markers(&op).is_empty());
+        }
     }
 }

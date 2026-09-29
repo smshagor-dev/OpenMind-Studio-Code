@@ -87,6 +87,8 @@ export function useAppStartup(): boolean {
         container.startLanguageTools(),
         container.startDebugTools(),
         container.git.initialize(),
+        // Reads the open folder's manifests (nothing runs, nothing installs).
+        container.dependencies.initialize(),
       ]);
       await container.sourceControl.initialize();
       timings.mark("background");

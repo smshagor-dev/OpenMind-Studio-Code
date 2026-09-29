@@ -3,7 +3,8 @@ import type { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
 import type { ConfirmPrompt } from "../extensionPromptService";
 import { diagnoseDependency, type DependencyIssue } from "./dependencyModel";
-import type { DepsIpc, InstallKind, InstallPlan, ProjectInfo } from "./depsIpc";
+import type { DependencyActions } from "./dependencyActions";
+import type { DepsIpc, DepsOp, InstallKind, ProjectInfo } from "./depsIpc";
 
 export interface DependencyState {
   issue: DependencyIssue | null;
@@ -20,11 +21,11 @@ export interface DependencyState {
 }
 
 export interface DependencyHost {
-  ipc: DepsIpc;
+  ipc: Pick<DepsIpc, "depsProjectInfo">;
   events: EventBus<AppEvents>;
   confirm: (request: Omit<ConfirmPrompt, "kind" | "id">) => Promise<string | null>;
-  /** Types `argv` into a new OpenMind terminal in `cwd`; resolves with an error message or `null`. */
-  runInTerminal: (argv: string[], cwd: string) => Promise<string | null>;
+  /** The Dependencies view's runner (plan, confirmation, program in a terminal, real exit code): one path for both. */
+  actions: Pick<DependencyActions, "perform">;
   openFile: (path: string) => void;
   /** Runtime Manager (on the Workloads tab). */
   openRuntimeManager: () => void;
@@ -56,11 +57,6 @@ function issueKey(issue: DependencyIssue): string {
     default:
       return `${issue.kind}:${issue.module}`;
   }
-}
-
-/** How an argument list reads in the confirmation (quoted where it has spaces). */
-export function commandPreview(argv: string[]): string {
-  return argv.map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(" ");
 }
 
 /**
@@ -149,53 +145,50 @@ export class DependencyService {
     return issue?.kind === "pythonPackage" || issue?.kind === "nodePackage" ? issue.package : null;
   }
 
-  /** Install: asks the backend for the exact command, shows it, and types it into a new terminal only if confirmed. */
-  async install(kind: InstallKind): Promise<boolean> {
-    const base = this.state.base;
-    if (base === null) return false;
-    const packages = kind === "pip" || kind === "pipOffline" || kind === "npm" ? this.packageName() : null;
-    this.set({ busy: true, error: null, notice: null });
-    try {
-      let plan: InstallPlan;
-      try {
-        plan = await this.host.ipc.depsInstallPlan(kind, packages, base);
-      } catch (error) {
-        this.set({ error: String(error) });
-        return false;
-      }
-      const answer = await this.host.confirm({
-        extension: t("deps.title"),
-        title: t("deps.confirm.title"),
-        details: [
-          { label: t("deps.confirm.command"), value: commandPreview(plan.argv) },
-          { label: t("deps.confirm.folder"), value: plan.cwd },
-          { label: t("deps.confirm.into"), value: this.targetText(plan) },
-        ],
-        notes: [kind === "pipOffline" ? t("deps.confirm.noteOffline") : t("deps.confirm.note")],
-        buttons: [t("deps.confirm.button")],
-      });
-      if (answer === null) return false;
-      const error = await this.host.runInTerminal(plan.argv, plan.cwd);
-      if (error !== null) {
-        this.set({ error });
-        return false;
-      }
-      this.set({ issue: null, info: null, notice: t("deps.started") });
-      this.host.events.emit("appNotice", { message: t("deps.started") });
-      return true;
-    } finally {
-      this.set({ busy: false });
+  /** The operation for one of the card's install buttons. */
+  private opFor(kind: InstallKind): DepsOp | null {
+    const name = this.packageName();
+    switch (kind) {
+      case "pip":
+      case "pipOffline":
+        return name === null ? null : { op: "pythonAdd", packages: name, offline: kind === "pipOffline" };
+      case "pipRequirements":
+        return { op: "pythonInstallRequirements" };
+      case "npm":
+        return name === null ? null : { op: "nodeAdd", package: name, dev: false };
+      case "npmProject":
+        return { op: "nodeInstall" };
     }
   }
 
-  private targetText(plan: InstallPlan): string {
-    switch (plan.target) {
-      case "projectVenv":
-        return t("deps.target.projectVenv", { path: plan.interpreter ?? "" });
-      case "openmindPython":
-        return t("deps.target.openmindPython", { path: plan.interpreter ?? "" });
-      default:
-        return t("deps.target.npm", { folder: plan.cwd });
+  /**
+   * Install, through the same backend as the Dependencies view: the exact command is shown first, and after the
+   * confirmation it runs in a new terminal whose exit code is the program's.
+   */
+  async install(kind: InstallKind): Promise<boolean> {
+    const base = this.state.base;
+    const op = this.opFor(kind);
+    if (base === null || op === null) return false;
+    this.set({ busy: true, error: null, notice: null });
+    try {
+      const outcome = await this.host.actions.perform({ base, op }, t("deps.title"));
+      switch (outcome.status) {
+        case "done":
+          this.set({ issue: null, info: null, notice: t("deps.installed") });
+          return true;
+        case "refused":
+          this.set({ error: outcome.reason });
+          return false;
+        case "failed":
+          this.set({
+            error: outcome.code === null ? t("deps.installStopped") : t("deps.installFailed", { code: outcome.code }),
+          });
+          return false;
+        case "cancelled":
+          return false;
+      }
+    } finally {
+      this.set({ busy: false });
     }
   }
 

@@ -2,10 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
-import { commandPreview, DependencyService, type DependencyHost } from "./dependencyService";
-import type { DepsIpc, InstallPlan, ProjectInfo } from "./depsIpc";
-
-const PYTHON = "E:\\My Apps\\OpenMind Studio\\runtimes\\python\\versions\\3.14.7\\python.exe";
+import type { ActionOutcome } from "./dependencyActions";
+import { DependencyService, type DependencyHost } from "./dependencyService";
+import type { DepsIpc, ProjectInfo } from "./depsIpc";
 
 const INFO: ProjectInfo = {
   pythonProject: "E:\\work\\app",
@@ -16,24 +15,20 @@ const INFO: ProjectInfo = {
   packageJson: null,
 };
 
-function plan(patch: Partial<InstallPlan> = {}): InstallPlan {
-  return { argv: [PYTHON, "-m", "pip", "install", "requests"], cwd: "E:\\work\\app", target: "openmindPython", interpreter: PYTHON, ...patch };
-}
-
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function rig(host: Partial<DependencyHost> = {}, ipc: Partial<DepsIpc> = {}) {
+function rig(host: Partial<DependencyHost> = {}, ipc: Partial<DepsIpc> = {}, outcome: ActionOutcome = { status: "done" }) {
   const events = new EventBus<AppEvents>();
   let clock = 0;
+  const perform = vi.fn().mockResolvedValue(outcome);
   const full: DependencyHost = {
     ipc: {
-      depsInstallPlan: vi.fn().mockResolvedValue(plan()),
       depsProjectInfo: vi.fn().mockResolvedValue(INFO),
       ...ipc,
     },
     events,
     confirm: vi.fn().mockResolvedValue("Install"),
-    runInTerminal: vi.fn().mockResolvedValue(null),
+    actions: { perform },
     openFile: vi.fn(),
     openRuntimeManager: vi.fn(),
     runActiveInTerminal: vi.fn(),
@@ -43,6 +38,7 @@ function rig(host: Partial<DependencyHost> = {}, ipc: Partial<DepsIpc> = {}) {
   return {
     service: new DependencyService(full),
     host: full,
+    perform,
     advance: (ms: number) => {
       clock += ms;
     },
@@ -65,53 +61,46 @@ describe("DependencyService", () => {
     expect(r.service.getState().source).toBe("Python");
   });
 
-  it("installs only after the confirmation, which shows the exact command with the interpreter's full path", async () => {
+  it("installs through the Dependencies view's runner (plan, confirmation, terminal, real exit code)", async () => {
     const r = rig();
     r.service.report("ModuleNotFoundError: No module named 'requests'", "E:\\work\\app\\main.py", "Python");
     expect(await r.service.install("pip")).toBe(true);
-    expect(r.host.ipc.depsInstallPlan).toHaveBeenCalledWith("pip", "requests", "E:\\work\\app\\main.py");
-    const request = (r.host.confirm as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { details: { label: string; value: string }[] };
-    expect(request.details[0]).toEqual({
-      label: "Command",
-      value: `"${PYTHON}" -m pip install requests`,
-    });
-    expect(request.details[2]?.value).toContain("OpenMind's portable Python");
-    expect(r.host.runInTerminal).toHaveBeenCalledWith(plan().argv, "E:\\work\\app");
-    // Never a bare `python` (that could be the user's own Python), never --user.
-    const argv = (r.host.runInTerminal as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string[];
-    expect(argv[0]).toBe(PYTHON);
-    expect(argv).not.toContain("--user");
-    expect(r.service.getState().issue).toBeNull();
+    expect(r.perform).toHaveBeenCalledWith(
+      { base: "E:\\work\\app\\main.py", op: { op: "pythonAdd", packages: "requests", offline: false } },
+      "Dependency helper",
+    );
+    expect(r.service.getState()).toMatchObject({ issue: null, notice: "Installed. Run the program again." });
   });
 
-  it("nothing is installed when the user cancels, and a refused plan is shown without asking", async () => {
-    const cancelled = rig({ confirm: vi.fn().mockResolvedValue(null) });
+  it("a cancelled, refused or failed install leaves the card with the reason", async () => {
+    const cancelled = rig({}, {}, { status: "cancelled" });
     cancelled.service.report("ModuleNotFoundError: No module named 'pandas'", "E:\\work\\main.py", "Terminal");
     expect(await cancelled.service.install("pip")).toBe(false);
-    expect(cancelled.host.runInTerminal).not.toHaveBeenCalled();
-    const refused = rig({}, {
-      depsInstallPlan: vi.fn().mockRejectedValue("OpenMind's Python runtime isn't installed. Install Python from the Runtime Manager (or create a .venv in the project) — packages are never installed into your own Python."),
-    });
+    expect(cancelled.service.getState().issue).not.toBeNull();
+    const refused = rig({}, {}, { status: "refused", reason: "OpenMind's Python runtime isn't installed. Install Python from the Runtime Manager — packages are never installed into your own Python." });
     refused.service.report("ModuleNotFoundError: No module named 'pandas'", "E:\\work\\main.py", "Terminal");
     expect(await refused.service.install("pip")).toBe(false);
-    expect(refused.host.confirm).not.toHaveBeenCalled();
-    expect(refused.host.runInTerminal).not.toHaveBeenCalled();
     expect(refused.service.getState().error).toContain("never installed into your own Python");
+    const failed = rig({}, {}, { status: "failed", code: 1 });
+    failed.service.report("ModuleNotFoundError: No module named 'pandas'", "E:\\work\\main.py", "Terminal");
+    expect(await failed.service.install("pip")).toBe(false);
+    expect(failed.service.getState().error).toBe("The install failed (exit code 1). The terminal shows why.");
   });
 
-  it("offline wheelhouse, requirements.txt and npm use their own plans; the offline note says no network", async () => {
+  it("offline wheelhouse, requirements.txt and npm map to their operations", async () => {
     const r = rig();
     r.service.report("ModuleNotFoundError: No module named 'django'", "E:\\work\\app\\main.py", "Terminal");
     await r.service.install("pipOffline");
-    expect(r.host.ipc.depsInstallPlan).toHaveBeenLastCalledWith("pipOffline", "django", "E:\\work\\app\\main.py");
-    const offline = (r.host.confirm as ReturnType<typeof vi.fn>).mock.lastCall?.[0] as { notes: string[] };
-    expect(offline.notes[0]).toContain("--no-index");
+    expect(r.perform).toHaveBeenLastCalledWith({ base: "E:\\work\\app\\main.py", op: { op: "pythonAdd", packages: "django", offline: true } }, "Dependency helper");
     r.service.report("ModuleNotFoundError: No module named 'flask'", "E:\\work\\app\\main.py", "Terminal");
     await r.service.install("pipRequirements");
-    expect(r.host.ipc.depsInstallPlan).toHaveBeenLastCalledWith("pipRequirements", null, "E:\\work\\app\\main.py");
+    expect(r.perform).toHaveBeenLastCalledWith({ base: "E:\\work\\app\\main.py", op: { op: "pythonInstallRequirements" } }, "Dependency helper");
     r.service.report("Error: Cannot find module 'express'", "E:\\web", "Terminal");
     await r.service.install("npm");
-    expect(r.host.ipc.depsInstallPlan).toHaveBeenLastCalledWith("npm", "express", "E:\\web");
+    expect(r.perform).toHaveBeenLastCalledWith({ base: "E:\\web", op: { op: "nodeAdd", package: "express", dev: false } }, "Dependency helper");
+    r.service.report("Error: Cannot find module 'left-pad'", "E:\\web", "Terminal");
+    await r.service.install("npmProject");
+    expect(r.perform).toHaveBeenLastCalledWith({ base: "E:\\web", op: { op: "nodeInstall" } }, "Dependency helper");
   });
 
   it("a dismissed issue stays quiet for a while; the helpers open files and the Runtime Manager", () => {
@@ -125,7 +114,6 @@ describe("DependencyService", () => {
     expect(r.host.openRuntimeManager).toHaveBeenCalledOnce();
     r.service.runInTerminal();
     expect(r.host.runActiveInTerminal).toHaveBeenCalledOnce();
-    expect(commandPreview(["npm", "install", "left pad"])).toBe('npm install "left pad"');
   });
 });
 
@@ -161,8 +149,7 @@ describe("Tcl/Tk GUI support for the portable Python (Milestone 22.5)", () => {
     expect(pythonGui.add).toHaveBeenCalledWith("3.14.7");
     expect(r.service.getState()).toMatchObject({ issue: null, notice: "Tcl/Tk GUI support was added. Run the program again." });
     // Never pip, never a terminal.
-    expect(r.host.runInTerminal).not.toHaveBeenCalled();
-    expect(r.host.ipc.depsInstallPlan).not.toHaveBeenCalled();
+    expect(r.perform).not.toHaveBeenCalled();
   });
 
   it("cancelling adds nothing; a failure is shown; without an addable add-on only the explanation remains", async () => {

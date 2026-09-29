@@ -28,12 +28,11 @@ const INFO: ProjectInfo = {
 function setup(info: ProjectInfo = INFO, networkFailure: unknown = null) {
   const host = {
     ipc: {
-      depsInstallPlan: vi.fn().mockResolvedValue({ argv: ["C:\\py\\python.exe", "-m", "pip", "install", "requests"], cwd: "E:\\work", target: "openmindPython", interpreter: "C:\\py\\python.exe" }),
       depsProjectInfo: vi.fn().mockResolvedValue(info),
     },
     events: new EventBus<AppEvents>(),
     confirm: vi.fn().mockResolvedValue(null),
-    runInTerminal: vi.fn().mockResolvedValue(null),
+    actions: { perform: vi.fn().mockResolvedValue({ status: "cancelled" }) },
     openFile: vi.fn(),
     openRuntimeManager: vi.fn(),
     runActiveInTerminal: vi.fn(),
@@ -80,9 +79,11 @@ describe("DependencyCard", () => {
       fireEvent.click(screen.getByRole("button", { name: "Install requests into OpenMind Python" }));
       await Promise.resolve();
     });
-    expect(r.host.confirm).toHaveBeenCalledOnce();
-    // Cancelled: nothing typed.
-    expect(r.host.runInTerminal).not.toHaveBeenCalled();
+    // The card hands the install to the shared runner (which plans, confirms and runs it).
+    expect(r.host.actions.perform).toHaveBeenCalledWith(
+      { base: "E:\\work\\main.py", op: { op: "pythonAdd", packages: "requests", offline: false } },
+      "Dependency helper",
+    );
   });
 
   it("tkinter never offers pip: it explains Tcl/Tk support and points to the Runtime Manager", async () => {

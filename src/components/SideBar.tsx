@@ -18,6 +18,7 @@ import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
 import { SourceControlView } from "./SourceControlView";
 import { ExtensionsView } from "./ExtensionsView";
+import { DependenciesView } from "./deps/DependenciesView";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 import { t } from "../i18n";
 
@@ -37,6 +38,7 @@ const VIEW_TITLES: Record<BuiltInView, string> = {
   scm: "view.sourceControl",
   debug: "view.runAndDebug",
   extensions: "view.extensions",
+  deps: "view.dependencies",
   ai: "view.ai",
 };
 
@@ -123,6 +125,8 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
       return <RunDebugView />;
     case "extensions":
       return <ExtensionsView />;
+    case "deps":
+      return <DependenciesView />;
     case "ai":
       return <AiView />;
   }

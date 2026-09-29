@@ -93,6 +93,8 @@ import * as monaco from "monaco-editor";
 import { t } from "../i18n";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
+import { DependenciesService } from "./deps/dependenciesService";
+import { tauriDepsIpc } from "./deps/depsIpc";
 import { wireDeps } from "./deps/depsWiring";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
@@ -652,7 +654,7 @@ const network = wireNetwork({
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
 const workloads = wireWorkloads({ events, commands, runtime, lsp });
 /** The dependency helper: missing modules/commands in Run Code's Output and terminals, installs only after a preview. */
-const deps = wireDeps({
+const depsWiring = wireDeps({
   events,
   output,
   terminal,
@@ -681,6 +683,16 @@ const deps = wireDeps({
         : (runtime.getState().errors.python ?? t("runtimes.addon.busy", { name: "Python" })),
     refresh: () => runtime.refresh(),
   },
+});
+const deps = depsWiring.helper;
+// The Dependencies view (Milestone 22.6): same runner as the missing-package card.
+const dependencies = new DependenciesService({
+  ipc: tauriDepsIpc,
+  actions: depsWiring.actions,
+  events,
+  onChanged: depsWiring.onChanged,
+  settingsGet: (key) => tauriIpcClient.settingsGet(key),
+  settingsSet: (key, value) => tauriIpcClient.settingsSet(key, value),
 });
 // Run Code's Output can't type into a program: a file that reads the keyboard is offered the terminal.
 runCode.setInteractiveHost({
@@ -960,6 +972,7 @@ export const container = {
   profiles,
   network,
   deps,
+  dependencies,
   workloads,
   reportStartup,
   startFormatting,

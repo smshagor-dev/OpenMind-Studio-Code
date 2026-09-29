@@ -22,6 +22,7 @@ const SIDE_VIEW_COMMANDS: readonly [string, SideView][] = [
   ["view.showSourceControl", "scm"],
   ["view.showRun", "debug"],
   ["view.showExtensions", "extensions"],
+  ["view.showDependencies", "deps"],
 ];
 
 const PANEL_TAB_COMMANDS: readonly [string, PanelTab][] = [

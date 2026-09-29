@@ -22,6 +22,7 @@ import { FormatterDialog } from "./components/formatting/FormatterDialog";
 import { ProfilesDialog } from "./components/profiles/ProfilesDialog";
 import { NetworkDialog, NetworkFailureCard } from "./components/network/NetworkDialog";
 import { DependencyCard } from "./components/deps/DependencyCard";
+import { DependencySetupCard } from "./components/deps/DependencySetupCard";
 import { FirstRunWorkloads } from "./components/workloads/WorkloadsPage";
 import { LanguageStatusDialog } from "./components/language/LanguageStatusDialog";
 import { AiProviderManager } from "./components/ai/AiProviderManager";
@@ -186,6 +187,7 @@ export function App() {
       <NetworkDialog />
       <NetworkFailureCard />
       <DependencyCard />
+      <DependencySetupCard />
       <FirstRunWorkloads />
       <ExtensionDialogs />
       <ExtensionPrompts />

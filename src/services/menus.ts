@@ -108,6 +108,7 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
         cmd("Open Settings (JSON)", "preferences.openSettingsJson"),
         cmd("Open Workspace Settings (JSON)", "preferences.openWorkspaceSettingsJson"),
         cmd("Extensions", "view.showExtensions"),
+        cmd("Dependencies", "view.showDependencies"),
         cmd("Keyboard Shortcuts", "preferences.openKeybindings"),
         cmd("Open Keyboard Shortcuts (JSON)", "preferences.openKeybindingsJson"),
         cmd("Configure Snippets", "preferences.configureSnippets"),

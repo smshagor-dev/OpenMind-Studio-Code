@@ -283,6 +283,17 @@ export function ExtensionsIcon(props: IconProps) {
   );
 }
 
+/** A package box: the Dependencies view. */
+export function PackageIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 1.5l6 3v7l-6 3-6-3v-7z" />
+      <path d="M2 4.5l6 3 6-3M8 7.5v7" />
+      <path d="M5 3l6 3" />
+    </Svg>
+  );
+}
+
 export function RuntimeIcon(props: IconProps) {
   return (
     <Svg {...props}>

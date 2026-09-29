@@ -9,8 +9,11 @@ import { promptFolder, readPrompt, wireDeps } from "./depsWiring";
 
 function rig() {
   const listeners = new Set<() => void>();
-  const createTerminal = vi.fn().mockResolvedValue("t9");
-  const write = vi.fn();
+  const createTaskTerminal = vi.fn(async (_title: string, start: (cols: number, rows: number) => Promise<unknown>) => {
+    await start(80, 24);
+    return "t9";
+  });
+  const waitForExit = vi.fn().mockResolvedValue(0);
   const taps = new Map<string, (data: Uint8Array) => void>();
   let sessions: { id: string; shell: string; cwd: string; exited: boolean }[] = [];
   const terminal = {
@@ -23,11 +26,13 @@ function rig() {
       taps.set(id, listener);
       return () => taps.delete(id);
     },
-    createTerminal,
-    write,
+    createTaskTerminal,
+    waitForExit,
   } as unknown as TerminalService;
   const ipc: DepsIpc = {
-    depsInstallPlan: vi.fn(),
+    depsScan: vi.fn(),
+    depsPlan: vi.fn(),
+    depsRun: vi.fn().mockResolvedValue({ id: "t9", shell: "powerShell", cwd: "E:\\p", pid: 1 }),
     depsProjectInfo: vi.fn().mockResolvedValue({ pythonProject: "E:\\p", requirementsTxt: null, pyprojectToml: null, pythonTarget: "openmindPython", nodeProject: "E:\\p", packageJson: null }),
   };
   const output = new OutputService();
@@ -41,14 +46,14 @@ function rig() {
     activeFilePath: () => "E:\\p\\main.py",
     workspaceRoot: () => "E:\\p",
     ipc,
-    terminalLine: (argv) => Promise.resolve(argv.join(" ")),
   });
   return {
-    deps,
+    deps: deps.helper,
+    wiring: deps,
     ipc,
     output,
-    createTerminal,
-    write,
+    createTaskTerminal,
+    waitForExit,
     addTerminal: (id: string, cwd: string) => {
       sessions = [...sessions, { id, shell: "powerShell", cwd, exited: false }];
       for (const listener of listeners) listener();
@@ -127,17 +132,43 @@ describe("wireDeps", () => {
     expect(r.deps.getState()).toMatchObject({ base: "E:\\p\\main.py", fromRunCode: true, source: "Python" });
   });
 
-  it("an install is typed into a new terminal in the project folder (nothing without the confirmation)", async () => {
+  it("the card's install is planned by the backend, confirmed, and run as a terminal's own program (its exit code is real)", async () => {
     const r = rig();
-    (r.ipc.depsInstallPlan as ReturnType<typeof vi.fn>).mockResolvedValue({
-      argv: ["E:\\app\\python.exe", "-m", "pip", "install", "requests"],
+    (r.ipc.depsPlan as ReturnType<typeof vi.fn>).mockResolvedValue({
+      manager: "pip",
+      action: "add",
+      packages: ["requests"],
+      program: "E:\\app\\python.exe",
+      source: "OpenMind portable",
+      args: ["-m", "pip", "install", "--cache-dir=E:\\app\\cache\\pip", "requests"],
+      command: "E:\\app\\python.exe -m pip install --cache-dir=E:\\app\\cache\\pip requests",
       cwd: "E:\\p",
-      target: "openmindPython",
-      interpreter: "E:\\app\\python.exe",
+      target: "OpenMind's portable Python (E:\\app)",
+      network: "required",
+      notes: [],
     });
+    const changed = vi.fn();
+    r.wiring.onChanged(changed);
     r.output.append("Python", "ModuleNotFoundError: No module named 'requests'");
-    await r.deps.install("pip");
-    expect(r.createTerminal).toHaveBeenCalledWith("powerShell", "E:\\p");
-    expect(r.write).toHaveBeenCalledWith("t9", "E:\\app\\python.exe -m pip install requests\r");
+    expect(await r.deps.install("pip")).toBe(true);
+    const request = { base: "E:\\p\\main.py", op: { op: "pythonAdd", packages: "requests", offline: false } };
+    expect(r.ipc.depsPlan).toHaveBeenCalledWith(request);
+    // The same request (never a command line) goes to the backend, which plans it again before running it.
+    expect(r.ipc.depsRun).toHaveBeenCalledWith(request, 80, 24);
+    expect(r.waitForExit).toHaveBeenCalledWith("t9");
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
+  it("a failed install reports its exit code and keeps the card", async () => {
+    const r = rig();
+    (r.ipc.depsPlan as ReturnType<typeof vi.fn>).mockResolvedValue({
+      manager: "npm", action: "add", packages: ["left-pad"], program: "C:\\node\\npm.cmd", source: "OpenMind runtime",
+      args: ["install", "left-pad"], command: "npm install left-pad", cwd: "E:\\p", target: "E:\\p\\node_modules", network: "required", notes: [],
+    });
+    r.waitForExit.mockResolvedValue(1);
+    r.output.append("Node.js", "Error: Cannot find module 'left-pad'");
+    expect(await r.deps.install("npm")).toBe(false);
+    expect(r.deps.getState().error).toBe("The install failed (exit code 1). The terminal shows why.");
+    expect(r.deps.getState().issue).not.toBeNull();
   });
 });

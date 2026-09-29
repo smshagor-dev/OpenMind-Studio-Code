@@ -19,6 +19,7 @@ openmind-core = { version = "0.1.0", path = "../crates/core" }
 openmind-db = { version = "0.1.0", path = "../crates/db" }
 openmind-file-watch = { version = "0.1.0", path = "../crates/file-watch" }
 openmind-dap = { version = "0.1.0", path = "../crates/dap" }
+openmind-deps = { version = "0.1.0", path = "../crates/deps" }
 openmind-language = { version = "0.1.0", path = "../crates/language" }
 openmind-format = { version = "0.1.0", path = "../crates/format" }
 openmind-lsp = { version = "0.1.0", path = "../crates/lsp" }

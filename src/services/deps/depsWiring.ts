@@ -2,21 +2,20 @@ import { t } from "../../i18n";
 import type { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
 import type { ConfirmPrompt } from "../extensionPromptService";
-import { tauriLanguageIpc, type TerminalShellStyle } from "../language/languageIpc";
 import { terminalPlainText } from "../network/networkWiring";
 import type { OutputService } from "../outputService";
-import { typeInNewTerminal } from "../terminalCommand";
 import type { TerminalService } from "../terminalService";
+import { DependencyActions } from "./dependencyActions";
 import { DependencyService, type PythonGuiHost } from "./dependencyService";
 import { tauriDepsIpc, type DepsIpc } from "./depsIpc";
 
 /** Run Code's Output channels: a program's own errors land there. */
-const RUN_CHANNELS = new Set(["Python", "Node.js", "PHP", "Run Code"]);
+const RUN_CHANNELS = new Set(["Python", "Node.js", "PHP", "C", "C++", "Java", "Rust", "Run Code"]);
 
 export interface DepsWiringDeps {
   events: EventBus<AppEvents>;
   output: Pick<OutputService, "onAppend">;
-  terminal: Pick<TerminalService, "getState" | "subscribe" | "onOutput" | "createTerminal" | "write">;
+  terminal: Pick<TerminalService, "getState" | "subscribe" | "onOutput" | "createTaskTerminal" | "waitForExit">;
   confirm: (request: Omit<ConfirmPrompt, "kind" | "id">) => Promise<string | null>;
   openFile: (path: string) => void;
   run: (command: string) => void;
@@ -26,24 +25,44 @@ export interface DepsWiringDeps {
   ipc?: DepsIpc;
   /** Tcl/Tk for OpenMind's portable Python (see `PythonGuiHost`). */
   pythonGui?: PythonGuiHost;
-  terminalLine?: (argv: string[], style: TerminalShellStyle) => Promise<string>;
+}
+
+export interface DepsWiring {
+  /** The missing-package card. */
+  helper: DependencyService;
+  /** The one runner for package operations (the card and the Dependencies view). */
+  actions: DependencyActions;
+  /** Called after any operation ended (to read the project again). */
+  onChanged: (listener: () => void) => () => void;
 }
 
 /**
  * The dependency helper's wiring: Run Code's Output and every terminal are watched for "missing" errors (module,
- * package, command, header), line by line; the card's installs are typed into a new terminal after confirmation.
+ * package, command, header), line by line; installs go through `DependencyActions` (plan, confirmation, the program in a
+ * new terminal, its real exit code) — the same runner the Dependencies view uses.
  */
-export function wireDeps(deps: DepsWiringDeps): DependencyService {
-  const quote = deps.terminalLine ?? ((argv, style) => tauriLanguageIpc.languageTerminalLine(argv, style));
+export function wireDeps(deps: DepsWiringDeps): DepsWiring {
+  const ipc = deps.ipc ?? tauriDepsIpc;
+  const changed = new Set<() => void>();
+  const actions = new DependencyActions({
+    ipc,
+    confirm: deps.confirm,
+    terminals: deps.terminal,
+    notice: (message) => {
+      deps.events.emit("appNotice", { message });
+    },
+    error: (message) => {
+      deps.events.emit("appError", { message });
+    },
+    changed: () => {
+      for (const listener of [...changed]) listener();
+    },
+  });
   const service = new DependencyService({
-    ipc: deps.ipc ?? tauriDepsIpc,
+    ipc,
     events: deps.events,
     confirm: deps.confirm,
-    runInTerminal: (argv, cwd) =>
-      typeInNewTerminal(deps.terminal, quote, argv, cwd, {
-        noShell: t("network.wheels.noShell"),
-        failed: t("network.stale.failed"),
-      }),
+    actions,
     openFile: deps.openFile,
     openRuntimeManager: () => {
       deps.run("workloads.open");
@@ -83,7 +102,16 @@ export function wireDeps(deps: DepsWiringDeps): DependencyService {
       });
     }
   });
-  return service;
+  return {
+    helper: service,
+    actions,
+    onChanged: (listener) => {
+      changed.add(listener);
+      return () => {
+        changed.delete(listener);
+      };
+    },
+  };
 }
 
 /**

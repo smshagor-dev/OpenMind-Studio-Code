@@ -11,6 +11,7 @@ import {
   ExtensionsIcon,
   FilesIcon,
   GearIcon,
+  PackageIcon,
   RemoteIcon,
   RuntimeIcon,
   SearchIcon,
@@ -46,6 +47,12 @@ const VIEW_ITEMS: readonly ViewItem[] = [
     label: "view.extensions",
     command: "view.showExtensions",
     icon: <ExtensionsIcon />,
+  },
+  {
+    view: "deps",
+    label: "view.dependencies",
+    command: "view.showDependencies",
+    icon: <PackageIcon />,
   },
 ];
 
