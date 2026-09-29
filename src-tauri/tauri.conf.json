@@ -71,10 +71,5 @@
     "resources": {
       "../lsp-bundle/": "lsp/"
     }
-  },
-  "plugins": {
-    "updater": {
-      "requireSignedVersion": true
-    }
   }
 }
