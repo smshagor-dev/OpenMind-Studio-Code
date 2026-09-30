@@ -27,6 +27,14 @@ pnpm release:build:x86        # tauri build --target i686-pc-windows-msvc --bund
 pnpm release:collect:all      # collects both, named ...-x64 / ...-x86
 ```
 
+When the build used `CARGO_TARGET_DIR`, pass the same folder to the collector (`--target-dir <folder>`; `package:portable`
+reads the variable, `release.mjs` reads only `.cargo/config.toml` or `--target-dir`). Without it the collector picks up
+whatever older installer sits in `target/` — this happened once during Milestone 23.1; check the dates in
+`RELEASE-REPORT.md`.
+
+Before publishing a build that changes the network layer, run the smoke list in `docs/university-validation.md` on a
+fresh unzip of the portable ZIP and save the network diagnostics (they must contain no token or password).
+
 The offline language server bundle is `windows-x64` only: a 32-bit build still carries it, and its servers run only on
 64-bit Windows (on 32-bit Windows the bundle is ignored and servers fall back to npm installs).
 

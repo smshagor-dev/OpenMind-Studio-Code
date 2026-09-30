@@ -64,11 +64,14 @@ the extension host, Git, the PHP panel's Composer) are pointed at with process-l
 | Variable / setting | Value | Used by |
 | --- | --- | --- |
 | `PIP_INDEX_URL` | `http://127.0.0.1:<port>/<token>/pypi/simple/` | pip |
-| `NPM_CONFIG_REGISTRY`, `PNPM_CONFIG_REGISTRY` | `http://127.0.0.1:<npm port>/` | npm, pnpm, Yarn 1 (metadata) |
-| `GOPROXY` | `http://127.0.0.1:<port>/<token>/go` | go (checksums still verified against sum.golang.org) |
-| `GIT_CONFIG_COUNT` + `GIT_CONFIG_KEY_n/VALUE_n` | `url.<gateway>/git/https/.insteadOf=https://`, an identity `pushInsteadOf`, no proxy for the gateway | git (clone/fetch/pull; push keeps Git's own connection) |
+| `NPM_CONFIG_GLOBALCONFIG` | `<app>/temp/config/npmrc`: the gateway's npm port and its bearer token (a project `.npmrc` registry still wins) | npm |
+| `NPM_CONFIG_USERCONFIG` or `PNPM_CONFIG_HTTPS_PROXY` | OpenMind's npmrc when you have no `~/.npmrc`, else the tunnel | pnpm |
+| `YARN_HTTPS_PROXY` | the tunnel | Yarn 1 (metadata and tarballs) |
+| `GOPROXY` | `http://127.0.0.1:<port>/<token>/go` | go (checksums still verified against sum.golang.org; the upstream follows `network.goProxy` without a restart) |
+| `GIT_CONFIG_COUNT` + `GIT_CONFIG_KEY_n/VALUE_n` | `url.<gateway>/git/https/.insteadOf=https://`, no proxy for the gateway | git over https: clone, fetch, pull and push; your credential helper answers for the real host |
+| `RUSTUP_DIST_SERVER`, `RUSTUP_UPDATE_ROOT` | the gateway's `/rustup` | rustup |
 | `CARGO_HTTP_PROXY` | `http://cargo:<token>@127.0.0.1:<port>` (the gateway's tunnel) | cargo |
-| `OPENMIND_COMPOSER_PROXY` | the tunnel for Composer; OpenMind's `composer` launcher sets `HTTPS_PROXY` from it for Composer's own process | OpenMind's portable Composer |
+| `OPENMIND_COMPOSER_PROXY`, `OPENMIND_REAL_COMPOSER` | the tunnel for Composer and the Composer found next on PATH; the `composer` launcher in `<app>/shims` runs it with `HTTPS_PROXY` set for its own process | OpenMind's or any other Composer |
 | `OPENMIND_FETCH_URL` | the gateway's download endpoint | `openmind-fetch` |
 | `NO_PROXY` | your own value plus `127.0.0.1,localhost` | every tool (so your own proxy never captures gateway requests) |
 | `PIP_FIND_LINKS` | the offline wheels folder as a `file:///` URL, only with *Use Offline Python Packages* on | pip |
@@ -204,6 +207,15 @@ failure card is up (it would cover the card's buttons).
   Proxy.
 - *It works in a new terminal but not in an old one* — old terminals keep the environment they started with.
 - *Windows uses a PAC script* — enter the proxy manually (ask your IT department for `host:port`).
+- *A package tool fails in OpenMind's terminal* — Network > Downloads: the failed operation's category and **Copy Error
+  Details**; then **Save Network Diagnostics** and compare `B_to_E_throughOpenMind` with `F_externalPowerShellEquivalent`
+  and `hosts[].A_downloadManager.reachable` (see `docs/download-broker.md`, and `docs/university-validation.md` for the
+  full checklist).
+- *git asks for credentials for 127.0.0.1* — it no longer should (the gateway asks your credential helper for the real host
+  and answers Git 403 on failure); if it does, the terminal is older than the app: open a new one.
+- *git over SSH: `Connection timed out` on port 22* — the network blocks SSH. OpenMind doesn't tunnel SSH; use the
+  repository's HTTPS address (routed), or ask whether `ssh.github.com:443` is allowed (the diagnostics' `gitSsh` says).
+- *Temporary files* — Network > Downloads > **Clear Temporary Files** removes staged and partial downloads nothing uses.
 
 ## Limitations
 

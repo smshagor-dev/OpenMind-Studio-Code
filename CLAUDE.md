@@ -687,6 +687,26 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   the text). Setting `network.gateway.enabled` (user, default on). Frontend: `network/brokerIpc.ts`, `downloadsModel.ts`, `NetworkService`
   (`gateway`, `downloads`, `attachBroker`, `cancelDownload`, `exportDiagnostics`, `reportProblem`, `envFingerprint` = gateway switch + offline wheels,
   no longer the proxy), the Network window's **Downloads** tab (`NetworkDownloadsTab`), Terminal > Network > Package Downloads / Save Network Diagnostics.
+  **Production hardening (Milestone 23.1)** — supersedes the Git/npm/Composer details above; matrices in `docs/download-broker.md`. `gateway::http1`
+  streams bodies (`BodyReader`), `upstream::Upstream::send_stream`. `gateway::credentials` (`CredentialSource` fill/approve/reject, `CredentialCache`
+  15 min, `Credential` Debug prints `****`) + `gateway::git`: a 401 from the remote -> the app's `commands::git_credentials::GitCredentialHelper`
+  runs the user's `git credential fill|approve|reject` for the **real host** (Job Object, no window, time limits), retries a buffered request once,
+  answers Git **403** on failure (never 401, so Git never prompts for 127.0.0.1), strips `WWW-Authenticate`, refuses localhost remotes; **push**
+  (`git-receive-pack`) is streamed through (the identity pushInsteadOf is gone). `gateway::rustup` (static.rust-lang.org, archives via the broker).
+  `env::process_env`: npm -> `NPM_CONFIG_GLOBALCONFIG` = `<app>/temp/config/npmrc` (npm port + bearer token; the npm port refuses requests without
+  it and strips `Authorization` upstream; a project `.npmrc` registry wins; the file is removed at shutdown), pnpm -> that file via
+  `NPM_CONFIG_USERCONFIG` or the tunnel when the user has a `~/.npmrc`, Yarn 1 -> `YARN_HTTPS_PROXY` tunnel, rustup variables, Composer ->
+  `launchers()` writes `composer.cmd`/`composer` into `<app>/shims`, running `OPENMIND_REAL_COMPOSER(_SH)` (`broker::real_composer`: the next Composer on
+  the search path, OpenMind's or the system's). The tunnel admits users cargo/composer/yarn/pnpm. Go's upstream follows `network.goProxy` live
+  (`Gateway::set_go_proxy`). `broker`: `MAX_ACTIVE` = 6 with a `Queued` phase (cancellable), `FlightGuard` ends a flight even on a panic, crash
+  partials (`downloading`) are kept, `Staging::clear` (`broker_clear_temp`). `redact` (in `openmind-network`: `log_url`/`log_text`) strips user info,
+  query and fragment from every logged/event/staging address — `tests/resilience.rs` captures all logs and checks token, password, `Authorization` and
+  signed queries never appear, and that a client leaving mid-download doesn't break another. `fetch` refuses localhost/loopback/link-local targets.
+  `ssh_diag`: Git over SSH is **not routed**; diagnostics report ssh presence/source, port 22 and ssh.github.com:443, agent/keys/known_hosts counts and
+  a probe category (BatchMode, output discarded). Diagnostics schema **v2** (`network_readiness`: per-tool routed/skipped/off/unavailable by variable
+  *name*, last failure category; pnpm/yarn/go/cargo/rustup checks with throwaway caches; a final scrub of the whole file). `run::path_order` =
+  shims > bundled > runtimes > inherited PATH (regression test). Frontend: phase `queued`, Copy Error Details, Clear Finished, Clear Temporary Files,
+  Open Diagnostics.
 
 - `openmind-workloads` (Milestone 22) — the Runtime Manager's Visual Studio-style **workload / language-pack catalog** as data, and the rules
   that turn it into honest statuses and an install plan; no I/O (the app supplies `Facts`: the runtime list, the LSP bundle, tools found on
@@ -2708,6 +2728,21 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   folder addresses read as failures. **Not verified**: the university network itself — the issue is **not resolved** until the live checklist
   passes there. Limitations: see `docs/download-broker.md` (private Git repos over the gateway, push/SSH not routed, Cargo/Composer tunnelled,
   system Composer and Yarn 1 tarballs not routed, a project `.npmrc` default registry is overridden, the Go module proxy is read at start-up).
+- [x] **Milestone 23.1** — Production hardening of the download layer (branch `milestone-23.1-hardening`, several commits: private Git + push,
+  SSH diagnostics, Yarn/pnpm/rustup/any Composer/project `.npmrc`, broker recovery/concurrency/secrecy, Downloads actions, diagnostics v2 + PATH
+  test, two smoke-found fixes). Closes every Milestone 23 limitation except SSH (reported, deliberately not routed). **Migration**: none (no
+  persisted state changed; `<app>/temp/config/npmrc` is per run). **Tests**: Rust workspace 1192 passed / 0 failed / 18 ignored, incl. a real
+  `git-http-backend` private remote (clone, push, non-ff, pull, fsck, wrong/expired/cancelled credentials, push without permission) and log-capture
+  secrecy; frontend 1887 ×3; clippy/fmt/lint/typecheck clean. **Smoke** (release build, fresh portable copies `E:\omm231`, `E:\omm231b`, workspace
+  `My Work`): portable Python first in `where`, `PYTHONNOUSERSITE=1`, venv pip install of six+requests; npm install + `npm ci` (lock clean); pnpm;
+  Yarn 1; git clone/pull/fsck; go get; cargo fetch; system Composer through the launcher (no `HTTPS_PROXY` in the shell); `openmind-fetch` bad hash
+  refused and no file, good hash saved; wrong token / foreign Host / npm without token = 403, fetch of 127.0.0.1 or `file:` = 400; a 223 MB download
+  cancelled at 19 MB kept its `.part`, survived an app restart (`keptPartial: 1`) and resumed at byte 20,016,384; diagnostics v2 with all nine tools ok
+  on both routes and no token in it or the logs; close left 0 app processes, closed ports, empty `temp/`; PATH, Windows/WinHTTP proxy, git/npm
+  config, tool config files, site-packages and npm globals identical to the baseline. Found and fixed by the smoke: the per-run npmrc outlived the app;
+  `rustup check` exit 100 read as failure; a policy scan flagged a hint quoting `git config --global`. **Not verified**: the university network
+  (see `docs/university-validation.md` — the issue is **not resolved** until that checklist passes there), a real private GitHub push (covered with
+  a real Git HTTP backend), MSI install. Limitations: `docs/download-broker.md`.
 - [ ] Milestone 24 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update; the university live test of Milestone 23).
 
