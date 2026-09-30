@@ -15,12 +15,12 @@
     <Property Id="ADDTOPATH" Secure="yes" />
     <Property Id="EXPLORERMENU" Secure="yes" />
     <DirectoryRef Id="INSTALLDIR">
-      <Component Id="OmCliPath" Guid="829da891-04dc-46fc-9fac-e31ee095a1a8" Win64="$(var.Win64)">
+      <Component Id="OmCliPath" Guid="829da891-04dc-46fc-9fac-e31ee095a1a8">
         <Condition>ADDTOPATH = "1"</Condition>
         <Environment Id="OmCliPathEntry" Name="PATH" Value="[INSTALLDIR]bin" Part="last" Action="set" System="yes" Permanent="no" />
         <RegistryValue Root="HKLM" Key="Software\OpenMind\OpenMind Studio Integration" Name="MsiPath" Type="string" Value="[INSTALLDIR]bin" KeyPath="yes" />
       </Component>
-      <Component Id="OmExplorerMenu" Guid="d3030a0f-832f-4d8a-a048-bac2285aa06f" Win64="$(var.Win64)">
+      <Component Id="OmExplorerMenu" Guid="d3030a0f-832f-4d8a-a048-bac2285aa06f">
         <Condition>EXPLORERMENU = "1"</Condition>
         <RegistryValue Root="HKLM" Key="Software\OpenMind\OpenMind Studio Integration" Name="MsiExplorer" Type="string" Value="[INSTALLDIR]OpenMindStudio.exe" KeyPath="yes" />
         <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\OpenMindStudio" ForceDeleteOnUninstall="yes">
