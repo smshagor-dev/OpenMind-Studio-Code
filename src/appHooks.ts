@@ -77,6 +77,8 @@ export function useAppStartup(): boolean {
       // The editor is usable now: what follows (services that only mirror state or wait for a click) must not keep
       // the window blank.
       if (!lifecycle.cancelled) setReady(true);
+      // A UI that came up in another language than English offers English once per language (not awaited: a dialog).
+      if (isMainWindow() && !lifecycle.cancelled) void container.offerEnglish();
       const usable = timings.elapsed();
       await Promise.all([
         container.runCode.initialize(),

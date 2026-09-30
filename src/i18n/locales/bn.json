@@ -1507,6 +1507,7 @@
   "integration.note.replaces": "এন্ট্রিগুলো এখন অন্য একটি OpenMind কপি খোলে ({command}); এর বদলে এটি খুলবে।",
   "integration.confirm": "প্রয়োগ করুন",
   "integration.failed": "শেল ইন্টিগ্রেশন ব্যর্থ হয়েছে: {error}",
+  "language.offer.note": "OpenMind Studio কি {language}-এর বদলে ইংরেজিতে ব্যবহার করবেন?",
   "network.palette.openSettings": "নেটওয়ার্ক: প্রক্সি সেটিংস খুলুন",
   "network.palette.testConnection": "নেটওয়ার্ক: সংযোগ পরীক্ষা করুন",
   "network.palette.showTerminalEnv": "নেটওয়ার্ক: টার্মিনালের প্যাকেজ সেটিং দেখান",

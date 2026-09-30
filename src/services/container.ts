@@ -60,6 +60,7 @@ import { registerMenuFillCommands } from "./menuFillCommands";
 import { wireLanguage } from "./language/languageWiring";
 import { registerHelpCommands } from "./helpCommands";
 import { registerShellIntegrationCommands } from "./shellIntegrationCommands";
+import { offerEnglish } from "./languageOffer";
 import { ToolchainService } from "./toolchains/toolchainService";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
@@ -91,7 +92,7 @@ import { ExtensionFormatterRegistry } from "./extensionFormatters";
 import { languageForPath } from "../editor/languageForPath";
 import { createContributionBinding, registerHostProvider } from "../editor/extensionMonaco";
 import * as monaco from "monaco-editor";
-import { t } from "../i18n";
+import { i18n, t } from "../i18n";
 import { tauriBrokerIpc } from "./network/brokerIpc";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
@@ -989,4 +990,12 @@ export const container = {
   startFormatting,
   startExtensions: extensions.start,
   finishExtensionsStartup: extensions.finishStartup,
+  /** Start-up, main window: offers English when the UI came up in another language (asked once per language). */
+  offerEnglish: () =>
+    offerEnglish({
+      language: () => i18n.language,
+      ipc: tauriIpcClient,
+      confirm: (request) => extensions.prompts.confirm(request),
+      switchToEnglish: async () => (await settings.set("user", "workbench.language", "en")).ok,
+    }),
 };

@@ -1507,6 +1507,7 @@
   "integration.note.replaces": "The entries currently open another OpenMind copy ({command}); they will open this one instead.",
   "integration.confirm": "Apply",
   "integration.failed": "Shell integration failed: {error}",
+  "language.offer.note": "Would you like to use OpenMind Studio in English instead of {language}?",
   "network.palette.openSettings": "Network: Open Proxy Settings",
   "network.palette.testConnection": "Network: Test Connection",
   "network.palette.showTerminalEnv": "Network: Show Terminal Package Settings",

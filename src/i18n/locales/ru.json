@@ -1537,6 +1537,7 @@
   "integration.note.replaces": "Сейчас пункты открывают другую копию OpenMind ({command}); они будут открывать эту.",
   "integration.confirm": "Применить",
   "integration.failed": "Не удалось изменить интеграцию с оболочкой: {error}",
+  "language.offer.note": "Переключить OpenMind Studio с языка «{language}» на английский?",
   "network.palette.openSettings": "Сеть: открыть параметры прокси",
   "network.palette.testConnection": "Сеть: проверить подключение",
   "network.palette.showTerminalEnv": "Сеть: показать параметры пакетов терминала",
