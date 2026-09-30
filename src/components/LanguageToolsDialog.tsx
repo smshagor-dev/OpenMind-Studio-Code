@@ -3,6 +3,9 @@ import { useEffect, useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { LspBundleInfo, LspServerInfo } from "../services/ipc";
 import { t } from "../i18n";
+// Its own layout: this dialog is a lazy chunk that can open before the Runtime Manager (which also imports it) ever has,
+// and without the stylesheet it was a fixed 460px box that ran off the bottom of the window.
+import "../styles/toolchains.css";
 
 const STATE_LABEL: Record<LspServerInfo["state"], string> = {
   running: "lsp.state.running",
@@ -45,10 +48,12 @@ export function LanguageToolsDialog({ onClose }: { onClose: () => void }) {
           event.stopPropagation();
         }}
       >
-        <h2 id="language-tools-title">{t("runtimes.tab.tools")}</h2>
-        <p className="runtimes__intro">
-          {t("lsp.intro")}
-        </p>
+        <div className="rm-head">
+          <h2 id="language-tools-title">{t("runtimes.tab.tools")}</h2>
+          <p className="runtimes__intro">{t("lsp.intro")}</p>
+        </div>
+        {/* One scrolling body between the fixed header and the Close button, like the Runtime Manager. */}
+        <div className="rm-body lsp-tools__body" data-testid="lsp-tools-body">
         {snapshot === null ? <p className="runtimes__loading">{t("common.loading")}</p> : null}
         {snapshot ? <BundleLine bundle={snapshot.bundle} /> : null}
         {snapshot?.node ? (
@@ -89,6 +94,7 @@ export function LanguageToolsDialog({ onClose }: { onClose: () => void }) {
           >
             {t("lsp.openOutput")}
           </button>
+        </div>
         </div>
         <div className="modal__actions">
           <button type="button" onClick={onClose} autoFocus>

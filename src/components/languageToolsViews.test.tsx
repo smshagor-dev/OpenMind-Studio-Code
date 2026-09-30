@@ -132,6 +132,26 @@ describe("Language Tools dialog", () => {
     );
   });
 
+  it("fits any window: a fixed header, one scrolling body, wrapping cards and buttons", () => {
+    harness.current = { lsp: fakeLsp(snapshot([server()])), run: vi.fn() };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    const dialog = screen.getByRole("dialog");
+    const body = screen.getByTestId("lsp-tools-body");
+    expect(body).toHaveClass("rm-body");
+    expect(dialog.querySelector(".rm-head h2")?.textContent).toBe("Language Tools");
+    // The cards and the footer scroll with the body; Close stays outside it.
+    expect(body.querySelector(".runtimes__list")).not.toBeNull();
+    expect(body.querySelector(".lsp-footer")).not.toBeNull();
+    expect(body.contains(screen.getByRole("button", { name: "Close" }))).toBe(false);
+    const css = readFileSync(join(process.cwd(), "src/styles/toolchains.css"), "utf8");
+    expect(css).toMatch(/\.modal-overlay:has\(> \.modal--lsp-tools\)/);
+    expect(css).toMatch(/\.modal--lsp-tools \.runtime-card__install \{\s*flex-wrap: wrap;/);
+    expect(css).toMatch(/@media \(max-height: 520px\)/);
+    // The dialog loads the stylesheet itself (it is a lazy chunk that may open before the Runtime Manager).
+    const source = readFileSync(join(process.cwd(), "src/components/LanguageToolsDialog.tsx"), "utf8");
+    expect(source).toContain('import "../styles/toolchains.css";');
+  });
+
   it("a copy without the bundle says so, and a native server without it says why it can't install", () => {
     const native = server({
       id: "rust",

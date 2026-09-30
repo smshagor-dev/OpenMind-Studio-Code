@@ -512,6 +512,57 @@ ul.tc-banner {
   display: block;
 }
 
+/* Language Tools at any window size: the dialog never runs off the bottom of the window (the overlay puts it 18vh down,
+   so it starts higher and caps its height to what is left), the body scrolls between the fixed header and Close, and
+   cards and their buttons wrap instead of overflowing sideways. */
+.modal-overlay:has(> .modal--lsp-tools) {
+  padding: 4vh 12px;
+}
+
+.modal.modal--runtimes.modal--lsp-tools {
+  width: min(880px, 100%);
+  max-height: 92vh;
+}
+
+.modal--lsp-tools .lsp-tools__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modal--lsp-tools .runtimes__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 8px;
+}
+
+.modal--lsp-tools .runtime-card {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.modal--lsp-tools .runtime-card__install {
+  flex-wrap: wrap;
+}
+
+.modal--lsp-tools .lsp-footer {
+  margin-bottom: 0;
+}
+
+@media (max-height: 520px) {
+  .modal-overlay:has(> .modal--lsp-tools) {
+    padding: 8px 12px;
+  }
+
+  .modal.modal--runtimes.modal--lsp-tools {
+    max-height: calc(100vh - 16px);
+  }
+
+  .modal--lsp-tools .rm-head {
+    padding-top: 10px;
+  }
+}
+
 /* Runtime details */
 
 .rm-details p {
