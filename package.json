@@ -2,7 +2,7 @@
   "name": "openmind-studio",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-monaco-workers.mjs && node scripts/copy-pdf-assets.mjs",
@@ -14,12 +14,13 @@
     "lint": "eslint .",
     "tauri": "tauri",
     "lsp:bundle": "node scripts/prepare-lsp-bundle.mjs",
+    "python:bundle": "node scripts/prepare-python-bundle.mjs",
     "package:portable": "node scripts/package-portable.mjs",
-    "package:installer": "node scripts/prepare-lsp-bundle.mjs --check && tauri build --bundles nsis",
-    "release:build": "node scripts/prepare-lsp-bundle.mjs --check && tauri build --bundles nsis,msi",
+    "package:installer": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && tauri build --bundles nsis",
+    "release:build": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && tauri build --bundles nsis,msi",
     "release:collect": "node scripts/release.mjs",
-    "release:build:x64": "node scripts/prepare-lsp-bundle.mjs --check && tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi",
-    "release:build:x86": "node scripts/prepare-lsp-bundle.mjs --check && tauri build --target i686-pc-windows-msvc --bundles nsis,msi",
+    "release:build:x64": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && tauri build --target x86_64-pc-windows-msvc --bundles nsis,msi",
+    "release:build:x86": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && tauri build --target i686-pc-windows-msvc --bundles nsis,msi",
     "release:collect:all": "node scripts/release.mjs --targets x86_64-pc-windows-msvc,i686-pc-windows-msvc"
   },
   "dependencies": {

@@ -49,6 +49,8 @@ fn main() {
             launch::launch_take,
             commands::integration::integration_status,
             commands::integration::integration_apply,
+            commands::python_packages::python_packages_status,
+            commands::python_packages::python_packages_install,
             commands::document::document_open,
             commands::document::document_save,
             commands::workspace::recent_files_list,

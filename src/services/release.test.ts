@@ -255,9 +255,9 @@ describe("signing configuration", () => {
   });
 
   it("the signing scripts are the only place that reads the signing variables", () => {
-    const users = readdirSync(join(root, "scripts")).filter((f) =>
-      text(`scripts/${f}`).includes("SIGNING_CERT_PASSWORD"),
-    );
+    const users = readdirSync(join(root, "scripts"))
+      .filter((f) => statSync(join(root, "scripts", f)).isFile())
+      .filter((f) => text(`scripts/${f}`).includes("SIGNING_CERT_PASSWORD"));
     expect(users.sort()).toEqual(
       ["release.mjs", "releaseTools.d.mts", "releaseTools.mjs"].filter((f) => users.includes(f)),
     );

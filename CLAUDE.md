@@ -2772,6 +2772,34 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   a real Git HTTP backend), MSI install. Limitations: `docs/download-broker.md`.
 - [x] **Installer polish: PATH and File Explorer integration** (not a milestone; before the full build). See "PATH and File Explorer
   integration" under Packaging and `docs/installer.md`. Results are in the commit message and the report.
+- [x] **Release 1.0.0 — offline Python package bundle.** Version 1.0.0 everywhere (`package.json`, `tauri.conf.json`, the workspace and every
+  internal crate reference). **What ships**: `python-bundle/` next to the exe (installers: `bundle.resources`; portable ZIP: copied after `--check`):
+  - `packages.zip` = 37 pinned wheels (Windows x64, CPython 3.14; `pyaes` built locally as a pure-Python wheel, everything else official wheels);
+  - `requirements.txt` = every wheel with its SHA-256;
+  - `tcltk.msi` = python.org's Tcl/Tk for 3.14.7 (the existing `tcltk` add-on);
+  - `bundle.json`.
+
+  It covers the 30 modules asked for: 18 standard-library modules, tkinter, and requests, httpx, python-dotenv, numpy, pandas, matplotlib, Pillow,
+  opencv-python, python-telegram-bot, telethon, Flask. The request lists `scripts/python-bundle/config.json`; every package is pinned in
+  `packages.lock`. Built by `pnpm python:bundle -- --python <CPython 3.14 x64>` (`scripts/prepare-python-bundle.mjs` + pure `pythonBundle.mjs`);
+  `release:build`/`package:installer` run `--check` first.
+
+  **Install**: `runtime_install` of any Python 3.14.x then runs `python_packages::install_into`:
+  1. Tcl/Tk: the bundled msi is copied into the download cache (SHA-256-prefixed name), so the add-on install needs no network and re-checks the hash.
+  2. `openmind_runtime_manager::python_bundle::install_packages`:
+     - the zip's SHA-256 is checked without deleting a shipped file on a mismatch;
+     - only plain `*.whl` names are unpacked, into `<app>/temp/python-bundle/<v>`;
+     - that Python's own pip runs `-s -m pip install --no-index --require-hashes -r requirements.txt`, with every `PIP_*`/`PYTHONUSERBASE` variable
+       removed, `PIP_CONFIG_FILE=nul` and `PYTHONNOUSERSITE=1` (`postinstall::run_step_limited`, 20 min limit);
+     - every module is imported once as a check;
+     - `.openmind-python-packages.json` is written (the manifest feature `bundled-packages` reads it).
+  A failure leaves Python installed and is logged. Command Palette > "Python: Install Bundled Packages" (`python_packages_install`) repeats this for
+  the active Python. Other Python lines (3.10–3.13) get nothing from the bundle (pip as usual).
+
+  **Verified** (debug build, fresh copy `E:\omm-py`): `runtime_install python` took 50 s. It installed Python 3.14.7, added Tcl/Tk from the bundle and
+  installed the 37 wheels offline; the features pip/venv/tkinter/bundled-packages were all present; in an OpenMind terminal 30/30 modules imported
+  (Tk 9.0, numpy 2.5.3, pandas 3.0.6, OpenCV 5.0.0); `pip list` showed pip + the 37 packages; the temporary folder was removed; the reinstall
+  command took 4 s; nothing was left running.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

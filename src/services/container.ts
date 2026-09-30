@@ -60,6 +60,7 @@ import { registerMenuFillCommands } from "./menuFillCommands";
 import { wireLanguage } from "./language/languageWiring";
 import { registerHelpCommands } from "./helpCommands";
 import { registerShellIntegrationCommands } from "./shellIntegrationCommands";
+import { registerPythonPackagesCommands } from "./pythonPackagesCommands";
 import { offerEnglish } from "./languageOffer";
 import { ToolchainService } from "./toolchains/toolchainService";
 import { LspService } from "./lspService";
@@ -657,6 +658,8 @@ const network = wireNetwork({
 });
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
 const workloads = wireWorkloads({ events, commands, runtime, lsp });
+/** Python: Install Bundled Packages (the offline Python bundle, into the active portable Python). */
+registerPythonPackagesCommands({ commands, events, ipc: tauriIpcClient, editor });
 /** PATH / File Explorer integration on request (portable copies; the installer offers the same as check boxes). */
 registerShellIntegrationCommands({
   commands,

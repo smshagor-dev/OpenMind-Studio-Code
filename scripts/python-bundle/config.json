@@ -1,0 +1,41 @@
+{
+  "comment": "The Python modules OpenMind Studio makes available as soon as a portable Python is installed (pnpm python:bundle builds them into python-bundle/). stdlib = part of Python itself; tkinter needs the Tcl/Tk add-on, which is bundled too; packages = installed offline from the bundle's wheels.",
+  "python": "3.14",
+  "runtimeVersion": "3.14.7",
+  "platform": "win_amd64",
+  "stdlib": [
+    "os",
+    "sys",
+    "pathlib",
+    "shutil",
+    "subprocess",
+    "json",
+    "csv",
+    "datetime",
+    "time",
+    "re",
+    "logging",
+    "asyncio",
+    "sqlite3",
+    "collections",
+    "typing",
+    "dataclasses",
+    "random",
+    "math",
+    "tkinter"
+  ],
+  "packages": [
+    { "name": "requests", "import": "requests" },
+    { "name": "httpx", "import": "httpx" },
+    { "name": "python-dotenv", "import": "dotenv" },
+    { "name": "numpy", "import": "numpy" },
+    { "name": "pandas", "import": "pandas" },
+    { "name": "matplotlib", "import": "matplotlib" },
+    { "name": "pillow", "import": "PIL" },
+    { "name": "opencv-python", "import": "cv2" },
+    { "name": "python-telegram-bot", "import": "telegram" },
+    { "name": "telethon", "import": "telethon" },
+    { "name": "flask", "import": "flask" }
+  ],
+  "addon": "tcltk"
+}

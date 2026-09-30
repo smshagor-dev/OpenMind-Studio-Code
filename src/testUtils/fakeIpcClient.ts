@@ -231,6 +231,8 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       explorerOtherCopy: null,
     }),
     integrationApply: vi.fn().mockResolvedValue("done"),
+    pythonPackagesStatus: vi.fn().mockResolvedValue({ present: false, problem: null, python: null, packages: [], stdlib: [] }),
+    pythonPackagesInstall: vi.fn().mockResolvedValue("installed"),
     panelConfigPath: vi.fn().mockResolvedValue(null),
     panelOpenFile: vi.fn().mockResolvedValue(undefined),
     panelOpenFolder: vi.fn().mockResolvedValue(undefined),

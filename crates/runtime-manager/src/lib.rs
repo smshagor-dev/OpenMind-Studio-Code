@@ -8,6 +8,7 @@ pub mod manifest;
 pub mod msi_archive;
 pub mod paths;
 pub mod postinstall;
+pub mod python_bundle;
 pub mod shims;
 
 pub use detect::{detect_version, find_on_path, join_path};

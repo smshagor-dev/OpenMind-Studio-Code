@@ -49,3 +49,6 @@ pnpm-debug.log*
 !/lsp-bundle/README.txt
 /.lsp-bundle-cache/
 /release/
+/python-bundle/*
+!/python-bundle/README.txt
+/.python-bundle-cache/

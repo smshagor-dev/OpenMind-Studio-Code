@@ -57,6 +57,12 @@
       "label": "tkinter (Tcl/Tk GUI)",
       "verifyFile": "DLLs/_tkinter.pyd",
       "missingNote": "This Python doesn't include Tcl/Tk GUI support. Add \"Tcl/Tk GUI support\" for this version (below) to use tkinter."
+    },
+    {
+      "id": "bundled-packages",
+      "label": "Bundled packages (requests, httpx, python-dotenv, numpy, pandas, matplotlib, Pillow, opencv-python, python-telegram-bot, telethon, Flask)",
+      "verifyFile": ".openmind-python-packages.json",
+      "missingNote": "Installed offline from OpenMind Studio's Python bundle right after Python 3.14 is installed. For this install: Command Palette > \"Python: Install Bundled Packages\" (Python 3.14 only; other versions use pip)."
     }
   ],
   "notes": "python.org's NuGet package: full standard library with venv and pip (the embeddable ZIP has no pip). `pip` and `pip3` are small launchers OpenMind Studio writes next to the runtime; they find Python relative to themselves, so they keep working if you move the whole OpenMind Studio folder. Packages you install stay inside this install, and the system Python's user packages are hidden from it (PYTHONNOUSERSITE=1). Command launchers that pip itself creates for other packages (for example `black.exe`) record absolute paths and stop working after a move; run them as `python -m <name>`. tkinter (Tcl/Tk) isn't in the NuGet package; for 3.14.7 it can be added as the optional \"Tcl/Tk GUI support\" add-on, python.org's own signed tcltk.msi extracted into this install (nothing is installed through Windows Installer and nothing is registered). python.org publishes no SHA256 for these packages, so each hash was computed from the official download when the version was pinned.",

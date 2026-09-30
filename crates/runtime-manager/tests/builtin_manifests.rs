@@ -108,7 +108,7 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
             .map(|f| f.id.clone())
             .collect()
     };
-    assert_eq!(ids("python"), ["pip", "venv", "tkinter"]);
+    assert_eq!(ids("python"), ["pip", "venv", "tkinter", "bundled-packages"]);
     assert_eq!(ids("node"), ["npm", "npx"]);
     assert_eq!(ids("git"), ["git"]);
     assert_eq!(ids("php"), ["cli", "server", "ini"]);
@@ -200,7 +200,7 @@ fn python_is_the_nuget_distribution_with_relocatable_pip_and_venv() {
     );
 
     let features: Vec<&str> = python.features.iter().map(|f| f.id.as_str()).collect();
-    assert_eq!(features, ["pip", "venv", "tkinter"]);
+    assert_eq!(features, ["pip", "venv", "tkinter", "bundled-packages"]);
     // Tcl/Tk is an optional add-on of the default version only: python.org's signed tcltk.msi, extracted.
     for version in &python.versions {
         let addons: Vec<&str> = version.addons.iter().map(|a| a.id.as_str()).collect();

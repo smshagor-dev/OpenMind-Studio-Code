@@ -238,6 +238,11 @@ export function checkInstallerConfig(tauri, licenseText) {
       problems.push(`bundle.resources must copy "cli/${name}" to "bin/${name}" (the command-line launcher).`);
     }
   }
+  if (bundle.resources?.["../python-bundle/"] !== "python-bundle/") {
+    problems.push(
+      'bundle.resources must copy "../python-bundle/" to "python-bundle/" (the offline Python packages).',
+    );
+  }
   if (bundle.resources?.["../lsp-bundle/"] !== "lsp/") {
     problems.push(
       'bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).',

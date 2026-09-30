@@ -93,6 +93,20 @@ if (existsSync(join(lspBundle, "bundle.json"))) {
   console.log("No lsp-bundle/ found (run pnpm lsp:bundle): the package carries no offline language servers.");
 }
 
+// The offline Python packages (pnpm python:bundle): installed into a portable Python 3.14 right after the Runtime Manager
+// installs it. Checked (SHA-256) before they are copied; without them the package still works, packages then come from pip.
+const pythonBundle = join(root, "python-bundle");
+if (existsSync(join(pythonBundle, "bundle.json"))) {
+  execFileSync(process.execPath, [join(root, "scripts", "prepare-python-bundle.mjs"), "--check"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  cpSync(pythonBundle, join(staging, "python-bundle"), { recursive: true });
+  console.log("Copied python-bundle/ into the package.");
+} else {
+  console.log("No python-bundle/ found (run pnpm python:bundle): the package carries no bundled Python packages.");
+}
+
 const zip = join(outDir, zipName(version));
 rmSync(zip, { force: true });
 execFileSync(

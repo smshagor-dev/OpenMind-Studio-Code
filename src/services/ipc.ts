@@ -367,6 +367,15 @@ export interface IntegrationStatus {
   explorerOtherCopy: string | null;
 }
 
+/** Mirrors `python_packages::PythonBundleStatus`. */
+export interface PythonBundleStatus {
+  present: boolean;
+  problem: string | null;
+  python: string | null;
+  packages: string[];
+  stdlib: string[];
+}
+
 export type IntegrationAction = "add-path" | "remove-path" | "add-explorer" | "remove-explorer";
 
 // Mirrors openmind_workspace::WorkspaceInfo (camelCase).
@@ -626,6 +635,10 @@ export interface IpcClient
   integrationStatus: () => Promise<IntegrationStatus>;
   /** Adds or removes the PATH entry or the File Explorer entries (only after the user confirmed). */
   integrationApply: (action: IntegrationAction) => Promise<string>;
+  /** The offline Python package bundle that ships with this copy (a local read). */
+  pythonPackagesStatus: () => Promise<PythonBundleStatus>;
+  /** Installs the bundle into a portable Python (`null` = the active one); resolves with what was installed. */
+  pythonPackagesInstall: (version: string | null) => Promise<string>;
   // Control-panel buttons of the PHP Server window
   /** A module's config file, or `null` while it doesn't exist. */
   panelConfigPath: (module: PanelModule) => Promise<string | null>;
@@ -1246,6 +1259,8 @@ export const tauriIpcClient: IpcClient = {
   launchTake: () => invoke<LaunchRequest | null>("launch_take"),
   integrationStatus: () => invoke<IntegrationStatus>("integration_status"),
   integrationApply: (action) => invoke<string>("integration_apply", { action }),
+  pythonPackagesStatus: () => invoke<PythonBundleStatus>("python_packages_status"),
+  pythonPackagesInstall: (version) => invoke<string>("python_packages_install", { version }),
   panelConfigPath: (module) => invoke<string | null>("panel_config_path", { kind: module }),
   panelOpenFile: (path) => invoke("panel_open_file", { path }),
   panelOpenFolder: (path) => invoke("panel_open_folder", { path }),

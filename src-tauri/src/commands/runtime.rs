@@ -8,7 +8,7 @@ const PROGRESS_EVENT: &str = "runtime:progress";
 /// Sent after any install/repair/switch/delete, so every window reloads its list.
 const CHANGED_EVENT: &str = "runtime:changed";
 
-fn notify_changed(app: &AppHandle) {
+pub(crate) fn notify_changed(app: &AppHandle) {
     if let Err(err) = app.emit(CHANGED_EVENT, ()) {
         tracing::error!(?err, "failed to emit runtime:changed");
     }
@@ -45,6 +45,21 @@ pub async fn runtime_install(
         .install(&kind, version.as_deref(), progress_sink(app.clone()))
         .await
         .map_err(|err| err.user_message());
+    // A new portable Python gets OpenMind's bundled packages and Tcl/Tk at once (offline; that install only). A failure
+    // is logged and shown on the version's "Bundled packages" line; Python itself stays installed.
+    if let Ok(installed) = &result {
+        if kind == "python" {
+            if let Err(err) = crate::commands::python_packages::install_into(
+                &state,
+                &installed.version,
+                progress_sink(app.clone()),
+            )
+            .await
+            {
+                tracing::warn!(version = %installed.version, error = %err, "bundled Python packages");
+            }
+        }
+    }
     notify_changed(&app);
     result
 }
@@ -146,7 +161,7 @@ pub async fn runtime_delete(
     result
 }
 
-fn progress_sink(app: AppHandle) -> openmind_runtime_manager::manager::ProgressSink {
+pub(crate) fn progress_sink(app: AppHandle) -> openmind_runtime_manager::manager::ProgressSink {
     std::sync::Arc::new(move |progress: InstallProgress| {
         if let Err(err) = app.emit(PROGRESS_EVENT, progress) {
             tracing::error!(?err, "failed to emit runtime progress event");

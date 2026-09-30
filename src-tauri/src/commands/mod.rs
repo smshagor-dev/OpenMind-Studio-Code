@@ -28,6 +28,7 @@ pub mod php;
 pub mod preferences;
 pub mod preview;
 pub mod profiles;
+pub mod python_packages;
 pub mod run;
 pub mod runtime;
 pub mod search;

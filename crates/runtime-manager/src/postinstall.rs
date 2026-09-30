@@ -33,6 +33,18 @@ fn run_step(
     dir: &Path,
     env: &BTreeMap<String, String>,
 ) -> Result<(), RuntimeError> {
+    run_step_limited(step, dir, env, STEP_TIMEOUT, &[])
+}
+
+/// One step with its own time limit, with `remove` taken out of the inherited environment (e.g. the user's `PIP_*`
+/// variables, which must not redirect an offline install). Output is kept only for the error message.
+pub fn run_step_limited(
+    step: &PostInstallStep,
+    dir: &Path,
+    env: &BTreeMap<String, String>,
+    timeout: Duration,
+    remove: &[String],
+) -> Result<(), RuntimeError> {
     let failed = |detail: String| RuntimeError::PostInstall {
         description: step.description.clone(),
         detail,
@@ -49,6 +61,9 @@ fn run_step(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for name in SCRUBBED_ENV {
+        command.env_remove(name);
+    }
+    for name in remove {
         command.env_remove(name);
     }
     // The runtime's own variables (e.g. PYTHONNOUSERSITE), as a terminal would get them.
@@ -84,7 +99,7 @@ fn run_step(
     })
     .collect();
 
-    let deadline = Instant::now() + STEP_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
