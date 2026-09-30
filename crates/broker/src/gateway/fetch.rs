@@ -83,9 +83,32 @@ pub fn valid_download_url(url: &str) -> bool {
         return false;
     };
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
+    let host = if let Some(inner) = authority.strip_prefix('[') {
+        inner
+            .split(']')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    } else {
+        authority
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    };
+    // Never this computer: the gateway can't be pointed back at itself or at a local service.
+    let local = host == "localhost"
+        || host.ends_with(".localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback() || ip.is_unspecified())
+        || host
+            .parse::<std::net::Ipv4Addr>()
+            .is_ok_and(|ip| ip.is_link_local());
     url.len() <= 4096
         && !authority.is_empty()
         && !authority.contains('@')
+        && !local
         && !url.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
@@ -129,5 +152,15 @@ mod tests {
         assert!(!valid_download_url("https:///a.zip"));
         assert!(!valid_download_url("https://example.org/a b.zip"));
         assert!(!valid_download_url("file:///C:/Windows/win.ini"));
+        for local in [
+            "https://localhost/a",
+            "https://127.0.0.1:4000/tok/fetch",
+            "https://[::1]/a",
+            "https://0.0.0.0/a",
+            "https://169.254.169.254/latest/meta-data",
+            "https://x.localhost/a",
+        ] {
+            assert!(!valid_download_url(local), "{local}");
+        }
     }
 }

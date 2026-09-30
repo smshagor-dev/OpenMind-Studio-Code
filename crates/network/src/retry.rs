@@ -45,7 +45,7 @@ pub fn with_mirrors<T>(
                         return Err(error);
                     }
                     let again = error.problem.retryable() && round < policy.attempts;
-                    tracing::warn!(url, round, problem = ?error.problem, again, "download attempt failed");
+                    tracing::warn!(url = %crate::redact::log_url(url), round, problem = ?error.problem, again, "download attempt failed");
                     last = error;
                     if !again {
                         break;

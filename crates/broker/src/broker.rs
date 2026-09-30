@@ -78,6 +78,49 @@ struct Flight {
 
 type Sleeper = Box<dyn Fn(Duration) + Send + Sync>;
 
+/// At most this many artifacts download at once; the others wait, shown as queued.
+pub const MAX_ACTIVE: usize = 6;
+
+/// Ends a flight however its owner stops: sets a result when there is none (a panic), wakes the waiters and removes
+/// the flight, so nobody waits forever and the next request starts afresh.
+struct FlightGuard<'a> {
+    flight: &'a Flight,
+    flights: &'a Mutex<HashMap<String, Arc<Flight>>>,
+    key: &'a str,
+}
+
+impl Drop for FlightGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut flights) = self.flights.lock() {
+            flights.remove(self.key);
+        }
+        if let Ok(mut result) = self.flight.result.lock() {
+            if result.is_none() {
+                *result = Some(Err(BrokerError::new(
+                    FailureKind::Other,
+                    "the download stopped unexpectedly",
+                )));
+            }
+        }
+        self.flight.done.notify_all();
+    }
+}
+
+/// One of the [`MAX_ACTIVE`] download places, given back when dropped.
+struct Place<'a> {
+    active: &'a Mutex<usize>,
+    free: &'a Condvar,
+}
+
+impl Drop for Place<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut active) = self.active.lock() {
+            *active = active.saturating_sub(1);
+        }
+        self.free.notify_one();
+    }
+}
+
 pub struct Broker {
     staging: Staging,
     client: Arc<dyn HttpClient>,
@@ -87,6 +130,9 @@ pub struct Broker {
     next_id: AtomicU64,
     flights: Mutex<HashMap<String, Arc<Flight>>>,
     cancels: Mutex<HashMap<u64, Arc<AtomicBool>>>,
+    max_active: usize,
+    active: Mutex<usize>,
+    free: Condvar,
 }
 
 /// The Download Manager's client with a cancel switch: the body stops at the next read once the switch is on.
@@ -155,7 +201,41 @@ impl Broker {
             next_id: AtomicU64::new(1),
             flights: Mutex::new(HashMap::new()),
             cancels: Mutex::new(HashMap::new()),
+            max_active: MAX_ACTIVE,
+            active: Mutex::new(0),
+            free: Condvar::new(),
         }
+    }
+
+    /// The same broker with another limit of simultaneous downloads (tests).
+    pub fn with_max_active(mut self, max_active: usize) -> Self {
+        self.max_active = max_active.max(1);
+        self
+    }
+
+    /// Waits for a free download place (shown as queued meanwhile); `None` when cancelled while waiting.
+    fn place(&self, reporter: &mut Reporter, cancelled: &AtomicBool) -> Option<Place<'_>> {
+        let mut active = self.active.lock().ok()?;
+        let mut announced = false;
+        while *active >= self.max_active {
+            if !announced {
+                reporter.phase(Phase::Queued);
+                announced = true;
+            }
+            if cancelled.load(Ordering::Relaxed) {
+                return None;
+            }
+            active = self
+                .free
+                .wait_timeout(active, Duration::from_millis(200))
+                .ok()?
+                .0;
+        }
+        *active += 1;
+        Some(Place {
+            active: &self.active,
+            free: &self.free,
+        })
     }
 
     /// The same broker with another retry policy and pause (tests don't wait).
@@ -224,13 +304,14 @@ impl Broker {
         if !owner {
             return wait(&flight);
         }
+        let _guard = FlightGuard {
+            flight: &flight,
+            flights: &self.flights,
+            key: &key,
+        };
         let result = self.download(request);
         if let Ok(mut slot) = flight.result.lock() {
             *slot = Some(result.clone());
-        }
-        flight.done.notify_all();
-        if let Ok(mut flights) = self.flights.lock() {
-            flights.remove(&key);
         }
         result
     }
@@ -243,20 +324,31 @@ impl Broker {
         if let Ok(mut map) = self.cancels.lock() {
             map.insert(id, Arc::clone(&cancelled));
         }
-        let result = self.download_into(request, &mut reporter, &cancelled);
+        let host = crate::redact::url(&request.url);
+        tracing::info!(id, provider = ?request.provider, url = %host, "broker download requested");
+        // The place is held until the final event is out, so the UI never shows more than the limit at work.
+        let place = self.place(&mut reporter, &cancelled);
+        let result = match &place {
+            Some(_) => self.download_into(request, &mut reporter, &cancelled),
+            None => Err(BrokerError::new(
+                FailureKind::Cancelled,
+                "cancelled while queued",
+            )),
+        };
         if let Ok(mut map) = self.cancels.lock() {
             map.remove(&id);
         }
         match &result {
             Ok(artifact) => {
                 reporter.phase(Phase::Complete);
-                tracing::info!(id, url = %request.url, bytes = artifact.len(), "broker download complete");
+                tracing::info!(id, provider = ?request.provider, url = %host, bytes = artifact.len(), "broker download complete");
             }
             Err(error) => {
                 reporter.failed(error.kind, &error.detail);
-                tracing::warn!(id, url = %request.url, kind = ?error.kind, detail = %error.detail, "broker download failed");
+                tracing::warn!(id, provider = ?request.provider, url = %host, kind = ?error.kind, detail = %crate::redact::text(&error.detail), "broker download failed");
             }
         }
+        drop(place);
         result
     }
 

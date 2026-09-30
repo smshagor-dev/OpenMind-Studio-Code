@@ -274,3 +274,119 @@ fn a_cancelled_download_keeps_its_part_and_the_next_request_resumes_it() {
         "the second request resumed with a Range: {requests:?}"
     );
 }
+
+#[test]
+fn no_more_than_the_limit_download_at_once_and_the_rest_are_queued() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let files: HashMap<String, Vec<u8>> = (0..5)
+        .map(|i| {
+            (
+                format!("https://files.example/{i}.whl"),
+                vec![i as u8; 2048],
+            )
+        })
+        .collect();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    let broker = Arc::new(
+        Broker::new(
+            Staging::new(tmp.path()),
+            Arc::new(Server {
+                files: files.clone(),
+                ..Server::default()
+            }),
+            Arc::new(move |event: &BrokerEvent| sink.lock().expect("lock").push(event.clone())),
+        )
+        .with_retry(RetryPolicy::default(), Box::new(|_| {}))
+        .with_max_active(2),
+    );
+    let handles: Vec<_> = files
+        .iter()
+        .map(|(url, body)| {
+            let broker = Arc::clone(&broker);
+            let req = request(url, body);
+            std::thread::spawn(move || broker.fetch(&req).map(|lease| lease.len()))
+        })
+        .collect();
+    for handle in handles {
+        assert_eq!(handle.join().expect("join").expect("fetch"), 2048);
+    }
+    // Replay the events: never more than two operations between Connecting and Complete at once.
+    let events = seen.lock().expect("lock").clone();
+    let mut running = std::collections::HashSet::new();
+    let mut most = 0;
+    for event in &events {
+        match event.phase {
+            Phase::Connecting => {
+                running.insert(event.id);
+            }
+            Phase::Complete | Phase::Failed | Phase::Cancelled => {
+                running.remove(&event.id);
+            }
+            _ => {}
+        }
+        most = most.max(running.len());
+    }
+    assert!(most <= 2, "at most two at once, saw {most}");
+    assert_eq!(
+        *broker.active.lock().expect("lock"),
+        0,
+        "every place is given back"
+    );
+}
+
+/// A client that panics, as a bug in a download would.
+struct Panics;
+
+impl HttpClient for Panics {
+    fn get(&self, _url: &str, _range_from: Option<u64>) -> Result<HttpResponse, RuntimeError> {
+        std::thread::sleep(Duration::from_millis(200));
+        panic!("simulated bug in a download");
+    }
+}
+
+#[test]
+fn a_download_that_stops_unexpectedly_never_leaves_a_waiter_hanging() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let events: EventSink = Arc::new(|_| {});
+    let broker = Arc::new(Broker::new(
+        Staging::new(tmp.path()),
+        Arc::new(Panics),
+        events,
+    ));
+    let owner = {
+        let broker = Arc::clone(&broker);
+        std::thread::spawn(move || broker.fetch(&request(WHEEL, b"x")).map(|lease| lease.len()))
+    };
+    std::thread::sleep(Duration::from_millis(50));
+    let waiter = {
+        let broker = Arc::clone(&broker);
+        std::thread::spawn(move || broker.fetch(&request(WHEEL, b"x")).map(|lease| lease.len()))
+    };
+    assert!(owner.join().is_err(), "the owner's thread panicked");
+    let result = waiter.join().expect("the waiter returns");
+    let error = result.expect_err("an error, not a hang");
+    assert_eq!(error.detail, "the download stopped unexpectedly");
+    // The next request starts afresh (the flight is gone) instead of waiting.
+    assert!(broker.flights.lock().expect("lock").is_empty());
+}
+
+#[test]
+fn a_download_interrupted_by_a_crash_is_kept_to_resume_and_clear_removes_everything() {
+    let tmp = tempfile::tempdir().expect("tmp");
+    let staging = Staging::new(tmp.path());
+    // A slot dropped in the middle (what a crash leaves): its record still says "downloading".
+    let slot = staging
+        .slot(Provider::Npm, "https://r/a.tgz", "a.tgz")
+        .expect("slot");
+    std::fs::write(slot.dir().join("a.tgz.part"), b"half").expect("part");
+    drop(slot);
+    let report = staging.recover(crate::staging::now_secs(), crate::staging::PARTIAL_MAX_AGE);
+    assert_eq!(report.kept_partial, 1);
+    let cleared = staging.clear();
+    assert_eq!(cleared.removed, 1);
+    let left = std::fs::read_dir(tmp.path().join("npm"))
+        .map(|d| d.count())
+        .unwrap_or(0);
+    assert_eq!(left, 0);
+}

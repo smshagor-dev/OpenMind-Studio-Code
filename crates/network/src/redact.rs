@@ -2,6 +2,49 @@
 
 use crate::proxy::Credentials;
 
+/// `https://user:pw@host/path?token=x#y` -> `https://host/path`.
+pub fn log_url(address: &str) -> String {
+    let (scheme, rest) = match address.split_once("://") {
+        Some((scheme, rest)) => (Some(scheme), rest),
+        None => (None, address),
+    };
+    let rest = rest.split(['?', '#']).next().unwrap_or_default();
+    let (authority, path) = match rest.find('/') {
+        Some(index) => rest.split_at(index),
+        None => (rest, ""),
+    };
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    match scheme {
+        Some(scheme) => format!("{scheme}://{host}{path}"),
+        None => format!("{host}{path}"),
+    }
+}
+
+/// Every `http://` / `https://` address inside `text` cleaned like [`log_url`].
+pub fn log_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let next = ["https://", "http://"]
+            .iter()
+            .filter_map(|scheme| rest.find(scheme))
+            .min();
+        let Some(start) = next else {
+            out.push_str(rest);
+            return out;
+        };
+        out.push_str(&rest[..start]);
+        let tail = &rest[start..];
+        let end = tail
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ')' | '>' | '<' | ','))
+            .unwrap_or(tail.len());
+        out.push_str(&log_url(&tail[..end]));
+        rest = &tail[end..];
+    }
+}
+
 /// Replaces the password of every `scheme://user:password@host` in `text` with `****`, and every literal occurrence
 /// of the known password (and its percent-encoded form) too.
 pub fn redact(text: &str, credentials: Option<&Credentials>) -> String {

@@ -186,7 +186,7 @@ impl Staging {
             format: "openmind-staging".into(),
             version: 1,
             provider,
-            url: key.to_string(),
+            url: crate::redact::url(key),
             file: safe_file_name(file_name),
             updated: now_secs(),
             state: "downloading".into(),
@@ -242,7 +242,37 @@ impl Staging {
     }
 }
 
-/// A folder worth keeping: a `.part` file and a `partial` record younger than `max_age`.
+impl Staging {
+    /// Clear Temporary Files: removes every staged folder no running OpenMind holds, resumable partials included.
+    /// Nothing outside the provider folders is touched.
+    pub fn clear(&self) -> RecoveryReport {
+        let mut report = RecoveryReport::default();
+        for provider in Provider::ALL {
+            let base = self.provider_dir(provider);
+            let Ok(entries) = fs::read_dir(&base) else {
+                continue;
+            };
+            for entry in entries.filter_map(Result::ok) {
+                let dir = entry.path();
+                if !real_dir(&dir) {
+                    continue;
+                }
+                let Ok(lock) = exclusive(&dir.join(LOCK)) else {
+                    report.in_use += 1;
+                    continue;
+                };
+                drop(lock);
+                if fs::remove_dir_all(&dir).is_ok() {
+                    report.removed += 1;
+                }
+            }
+        }
+        tracing::info!(?report, "temporary downloads cleared");
+        report
+    }
+}
+
+/// A folder worth keeping: a `.part` file and a `partial` or unfinished record younger than `max_age`.
 fn keep_partial(dir: &Path, now: u64, max_age: Duration) -> bool {
     let Some(meta) = fs::read_to_string(dir.join(META))
         .ok()
@@ -251,7 +281,8 @@ fn keep_partial(dir: &Path, now: u64, max_age: Duration) -> bool {
         return false;
     };
     let part = dir.join(format!("{}.part", meta.file));
-    meta.state == "partial"
+    // `downloading`: the app stopped (or crashed) in the middle of it; the bytes so far are still good to resume.
+    matches!(meta.state.as_str(), "partial" | "downloading")
         && part.is_file()
         && now.saturating_sub(meta.updated) <= max_age.as_secs()
 }

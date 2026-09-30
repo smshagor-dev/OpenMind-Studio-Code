@@ -9,6 +9,7 @@ pub mod env;
 pub mod error;
 pub mod events;
 pub mod gateway;
+pub mod redact;
 pub mod staging;
 
 pub use broker::{Artifact, ArtifactRequest, Broker, Lease};

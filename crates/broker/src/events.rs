@@ -11,6 +11,8 @@ use crate::staging::Provider;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Phase {
+    /// Waiting for a free download place.
+    Queued,
     Resolving,
     Connecting,
     Downloading,
@@ -109,7 +111,8 @@ impl Reporter {
             Phase::Failed
         };
         self.event.failure = Some(kind);
-        self.event.detail = Some(detail.to_string());
+        // No credentials, tokens or signed-address queries reach the UI.
+        self.event.detail = Some(crate::redact::text(detail));
         (self.sink)(&self.event);
     }
 }

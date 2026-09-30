@@ -138,7 +138,7 @@ pub fn download(
         200 => false,
         other => return Err(RuntimeError::Network(NetError::status(other, url))),
     };
-    tracing::info!(url, status = response.status, resume_from, resumed, length = ?response.content_length, "download response");
+    tracing::info!(url = %openmind_network::redact::log_url(url), status = response.status, resume_from, resumed, length = ?response.content_length, "download response");
     if !resumed {
         // The server ignored the Range header (or there was nothing to resume): start over.
         resume_from = 0;
