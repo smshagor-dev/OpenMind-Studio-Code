@@ -2772,8 +2772,11 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   a real Git HTTP backend), MSI install. Limitations: `docs/download-broker.md`.
 - [x] **Installer polish: PATH and File Explorer integration** (not a milestone; before the full build). See "PATH and File Explorer
   integration" under Packaging and `docs/installer.md`. Results are in the commit message and the report.
-- [ ] Milestone 24 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
-  keybindings, signing, auto-update; the university live test of Milestone 23).
+- [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
+  (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
+- [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
+  code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
+  `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).
 
 This list is a living roadmap — refine milestone boundaries as work progresses, but keep the
 "one milestone, fully working, then commit" discipline.
