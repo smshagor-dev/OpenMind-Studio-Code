@@ -75,10 +75,11 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
             RunEnvironment::default()
         }
     };
-    // OpenMind's own launchers (`openmind-fetch`) first, then the bundled tools and the portable runtimes.
-    let mut path_prepend = vec![state.broker.shims_dir().to_path_buf()];
-    path_prepend.extend(crate::commands::toolchains::bundled_dirs(state).await);
-    path_prepend.extend(std::mem::take(&mut environment.path_prepend));
+    let path_prepend = path_order(
+        state.broker.shims_dir(),
+        crate::commands::toolchains::bundled_dirs(state).await,
+        std::mem::take(&mut environment.path_prepend),
+    );
     state.broker.set_tool_dirs(&path_prepend);
     let mut search = path_prepend.clone();
     if let Some(path) = std::env::var_os("PATH") {
@@ -92,6 +93,20 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
         .extend(crate::commands::network::process_env(state).await);
     environment.vars.extend(composer);
     environment
+}
+
+/// The folders put in front of a process's inherited PATH, in the order that decides which tool runs: OpenMind's own
+/// launchers (`openmind-fetch`, `composer`), then bundled tools, then the portable runtimes. The inherited PATH comes
+/// after all of them and is never changed.
+pub(crate) fn path_order(
+    shims: &Path,
+    bundled: Vec<PathBuf>,
+    runtimes: Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    let mut order = vec![shims.to_path_buf()];
+    order.extend(bundled);
+    order.extend(runtimes);
+    order
 }
 
 /// `<app>/cache/run-builds`: where C, C++, Java and Rust files are compiled. Never the project folder.
@@ -279,4 +294,61 @@ pub async fn run_terminal_command(
         resolved: plan.resolved.to_string_lossy().into_owned(),
         language: plan.kind.display_name().to_string(),
     })
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    /// A file named like a program in `dir`.
+    fn program(dir: &Path, name: &str) -> PathBuf {
+        std::fs::create_dir_all(dir).expect("dir");
+        let file = dir.join(name);
+        std::fs::write(&file, "@echo off\r\n").expect("write");
+        file
+    }
+
+    #[test]
+    fn shims_then_bundled_then_runtimes_then_the_inherited_path() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let shims = tmp.path().join("shims");
+        let bundled = tmp.path().join("tools").join("git");
+        let runtime = tmp.path().join("runtimes").join("python");
+        let system = tmp.path().join("system");
+        let order = path_order(&shims, vec![bundled.clone()], vec![runtime.clone()]);
+        assert_eq!(order, vec![shims.clone(), bundled.clone(), runtime.clone()]);
+
+        // The first folder holding a program is the one a process gets, like Windows' own lookup.
+        let first = |name: &str, dirs: &[PathBuf]| {
+            dirs.iter()
+                .map(|dir| dir.join(name))
+                .find(|file| file.is_file())
+        };
+        let mut search = order.clone();
+        search.push(system.clone());
+        let system_python = program(&system, "python.exe");
+        assert_eq!(first("python.exe", &search), Some(system_python));
+        let portable_python = program(&runtime, "python.exe");
+        assert_eq!(
+            first("python.exe", &search),
+            Some(portable_python),
+            "the portable runtime beats the system"
+        );
+        let bundled_python = program(&bundled, "python.exe");
+        assert_eq!(
+            first("python.exe", &search),
+            Some(bundled_python),
+            "a bundled tool beats the runtime"
+        );
+
+        // OpenMind's composer launcher wins the lookup, but the real Composer it runs is the next one found.
+        let launcher = program(&shims, "composer.cmd");
+        let system_composer = program(&system, "composer.bat");
+        assert_eq!(first("composer.cmd", &search), Some(launcher));
+        let vars = crate::commands::broker::real_composer(&search, &shims);
+        assert_eq!(
+            vars.first().map(|(_, value)| value.clone()),
+            Some(system_composer.display().to_string())
+        );
+    }
 }

@@ -282,6 +282,13 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
         crate::commands::broker::gateway_env(&state, resolution.config.gateway_enabled);
     let broker = crate::commands::broker::status_of(&state, resolution.config.gateway_enabled);
     let token = state.broker.endpoints().map(|endpoints| endpoints.token);
+    let readiness = crate::commands::network_readiness::provider_readiness(
+        resolution.config.gateway_enabled,
+        state.broker.endpoints().is_some(),
+        &run_env.vars,
+        &skipped,
+    );
+    let last_failure = crate::commands::network_readiness::last_failure(&state.broker.recent());
     let proxy = HttpProxy {
         resolved: resolution.proxy.clone(),
         credentials: resolution.credentials.clone(),
@@ -290,6 +297,7 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
         credentials: resolution.credentials.clone(),
         token,
     };
+    let broker_enabled = resolution.config.gateway_enabled;
     let status = json!({
         "mode": format!("{:?}", resolution.config.mode),
         "source": resolution.proxy.source,
@@ -360,11 +368,20 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
         let git_args = ["ls-remote", "https://github.com/octocat/Hello-World.git", "HEAD"];
         let npm_args = ["view", "left-pad", "version"];
         let composer_args = ["show", "--available", "--no-interaction", "psr/log"];
+        let pnpm_args = ["view", "left-pad", "version"];
+        let yarn_args = ["info", "left-pad", "version", "--silent"];
+        let cargo_args = ["search", "itoa", "--limit", "1"];
+        let go_args = ["mod", "download", "-json", "golang.org/x/text@v0.3.0"];
+        let rustup_args = ["check"];
         let isolated = [("PYTHONNOUSERSITE".to_string(), "1".to_string()), ("PIP_CONFIG_FILE".to_string(), "nul".to_string())];
         let tools = |dirs: &[PathBuf], vars: &[(String, String)]| -> Value {
             let mut env: Vec<(String, String)> = vars.to_vec();
             env.extend(isolated.iter().cloned());
             env.push(npm_cache.clone());
+            // Tool caches in the throwaway folder, never the user's.
+            env.push(("GOMODCACHE".to_string(), cache.join("go").display().to_string()));
+            env.push(("GOFLAGS".to_string(), "-modcacherw".to_string()));
+            env.push(("YARN_CACHE_FOLDER".to_string(), cache.join("yarn").display().to_string()));
             let run = |name: &str, args: &[&str], env: &[(String, String)]| match program(name, dirs) {
                 Some(path) => {
                     let mut result = run_tool(&path, args, &work, dirs, env, &scrub);
@@ -381,6 +398,11 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
                 "npm": run("npm", &npm_args, &env),
                 "composer": run("composer", &composer_args, &env),
                 "git": run("git", &git_args, &env),
+                "pnpm": run("pnpm", &pnpm_args, &env),
+                "yarn": run("yarn", &yarn_args, &env),
+                "go": run("go", &go_args, &env),
+                "cargo": run("cargo", &cargo_args, &env),
+                "rustup": run("rustup", &rustup_args, &env),
             })
         };
         let through_openmind = tools(&openmind_path, &openmind_env);
@@ -391,7 +413,8 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
 
         let report = json!({
             "format": "openmind-network-diagnostics",
-            "version": 1,
+            "version": 2,
+            "broker": { "version": env!("CARGO_PKG_VERSION"), "routingEnabled": broker_enabled },
             "app": env!("CARGO_PKG_VERSION"),
             "generatedAt": openmind_broker::staging::now_secs(),
             "os": std::env::consts::OS,
@@ -399,15 +422,9 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
             "proxy": status,
             "inheritedVariables": inherited_proxy_vars(&scrub),
             "gateway": broker,
-            "providerRouting": {
-                "pip": "PIP_INDEX_URL -> gateway /pypi (files via the broker, SHA-256 checked)",
-                "npm": "NPM_CONFIG_REGISTRY / PNPM_CONFIG_REGISTRY -> gateway npm port (tarballs via the broker)",
-                "go": "GOPROXY -> gateway /go (zips via the broker, sumdb through the gateway)",
-                "git": "url.insteadOf -> gateway /git (fetch/clone); push uses Git's own connection",
-                "cargo": "CARGO_HTTP_PROXY -> gateway tunnel (TLS by Cargo)",
-                "composer": "OpenMind's Composer launcher -> gateway tunnel (TLS by Composer)",
-                "skipped": skipped,
-            },
+            "providerReadiness": readiness,
+            "skipped": skipped,
+            "lastFailure": last_failure,
             "selectedExecutables": selected,
             "certificateBackends": {
                 "openmindDownloadManager": "rustls with the bundled Mozilla root certificates (webpki-roots); certificate checks always on",
@@ -422,7 +439,8 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
             "G_integratedTerminal": "same environment as B-E (an OpenMind terminal gets exactly these settings)",
         });
         let _ = std::fs::remove_dir_all(&work);
-        let text = serde_json::to_string_pretty(&report).map_err(|err| err.to_string())?;
+        // A last pass over the whole file: the token and any proxy password can't survive anywhere in it.
+        let text = scrub.text(&serde_json::to_string_pretty(&report).map_err(|err| err.to_string())?);
         std::fs::create_dir_all(&logs).map_err(|err| err.to_string())?;
         std::fs::write(&file, text).map_err(|err| err.to_string())
     })
@@ -450,6 +468,31 @@ mod tests {
         assert!(
             !clean.contains("s3cr3t") && !clean.contains("abcdef0123"),
             "{clean}"
+        );
+    }
+
+    #[test]
+    fn the_final_pass_cleans_a_whole_report() {
+        let scrub = Scrub {
+            credentials: Some(openmind_network::proxy::Credentials {
+                username: "ivan".into(),
+                password: "pa ss%word".into(),
+            }),
+            token: Some("tok3n0123".into()),
+        };
+        let report = json!({
+            "gateway": { "npmRc": "C:/app/temp/config/npmrc" },
+            "tools": { "npm": { "output": "GET http://127.0.0.1:9/tok3n0123/x 403" } },
+            "proxy": { "http": "http://ivan:pa%20ss%25word@proxy:3128" },
+            "note": "password pa ss%word",
+        });
+        let text = scrub.text(&serde_json::to_string_pretty(&report).expect("json"));
+        for secret in ["tok3n0123", "pa ss%word", "pa%20ss%25word"] {
+            assert!(!text.contains(secret), "{secret} in {text}");
+        }
+        assert!(
+            serde_json::from_str::<Value>(&text).is_ok(),
+            "still valid JSON"
         );
     }
 

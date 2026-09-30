@@ -20,6 +20,7 @@ pub mod marketplace;
 pub mod network;
 pub mod network_diag;
 pub mod network_offline;
+pub mod network_readiness;
 pub mod notebook;
 pub mod panel;
 pub mod php;
