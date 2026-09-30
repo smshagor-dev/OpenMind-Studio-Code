@@ -33,7 +33,31 @@ fn is_tarball(path: &str) -> bool {
     path.contains("/-/") && path.ends_with(".tgz") && !path.starts_with("/-/")
 }
 
+/// The request carries this run's token (`//127.0.0.1:<port>/:_authToken` in OpenMind's npm file, sent by npm and pnpm
+/// as a bearer token to that address only). Without it the npm port serves nothing.
+fn authorized(shared: &Shared, request: &Request) -> bool {
+    request
+        .header("authorization")
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|given| super::server::same(given.trim(), &shared.token))
+}
+
+/// Headers passed to the registry: never the gateway token (nor anything else meant for 127.0.0.1).
+fn upstream_headers(request: &Request) -> Vec<(String, String)> {
+    request_headers(&request.headers)
+        .into_iter()
+        .filter(|(name, _)| !name.eq_ignore_ascii_case("authorization"))
+        .collect()
+}
+
 pub(crate) fn handle(shared: &Shared, request: &Request, out: &mut dyn Write) -> io::Result<()> {
+    if !authorized(shared, request) {
+        return write_error(
+            out,
+            403,
+            "unknown session (this registry address only answers npm and pnpm started by OpenMind)",
+        );
+    }
     let path = request.path();
     if !valid_path(path) {
         return write_error(out, 400, "not a registry address");
@@ -81,7 +105,7 @@ fn metadata(
     let response = match shared.upstream.send(UpRequest {
         method: request.method.clone(),
         url: upstream.to_string(),
-        headers: request_headers(&request.headers),
+        headers: upstream_headers(request),
         body: Vec::new(),
         follow_redirects: true,
     }) {
@@ -126,7 +150,7 @@ fn forward(
     match shared.upstream.send(UpRequest {
         method: request.method.clone(),
         url: upstream.to_string(),
-        headers: request_headers(&request.headers),
+        headers: upstream_headers(request),
         body: request.body.clone(),
         follow_redirects: false,
     }) {

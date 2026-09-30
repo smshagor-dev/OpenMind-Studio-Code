@@ -251,7 +251,7 @@ fn host_ok(request: &Request, port: u16) -> bool {
 }
 
 /// Compares without stopping at the first difference.
-fn same(a: &str, b: &str) -> bool {
+pub(crate) fn same(a: &str, b: &str) -> bool {
     a.len() == b.len()
         && a.bytes()
             .zip(b.bytes())
@@ -367,6 +367,7 @@ fn route(shared: &Shared, request: &Request, out: &mut dyn Write) -> io::Result<
         "fetch" => fetch::handle(shared, request, out),
         "git" => super::git::handle(shared, request, rest, out),
         "go" => super::goproxy::handle(shared, request, rest, out),
+        "rustup" => super::rustup::handle(shared, request, rest, out),
         _ => write_error(out, 404, "not served"),
     }
 }

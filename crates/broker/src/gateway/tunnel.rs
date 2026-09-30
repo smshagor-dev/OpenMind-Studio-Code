@@ -44,12 +44,15 @@ pub fn base64(data: &[u8]) -> String {
 /// The tool a client identified as (the user name in its proxy address) when its token is right.
 fn tool_of(request: &Request, token: &str) -> Option<Provider> {
     let given = request.header("proxy-authorization")?;
-    [("cargo", Provider::Cargo), ("composer", Provider::Composer)]
-        .into_iter()
-        .find(|(user, _)| {
-            given == format!("Basic {}", base64(format!("{user}:{token}").as_bytes()))
-        })
-        .map(|(_, provider)| provider)
+    [
+        ("cargo", Provider::Cargo),
+        ("composer", Provider::Composer),
+        ("yarn", Provider::Yarn),
+        ("pnpm", Provider::Pnpm),
+    ]
+    .into_iter()
+    .find(|(user, _)| given == format!("Basic {}", base64(format!("{user}:{token}").as_bytes())))
+    .map(|(_, provider)| provider)
 }
 
 /// `host:443` with a DNS name (never localhost or an address on this computer).

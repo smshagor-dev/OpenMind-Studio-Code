@@ -80,11 +80,17 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
     path_prepend.extend(crate::commands::toolchains::bundled_dirs(state).await);
     path_prepend.extend(std::mem::take(&mut environment.path_prepend));
     state.broker.set_tool_dirs(&path_prepend);
+    let mut search = path_prepend.clone();
+    if let Some(path) = std::env::var_os("PATH") {
+        search.extend(std::env::split_paths(&path));
+    }
+    let composer = crate::commands::broker::real_composer(&search, state.broker.shims_dir());
     environment.path_prepend = path_prepend;
     // Package tools pointed at the package gateway, for this process only.
     environment
         .vars
         .extend(crate::commands::network::process_env(state).await);
+    environment.vars.extend(composer);
     environment
 }
 

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-use openmind_broker::env::{fetch_shims, process_env, Endpoints, Inherited, Skipped};
+use openmind_broker::env::{launchers, npm_rc_text, process_env, Endpoints, Inherited, Skipped};
 use openmind_broker::gateway::UreqUpstream;
 use openmind_broker::staging::{now_secs, PARTIAL_MAX_AGE};
 use openmind_broker::{
@@ -33,6 +33,29 @@ pub struct BrokerRuntime {
     /// The folders launchers put first on PATH (OpenMind's shims, bundled tools, portable runtimes): the Git that answers
     /// credential requests is looked up there first, like a terminal would.
     tool_dirs: Arc<RwLock<Vec<PathBuf>>>,
+    /// OpenMind's npm configuration for this run (`<app>/temp/config/npmrc`), when it could be written.
+    npm_rc: Option<PathBuf>,
+}
+
+/// Writes OpenMind's npm configuration for this run (the gateway's npm port and token) next to the staging folders.
+fn write_npm_rc(temp_dir: &Path, gateway: &Gateway) -> Option<PathBuf> {
+    let dir = temp_dir.join("config");
+    let file = dir.join("npmrc");
+    let endpoints = Endpoints {
+        port: gateway.port(),
+        npm_port: gateway.npm_port(),
+        token: gateway.token().to_string(),
+        npm_rc: None,
+    };
+    let written =
+        std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&file, npm_rc_text(&endpoints)));
+    match written {
+        Ok(()) => Some(file),
+        Err(err) => {
+            tracing::warn!(%err, "npm configuration for the gateway not written; npm isn't routed");
+            None
+        }
+    }
 }
 
 /// Progress events at most every 250 ms per operation, plus every change of phase.
@@ -74,12 +97,12 @@ fn throttled(
     }
 }
 
-fn write_fetch_shims(dir: &Path) {
+fn write_launchers(dir: &Path) {
     if let Err(err) = std::fs::create_dir_all(dir) {
         tracing::warn!(%err, "shims folder not created");
         return;
     }
-    for (name, text) in fetch_shims() {
+    for (name, text) in launchers() {
         let file = dir.join(name);
         if std::fs::read_to_string(&file).is_ok_and(|current| current == text) {
             continue;
@@ -107,7 +130,7 @@ impl BrokerRuntime {
                 }
             });
         }
-        write_fetch_shims(&shims_dir);
+        write_launchers(&shims_dir);
         let broker = Broker::new(
             Staging::new(&temp_dir),
             Arc::new(UreqClient::new()),
@@ -134,7 +157,11 @@ impl BrokerRuntime {
                 (None, Some(err.to_string()))
             }
         };
+        let npm_rc = gateway
+            .as_ref()
+            .and_then(|gateway| write_npm_rc(&temp_dir, gateway));
         BrokerRuntime {
+            npm_rc,
             gateway,
             problem,
             temp_dir,
@@ -172,6 +199,7 @@ impl BrokerRuntime {
             port: gateway.port(),
             npm_port: gateway.npm_port(),
             token: gateway.token().to_string(),
+            npm_rc: self.npm_rc.clone(),
         })
     }
 
@@ -209,6 +237,36 @@ impl BrokerRuntime {
     pub fn recovery(&self) -> Option<RecoveryReport> {
         self.recovery.lock().ok().and_then(|slot| slot.clone())
     }
+}
+
+/// The Composer the `composer` launcher in `<app>/shims` runs: the first one on the launcher's PATH after OpenMind's own
+/// shims (OpenMind's portable Composer, then a system or user one). `OPENMIND_REAL_COMPOSER` is for cmd/PowerShell;
+/// `OPENMIND_REAL_COMPOSER_SH` the extension-less script next to it for Git Bash, when there is one.
+pub(crate) fn real_composer(dirs: &[PathBuf], shims: &Path) -> Vec<(String, String)> {
+    let found = dirs
+        .iter()
+        .filter(|dir| dir.as_path() != shims)
+        .find_map(|dir| {
+            ["composer.cmd", "composer.bat", "composer.exe"]
+                .iter()
+                .map(|name| dir.join(name))
+                .find(|file| file.is_file())
+        });
+    let Some(found) = found else {
+        return Vec::new();
+    };
+    let mut vars = vec![(
+        "OPENMIND_REAL_COMPOSER".to_string(),
+        found.display().to_string(),
+    )];
+    let script = found.with_extension("");
+    if script.is_file() {
+        vars.push((
+            "OPENMIND_REAL_COMPOSER_SH".to_string(),
+            script.display().to_string(),
+        ));
+    }
+    vars
 }
 
 /// The gateway settings for a process OpenMind starts, and the tools left on their own configuration. Empty when the

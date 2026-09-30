@@ -54,6 +54,12 @@ export function providerLabel(provider: BrokerProvider): string {
       return "Composer";
     case "cargo":
       return "Cargo";
+    case "yarn":
+      return "Yarn";
+    case "pnpm":
+      return "pnpm";
+    case "rustup":
+      return "rustup";
     default:
       return "openmind-fetch";
   }

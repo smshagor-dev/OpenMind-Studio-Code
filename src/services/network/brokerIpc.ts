@@ -3,7 +3,17 @@ import { listen } from "@tauri-apps/api/event";
 
 // Mirrors src-tauri/src/commands/broker.rs and crates/broker (serde camelCase).
 
-export type BrokerProvider = "download" | "pypi" | "npm" | "go" | "git" | "composer" | "cargo";
+export type BrokerProvider =
+  | "download"
+  | "pypi"
+  | "npm"
+  | "go"
+  | "git"
+  | "composer"
+  | "cargo"
+  | "yarn"
+  | "pnpm"
+  | "rustup";
 
 export type BrokerPhase =
   | "resolving"

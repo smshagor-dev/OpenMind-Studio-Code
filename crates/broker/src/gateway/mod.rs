@@ -10,6 +10,7 @@ pub mod goproxy;
 pub mod http1;
 pub mod npm;
 pub mod pypi;
+pub mod rustup;
 pub mod server;
 pub mod tunnel;
 pub mod upstream;

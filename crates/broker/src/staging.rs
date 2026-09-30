@@ -23,10 +23,13 @@ pub enum Provider {
     Git,
     Composer,
     Cargo,
+    Yarn,
+    Pnpm,
+    Rustup,
 }
 
 impl Provider {
-    pub const ALL: [Provider; 7] = [
+    pub const ALL: [Provider; 10] = [
         Provider::Download,
         Provider::Pypi,
         Provider::Npm,
@@ -34,6 +37,9 @@ impl Provider {
         Provider::Git,
         Provider::Composer,
         Provider::Cargo,
+        Provider::Yarn,
+        Provider::Pnpm,
+        Provider::Rustup,
     ];
 
     pub fn dir(self) -> &'static str {
@@ -45,6 +51,9 @@ impl Provider {
             Provider::Git => "git",
             Provider::Composer => "composer",
             Provider::Cargo => "cargo",
+            Provider::Yarn => "yarn",
+            Provider::Pnpm => "pnpm",
+            Provider::Rustup => "rustup",
         }
     }
 }

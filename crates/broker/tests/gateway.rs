@@ -320,8 +320,22 @@ fn npm_keeps_registry_urls_while_pnpm_gets_local_tarballs_and_writes_are_refused
     );
     let setup = start(upstream, files);
     let npm = setup.gateway.npm_port();
+    let bearer = format!("Authorization: Bearer {}\r\n", setup.gateway.token());
+    // Without this run's token the npm port answers nothing.
+    assert_eq!(
+        get(npm, "/left-pad", "User-Agent: npm/11.13.0 node/v24\r\n").status,
+        403
+    );
+    assert_eq!(
+        get(npm, "/left-pad", "Authorization: Bearer wrong\r\n").status,
+        403
+    );
 
-    let plain = get(npm, "/left-pad", "User-Agent: npm/11.13.0 node/v24\r\n");
+    let plain = get(
+        npm,
+        "/left-pad",
+        &format!("User-Agent: npm/11.13.0 node/v24\r\n{bearer}"),
+    );
     assert_eq!(plain.status, 200);
     assert!(
         plain
@@ -333,7 +347,7 @@ fn npm_keeps_registry_urls_while_pnpm_gets_local_tarballs_and_writes_are_refused
     let pnpm = get(
         npm,
         "/left-pad",
-        "User-Agent: pnpm/9.0.0 npm/? node/v24\r\n",
+        &format!("User-Agent: pnpm/9.0.0 npm/? node/v24\r\n{bearer}"),
     );
     assert!(
         pnpm.text().contains(&format!(
@@ -343,13 +357,13 @@ fn npm_keeps_registry_urls_while_pnpm_gets_local_tarballs_and_writes_are_refused
         pnpm.text()
     );
 
-    let tarball = get(npm, "/left-pad/-/left-pad-1.3.0.tgz", "");
+    let tarball = get(npm, "/left-pad/-/left-pad-1.3.0.tgz", &bearer);
     assert_eq!(
         (tarball.status, tarball.body.as_slice()),
         (200, b"tgz".as_slice())
     );
 
-    let publish = ask(npm, &format!("PUT /left-pad HTTP/1.1\r\nHost: 127.0.0.1:{npm}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"));
+    let publish = ask(npm, &format!("PUT /left-pad HTTP/1.1\r\nHost: 127.0.0.1:{npm}\r\n{bearer}Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"));
     assert_eq!(publish.status, 405);
     // The npm port only answers to its own address, like the main one.
     let foreign = ask(
