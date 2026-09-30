@@ -187,7 +187,7 @@ impl CredentialSource for GitCredentialHelper {
                 };
                 Err(format!(
                     "No credentials for {}: the sign-in was cancelled or no Git credential helper is configured{said}. \
-                     Sign in with Git Credential Manager (git config --global credential.helper manager) or store a \
+                     Sign in with Git Credential Manager (it comes with Git for Windows) or store a \
                      personal access token with your credential helper, then run the command again",
                     request.host
                 ))
