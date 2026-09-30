@@ -79,6 +79,8 @@ pub trait Store {
     fn delete_value(&mut self, key: &str, name: &str) -> Result<(), String>;
     /// Deletes a key with its sub-keys (only ever one of [`MENU_KEYS`]).
     fn delete_tree(&mut self, key: &str) -> Result<(), String>;
+    /// Deletes `key` only when it has no values and no sub-keys (the record, once nothing is recorded).
+    fn delete_key_if_empty(&mut self, key: &str) -> Result<(), String>;
     /// `%VAR%` expanded, to recognise an entry the user wrote with a variable.
     fn expand(&self, text: &str) -> String;
     /// Tells running programs (Explorer, so new terminals) that the environment changed.
@@ -287,7 +289,7 @@ pub fn remove_explorer(store: &mut dyn Store, exe: &Path) -> Result<String, Stri
 
 /// Runs one action and returns what it did, in one line per part.
 pub fn run(store: &mut dyn Store, exe: &Path, action: Action) -> Result<String, String> {
-    match action {
+    let result = match action {
         Action::AddPath => add_path(store, exe),
         Action::RemovePath => remove_path(store, exe),
         Action::AddExplorer => add_explorer(store, exe),
@@ -298,9 +300,17 @@ pub fn run(store: &mut dyn Store, exe: &Path, action: Action) -> Result<String, 
             Ok(format!("{path}\n{explorer}"))
         }
         Action::Status => {
-            serde_json::to_string(&status(store, exe)?).map_err(|err| err.to_string())
+            return serde_json::to_string(&status(store, exe)?).map_err(|err| err.to_string())
         }
+    }?;
+    // After a removal nothing may be recorded any more: then the record key itself goes too.
+    if matches!(
+        action,
+        Action::RemovePath | Action::RemoveExplorer | Action::RemoveAll
+    ) {
+        store.delete_key_if_empty(RECORD_KEY)?;
     }
+    Ok(result)
 }
 
 #[cfg(test)]

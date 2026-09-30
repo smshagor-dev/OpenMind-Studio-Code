@@ -12,8 +12,8 @@ use winapi::um::winnt::{
     KEY_QUERY_VALUE, KEY_SET_VALUE, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ,
 };
 use winapi::um::winreg::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW,
-    RegSetValueExW, HKEY_CURRENT_USER,
+    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteTreeW, RegDeleteValueW, RegOpenKeyExW,
+    RegQueryInfoKeyW, RegQueryValueExW, RegSetValueExW, HKEY_CURRENT_USER,
 };
 use winapi::um::winuser::{
     SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
@@ -185,6 +185,44 @@ impl Store for UserRegistry {
     fn delete_tree(&mut self, key: &str) -> Result<(), String> {
         // SAFETY: valid wide string relative to HKCU.
         let code = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, wide(key).as_ptr()) };
+        match code as u32 {
+            ERROR_SUCCESS | ERROR_FILE_NOT_FOUND => Ok(()),
+            _ => Err(failed(&format!(r"Deleting HKCU\{key}"), code)),
+        }
+    }
+
+    fn delete_key_if_empty(&mut self, key: &str) -> Result<(), String> {
+        let (mut subkeys, mut values): (DWORD, DWORD) = (0, 0);
+        {
+            let Some(open) = open(key, KEY_QUERY_VALUE)? else {
+                return Ok(());
+            };
+            // SAFETY: open key; only the two counts are asked for, every other out-pointer is null.
+            let code = unsafe {
+                RegQueryInfoKeyW(
+                    open.0,
+                    null_mut(),
+                    null_mut(),
+                    null_mut(),
+                    &mut subkeys,
+                    null_mut(),
+                    null_mut(),
+                    &mut values,
+                    null_mut(),
+                    null_mut(),
+                    null_mut(),
+                    null_mut(),
+                )
+            };
+            if code as u32 != ERROR_SUCCESS {
+                return Err(failed("Reading a Registry key", code));
+            }
+        }
+        if subkeys != 0 || values != 0 {
+            return Ok(());
+        }
+        // SAFETY: valid wide string relative to HKCU; RegDeleteKeyW never deletes a key that has sub-keys.
+        let code = unsafe { RegDeleteKeyW(HKEY_CURRENT_USER, wide(key).as_ptr()) };
         match code as u32 {
             ERROR_SUCCESS | ERROR_FILE_NOT_FOUND => Ok(()),
             _ => Err(failed(&format!(r"Deleting HKCU\{key}"), code)),

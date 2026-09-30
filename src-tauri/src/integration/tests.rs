@@ -8,6 +8,8 @@ use super::*;
 struct Fake {
     path: Option<(String, bool)>,
     values: HashMap<(String, String), String>,
+    /// Keys that exist (a write creates its key, as the Registry does).
+    keys: std::collections::HashSet<String>,
     broadcasts: usize,
 }
 
@@ -28,6 +30,7 @@ impl Store for Fake {
     }
     fn set_value(&mut self, key: &str, name: &str, value: &str) -> Result<(), String> {
         self.values.insert(key_of(key, name), value.to_string());
+        self.keys.insert(key.to_lowercase());
         Ok(())
     }
     fn delete_value(&mut self, key: &str, name: &str) -> Result<(), String> {
@@ -36,8 +39,18 @@ impl Store for Fake {
     }
     fn delete_tree(&mut self, key: &str) -> Result<(), String> {
         let prefix = key.to_lowercase();
-        self.values
-            .retain(|(k, _), _| k != &prefix && !k.starts_with(&format!("{prefix}\\")));
+        let inside = |k: &String| k == &prefix || k.starts_with(&format!("{prefix}\\"));
+        self.values.retain(|(k, _), _| !inside(k));
+        self.keys.retain(|k| !inside(k));
+        Ok(())
+    }
+    fn delete_key_if_empty(&mut self, key: &str) -> Result<(), String> {
+        let key = key.to_lowercase();
+        let used = self.values.keys().any(|(k, _)| k == &key)
+            || self.keys.iter().any(|k| k.starts_with(&format!("{key}\\")));
+        if !used {
+            self.keys.remove(&key);
+        }
         Ok(())
     }
     fn expand(&self, text: &str) -> String {
@@ -239,6 +252,42 @@ fn explorer_entries_are_removed_only_when_they_run_this_copy() {
         .value(RECORD_KEY, EXPLORER_RECORD)
         .expect("v")
         .is_none());
+}
+
+#[test]
+fn remove_all_takes_the_emptied_record_key_away_too() {
+    // Found by the installer smoke test: the uninstaller left an empty record key behind.
+    let (_tmp, exe) = app();
+    let mut store = Fake {
+        path: Some((r"C:\Tools".into(), true)),
+        ..Fake::default()
+    };
+    store
+        .set_value(r"Software\OpenMind\Other", "x", "y")
+        .expect("unrelated");
+    run(&mut store, &exe, Action::AddPath).expect("add path");
+    run(&mut store, &exe, Action::AddExplorer).expect("add explorer");
+    assert!(store.keys.contains(&RECORD_KEY.to_lowercase()));
+    run(&mut store, &exe, Action::RemoveAll).expect("remove all");
+    assert!(
+        !store.keys.contains(&RECORD_KEY.to_lowercase()),
+        "record key removed"
+    );
+    assert!(store
+        .keys
+        .iter()
+        .all(|k| !k.contains(r"\shell\openmindstudio")));
+    assert!(
+        store.keys.contains(r"software\openmind\other"),
+        "an unrelated key survives"
+    );
+    assert_eq!(store.path, Some((r"C:\Tools".into(), true)));
+    // With another copy's record still there, the key stays.
+    store
+        .set_value(RECORD_KEY, r"d:\other\bin", r"D:\Other\bin")
+        .expect("other copy");
+    run(&mut store, &exe, Action::RemoveAll).expect("again");
+    assert!(store.keys.contains(&RECORD_KEY.to_lowercase()));
 }
 
 #[test]
