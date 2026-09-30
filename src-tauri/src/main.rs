@@ -9,6 +9,7 @@ mod secret;
 mod startup;
 mod startup_error;
 mod tray;
+mod updates;
 mod window_events;
 mod windows;
 
@@ -40,13 +41,22 @@ fn main() {
     openmind_core::init_logging_to_file(&app_paths.logs_dir);
 
     tracing::info!(db_path = %app_paths.db_path.display(), "starting OpenMind Studio");
+    // An update installer downloaded by an earlier run is never reused (it is downloaded and verified again).
+    updates::clean_stale_downloads(&app_paths.root_dir);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(launch::LaunchState::new(launch_request))
+        .manage(updates::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             launch::launch_take,
+            updates::update_check,
+            updates::update_status,
+            updates::update_download,
+            updates::update_install_now,
+            updates::update_install_on_exit,
             commands::integration::integration_status,
             commands::integration::integration_apply,
             commands::python_packages::python_packages_status,

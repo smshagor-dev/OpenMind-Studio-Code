@@ -118,6 +118,15 @@ async fn save_main_geometry(window: &WebviewWindow, service: &WindowStateService
 /// destroys the main window and exits. Used by a normal close and by the
 /// tray's Quit.
 pub async fn shutdown(app: AppHandle) {
+    stop_everything(&app).await;
+    // An update the user put off ("Later") is installed now; on success the process ends here.
+    crate::updates::install_on_exit(&app);
+    exit_app(&app);
+}
+
+/// Stops everything OpenMind started (terminals, runs, servers, language servers, Git ...). Used by a normal close and
+/// before an update's installer runs.
+pub async fn stop_everything(app: &AppHandle) {
     // Kill every terminal's whole process tree first so no shell (or
     // anything it spawned) can outlive the app.
     let state = app.state::<AppState>();
@@ -149,7 +158,10 @@ pub async fn shutdown(app: AppHandle) {
         }),
     )
     .await;
+}
 
+/// Destroys the main window and exits the process.
+fn exit_app(app: &AppHandle) {
     // `.destroy()`, not `.close()`: `.close()` re-emits `CloseRequested`
     // (documented behavior — "like a user-initiated close request so you can
     // intercept it"), which would recurse straight back into the close

@@ -79,6 +79,18 @@
       "../python-bundle/": "python-bundle/",
       "cli/openmind.cmd": "bin/openmind.cmd",
       "cli/openmind": "bin/openmind"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzQTA2REZDQThCQzAzQUQKUldTdEE3eW8vRzJnODVobVlsallSb0Z5ek5xVzJ1cllpMFZoM0JLRG41OHVXYkhZSm5QYVo0K0QK",
+      "endpoints": [
+        "https://github.com/smshagor-dev/OpenMind-Studio/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

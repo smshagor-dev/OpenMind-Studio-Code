@@ -108,7 +108,10 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
             .map(|f| f.id.clone())
             .collect()
     };
-    assert_eq!(ids("python"), ["pip", "venv", "tkinter", "bundled-packages"]);
+    assert_eq!(
+        ids("python"),
+        ["pip", "venv", "tkinter", "bundled-packages"]
+    );
     assert_eq!(ids("node"), ["npm", "npx"]);
     assert_eq!(ids("git"), ["git"]);
     assert_eq!(ids("php"), ["cli", "server", "ini"]);

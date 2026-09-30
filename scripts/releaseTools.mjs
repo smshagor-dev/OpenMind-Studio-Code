@@ -281,3 +281,46 @@ export function checkInstallerHooks(nsh) {
   }
   return problems;
 }
+
+/** The GitHub repository the app updates from (tauri.conf.json `plugins.updater.endpoints`). */
+export const RELEASE_REPO = "smshagor-dev/OpenMind-Studio";
+export const UPDATE_ENDPOINT = `https://github.com/${RELEASE_REPO}/releases/latest/download/latest.json`;
+
+/** Where a file of the GitHub release `v<version>` is downloaded from. */
+export function releaseDownloadUrl(version, name) {
+  return `https://github.com/${RELEASE_REPO}/releases/download/v${version}/${name}`;
+}
+
+/**
+ * The updater's `latest.json` for a release: the per-user setup is the default Windows update (`windows-x86_64` and
+ * `-nsis`), the MSI updates MSI installs (`-msi`). `setup`/`msi` = `{ name, signature }` (the minisign `.sig` text) or null.
+ */
+export function latestJson({ version, notes, pubDate, setup, msi }) {
+  const platforms = {};
+  const entry = (file) => ({ signature: file.signature.trim(), url: releaseDownloadUrl(version, file.name) });
+  if (setup) {
+    platforms["windows-x86_64"] = entry(setup);
+    platforms["windows-x86_64-nsis"] = entry(setup);
+  }
+  if (msi) platforms["windows-x86_64-msi"] = entry(msi);
+  return { version, notes, pub_date: pubDate, platforms };
+}
+
+/** Problems with the updater configuration: a public key, the GitHub endpoint and signed update files. */
+export function checkUpdaterConfig(tauri) {
+  const problems = [];
+  const updater = tauri.plugins?.updater ?? {};
+  if (typeof updater.pubkey !== "string" || updater.pubkey.length < 40) {
+    problems.push("plugins.updater.pubkey must be the release key's public key.");
+  }
+  if (JSON.stringify(updater.endpoints ?? []) !== JSON.stringify([UPDATE_ENDPOINT])) {
+    problems.push(`plugins.updater.endpoints must be ["${UPDATE_ENDPOINT}"].`);
+  }
+  if (updater.dangerousInsecureTransportProtocol === true) {
+    problems.push("The updater must not allow insecure (http) endpoints in a release.");
+  }
+  if (tauri.bundle?.createUpdaterArtifacts !== true) {
+    problems.push("bundle.createUpdaterArtifacts must be true (the updater needs the .sig files).");
+  }
+  return problems;
+}

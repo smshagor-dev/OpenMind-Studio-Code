@@ -39,3 +39,18 @@ export function checkWixSource(wxs: string): string[];
 export function checkInstallerConfig(tauri: Record<string, unknown>, licenseText: string): string[];
 export function checkInstallerHooks(nsh: string): string[];
 export function unconditionalEnvironment(wxs: string): string[];
+export const RELEASE_REPO: string;
+export const UPDATE_ENDPOINT: string;
+export function releaseDownloadUrl(version: string, name: string): string;
+export interface SignedFile {
+  name: string;
+  signature: string;
+}
+export function latestJson(input: {
+  version: string;
+  notes: string;
+  pubDate: string;
+  setup: SignedFile | null;
+  msi: SignedFile | null;
+}): { version: string; notes: string; pub_date: string; platforms: Record<string, { signature: string; url: string }> };
+export function checkUpdaterConfig(tauri: Record<string, unknown>): string[];

@@ -91,6 +91,66 @@ pub fn route(url: &str) -> Route {
     route_with(current().as_ref(), url)
 }
 
+/// How another HTTP client (the app updater, which uses its own library) reaches `url` under `proxy`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProxyUrl {
+    /// The mode is None: leave the client's own behaviour alone.
+    Unchanged,
+    /// Straight to the server.
+    Direct,
+    /// Through this proxy (`http://user:pass@host:port`, credentials percent-encoded). Never log it.
+    Via(String),
+}
+
+fn percent_encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect()
+}
+
+/// The proxy for `url` under `proxy`, as a URL (the same rules as [`route_with`]).
+pub fn proxy_url_with(proxy: Option<&HttpProxy>, url: &str) -> ProxyUrl {
+    let Some(proxy) = proxy.filter(|p| p.resolved.mode != ProxyMode::None) else {
+        return ProxyUrl::Unchanged;
+    };
+    let (https, host) = target(url);
+    let Some(address) = proxy.resolved.for_target(https, &host) else {
+        return ProxyUrl::Direct;
+    };
+    let scheme = match address.scheme {
+        Scheme::Http => "http",
+        Scheme::Https => "https",
+        Scheme::Socks5 => "socks5h",
+    };
+    let userinfo = proxy
+        .credentials
+        .as_ref()
+        .filter(|c| !c.username.is_empty())
+        .map(|c| {
+            format!(
+                "{}:{}@",
+                percent_encode(&c.username),
+                percent_encode(&c.password)
+            )
+        })
+        .unwrap_or_default();
+    ProxyUrl::Via(format!(
+        "{scheme}://{userinfo}{}:{}",
+        address.host, address.port
+    ))
+}
+
+/// The proxy for `url` under the proxy in force.
+pub fn proxy_url(url: &str) -> ProxyUrl {
+    proxy_url_with(current().as_ref(), url)
+}
+
 /// Time limits of one request made by OpenMind. ureq's body limit is the *total* time for the body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timeouts {
@@ -200,6 +260,36 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    #[test]
+    fn other_clients_get_the_same_route_as_a_url_with_encoded_credentials() {
+        assert_eq!(
+            proxy_url_with(None, "https://github.com"),
+            ProxyUrl::Unchanged
+        );
+        let mut proxy = manual();
+        assert_eq!(
+            proxy_url_with(Some(&proxy), "https://github.com/x/latest.json"),
+            ProxyUrl::Via("http://ivan:pw@proxy.lab:3128".into())
+        );
+        assert_eq!(
+            proxy_url_with(Some(&proxy), "https://intranet.lab/x"),
+            ProxyUrl::Direct
+        );
+        proxy.credentials = Some(Credentials {
+            username: "dom\\ivan".into(),
+            password: "p@ss:w/rd".into(),
+        });
+        assert_eq!(
+            proxy_url_with(Some(&proxy), "https://github.com"),
+            ProxyUrl::Via("http://dom%5Civan:p%40ss%3Aw%2Frd@proxy.lab:3128".into())
+        );
+        proxy.credentials = None;
+        assert_eq!(
+            proxy_url_with(Some(&proxy), "https://github.com"),
+            ProxyUrl::Via("http://proxy.lab:3128".into())
+        );
     }
 
     #[test]
