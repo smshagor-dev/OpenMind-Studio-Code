@@ -7,8 +7,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-openmind-network = { version = "0.1.0", path = "../network" }
-openmind-runtime-manager = { version = "0.1.0", path = "../runtime-manager" }
+openmind-network = { version = "1.0.0", path = "../network" }
+openmind-runtime-manager = { version = "1.0.0", path = "../runtime-manager" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 getrandom = "0.3"
