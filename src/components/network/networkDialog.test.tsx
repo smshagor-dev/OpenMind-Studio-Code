@@ -459,6 +459,7 @@ describe("Downloads tab (Milestone 23)", () => {
         recovery: { removed: 1, keptPartial: 0, inUse: 0 },
       }),
       brokerCancel: vi.fn().mockResolvedValue(true),
+      brokerClearTemp: vi.fn().mockResolvedValue({ removed: 0, keptPartial: 0, inUse: 0 }),
       exportDiagnostics: vi.fn().mockResolvedValue("C:/app/logs/openmind-network-diagnostics.json"),
       onProgress: vi.fn().mockResolvedValue(() => undefined),
     };
@@ -476,5 +477,30 @@ describe("Downloads tab (Milestone 23)", () => {
       await Promise.resolve();
     });
     expect(brokerIpc.exportDiagnostics).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Clear Finished" })).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Clear Temporary Files" }));
+      await Promise.resolve();
+    });
+    expect(brokerIpc.brokerClearTemp).toHaveBeenCalled();
+    act(() => {
+      r.network.onDownload({ ...EVENT_FAILED });
+    });
+    expect(screen.getByRole("button", { name: "Copy Error Details" })).toBeInTheDocument();
+    expect(screen.getByText(/Run the command again to retry/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear Finished" })).toBeEnabled();
   });
 });
+
+const EVENT_FAILED = {
+  id: 4,
+  provider: "pypi" as const,
+  artifact: "six.whl",
+  phase: "failed" as const,
+  bytes: 0,
+  total: null,
+  speed: 0,
+  retry: null,
+  failure: "timeout" as const,
+  detail: "timed out",
+};

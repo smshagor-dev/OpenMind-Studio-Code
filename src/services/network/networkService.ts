@@ -12,7 +12,7 @@ import type {
   Wheelhouse,
 } from "./networkIpc";
 import type { BrokerEvent, BrokerIpc, BrokerStatus } from "./brokerIpc";
-import { failureProblem, providerLabel, upsertDownload } from "./downloadsModel";
+import { errorDetails, failureProblem, isActive, providerLabel, upsertDownload, withoutFinished } from "./downloadsModel";
 import { diagnoseNetwork, isPipOutput, problemText, STRONG_PROBLEMS, validateProxyAddress } from "./networkModel";
 
 export type NetworkTab = "proxy" | "offline" | "downloads";
@@ -68,6 +68,8 @@ export interface NetworkHost {
   pickFile: () => Promise<string | null>;
   pickFolder: () => Promise<string | null>;
   openFolder: (path: string) => Promise<void>;
+  /** Puts text on the clipboard (Copy Error Details). */
+  copyText?: (text: string) => Promise<void>;
   /** Hands a .vsix to the extension installer (which shows its trust dialog). */
   installVsix: (path: string) => Promise<void>;
   openRuntimeManager: () => void;
@@ -98,6 +100,8 @@ const QUIET_MS = 2 * 60 * 1000;
  * request by itself: the backend is asked only when the window opens (local reads) or the user presses a button.
  */
 export class NetworkService {
+  /** Operations the user cleared from the Downloads list (ids are never reused in a run). */
+  private readonly cleared = new Set<number>();
   private state: NetworkState = {
     status: null,
     open: false,
@@ -164,7 +168,9 @@ export class NetworkService {
     try {
       const gateway = await this.host.broker.brokerStatus();
       let downloads = this.state.downloads;
-      for (const event of [...gateway.recent].reverse()) downloads = upsertDownload(downloads, event);
+      for (const event of [...gateway.recent].reverse()) {
+        if (!this.cleared.has(event.id)) downloads = upsertDownload(downloads, event);
+      }
       this.set({ gateway, downloads });
     } catch (error) {
       this.set({ error: String(error) });
@@ -186,6 +192,49 @@ export class NetworkService {
     const problem = failureProblem(event.failure);
     if (problem === null) return;
     this.reportProblem(problem, providerLabel(event.provider), event.provider === "pypi");
+  }
+
+  /** Clear Finished: drops complete, failed and cancelled operations from the list (they stay gone on a reload). */
+  clearFinished(): void {
+    for (const event of this.state.downloads) if (!isActive(event)) this.cleared.add(event.id);
+    this.set({ downloads: withoutFinished(this.state.downloads) });
+  }
+
+  /** Copy Error Details of one operation (no credentials: the backend redacts the message). */
+  async copyErrorDetails(event: BrokerEvent): Promise<void> {
+    if (this.host.copyText === undefined) return;
+    try {
+      await this.host.copyText(errorDetails(event));
+      this.set({ notice: t("network.downloads.copied") });
+    } catch (error) {
+      this.set({ error: String(error) });
+    }
+  }
+
+  /** Clear Temporary Files: removes staged downloads nothing is using, resumable partials included. */
+  async clearTemp(): Promise<void> {
+    if (this.host.broker === undefined) return;
+    this.set({ busy: true, error: null, notice: null });
+    try {
+      const report = await this.host.broker.brokerClearTemp();
+      this.set({ notice: t("network.downloads.cleared", { removed: report.removed, inUse: report.inUse }) });
+    } catch (error) {
+      this.set({ error: String(error) });
+    } finally {
+      this.set({ busy: false });
+    }
+  }
+
+  /** Open Diagnostics: the folder of the last diagnostics file, written first when there is none yet. */
+  async openDiagnostics(): Promise<void> {
+    const path = this.state.diagnosticsPath ?? (await this.exportDiagnostics());
+    if (path === null) return;
+    const folder = path.replace(/[\\/][^\\/]*$/, "");
+    try {
+      await this.host.openFolder(folder === path ? path : folder);
+    } catch (error) {
+      this.set({ error: String(error) });
+    }
   }
 
   async cancelDownload(id: number): Promise<void> {

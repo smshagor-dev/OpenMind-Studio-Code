@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import type { BrokerEvent } from "./brokerIpc";
-import { failureProblem, formatBytes, isActive, MAX_DOWNLOADS, percent, providerLabel, upsertDownload } from "./downloadsModel";
+import {
+  errorDetails,
+  failureProblem,
+  formatBytes,
+  isActive,
+  MAX_DOWNLOADS,
+  percent,
+  providerLabel,
+  upsertDownload,
+  withoutFinished,
+} from "./downloadsModel";
 
 const event = (id: number, patch: Partial<BrokerEvent> = {}): BrokerEvent => ({
   id,
@@ -48,5 +58,20 @@ describe("downloadsModel", () => {
     expect(failureProblem("checksum")).toBe("checksum");
     expect(failureProblem("notFound")).toBeNull();
     expect(failureProblem("diskFull")).toBeNull();
+  });
+
+  it("queued is active; withoutFinished keeps only running and queued operations", () => {
+    expect(isActive(event(1, { phase: "queued" }))).toBe(true);
+    const list = [event(1, { phase: "queued" }), event(2, { phase: "complete" }), event(3, { phase: "cancelled" }), event(4)];
+    expect(withoutFinished(list).map((e) => e.id)).toEqual([1, 4]);
+  });
+
+  it("error details name the tool, stage, category and message, and nothing else", () => {
+    const text = errorDetails(event(5, { phase: "failed", failure: "certificate", detail: "unknown issuer", total: 10, bytes: 4 }));
+    expect(text).toBe(
+      ["Tool: pip", "Item: a5.whl", "Stage: failed", "Failure: certificate", "Bytes: 4 of 10", "Message: unknown issuer"].join("\n"),
+    );
+    expect(providerLabel("rustup")).toBe("rustup");
+    expect(providerLabel("yarn")).toBe("Yarn");
   });
 });

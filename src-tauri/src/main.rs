@@ -252,6 +252,7 @@ fn main() {
             commands::network::network_terminal_env,
             commands::broker::broker_status,
             commands::broker::broker_cancel,
+            commands::broker::broker_clear_temp,
             commands::network_diag::network_diagnostics_export,
             commands::network_offline::network_offline_inspect,
             commands::network_offline::network_offline_import,

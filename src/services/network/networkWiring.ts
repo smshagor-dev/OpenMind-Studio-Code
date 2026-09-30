@@ -169,6 +169,7 @@ export function wireNetwork(deps: NetworkWiringDeps): NetworkService {
     pickFile: () => deps.ipc.openDocumentDialog(),
     pickFolder: () => deps.ipc.openFolderDialog(),
     openFolder: (path) => deps.ipc.panelOpenFolder(path),
+    copyText: (text) => deps.ipc.clipboardWriteText(text),
     installVsix: deps.installVsix,
     openRuntimeManager: () => {
       deps.run("runtime.manage");

@@ -38,7 +38,18 @@ function Download({ event }: { event: BrokerEvent }) {
         </p>
         {share !== null && active ? <progress className="network__progress" max={100} value={share} /> : null}
         {event.detail !== null && event.phase === "failed" ? <p className="network__warning">{event.detail}</p> : null}
+        {event.phase === "failed" ? <p className="network__meta">{t("network.downloads.retryHint")}</p> : null}
       </div>
+      {event.phase === "failed" || event.phase === "cancelled" ? (
+        <button
+          type="button"
+          onClick={() => {
+            void container.network.copyErrorDetails(event);
+          }}
+        >
+          {t("network.downloads.copyError")}
+        </button>
+      ) : null}
       {active ? (
         <button
           type="button"
@@ -93,12 +104,42 @@ export function NetworkDownloadsTab({ state }: { state: NetworkState }) {
       <div className="network__row">
         <button
           type="button"
+          disabled={state.downloads.every(isActive)}
+          onClick={() => {
+            container.network.clearFinished();
+          }}
+        >
+          {t("network.downloads.clearFinished")}
+        </button>
+        <button
+          type="button"
+          disabled={state.busy || gateway === null}
+          title={t("network.downloads.clearTempHint")}
+          onClick={() => {
+            void container.network.clearTemp();
+          }}
+        >
+          {t("network.downloads.clearTemp")}
+        </button>
+      </div>
+      <div className="network__row">
+        <button
+          type="button"
           disabled={state.busy}
           onClick={() => {
             void container.network.exportDiagnostics();
           }}
         >
           {t("network.diagnostics.export")}
+        </button>
+        <button
+          type="button"
+          disabled={state.busy}
+          onClick={() => {
+            void container.network.openDiagnostics();
+          }}
+        >
+          {t("network.diagnostics.open")}
         </button>
       </div>
       <p className="network__meta">{t("network.diagnostics.explain")}</p>

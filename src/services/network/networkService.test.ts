@@ -205,6 +205,7 @@ function broker(status: Partial<BrokerStatus> = {}) {
   return {
     brokerStatus: vi.fn().mockResolvedValue(full),
     brokerCancel: vi.fn().mockResolvedValue(true),
+    brokerClearTemp: vi.fn().mockResolvedValue({ removed: 3, keptPartial: 0, inUse: 1 }),
     exportDiagnostics: vi.fn().mockResolvedValue("C:/app/logs/openmind-network-diagnostics.json"),
     onProgress: vi.fn((next: (event: BrokerEvent) => void) => {
       listener = next;
@@ -264,6 +265,40 @@ describe("NetworkService: the Unified Download Broker", () => {
     expect(fake.brokerCancel).toHaveBeenCalledWith(7);
     expect(await r.service.exportDiagnostics()).toBe("C:/app/logs/openmind-network-diagnostics.json");
     expect(r.service.getState().notice).toContain("openmind-network-diagnostics.json");
+  });
+
+  it("queued operations count as running; Clear Finished drops the rest and they stay gone on a reload", async () => {
+    const fake = broker({ recent: [{ ...EVENT, id: 1, phase: "complete" }] });
+    const r = rig({}, { broker: fake });
+    await r.service.attachBroker();
+    await r.service.load();
+    fake.emit({ ...EVENT, id: 2, phase: "queued" });
+    fake.emit({ ...EVENT, id: 3, phase: "failed", failure: "notFound", detail: "HTTP 404" });
+    r.service.clearFinished();
+    expect(r.service.getState().downloads.map((d) => d.id)).toEqual([2]);
+    await r.service.load();
+    expect(r.service.getState().downloads.map((d) => d.id)).toEqual([2]);
+  });
+
+  it("Copy Error Details copies the redacted facts; Clear Temporary Files and Open Diagnostics go to the backend", async () => {
+    const fake = broker();
+    const copyText = vi.fn().mockResolvedValue(undefined);
+    const openFolder = vi.fn().mockResolvedValue(undefined);
+    const r = rig({}, { broker: fake, copyText, openFolder });
+    await r.service.copyErrorDetails({ ...EVENT, phase: "failed", failure: "timeout", detail: "timed out", retry: 3 });
+    const copied = String(copyText.mock.calls[0]?.[0]);
+    expect(copied).toContain("Tool: pip");
+    expect(copied).toContain("Failure: timeout");
+    expect(copied).toContain("Attempt: 3");
+    expect(copied).toContain("Message: timed out");
+    await r.service.clearTemp();
+    expect(fake.brokerClearTemp).toHaveBeenCalled();
+    expect(r.service.getState().notice).toBe("Temporary files cleared: 3 item(s) removed, 1 in use and kept.");
+    await r.service.openDiagnostics();
+    expect(fake.exportDiagnostics).toHaveBeenCalledTimes(1);
+    expect(openFolder).toHaveBeenCalledWith("C:/app/logs");
+    await r.service.openDiagnostics();
+    expect(fake.exportDiagnostics).toHaveBeenCalledTimes(1);
   });
 
   it("the terminal fingerprint ignores the proxy and follows the gateway switch and the offline wheels", async () => {

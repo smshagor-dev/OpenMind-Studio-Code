@@ -16,6 +16,7 @@ export type BrokerProvider =
   | "rustup";
 
 export type BrokerPhase =
+  | "queued"
   | "resolving"
   | "connecting"
   | "downloading"
@@ -94,6 +95,8 @@ export interface BrokerStatus {
 export interface BrokerIpc {
   brokerStatus: () => Promise<BrokerStatus>;
   brokerCancel: (id: number) => Promise<boolean>;
+  /** Removes the staged downloads nothing holds (resumable partials too); nothing outside `<app>/temp`. */
+  brokerClearTemp: () => Promise<RecoveryReport>;
   /** Writes `openmind-network-diagnostics.json` (runs the checks) and returns its path. */
   exportDiagnostics: () => Promise<string>;
   onProgress: (listener: (event: BrokerEvent) => void) => Promise<() => void>;
@@ -102,6 +105,7 @@ export interface BrokerIpc {
 export const tauriBrokerIpc: BrokerIpc = {
   brokerStatus: () => invoke<BrokerStatus>("broker_status"),
   brokerCancel: (id) => invoke<boolean>("broker_cancel", { id }),
+  brokerClearTemp: () => invoke<RecoveryReport>("broker_clear_temp"),
   exportDiagnostics: () => invoke<string>("network_diagnostics_export"),
   onProgress: (listener) =>
     listen<BrokerEvent>("broker:progress", (event) => {

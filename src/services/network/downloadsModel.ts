@@ -4,7 +4,7 @@ import type { NetProblem } from "./networkIpc";
 /** How many operations the Downloads list keeps. */
 export const MAX_DOWNLOADS = 50;
 
-const ACTIVE: ReadonlySet<BrokerPhase> = new Set(["resolving", "connecting", "downloading", "verifying", "finalizing"]);
+const ACTIVE: ReadonlySet<BrokerPhase> = new Set(["queued", "resolving", "connecting", "downloading", "verifying", "finalizing"]);
 
 export function isActive(event: BrokerEvent): boolean {
   return ACTIVE.has(event.phase);
@@ -19,6 +19,28 @@ export function upsertDownload(list: readonly BrokerEvent[], event: BrokerEvent)
     return next;
   }
   return [event, ...list].slice(0, MAX_DOWNLOADS);
+}
+
+/** The list without finished operations (complete, failed, cancelled); running and queued ones stay. */
+export function withoutFinished(list: readonly BrokerEvent[]): BrokerEvent[] {
+  return list.filter(isActive);
+}
+
+/**
+ * What "Copy Error Details" puts on the clipboard: the tool, the file, the stage, the failure category and the
+ * broker's message. The backend already removed user names, passwords, queries and tokens from the message.
+ */
+export function errorDetails(event: BrokerEvent): string {
+  const lines = [
+    `Tool: ${providerLabel(event.provider)}`,
+    `Item: ${event.artifact}`,
+    `Stage: ${event.phase}`,
+    `Failure: ${event.failure ?? "none"}`,
+    `Bytes: ${event.bytes}${event.total !== null ? ` of ${event.total}` : ""}`,
+  ];
+  if (event.retry !== null) lines.push(`Attempt: ${event.retry}`);
+  if (event.detail !== null) lines.push(`Message: ${event.detail}`);
+  return lines.join("\n");
 }
 
 /** 0-100, or `null` when the size isn't known. */

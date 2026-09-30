@@ -329,3 +329,13 @@ pub async fn broker_status(state: State<'_, AppState>) -> Result<BrokerStatus, S
 pub async fn broker_cancel(id: u64, state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.broker.cancel(id))
 }
+
+/// Clear Temporary Files: removes every staged download no running download holds (resumable partials too).
+/// Nothing outside `<app>/temp/<provider>` is touched.
+#[tauri::command]
+pub async fn broker_clear_temp(state: State<'_, AppState>) -> Result<RecoveryReport, String> {
+    let staging = Staging::new(state.broker.temp_dir());
+    tauri::async_runtime::spawn_blocking(move || staging.clear())
+        .await
+        .map_err(|err| err.to_string())
+}
