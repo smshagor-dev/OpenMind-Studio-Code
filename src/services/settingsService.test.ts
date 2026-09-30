@@ -154,10 +154,15 @@ describe("SettingsService search and change events", () => {
     await settings.initialize();
 
     expect(settings.search("").map((group) => group.category)).toEqual([
+      "Language",
       "Editor",
       "Terminal",
       "Workbench",
     ]);
+    // The language setting is found by its category name too.
+    expect(settings.search("language").flatMap((g) => g.settings.map((d) => d.id))).toContain(
+      "workbench.language",
+    );
     const size = settings.search("font size");
     expect(size.map((group) => [group.category, group.settings.map((def) => def.id)])).toEqual([
       ["Editor", ["editor.fontSize"]],

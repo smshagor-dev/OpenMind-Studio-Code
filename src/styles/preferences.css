@@ -317,6 +317,37 @@
   gap: 6px;
 }
 
+/* Settings > Language: every language as its own row. */
+.prefs-languages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 420px;
+}
+
+.prefs-languages__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.prefs-languages__item:hover {
+  background: var(--list-hover-bg);
+}
+
+.prefs-languages__item--active {
+  background: var(--list-active-selection-bg);
+  color: var(--list-active-selection-fg);
+}
+
+.prefs-languages__item input:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
 .prefs-row__note {
   margin: 4px 0 0;
   color: var(--warning-fg);

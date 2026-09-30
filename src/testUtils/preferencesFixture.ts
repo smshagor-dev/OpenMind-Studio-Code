@@ -76,6 +76,23 @@ export const TEST_DEFINITIONS: SettingDefinition[] = [
     default: "dark",
     scope: "user",
   },
+  {
+    id: "workbench.language",
+    category: "Language",
+    title: "Display Language",
+    description: "The language of OpenMind Studio's own menus, dialogs and messages.",
+    kind: {
+      type: "enum",
+      options: [
+        { value: "system", label: "System Default" },
+        { value: "en", label: "English" },
+        { value: "ru", label: "Русский (Russian)" },
+        { value: "bn", label: "বাংলা (Bangla)" },
+      ],
+    },
+    default: "system",
+    scope: "user",
+  },
 ];
 
 export interface FixtureOptions {
@@ -91,7 +108,7 @@ export function makePreferences(options: FixtureOptions = {}): PreferencesSnapsh
   const workspace = options.workspace ?? null;
   return {
     definitions: TEST_DEFINITIONS,
-    categories: ["Editor", "Terminal", "Workbench"],
+    categories: ["Language", "Editor", "Terminal", "Workbench"],
     values: [
       ...TEST_DEFINITIONS.map((def) => ({
         id: def.id,

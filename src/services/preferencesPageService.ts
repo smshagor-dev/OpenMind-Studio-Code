@@ -40,13 +40,13 @@ export class PreferencesPageService {
     };
   }
 
-  open(tab: PreferencesTab, options: { scope?: SettingsScope; query?: string } = {}): void {
+  open(tab: PreferencesTab, options: { scope?: SettingsScope; query?: string; category?: string } = {}): void {
     this.update({
       open: true,
       tab,
       scope: options.scope ?? (tab === "settings" ? this.state.scope : "user"),
       query: options.query ?? "",
-      category: null,
+      category: options.category ?? null,
     });
   }
 

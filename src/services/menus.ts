@@ -113,6 +113,7 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
         cmd("Open Keyboard Shortcuts (JSON)", "preferences.openKeybindingsJson"),
         cmd("Configure Snippets", "preferences.configureSnippets"),
         cmd("Tasks", "tasks.configure"),
+        cmd("Display Language...", "preferences.displayLanguage"),
         sub("Themes", [
           cmd("Color Theme...", "preferences.colorTheme"),
           SEPARATOR,
@@ -488,6 +489,7 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Project & Language Status...", "language.showStatus"),
   cmd("AI Providers...", "ai.manageProviders"),
   cmd("Tasks", "tasks.configure"),
+  cmd("Display Language...", "preferences.displayLanguage"),
   sub("Themes", [
     cmd("Color Theme...", "preferences.colorTheme"),
     SEPARATOR,

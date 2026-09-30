@@ -66,6 +66,10 @@ export function registerPreferencesCommands(deps: PreferencesCommandDeps): void 
     await openFile(await keybindings.jsonFile());
     page.close();
   });
+  // Settings > Language: every bundled language, picked from a list (the choice applies at once).
+  commands.register("preferences.displayLanguage", () => {
+    page.open("settings", { scope: "user", category: "Language" });
+  });
   commands.register("preferences.colorTheme", () => {
     page.open("settings", { scope: "user", query: "color theme" });
   });

@@ -130,7 +130,8 @@ describe("Settings page", () => {
     await open("settings");
 
     const nav = screen.getByRole("navigation", { name: "Settings categories" });
-    expect(within(nav).getByRole("button", { name: /All Settings/ })).toHaveTextContent("6");
+    expect(within(nav).getByRole("button", { name: /All Settings/ })).toHaveTextContent("7");
+    expect(within(nav).getByRole("button", { name: /^Language/ })).toHaveTextContent("1");
     expect(within(nav).getByRole("button", { name: /^Editor/ })).toHaveTextContent("4");
     expect(within(nav).getByRole("button", { name: /^Terminal/ })).toHaveTextContent("1");
     expect(within(nav).getByRole("button", { name: /^Workbench/ })).toHaveTextContent("1");
@@ -157,6 +158,39 @@ describe("Settings page", () => {
 
     fireEvent.change(screen.getByLabelText("Search settings"), { target: { value: "nonsense" } });
     expect(screen.getByRole("status")).toHaveTextContent("No settings match");
+  });
+
+  it("Settings > Language lists every language, and picking one saves it", async () => {
+    const r = await open("settings");
+    fireEvent.click(screen.getByRole("button", { name: /^Language/ }));
+    const list = screen.getByRole("region", { name: "Settings" });
+    const group = within(list).getByRole("radiogroup", { name: "Display Language" });
+    const choices = within(group).getAllByRole("radio");
+    expect(choices.map((c) => (c as HTMLInputElement).value)).toEqual(["system", "en", "ru", "bn"]);
+    expect(within(group).getByText("Русский (Russian)")).toBeInTheDocument();
+    expect(within(group).getByText("বাংলা (Bangla)")).toBeInTheDocument();
+    expect(choices[0]).toBeChecked();
+    fireEvent.click(within(group).getByRole("radio", { name: "Русский (Russian)" }));
+    await waitFor(() => {
+      expect(r.ipc.preferencesSet).toHaveBeenCalledWith("user", "workbench.language", "ru");
+    });
+    await waitFor(() => {
+      expect(within(group).getByRole("radio", { name: "Русский (Russian)" })).toBeChecked();
+    });
+    // The dropdown is not used for it.
+    expect(within(list).queryByRole("combobox", { name: "Display Language" })).toBeNull();
+  });
+
+  it("Display Language... opens Settings on the Language section", async () => {
+    const r = await open("settings");
+    act(() => {
+      r.page.close();
+      r.page.open("settings", { scope: "user", category: "Language" });
+    });
+    expect(r.page.getState().category).toBe("Language");
+    const list = screen.getByRole("region", { name: "Settings" });
+    expect(within(list).getByRole("radiogroup", { name: "Display Language" })).toBeInTheDocument();
+    expect(within(list).queryByText("editor.wordWrap")).toBeNull();
   });
 
   it("a boolean is a checkbox that saves as soon as it is toggled", async () => {

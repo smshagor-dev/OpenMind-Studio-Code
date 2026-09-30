@@ -44,7 +44,7 @@ export async function offerEnglish(deps: EnglishOfferDeps): Promise<EnglishOffer
     details: [{ label: "Current language", value: name }],
     notes: [
       t("language.offer.note", { language: name }),
-      "OpenMind Studio is shown in this language because of Windows' language or your setting. You can change it any time in Settings > Workbench > Display Language.",
+      "OpenMind Studio is shown in this language because of Windows' language or your setting. You can change it any time in Settings > Language (or File > Preferences > Display Language...).",
     ],
     buttons: [SWITCH_TO_ENGLISH, keep],
   });
