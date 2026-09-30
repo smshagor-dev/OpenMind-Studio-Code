@@ -14,6 +14,7 @@ pub mod format;
 pub mod git;
 pub mod git_credentials;
 pub mod index;
+pub mod integration;
 pub mod language;
 pub mod lsp;
 pub mod marketplace;

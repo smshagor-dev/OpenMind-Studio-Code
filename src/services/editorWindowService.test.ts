@@ -102,3 +102,50 @@ describe("EditorWindowService", () => {
     expect(droppedOutside({ x: 1300, y: 10 }, viewport)).toBe(true);
   });
 });
+
+describe("EditorWindowService.openLaunch (OpenMindStudio.exe <folder|file ...>)", () => {
+  function launchRig(request: unknown) {
+    const ipc = createFakeIpc({ launchTake: vi.fn().mockResolvedValue(request) });
+    const events = new EventBus<AppEvents>();
+    const notices: string[] = [];
+    const errors: string[] = [];
+    events.on("appNotice", ({ message }) => notices.push(message));
+    events.on("appError", ({ message }) => errors.push(message));
+    const order: string[] = [];
+    const workspace = {
+      openFolder: vi.fn((path: string) => {
+        order.push(`folder ${path}`);
+        return Promise.resolve(null);
+      }),
+      openPath: vi.fn((path: string) => {
+        order.push(`file ${path}`);
+        return Promise.resolve(null);
+      }),
+    } as unknown as WorkspaceService;
+    return { service: new EditorWindowService(ipc, workspace, events), order, notices, errors };
+  }
+
+  it("opens the folder first, then every file; missing paths and extra folders are reported", async () => {
+    const r = launchRig({
+      folder: "C:\\Projects\\My Site",
+      files: ["C:\\Projects\\My Site\\read me.md", "C:\\notes.txt"],
+      ignoredFolders: ["C:\\Other"],
+      missing: ["C:\\gone.txt"],
+    });
+    await r.service.openLaunch();
+    expect(r.order).toEqual([
+      "folder C:\\Projects\\My Site",
+      "file C:\\Projects\\My Site\\read me.md",
+      "file C:\\notes.txt",
+    ]);
+    expect(r.errors).toEqual(['Couldn\'t open "C:\\gone.txt": it doesn\'t exist.']);
+    expect(r.notices[0]).toContain("C:\\Other");
+  });
+
+  it("does nothing without a request (another window, or no arguments)", async () => {
+    const r = launchRig(null);
+    await r.service.openLaunch();
+    expect(r.order).toEqual([]);
+    expect(r.errors).toEqual([]);
+  });
+});

@@ -149,12 +149,35 @@ export function checksumsText(artifacts) {
 }
 
 /**
- * Checks the MSI's generated WiX source (`release/wix/x64/main.wxs`): it must not change environment variables (PATH),
- * must show the licence (`WixUILicenseRtf`) and must offer to launch the app at the end. Returns problems.
+ * Environment changes in WiX source that are not the optional PATH entry: only inside a component conditioned on
+ * `ADDTOPATH = "1"`, appended (`Part="last"`) and removed on uninstall (`Permanent="no"`). Returns problems.
+ */
+export function unconditionalEnvironment(wxs) {
+  const problems = [];
+  const components = wxs.match(/<Component\b[\s\S]*?<\/Component>/g) ?? [];
+  for (const component of components) {
+    if (!/<Environment\b/.test(component)) continue;
+    const optional = /<Condition>\s*ADDTOPATH\s*=\s*"1"\s*<\/Condition>/.test(component);
+    const tags = component.match(/<Environment\b[^>]*>/g) ?? [];
+    const safe = tags.every((tag) => /Part="last"/.test(tag) && /Permanent="no"/.test(tag));
+    if (!optional || !safe) {
+      problems.push("The MSI changes an environment variable (PATH) without the ADDTOPATH option.");
+    }
+  }
+  const inComponents = components.join("").match(/<Environment\b/g)?.length ?? 0;
+  if ((wxs.match(/<Environment\b/g)?.length ?? 0) > inComponents) {
+    problems.push("The MSI changes an environment variable (PATH) outside a component.");
+  }
+  return problems;
+}
+
+/**
+ * Checks the MSI's WiX source (`release/wix/x64/main.wxs` and our fragments): environment variables (PATH) change only
+ * through the optional ADDTOPATH component, it must show the licence (`WixUILicenseRtf`) and must offer to launch the
+ * app at the end. Returns problems.
  */
 export function checkWixSource(wxs) {
-  const problems = [];
-  if (/<Environment\b/.test(wxs)) problems.push("The MSI changes an environment variable (PATH).");
+  const problems = [...unconditionalEnvironment(wxs)];
   if (!/WixUILicenseRtf/.test(wxs)) problems.push("The MSI has no licence page.");
   if (!/WIXUI_EXITDIALOGOPTIONALCHECKBOX/.test(wxs))
     problems.push("The MSI has no launch-after-install option.");
@@ -197,10 +220,59 @@ export function checkInstallerConfig(tauri, licenseText) {
     problems.push("LICENSE is not the Apache License 2.0 text.");
   }
   if (!licenseText.includes("END OF TERMS AND CONDITIONS")) problems.push("LICENSE is incomplete.");
+  const nsis = bundle.windows?.nsis ?? {};
+  const wix = bundle.windows?.wix ?? {};
+  if (nsis.installerHooks !== "nsis/installer-hooks.nsh") {
+    problems.push(
+      "The NSIS installer must use nsis/installer-hooks.nsh (the optional PATH / File Explorer check boxes).",
+    );
+  }
+  if (!wix.fragmentPaths?.includes("wix/integration.wxs")) {
+    problems.push("The MSI must include wix/integration.wxs (the optional ADDTOPATH / EXPLORERMENU components).");
+  }
+  for (const id of ["OmCliPath", "OmExplorerMenu"]) {
+    if (!wix.componentRefs?.includes(id)) problems.push(`The MSI must reference the ${id} component.`);
+  }
+  for (const name of ["openmind.cmd", "openmind"]) {
+    if (bundle.resources?.[`cli/${name}`] !== `bin/${name}`) {
+      problems.push(`bundle.resources must copy "cli/${name}" to "bin/${name}" (the command-line launcher).`);
+    }
+  }
   if (bundle.resources?.["../lsp-bundle/"] !== "lsp/") {
     problems.push(
       'bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).',
     );
+  }
+  return problems;
+}
+
+/**
+ * Checks the NSIS hooks (`src-tauri/nsis/installer-hooks.nsh`): both options start unchecked, silent installs opt in
+ * with a switch, the app itself does the work (`--integration`), and the uninstaller removes it except for an update.
+ * Returns problems.
+ */
+export function checkInstallerHooks(nsh) {
+  const problems = [];
+  if (!/StrCpy \$OmAddPath 0/.test(nsh) || !/StrCpy \$OmAddMenu 0/.test(nsh)) {
+    problems.push("The PATH and File Explorer options must start unchecked.");
+  }
+  for (const flag of ["/ADDTOPATH", "/EXPLORERMENU"]) {
+    if (!nsh.includes(`"${flag}"`)) problems.push(`Silent installs need the ${flag} switch.`);
+  }
+  // Look inside the hook macros themselves, not at comments that mention them.
+  const macro = (name) => nsh.match(new RegExp(`!macro ${name}\\b([\\s\\S]*?)!macroend`))?.[1] ?? "";
+  const install = macro("NSIS_HOOK_POSTINSTALL");
+  for (const action of ["add-path", "remove-path", "add-explorer", "remove-explorer"]) {
+    if (!install.includes(`--integration ${action}`)) {
+      problems.push(`The installer must run --integration ${action}.`);
+    }
+  }
+  const uninstall = macro("NSIS_HOOK_PREUNINSTALL");
+  if (!/\$UpdateMode <> 1[\s\S]*--integration remove-all/.test(uninstall)) {
+    problems.push("The uninstaller must run --integration remove-all (except for an update).");
+  }
+  if (/WriteRegStr|WriteRegExpandStr|EnVar::|setx/i.test(nsh)) {
+    problems.push("The hooks must not write the Registry or PATH themselves (the app does it and records it).");
   }
   return problems;
 }

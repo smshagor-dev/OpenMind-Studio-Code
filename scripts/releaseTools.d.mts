@@ -37,3 +37,5 @@ export function reportText(input: {
 export function checksumsText(artifacts: Artifact[]): string;
 export function checkWixSource(wxs: string): string[];
 export function checkInstallerConfig(tauri: Record<string, unknown>, licenseText: string): string[];
+export function checkInstallerHooks(nsh: string): string[];
+export function unconditionalEnvironment(wxs: string): string[];

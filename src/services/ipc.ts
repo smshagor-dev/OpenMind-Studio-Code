@@ -345,6 +345,30 @@ export interface PathMetadata {
   modified: string | null;
 }
 
+/** Mirrors `launch::LaunchRequest`: what the command line named, sorted by the backend. */
+export interface LaunchRequest {
+  folder: string | null;
+  files: string[];
+  /** Folders after the first (a window has one workspace). */
+  ignoredFolders: string[];
+  /** Paths that don't exist. */
+  missing: string[];
+}
+
+/** Mirrors `integration::Status`. */
+export interface IntegrationStatus {
+  exe: string;
+  binDir: string;
+  pathPresent: boolean;
+  /** OpenMind added the PATH entry (and will remove it). */
+  pathAdded: boolean;
+  explorerThisCopy: boolean;
+  /** The command of Explorer entries that run another OpenMind copy. */
+  explorerOtherCopy: string | null;
+}
+
+export type IntegrationAction = "add-path" | "remove-path" | "add-explorer" | "remove-explorer";
+
 // Mirrors openmind_workspace::WorkspaceInfo (camelCase).
 export interface WorkspaceInfo {
   id: number;
@@ -596,6 +620,12 @@ export interface IpcClient
   windowNew: (options?: { path?: string; x?: number; y?: number }) => Promise<string>;
   /** The file this window was opened for (a tab dragged out of another window), or `null`. */
   windowTakePendingOpen: () => Promise<string | null>;
+  /** What `OpenMindStudio.exe <folder|file ...>` asked to open; the main window gets it once, others `null`. */
+  launchTake: () => Promise<LaunchRequest | null>;
+  /** Shell integration of this copy (reads the user's Registry; changes nothing). */
+  integrationStatus: () => Promise<IntegrationStatus>;
+  /** Adds or removes the PATH entry or the File Explorer entries (only after the user confirmed). */
+  integrationApply: (action: IntegrationAction) => Promise<string>;
   // Control-panel buttons of the PHP Server window
   /** A module's config file, or `null` while it doesn't exist. */
   panelConfigPath: (module: PanelModule) => Promise<string | null>;
@@ -1213,6 +1243,9 @@ export const tauriIpcClient: IpcClient = {
       y: options?.y ?? null,
     }),
   windowTakePendingOpen: () => invoke<string | null>("window_take_pending_open"),
+  launchTake: () => invoke<LaunchRequest | null>("launch_take"),
+  integrationStatus: () => invoke<IntegrationStatus>("integration_status"),
+  integrationApply: (action) => invoke<string>("integration_apply", { action }),
   panelConfigPath: (module) => invoke<string | null>("panel_config_path", { kind: module }),
   panelOpenFile: (path) => invoke("panel_open_file", { path }),
   panelOpenFolder: (path) => invoke("panel_open_folder", { path }),

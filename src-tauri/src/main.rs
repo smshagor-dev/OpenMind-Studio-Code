@@ -2,6 +2,8 @@
 
 mod app_state;
 mod commands;
+mod integration;
+mod launch;
 mod locale;
 mod secret;
 mod startup;
@@ -25,6 +27,11 @@ use tauri::Manager;
 use app_state::AppState;
 
 fn main() {
+    // `--integration <action>` (the installer, the uninstaller): do it and exit before anything else starts.
+    if let Some(code) = commands::integration::run_cli() {
+        std::process::exit(code);
+    }
+    let launch_request = launch::from_process();
     startup::mark_process_start();
     let app_paths = AppPaths::resolve().expect("failed to resolve application paths");
     app_paths
@@ -37,7 +44,11 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(launch::LaunchState::new(launch_request))
         .invoke_handler(tauri::generate_handler![
+            launch::launch_take,
+            commands::integration::integration_status,
+            commands::integration::integration_apply,
             commands::document::document_open,
             commands::document::document_save,
             commands::workspace::recent_files_list,

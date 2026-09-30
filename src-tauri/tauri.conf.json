@@ -42,6 +42,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
+        "installerHooks": "nsis/installer-hooks.nsh",
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
         "headerImage": "icons/installer/nsis-header.bmp",
@@ -53,7 +54,12 @@
       "wix": {
         "language": "en-US",
         "fragmentPaths": [
-          "wix/product-icon.wxs"
+          "wix/product-icon.wxs",
+          "wix/integration.wxs"
+        ],
+        "componentRefs": [
+          "OmCliPath",
+          "OmExplorerMenu"
         ],
         "bannerPath": "icons/installer/wix-banner.bmp",
         "dialogImagePath": "icons/installer/wix-dialog.bmp"
@@ -69,7 +75,9 @@
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
     "resources": {
-      "../lsp-bundle/": "lsp/"
+      "../lsp-bundle/": "lsp/",
+      "cli/openmind.cmd": "bin/openmind.cmd",
+      "cli/openmind": "bin/openmind"
     }
   }
 }

@@ -125,15 +125,43 @@ fn nothing_in_the_app_changes_windows_proxy_path_or_a_tools_global_configuration
             assert!(!code.contains(needle), "{path} contains {needle}");
         }
     }
-    // The Registry is never written.
+    // The Registry is never written, except by the optional shell integration (the user's own PATH and "Open with
+    // OpenMind Studio"), which does it only on an explicit request: one file, current user only.
+    let integration = |path: &str| {
+        path.replace('\\', "/")
+            .ends_with("src-tauri/src/integration/registry.rs")
+    };
     for (path, code) in &sources {
+        if integration(path) {
+            assert!(
+                !code.contains("HKEY_LOCAL_MACHINE"),
+                "{path} must stay per user"
+            );
+            continue;
+        }
         for call in [
             "RegSetValue",
             "RegCreateKey",
             "RegDeleteValue",
             "RegDeleteKey",
+            "RegDeleteTree",
         ] {
             assert!(!code.contains(call), "{path} calls {call}");
+        }
+    }
+    assert!(
+        sources.iter().any(|(path, _)| integration(path)),
+        "the integration store was scanned"
+    );
+    // Only the shell-integration commands use it.
+    for (path, code) in &sources {
+        let path = path.replace('\\', "/");
+        if code.contains("UserRegistry") {
+            assert!(
+                path.ends_with("src-tauri/src/commands/integration.rs")
+                    || path.contains("src-tauri/src/integration/"),
+                "{path} uses the Registry store"
+            );
         }
     }
 }

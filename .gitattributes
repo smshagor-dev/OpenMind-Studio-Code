@@ -2,3 +2,6 @@
 # checkout could turn LF into CRLF, change the checksum and stop the app at start-up, so SQL is always LF.
 *.sql text eol=lf
 crates/db/migrations/*.sql text eol=lf
+# Command-line launchers shipped in <install>\bin: batch files need CRLF, the Git Bash script LF.
+src-tauri/cli/*.cmd text eol=crlf
+src-tauri/cli/openmind text eol=lf

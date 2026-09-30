@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   checkInstallerConfig,
+  checkInstallerHooks,
   checkWixSource,
   checksumsText,
   publicSigningInfo,
@@ -80,7 +81,12 @@ const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest(
 
 const tauri = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
 const version = tauri.version;
-const problems = checkInstallerConfig(tauri, readFileSync(join(root, "LICENSE"), "utf8"));
+const problems = [
+  ...checkInstallerConfig(tauri, readFileSync(join(root, "LICENSE"), "utf8")),
+  ...checkInstallerHooks(
+    readFileSync(join(root, "src-tauri", "nsis", "installer-hooks.nsh"), "utf8"),
+  ),
+];
 if (problems.length > 0) {
   console.error(`Installer configuration problems:\n- ${problems.join("\n- ")}`);
   process.exit(1);
@@ -111,7 +117,13 @@ for (const triple of triples) {
       join(root, "src-tauri", "wix", "product-icon.wxs"),
       "utf8",
     );
-    const wixProblems = checkWixSource(`${generatedWix}\n${productIconFragment}`);
+    const integrationFragment = readFileSync(
+      join(root, "src-tauri", "wix", "integration.wxs"),
+      "utf8",
+    );
+    const wixProblems = checkWixSource(
+      `${generatedWix}\n${productIconFragment}\n${integrationFragment}`,
+    );
     if (wixProblems.length > 0) {
       console.error(`MSI configuration problems (${arch}):\n- ${wixProblems.join("\n- ")}`);
       process.exit(1);

@@ -81,6 +81,25 @@ export class EditorWindowService {
     if (typeof path === "string") await this.workspace.openPath(path);
   }
 
+  /**
+   * In the main window, once: what `OpenMindStudio.exe <folder|file ...>` named (File Explorer's "Open with OpenMind
+   * Studio", the `openmind` command). The first folder becomes the workspace, every file opens; the rest is reported.
+   */
+  async openLaunch(): Promise<void> {
+    const request = await this.ipc.launchTake().catch(() => null);
+    if (request === null) return;
+    if (request.folder !== null) await this.workspace.openFolder(request.folder);
+    for (const file of request.files) await this.workspace.openPath(file);
+    for (const path of request.missing) {
+      this.events.emit("appError", { message: `Couldn't open "${path}": it doesn't exist.` });
+    }
+    if (request.ignoredFolders.length > 0) {
+      this.notice(
+        `A window opens one folder: ${request.folder ?? ""} is open; not opened: ${request.ignoredFolders.join(", ")}.`,
+      );
+    }
+  }
+
   private notice(message: string | null): void {
     if (message !== null) this.events.emit("appNotice", { message });
   }

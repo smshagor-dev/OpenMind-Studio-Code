@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# OpenMind Studio command-line launcher for Git Bash / MSYS: openmind [folder or file ...]
+"$(dirname "$0")/../OpenMindStudio.exe" "$@" &

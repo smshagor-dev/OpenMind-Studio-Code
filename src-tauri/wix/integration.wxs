@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Optional shell integration for the per-machine MSI (it installs into Program Files and needs administrator rights).
+  Both parts are OFF unless the install asks for them:
+
+    msiexec /i OpenMind-Studio-<version>-x64.msi ADDTOPATH=1 EXPLORERMENU=1
+
+  ADDTOPATH=1     appends [INSTALLDIR]bin (the `openmind` launchers) to the machine PATH.
+  EXPLORERMENU=1  adds "Open with OpenMind Studio" for folders, folder backgrounds and files, for all users.
+  Windows Installer removes exactly these on uninstall. The per-user NSIS installer does the same per user (see
+  src-tauri/nsis/installer-hooks.nsh); tauri.conf.json references the two components (wix.componentRefs).
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <Property Id="ADDTOPATH" Secure="yes" />
+    <Property Id="EXPLORERMENU" Secure="yes" />
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="OmCliPath" Guid="829da891-04dc-46fc-9fac-e31ee095a1a8" Win64="$(var.Win64)">
+        <Condition>ADDTOPATH = "1"</Condition>
+        <Environment Id="OmCliPathEntry" Name="PATH" Value="[INSTALLDIR]bin" Part="last" Action="set" System="yes" Permanent="no" />
+        <RegistryValue Root="HKLM" Key="Software\OpenMind\OpenMind Studio Integration" Name="MsiPath" Type="string" Value="[INSTALLDIR]bin" KeyPath="yes" />
+      </Component>
+      <Component Id="OmExplorerMenu" Guid="d3030a0f-832f-4d8a-a048-bac2285aa06f" Win64="$(var.Win64)">
+        <Condition>EXPLORERMENU = "1"</Condition>
+        <RegistryValue Root="HKLM" Key="Software\OpenMind\OpenMind Studio Integration" Name="MsiExplorer" Type="string" Value="[INSTALLDIR]OpenMindStudio.exe" KeyPath="yes" />
+        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\shell\OpenMindStudio" ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Value="Open with OpenMind Studio" />
+          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]OpenMindStudio.exe&quot;,0" />
+          <RegistryKey Key="command">
+            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]OpenMindStudio.exe&quot; &quot;%V&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\Directory\Background\shell\OpenMindStudio" ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Value="Open with OpenMind Studio" />
+          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]OpenMindStudio.exe&quot;,0" />
+          <RegistryKey Key="command">
+            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]OpenMindStudio.exe&quot; &quot;%V&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="Software\Classes\*\shell\OpenMindStudio" ForceDeleteOnUninstall="yes">
+          <RegistryValue Type="string" Value="Open with OpenMind Studio" />
+          <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLDIR]OpenMindStudio.exe&quot;,0" />
+          <RegistryKey Key="command">
+            <RegistryValue Type="string" Value="&quot;[INSTALLDIR]OpenMindStudio.exe&quot; &quot;%1&quot;" />
+          </RegistryKey>
+        </RegistryKey>
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

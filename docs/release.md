@@ -100,6 +100,19 @@ could sign it too and is the next step once a real certificate exists).
 3. Apps & features (NSIS: per-user) lists _OpenMind Studio_; uninstall removes it. `data/`, `settings/` and other
    folders live next to the installed executable.
 4. Confirm the User and Machine `PATH` are unchanged and no `OpenMindStudio`/`node`/`conhost` process is left after closing.
+5. PATH and File Explorer integration (optional, off by default; see `docs/installer.md`):
+   - Install once with both Welcome-page boxes unchecked. PATH and `HKCU\Software\Classes\...\OpenMindStudio` must be
+     unchanged.
+   - Install with both checked, or silently with `/S /ADDTOPATH /EXPLORERMENU`. Then:
+     - a **new** terminal runs `openmind <folder>`;
+     - right-click on a folder, a folder background and a file shows **Open with OpenMind Studio**, under *Show more
+       options* on Windows 11, and each opens the app.
+   - Uninstall: the `...\bin` PATH entry, the three Explorer keys and `HKCU\Software\OpenMind\OpenMind Studio
+     Integration` are gone. Every other PATH entry is as before.
+   - Portable ZIP: launching must change neither PATH nor the Registry. The command-palette *Shell Integration*
+     commands add and remove the same entries on request.
+   - MSI, only with administrator rights: `msiexec /i ... ADDTOPATH=1 EXPLORERMENU=1`, then uninstall and check the
+     machine PATH and `HKLM\Software\Classes`.
 
 ## SHA256
 

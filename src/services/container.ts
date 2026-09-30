@@ -59,6 +59,7 @@ import { wireFormatting } from "./formatting/formattingWiring";
 import { registerMenuFillCommands } from "./menuFillCommands";
 import { wireLanguage } from "./language/languageWiring";
 import { registerHelpCommands } from "./helpCommands";
+import { registerShellIntegrationCommands } from "./shellIntegrationCommands";
 import { ToolchainService } from "./toolchains/toolchainService";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
@@ -655,6 +656,14 @@ const network = wireNetwork({
 });
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
 const workloads = wireWorkloads({ events, commands, runtime, lsp });
+/** PATH / File Explorer integration on request (portable copies; the installer offers the same as check boxes). */
+registerShellIntegrationCommands({
+  commands,
+  events,
+  ipc: tauriIpcClient,
+  editor,
+  confirm: (request) => extensions.prompts.confirm(request),
+});
 /** The dependency helper: missing modules/commands in Run Code's Output and terminals, installs only after a preview. */
 const depsWiring = wireDeps({
   events,

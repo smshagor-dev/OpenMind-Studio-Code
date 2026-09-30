@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkInstallerConfig,
+  checkInstallerHooks,
   checkWixSource,
   checksumsText,
   publicSigningInfo,
@@ -103,6 +104,75 @@ describe("installer and the Apache licence agreement", () => {
     const conf = text("src-tauri/tauri.conf.json").toLowerCase();
     expect(conf).not.toContain("permachine");
     expect(conf).not.toContain("hklm");
+  });
+});
+
+describe("optional PATH and File Explorer integration in the installers", () => {
+  const license = text("LICENSE");
+  const hooks = text("src-tauri/nsis/installer-hooks.nsh");
+  const fragment = text("src-tauri/wix/integration.wxs");
+
+  it("the installers are configured with the hooks, the MSI components and the bin launchers", () => {
+    expect(checkInstallerConfig(tauri, license)).toEqual([]);
+    const bundle = tauri.bundle as {
+      windows: Record<string, Record<string, unknown>>;
+      resources: Record<string, string>;
+    };
+    const without = {
+      ...tauri,
+      bundle: {
+        ...bundle,
+        windows: { ...bundle.windows, nsis: { ...bundle.windows.nsis, installerHooks: undefined } },
+        resources: { "../lsp-bundle/": "lsp/" },
+      },
+    };
+    const problems = checkInstallerConfig(without, license).join(" ");
+    expect(problems).toContain("installer-hooks.nsh");
+    expect(problems).toContain("bin/openmind.cmd");
+  });
+
+  it("the NSIS check boxes start unchecked, run the app's --integration actions and are undone on uninstall", () => {
+    expect(checkInstallerHooks(hooks)).toEqual([]);
+    expect(hooks).toMatch(/!define MUI_PAGE_CUSTOMFUNCTION_SHOW OmWelcomeShow/);
+    const checkedByDefault = hooks.replace("StrCpy $OmAddPath 0", "StrCpy $OmAddPath 1");
+    expect(checkInstallerHooks(checkedByDefault).join(" ")).toContain("unchecked");
+    const noUninstall = hooks.replaceAll("--integration remove-all", "--integration status");
+    expect(checkInstallerHooks(noUninstall).join(" ")).toContain("remove-all");
+    const writesRegistry = `${hooks}\nWriteRegExpandStr HKCU "Environment" "Path" "x"`;
+    expect(checkInstallerHooks(writesRegistry).join(" ")).toContain("must not write");
+  });
+
+  it("the MSI changes PATH only through ADDTOPATH and adds Explorer entries only with EXPLORERMENU", () => {
+    expect(fragment).toMatch(/<Condition>ADDTOPATH = "1"<\/Condition>/);
+    expect(fragment).toMatch(/<Condition>EXPLORERMENU = "1"<\/Condition>/);
+    expect(fragment).toContain(
+      'Value="[INSTALLDIR]bin" Part="last" Action="set" System="yes" Permanent="no"',
+    );
+    expect(fragment).toContain("&quot;[INSTALLDIR]OpenMindStudio.exe&quot; &quot;%V&quot;");
+    expect(fragment).toContain("&quot;[INSTALLDIR]OpenMindStudio.exe&quot; &quot;%1&quot;");
+    const rest =
+      '<WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf"/><Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1"/><Icon Id="I" SourceFile="icons/icon.ico"/><Property Id="ARPPRODUCTICON" Value="I"/>';
+    expect(checkWixSource(`${rest}${fragment}`)).toEqual([]);
+    const always = fragment.replace('<Condition>ADDTOPATH = "1"</Condition>', "");
+    expect(checkWixSource(`${rest}${always}`).join(" ")).toContain("ADDTOPATH");
+    const permanent = fragment.replace('Permanent="no"', 'Permanent="yes"');
+    expect(checkWixSource(`${rest}${permanent}`).join(" ")).toContain("ADDTOPATH");
+  });
+
+  it("the shipped launcher calls the program beside bin and the docs describe the options", () => {
+    expect(text("src-tauri/cli/openmind.cmd")).toContain('start "" "%~dp0..\\OpenMindStudio.exe" %*');
+    const doc = text("docs/installer.md");
+    for (const phrase of [
+      "/ADDTOPATH",
+      "/EXPLORERMENU",
+      "ADDTOPATH=1",
+      "EXPLORERMENU=1",
+      "portable",
+      "new terminal",
+    ]) {
+      expect(doc).toContain(phrase);
+    }
+    expect(text("docs/release.md")).toContain("docs/installer.md");
   });
 });
 

@@ -52,7 +52,7 @@ thiserror.workspace = true
 
 [target."cfg(windows)".dependencies]
 openmind-process = { version = "0.1.0", path = "../crates/process" }
-winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi", "winnls"] }
+winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi", "winnls", "winreg", "winnt", "winerror", "processenv", "winuser"] }
 
 [dev-dependencies]
 sqlx = { version = "0.8.6", default-features = false, features = ["sqlite", "migrate"] }

@@ -1,0 +1,134 @@
+# Installers, PATH and File Explorer integration
+
+OpenMind Studio ships three Windows x64 editions. None of them changes PATH, the Registry or File Explorer unless the
+user asks. Both options below are **off by default**, can be undone, and remove only what OpenMind added.
+
+| Edition | Installs to | Admin rights | PATH option | "Open with OpenMind Studio" option |
+| --- | --- | --- | --- | --- |
+| NSIS setup (`OpenMind-Studio-Setup-<v>-x64.exe`) | `%LOCALAPPDATA%\Programs\OpenMind Studio` (per user) | no | check box on the Welcome page, or `/ADDTOPATH` | check box on the Welcome page, or `/EXPLORERMENU` |
+| MSI (`OpenMind-Studio-<v>-x64.msi`) | `Program Files\OpenMind Studio` (per machine) | **yes** | `ADDTOPATH=1` (machine PATH) | `EXPLORERMENU=1` (all users) |
+| Portable ZIP | wherever you unzip it | no | command palette (per user) | command palette (per user) |
+
+## What the options do
+
+**Add OpenMind Studio to PATH** puts `<install folder>\bin` on PATH. It never adds the install folder itself, so
+`uninstall.exe` and the language-server bundle stay off PATH. `bin` holds two launchers:
+
+- `openmind.cmd`, for PowerShell and Command Prompt: `start "" "%~dp0..\OpenMindStudio.exe" %*`;
+- `openmind`, for Git Bash.
+
+After that, a **new terminal** can run:
+
+```powershell
+openmind .                       # the current folder as the workspace
+openmind "C:\Projects\My Site"   # a folder (paths with spaces are fine when quoted)
+openmind notes.md src\main.rs    # files as tabs
+```
+
+Terminals that were already open keep their old PATH until you open a new one; Windows can't change a running process's
+environment. The installer broadcasts the change, so a new terminal from Explorer, the Start menu or Windows Terminal
+sees it without signing out.
+
+**Add "Open with OpenMind Studio" to File Explorer** adds a right-click entry, with the app icon, for:
+
+| Right-click on | Key (per user: under `HKCU\Software\Classes`; MSI: `HKLM\Software\Classes`) | Command |
+| --- | --- | --- |
+| a folder | `Directory\shell\OpenMindStudio` | `"<install>\OpenMindStudio.exe" "%V"` |
+| the background of an open folder | `Directory\Background\shell\OpenMindStudio` | `"<install>\OpenMindStudio.exe" "%V"` |
+| any file | `*\shell\OpenMindStudio` | `"<install>\OpenMindStudio.exe" "%1"` |
+
+On Windows 11 these appear under **Show more options** (the classic menu). The new compact menu needs a packaged
+(MSIX) app extension, which OpenMind doesn't have.
+
+## Command-line behaviour (`OpenMindStudio.exe <paths>`)
+
+- A folder opens as the workspace. A file opens in a tab. Relative paths are resolved against the current folder.
+- Several paths: the first folder becomes the workspace (one window has one folder). Later folders are not opened, and a
+  notice names them. Every file opens.
+- A path that doesn't exist gives an error message naming it; the app still starts.
+- Arguments starting with `-` are ignored.
+- The arguments are applied after the previous session is restored, so the folder you named replaces the one that was
+  open.
+- Each launch is its own OpenMind Studio process. There is no single-instance hand-over, so two portable copies in
+  different folders can run side by side. Running `openmind <folder>` while OpenMind is open therefore opens a second
+  window process.
+
+## NSIS (per user)
+
+The Welcome page has two check boxes, both unchecked on a first install. On a reinstall or update they start with the
+earlier choice.
+
+- **Checked:** after copying the files, the installer runs `OpenMindStudio.exe --integration add-path` and/or
+  `add-explorer`.
+- **Unchecked:** the installer runs `remove-path` / `remove-explorer`, which remove only what an earlier install
+  recorded.
+
+Silent installs choose with switches:
+
+```powershell
+"OpenMind-Studio-Setup-0.1.0-x64.exe" /S /ADDTOPATH /EXPLORERMENU
+```
+
+**How it is done.** The app itself does the work, not the NSIS script. NSIS would truncate a long PATH at its
+1024-character string limit, so it never touches PATH.
+
+- PATH: `HKCU\Environment\Path` keeps its value type (`REG_EXPAND_SZ`). The entry is appended once: an existing entry in
+  any spelling (other case, trailing `\`, quotes, `%LOCALAPPDATA%`) counts as present.
+- Record: what was added goes under `HKCU\Software\OpenMind\OpenMind Studio Integration`. This is deliberately outside
+  the product key that the uninstaller deletes.
+- **PATH entry that was already there:** it is not recorded and is never removed.
+- **Explorer entries of another copy:** they are removed only if their command runs this copy.
+
+**Uninstall** runs `--integration remove-all` before deleting the files. This removes this copy's PATH entry, if
+OpenMind added it, and this copy's Explorer entries. Your other PATH entries and other keys are untouched. An update
+(`/UPDATE`) skips this step, so your choice survives it.
+
+## MSI (per machine, administrator)
+
+The MSI installs into Program Files and needs administrator rights (UAC). Its options are Windows Installer properties,
+off unless given:
+
+```powershell
+msiexec /i OpenMind-Studio-0.1.0-x64.msi ADDTOPATH=1 EXPLORERMENU=1
+```
+
+- `ADDTOPATH=1` appends `[INSTALLDIR]bin` to the **machine** PATH: WiX `Environment`, `Part="last"`,
+  `Permanent="no"`.
+- `EXPLORERMENU=1` writes the three Explorer keys under `HKLM\Software\Classes`, for **all users**.
+
+Both are components of `src-tauri/wix/integration.wxs`. Windows Installer removes exactly these on uninstall. The MSI's
+wizard has no check boxes for them; they are command-line properties.
+
+**Not tested:** the MSI install/uninstall. It needs administrator rights, which the development machine's session
+doesn't have. The MSI build and the WiX source checks (`release.mjs`) run on every release build.
+
+## Portable ZIP
+
+A portable copy registers nothing by itself: no PATH, no Registry, no Explorer entries. If you want them, run these from
+the command palette (F1). Each one asks first, then works per user exactly like the NSIS options:
+
+- **Shell Integration: Add OpenMind Studio to PATH (this user)** and **... Remove OpenMind Studio from PATH**;
+- **Shell Integration: Add "Open with OpenMind Studio" to File Explorer** and **... Remove ...**.
+
+The entries point at *this* folder. If you move or delete the portable folder, remove them first; otherwise the PATH
+entry and the Explorer entries point at a folder that is gone.
+
+The same actions are available on any copy from a terminal:
+
+```powershell
+OpenMindStudio.exe --integration add-path|remove-path|add-explorer|remove-explorer|remove-all|status
+```
+
+This form opens no window and writes no data folder. It exits with 0 on success, 1 on failure, 2 for an unknown action.
+
+## Undo by hand
+
+If a copy's folder was deleted before its entries were removed:
+
+- delete the `...\bin` entry from **Settings > System > About > Advanced system settings > Environment Variables >
+  User variables > Path**;
+- delete the keys `HKCU\Software\Classes\Directory\shell\OpenMindStudio`,
+  `HKCU\Software\Classes\Directory\Background\shell\OpenMindStudio` and `HKCU\Software\Classes\*\shell\OpenMindStudio`;
+- delete `HKCU\Software\OpenMind\OpenMind Studio Integration`.
+
+These are the only things OpenMind writes for this feature.

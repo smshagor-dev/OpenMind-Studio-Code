@@ -71,6 +71,8 @@ export function useAppStartup(): boolean {
       await container.workspace.restoreSession();
       // A window opened for a tab dragged out of another window opens that file.
       await container.editorWindows.openPending();
+      // `OpenMindStudio.exe <folder|file ...>` (File Explorer, the `openmind` command): after the session, so it wins.
+      if (isMainWindow()) await container.editorWindows.openLaunch();
       timings.mark("session");
       // The editor is usable now: what follows (services that only mirror state or wait for a click) must not keep
       // the window blank.

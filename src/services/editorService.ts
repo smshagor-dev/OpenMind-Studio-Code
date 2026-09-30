@@ -124,7 +124,8 @@ export class EditorService {
   private extensionActions: ExtensionEditorAction[] = [];
   private aiActions: ExtensionEditorAction[] = [];
   private formatActions: ExtensionEditorAction[] = [];
-  private appActions: ExtensionEditorAction[] = [];
+  /** App commands for the palette, per owner (Network, Shell Integration ...), so one owner can't drop another's. */
+  private readonly appActions = new Map<string, ExtensionEditorAction[]>();
   private runExtensionCommand: ((command: string) => void) | null = null;
   private readonly actionDisposables = new Map<CodeEditorLike, { dispose: () => void }[]>();
   private pendingReveal: (RevealRequest & { at: number }) | null = null;
@@ -193,9 +194,9 @@ export class EditorService {
     for (const editor of this.editors) this.applyActions(editor);
   }
 
-  /** App commands that belong in the palette only (Network: ...). */
-  setAppActions(actions: ExtensionEditorAction[]): void {
-    this.appActions = actions;
+  /** App commands that belong in the palette only (Network: ..., Shell Integration: ...), replacing `owner`'s earlier list. */
+  setAppActions(actions: ExtensionEditorAction[], owner = "network"): void {
+    this.appActions.set(owner, actions);
     for (const editor of this.editors) this.applyActions(editor);
   }
 
@@ -226,7 +227,7 @@ export class EditorService {
         prefix: "format",
         group: "1_modification",
       })),
-      ...this.appActions.map((action) => ({ action, prefix: "app", group: "9_app" })),
+      ...[...this.appActions.values()].flat().map((action) => ({ action, prefix: "app", group: "9_app" })),
     ];
     const disposables = own.map(({ action, prefix, group }, index) =>
       add.call(editor, {
