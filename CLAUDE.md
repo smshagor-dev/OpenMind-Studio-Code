@@ -1420,6 +1420,33 @@ Windows x64 editions (portable ZIP, per-user NSIS setup, and — since Milestone
   `docs/lsp-bundle.md`), which makes the installers larger: NSIS setup 104 MB, MSI 121 MB, portable ZIP 120 MB (was 7.5 / — / 8.8 MB).
   A `tauri build`/`tauri dev` copies `lsp-bundle/` next to the exe too (`bundle.resources`); a fresh clone has only its README there, so
   development builds simply have no bundle and fall back to npm installs.
+- **PATH and File Explorer integration (installer polish, optional; `docs/installer.md`).** Off unless chosen; undone on uninstall; only what
+  OpenMind added is removed.
+  - `src-tauri/src/integration/`: pure rules over a `Store` trait, tested with an in-memory store.
+    - `path_with`/`path_without`: no duplicates in any spelling; the value type is kept; other entries stay byte for byte.
+    - Explorer: `MENU_KEYS` (`Directory`, `Directory\Background`, `*` under `HKCU\Software\Classes`), `menu_command` =
+      `"<exe>" "%V"`/`"%1"`.
+    - Record: `HKCU\Software\OpenMind\OpenMind Studio Integration`, outside the product key the NSIS uninstaller deletes. A
+      pre-existing PATH entry is never recorded or removed; another copy's Explorer entries are never removed.
+  - `integration/registry.rs`: the one file allowed to write the Registry, HKCU only (the network policy test pins this), plus a
+    `WM_SETTINGCHANGE` broadcast.
+  - Entry points:
+    - `OpenMindStudio.exe --integration add-path|remove-path|add-explorer|remove-explorer|remove-all|status`: handled first in
+      `main` (no window, no data folders; exit code 0/1/2);
+    - the commands `integration_status`/`integration_apply`;
+    - four confirmed palette commands for portable copies (`shellIntegrationCommands.ts`; `EditorService.setAppActions` is now
+      keyed by owner).
+  - PATH gets `<install>\bin` (`src-tauri/cli/openmind.cmd` + `openmind`, shipped as resources `bin/...`), never the install folder.
+  - NSIS: `src-tauri/nsis/installer-hooks.nsh` (two unchecked Welcome-page check boxes via `MUI_PAGE_CUSTOMFUNCTION_SHOW/LEAVE`, since
+    Tauri includes the hooks before its pages; `/ADDTOPATH` `/EXPLORERMENU`; POSTINSTALL runs `--integration`; PREUNINSTALL
+    `remove-all` except `/UPDATE`).
+  - MSI: `src-tauri/wix/integration.wxs` components `OmCliPath` (`ADDTOPATH="1"`: machine PATH, `Part="last"`, `Permanent="no"`) and
+    `OmExplorerMenu` (`EXPLORERMENU="1"`: HKLM Classes).
+  - `release.mjs` checks all of it (`checkInstallerHooks`, `unconditionalEnvironment`).
+  - Command line (`launch.rs`): `OpenMindStudio.exe <folder|file ...>`. The first folder becomes the workspace, all files open,
+    later folders and missing paths are reported, `-` options ignored; the main window takes it once (`launch_take`) after the
+    session restore (`EditorWindowService.openLaunch`).
+  - Portable copies never register anything by themselves.
 - **WebView2 profile.** The webview's own profile (cache, local storage, cookies) used to live in
   `%LOCALAPPDATA%\com.openmindstudio.app\EBWebView` (247 MB after a few weeks) — found in Milestone 9 by watching that folder while
   running the portable copy. Every window is now built with `data_directory(<app>/data/webview)` (the main window is described in
@@ -2743,6 +2770,8 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   `rustup check` exit 100 read as failure; a policy scan flagged a hint quoting `git config --global`. **Not verified**: the university network
   (see `docs/university-validation.md` — the issue is **not resolved** until that checklist passes there), a real private GitHub push (covered with
   a real Git HTTP backend), MSI install. Limitations: `docs/download-broker.md`.
+- [x] **Installer polish: PATH and File Explorer integration** (not a milestone; before the full build). See "PATH and File Explorer
+  integration" under Packaging and `docs/installer.md`. Results are in the commit message and the report.
 - [ ] Milestone 24 — to be scoped (installer-time workload selection, more screens translated, native-speaker review, profile-aware
   keybindings, signing, auto-update; the university live test of Milestone 23).
 
