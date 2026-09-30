@@ -220,10 +220,16 @@ impl BrokerRuntime {
         self.gateway.as_ref().is_some_and(|g| g.broker().cancel(id))
     }
 
-    /// Stops the gateway and every download (app close). Partial downloads stay for the next run.
+    /// Stops the gateway and every download (app close). Partial downloads stay for the next run; OpenMind's npm
+    /// configuration goes (its token is dead once the gateway stops, and the next run writes a new one).
     pub fn stop(&self) {
         if let Some(gateway) = &self.gateway {
             gateway.stop();
+        }
+        if let Some(file) = &self.npm_rc {
+            if let Err(err) = std::fs::remove_file(file) {
+                tracing::debug!(%err, "npm configuration not removed");
+            }
         }
     }
 

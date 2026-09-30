@@ -123,6 +123,19 @@ pub(crate) fn tool_source(path: &Path) -> &'static str {
     }
 }
 
+/// `rustup check` exits 100 when updates are available — it reached the server, so the check passed.
+fn rustup_outcome(mut result: Value) -> Value {
+    if result["exitCode"] == 100
+        && result["output"]
+            .as_str()
+            .is_some_and(|out| out.contains("update available"))
+    {
+        result["ok"] = json!(true);
+        result["note"] = json!("exit 100 means updates are available: the server was reached");
+    }
+    result
+}
+
 fn inherited_path() -> Vec<PathBuf> {
     std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).collect())
@@ -402,7 +415,7 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
                 "yarn": run("yarn", &yarn_args, &env),
                 "go": run("go", &go_args, &env),
                 "cargo": run("cargo", &cargo_args, &env),
-                "rustup": run("rustup", &rustup_args, &env),
+                "rustup": rustup_outcome(run("rustup", &rustup_args, &env)),
             })
         };
         let through_openmind = tools(&openmind_path, &openmind_env);
@@ -469,6 +482,14 @@ mod tests {
             !clean.contains("s3cr3t") && !clean.contains("abcdef0123"),
             "{clean}"
         );
+    }
+
+    #[test]
+    fn rustup_updates_available_counts_as_reached() {
+        let updates = json!({ "ran": true, "exitCode": 100, "ok": false, "output": "rustup - update available : 1.29.0 -> 1.29.1" });
+        assert_eq!(rustup_outcome(updates)["ok"], true);
+        let broken = json!({ "ran": true, "exitCode": 100, "ok": false, "output": "error: could not download file" });
+        assert_eq!(rustup_outcome(broken)["ok"], false);
     }
 
     #[test]
