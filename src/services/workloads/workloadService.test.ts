@@ -41,6 +41,8 @@ describe("WorkloadService", () => {
     const r = rig();
     expect(await r.service.maybeOpenFirstRun()).toBe(true);
     expect(r.service.getState()).toMatchObject({ firstRunOpen: true, section: "welcome" });
+    // Recorded as shown at once: quitting with the page still open doesn't bring it back next launch.
+    expect(r.ipc.workloadsFirstRunDone).toHaveBeenCalledTimes(1);
     await r.service.skip();
     expect(r.service.getState().firstRunOpen).toBe(false);
     expect(r.ipc.workloadsFirstRunDone).toHaveBeenCalled();

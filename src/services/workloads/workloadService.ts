@@ -148,7 +148,10 @@ export class WorkloadService {
     });
   }
 
-  /** Opens the first-run page if it has never been shown or skipped. */
+  /**
+   * Opens the first-run page on the very first launch only. It is recorded as shown the moment it opens, so closing the
+   * app with the page still up doesn't bring it back (Help/`workloads.firstRun` and the Runtime Manager still reach it).
+   */
   async maybeOpenFirstRun(): Promise<boolean> {
     try {
       if (!(await this.host.ipc.workloadsFirstRun())) return false;
@@ -156,6 +159,7 @@ export class WorkloadService {
       return false;
     }
     this.set({ firstRunOpen: true, section: "welcome" });
+    await this.markFirstRunDone();
     await this.load();
     return true;
   }
