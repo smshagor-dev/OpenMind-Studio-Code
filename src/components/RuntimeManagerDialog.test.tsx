@@ -107,6 +107,42 @@ describe("RuntimeManagerDialog", () => {
     expect(screen.getByText("System: 20.1.0")).toBeInTheDocument();
   });
 
+  it("filters runtimes from the search box", async () => {
+    await open([
+      runtime(),
+      runtime({
+        id: "fortran",
+        displayName: "Fortran (GFortran)",
+        description: "Compile, run and build Fortran programs with gfortran, GCC, Make and GDB.",
+        notes: "Use it to compile .f/.f90 files.",
+        defaultVersion: "13.1.0",
+        availableVersions: ["13.1.0"],
+      }),
+      runtime({
+        id: "pascal",
+        displayName: "Pascal (Free Pascal)",
+        description: "Compile and run Pascal programs for Windows x64 with Free Pascal.",
+        defaultVersion: "3.2.3",
+        availableVersions: ["3.2.3"],
+      }),
+    ]);
+
+    const search = screen.getByRole("searchbox", { name: "Search runtimes" });
+    expect(screen.getByText("3 of 3")).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "gfortran" } });
+
+    expect(screen.getByRole("region", { name: "Fortran (GFortran)" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Node.js" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Pascal (Free Pascal)" })).toBeNull();
+    expect(screen.getByText("1 of 3")).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "ruby" } });
+
+    expect(screen.queryByRole("region", { name: "Fortran (GFortran)" })).toBeNull();
+    expect(screen.getByText("No runtimes match that search.")).toBeInTheDocument();
+  });
+
   it("installs the selected version when Install is clicked", async () => {
     await open([runtime()]);
 

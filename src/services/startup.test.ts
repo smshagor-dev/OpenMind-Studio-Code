@@ -70,6 +70,11 @@ describe("start-up does only local, lazy work", () => {
     expect(start.slice(0, 900)).not.toMatch(/marketplace|activateFor|startHost/i);
   });
 
+  it("does not open the first-run Workloads popup at launch", () => {
+    const startFormatting = functionBody(container, "startFormatting");
+    expect(startFormatting).not.toContain("maybeOpenFirstRun");
+  });
+
   it("phases run in the expected order and the editor is usable before the background services finish", () => {
     const order = [
       "startSettings",

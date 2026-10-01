@@ -1,7 +1,7 @@
 {
   "id": "pascal",
   "displayName": "Pascal (Free Pascal)",
-  "description": "Free Pascal compiler snapshot for Windows x64 targets.",
+  "description": "Compile and run Pascal programs for Windows x64 with Free Pascal.",
   "defaultVersion": "3.2.3",
   "versionCommand": {
     "executable": "bin/i386-win32/ppcrossx64.exe",
@@ -27,19 +27,19 @@
   "features": [
     {
       "id": "compiler",
-      "label": "Free Pascal compiler",
+      "label": "Compile Pascal (.pas, .pp)",
       "verifyFile": "bin/i386-win32/ppcrossx64.exe",
       "missingNote": "The Free Pascal compiler isn't in this install. Use Repair to reinstall it."
     },
     {
       "id": "win64-target",
-      "label": "Windows x64 target",
+      "label": "Build Windows x64 programs",
       "verifyFile": "units/x86_64-win64/rtl/system.ppu",
       "missingNote": "The Windows x64 RTL units are missing. Use Repair to reinstall this compiler."
     },
     {
       "id": "rtl-units",
-      "label": "Runtime library units",
+      "label": "Use Free Pascal RTL units",
       "verifyFile": "units/x86_64-win64/rtl/sysutils.ppu",
       "missingNote": "The Free Pascal runtime library units are missing."
     }
@@ -49,7 +49,7 @@
     "url": "https://www.freepascal.org/faq.var#general-license",
     "acceptanceRequired": false
   },
-  "notes": "Free Pascal fixes_3_2 Windows x64 snapshot ZIP from downloads.freepascal.org. The stable 3.2.2 Windows x64 page does not ship a native x64 compiler package, so this uses the official single-ZIP snapshot that can be extracted portably. The command `fpc64` is a small OpenMind shim over ppcrossx64.exe.",
+  "notes": "Free Pascal fixes_3_2 Windows x64 snapshot ZIP from downloads.freepascal.org. Use the `fpc64` command in OpenMind terminals to compile .pas/.pp files into Windows x64 programs with the bundled RTL units. The stable 3.2.2 Windows x64 page does not ship a native x64 compiler package, so this uses the official single-ZIP snapshot that can be extracted portably. `fpc64` is a small OpenMind shim over ppcrossx64.exe.",
   "versions": [
     {
       "version": "3.2.3",

@@ -1,7 +1,7 @@
 {
   "id": "fortran",
   "displayName": "Fortran (GFortran)",
-  "description": "GNU Fortran compiler with a portable MinGW-w64 toolchain from w64devkit.",
+  "description": "Compile, run and build Fortran programs with gfortran, GCC, Make and GDB.",
   "defaultVersion": "13.1.0",
   "versionCommand": {
     "executable": "bin/gfortran.exe",
@@ -22,19 +22,19 @@
   "features": [
     {
       "id": "gfortran",
-      "label": "GNU Fortran compiler",
+      "label": "Compile Fortran (.f, .f90)",
       "verifyFile": "bin/gfortran.exe",
       "missingNote": "gfortran.exe isn't in this install. Use Repair to reinstall it."
     },
     {
       "id": "gcc-toolchain",
-      "label": "GCC, assembler and linker",
+      "label": "Build native Windows EXE",
       "verifyFile": "bin/as.exe",
       "missingNote": "The assembler/linker tools are missing. Use Repair to reinstall the toolchain."
     },
     {
       "id": "make",
-      "label": "GNU Make",
+      "label": "Run Makefile builds",
       "verifyFile": "bin/mingw32-make.exe",
       "missingNote": "GNU Make isn't in this install."
     }
@@ -44,7 +44,7 @@
     "url": "https://github.com/skeeto/w64devkit",
     "acceptanceRequired": false
   },
-  "notes": "w64devkit fortran ZIP: portable MinGW-w64 GCC 13.1.0 with gfortran, gcc, binutils, GDB and GNU Make. OpenMind Studio adds this install's bin folder to launched processes only; the system PATH is not changed.",
+  "notes": "w64devkit fortran ZIP: portable MinGW-w64 GCC 13.1.0 with gfortran, gcc, binutils, GDB and GNU Make. Use it to compile .f/.f90 files, create native Windows executables, run Makefile builds and debug with gdb from OpenMind terminals. OpenMind Studio adds this install's bin folder to launched processes only; the system PATH is not changed.",
   "versions": [
     {
       "version": "13.1.0",

@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { AddonStatus, InstalledVersion, RuntimeStatus } from "../services/ipc";
@@ -20,11 +20,16 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>(() =>
     container.workloads.peekRequestedTab() === "workloads" ? "workloads" : "runtimes",
   );
+  const [runtimeQuery, setRuntimeQuery] = useState("");
   // Cleared once mounted (a discarded first render must not consume the request).
   useEffect(() => {
     container.workloads.takeRequestedTab();
   }, []);
   const [detailsFor, setDetailsFor] = useState<RuntimeStatus | null>(null);
+  const filteredRuntimes = useMemo(
+    () => filterRuntimes(state.runtimes, runtimeQuery),
+    [state.runtimes, runtimeQuery],
+  );
 
   useEffect(() => {
     void container.runtime.initialize();
@@ -79,9 +84,29 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
         <div className="rm-body" role="tabpanel">
           {tab === "runtimes" ? (
             <>
+              <div className="rm-search">
+                <input
+                  type="search"
+                  value={runtimeQuery}
+                  aria-label={t("runtimes.searchLabel")}
+                  placeholder={t("runtimes.searchPlaceholder")}
+                  onChange={(event) => {
+                    setRuntimeQuery(event.target.value);
+                  }}
+                />
+                <span className="rm-search__count">
+                  {t("runtimes.searchCount", {
+                    count: filteredRuntimes.length,
+                    total: state.runtimes.length,
+                  })}
+                </span>
+              </div>
               {!state.loaded ? <p className="runtimes__loading">{t("common.loading")}</p> : null}
+              {state.loaded && filteredRuntimes.length === 0 ? (
+                <p className="runtimes__empty">{t("runtimes.searchEmpty")}</p>
+              ) : null}
               <div className="rm-runtimes">
-                {state.runtimes.map((runtime) => (
+                {filteredRuntimes.map((runtime) => (
                   <RuntimeCard key={runtime.id} runtime={runtime} onDetails={setDetailsFor} />
                 ))}
               </div>
@@ -108,6 +133,40 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+}
+
+function filterRuntimes(runtimes: RuntimeStatus[], query: string): RuntimeStatus[] {
+  const terms = query
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter(Boolean);
+  if (terms.length === 0) {
+    return runtimes;
+  }
+  return runtimes.filter((runtime) => {
+    const haystack = [
+      runtime.id,
+      runtime.displayName,
+      runtime.description,
+      runtime.notes,
+      runtime.defaultVersion,
+      runtime.globalVersion ?? "",
+      runtime.activeVersion ?? "",
+      ...runtime.availableVersions,
+      ...runtime.requires,
+      ...(runtime.license ? [runtime.license.name] : []),
+      ...runtime.installed.flatMap((entry) => [
+        entry.version,
+        entry.path,
+        ...entry.features.flatMap((feature) => [feature.id, feature.label, feature.note]),
+        ...(entry.addons ?? []).flatMap((addon) => [addon.id, addon.label, addon.description]),
+      ]),
+    ]
+      .join(" ")
+      .toLocaleLowerCase();
+    return terms.every((term) => haystack.includes(term));
+  });
 }
 
 /** The long text of a runtime (its full description and notes) — kept out of the card so cards stay short. */

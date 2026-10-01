@@ -884,8 +884,6 @@ async function startFormatting(): Promise<void> {
   autoSave.start();
   // The proxy settings and the offline cache list: local reads, no network request.
   await network.load();
-  // The first-run workload page, once (a local flag; nothing is downloaded until Install).
-  await workloads.maybeOpenFirstRun();
   await profiles.load();
   await formatting.initialize();
   await formatting.refreshStatus();
