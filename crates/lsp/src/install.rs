@@ -11,7 +11,7 @@ use std::time::Duration;
 use crate::error::LspError;
 use crate::node::NodeExecutable;
 use crate::process::{run_to_end, SpawnSpec};
-use crate::registry::{Package, ServerDef, Source, SERVERS};
+use crate::registry::{Package, Runtime, ServerDef, Source, SERVERS};
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
@@ -26,10 +26,14 @@ pub fn package_dir(app_root: &Path, package: &Package) -> PathBuf {
         .join(package.revision)
 }
 
-/// The script Node runs for `server`, when it is installed.
+/// The script Node runs, native executable, or Python module marker for `server`, when it is installed.
 pub fn entry_path(app_root: &Path, server: &ServerDef, package: &Package) -> Option<PathBuf> {
-    let entry = package_dir(app_root, package).join(server.entry);
-    entry.is_file().then_some(entry)
+    let root = package_dir(app_root, package);
+    let entry = root.join(server.entry);
+    match server.runtime {
+        Runtime::PythonModule => entry.join("__main__.py").is_file().then_some(entry),
+        _ => entry.is_file().then_some(entry),
+    }
 }
 
 pub fn is_installed(app_root: &Path, server: &ServerDef, package: &Package) -> bool {
@@ -50,6 +54,20 @@ pub fn npm_args(npm_cli: &Path) -> Vec<String> {
         "--no-fund".into(),
         "--no-progress".into(),
         "--loglevel=error".into(),
+    ]
+}
+
+pub fn pip_args(requirements: &Path, target: &Path) -> Vec<String> {
+    vec![
+        "-m".into(),
+        "pip".into(),
+        "install".into(),
+        "--disable-pip-version-check".into(),
+        "--no-warn-script-location".into(),
+        "--target".into(),
+        target.display().to_string(),
+        "-r".into(),
+        requirements.display().to_string(),
     ]
 }
 
@@ -95,6 +113,83 @@ pub fn install(
     if outcome.is_err() {
         let _ = std::fs::remove_dir_all(&staging);
         return outcome;
+    }
+    let final_dir = package_dir(app_root, package);
+    if final_dir.exists() {
+        std::fs::remove_dir_all(&final_dir).map_err(io_err)?;
+    }
+    std::fs::rename(&staging, &final_dir).map_err(io_err)?;
+    remove_other_revisions(app_root, package);
+    Ok(())
+}
+
+/// Installs a Python-package language server into `language-servers/<package>/<revision>/` with `pip --target`.
+pub fn install_python(
+    app_root: &Path,
+    package: &Package,
+    python: &Path,
+    env: &[(String, String)],
+    log: impl Fn(&str) + Send + Sync + Clone + 'static,
+) -> Result<(), LspError> {
+    let Source::Python { requirements } = package.source else {
+        return Err(LspError::InstallFailed(format!(
+            "{} is not a Python language server package.",
+            package.contents
+        )));
+    };
+    let staging = staging_dir(app_root, package);
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).map_err(io_err)?;
+    }
+    std::fs::create_dir_all(&staging).map_err(io_err)?;
+    let requirements_path = staging.join("requirements.txt");
+    std::fs::write(&requirements_path, requirements).map_err(io_err)?;
+    let mut vars: Vec<(String, String)> = env.to_vec();
+    vars.extend([
+        (
+            "PIP_CACHE_DIR".into(),
+            app_root.join("cache").join("pip").display().to_string(),
+        ),
+        ("PIP_DISABLE_PIP_VERSION_CHECK".into(), "1".into()),
+        ("PYTHONNOUSERSITE".into(), "1".into()),
+    ]);
+    let spec = SpawnSpec {
+        program: python.to_path_buf(),
+        args: pip_args(&requirements_path, &staging),
+        cwd: staging.clone(),
+        vars,
+        path_prepend: python
+            .parent()
+            .map(|dir| vec![dir.to_path_buf()])
+            .unwrap_or_default(),
+    };
+    let outcome = match run_to_end(&spec, INSTALL_TIMEOUT, log) {
+        Ok(Some(0)) => Ok(()),
+        Ok(Some(code)) => Err(LspError::InstallFailed(format!(
+            "pip exited with code {code}. See the LSP output for details."
+        ))),
+        Ok(None) => Err(LspError::InstallFailed("pip was stopped.".into())),
+        Err(err) => Err(err),
+    };
+    if outcome.is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return outcome;
+    }
+    let missing: Vec<&str> = SERVERS
+        .iter()
+        .filter(|server| server.package == package.id)
+        .filter(|server| match server.runtime {
+            Runtime::PythonModule => !staging.join(server.entry).join("__main__.py").is_file(),
+            _ => !staging.join(server.entry).is_file(),
+        })
+        .map(|server| server.id)
+        .collect();
+    if !missing.is_empty() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(LspError::InstallFailed(format!(
+            "the download is missing files for: {}",
+            missing.join(", ")
+        )));
     }
     let final_dir = package_dir(app_root, package);
     if final_dir.exists() {

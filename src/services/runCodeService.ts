@@ -14,6 +14,7 @@ import type {
 import type { OutputService } from "./outputService";
 import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
+import type { MarkerService, Problem } from "./markerService";
 import type { RunConfigurationService, RunTarget } from "./runConfigurationService";
 import type { TerminalService } from "./terminalService";
 import type { WorkspaceService } from "./workspaceService";
@@ -78,6 +79,35 @@ const INITIAL: RunState = {
 /** TypeScript runs on Node, so its output shares that channel. */
 export function channelFor(language: string): string {
   return language === "TypeScript" ? "Node.js" : language;
+}
+
+function buildOwner(path: string): string {
+  return `run:${path}`;
+}
+
+function titleOf(path: string): string {
+  return path.split(/[/\\]/).pop() || path;
+}
+
+export function parseBuildProblem(line: string): Problem | null {
+  const gcc = /^(.*?):(\d+):(?:(\d+):)?\s*(fatal error|error|warning|note):\s*(.*)$/i.exec(line);
+  const fpc = /^(.*?)\((\d+),(\d+)\)\s+(Fatal|Error|Warning|Note):\s*(.*)$/i.exec(line);
+  const match = gcc ?? fpc;
+  if (!match) return null;
+  const lineNumber = Number(match[2]);
+  const columnNumber = Number(match[3] ?? "1");
+  const kind = (match[4] ?? "").toLowerCase();
+  const message = match[5] ?? line;
+  const severity = kind.includes("warning") ? "warning" : kind.includes("note") ? "info" : "error";
+  return {
+    severity,
+    message,
+    source: "compiler",
+    line: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : 1,
+    column: Number.isFinite(columnNumber) && columnNumber > 0 ? columnNumber : 1,
+    endLine: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : 1,
+    endColumn: Number.isFinite(columnNumber) && columnNumber > 0 ? columnNumber + 1 : 2,
+  };
 }
 
 /** Terminal shell -> how its command line is quoted. WSL is not supported. */
@@ -181,6 +211,7 @@ export class RunCodeService {
   private readonly unsubscribers: (() => void)[] = [];
   /** Process id -> the file it runs and the Output channel its lines go to. */
   private readonly processes = new Map<string, { path: string; channel: string }>();
+  private readonly buildProblems = new Map<string, { path: string; problems: Problem[] }>();
   /** Files whose run was requested but hasn't reported `started` yet. */
   private readonly starting = new Set<string>();
   /** Files whose run should bring the Output panel up once its channel is known. */
@@ -205,6 +236,7 @@ export class RunCodeService {
     private readonly showBeside: (channel: string) => void = () => undefined,
     /** The Run Code settings (`run.saveBeforeRun`, `run.clearOutputBeforeRun`); the defaults match the settings' defaults. */
     private readonly prefs: RunCodePrefs = DEFAULT_RUN_PREFS,
+    private readonly markers?: Pick<MarkerService, "setExternal">,
   ) {}
 
   getState(): RunState {
@@ -458,6 +490,7 @@ export class RunCodeService {
       case "output": {
         const channel = this.processes.get(event.runId)?.channel ?? RUN_CHANNEL;
         this.output.append(channel, event.line);
+        if (event.phase === "build") this.recordBuildProblem(event.runId, event.line);
         if (isMissingInputError(event.line)) this.missedInput.add(event.runId);
         return;
       }
@@ -480,6 +513,8 @@ export class RunCodeService {
   /** A compiled language (C, C++, Java, Rust): the compile command comes first, its output under it. */
   private onBuilding(event: Extract<CodeRunEvent, { type: "building" }>): void {
     const channel = this.track(event.runId, event.file, event.language);
+    this.buildProblems.set(event.runId, { path: event.file, problems: [] });
+    this.markers?.setExternal(buildOwner(event.file), []);
     const header = `[Run Code] ${event.commandLine}`;
     this.output.append(RUN_CHANNEL, stamped(header));
     this.output.append(channel, header);
@@ -514,6 +549,7 @@ export class RunCodeService {
     const path = process?.path ?? null;
     const channel = process?.channel ?? RUN_CHANNEL;
     this.processes.delete(event.runId);
+    this.buildProblems.delete(event.runId);
     const ranWithoutInput = path !== null && this.withoutInput.delete(path) && event.buildFailed !== true;
     if (this.missedInput.delete(event.runId) || ranWithoutInput) {
       // The program asked for input; Run Code's Output can't answer it.
@@ -539,6 +575,17 @@ export class RunCodeService {
         lastRun: { path, code: event.code, stopped: event.stopped, durationMs: event.durationMs },
       });
     }
+  }
+
+  private recordBuildProblem(runId: string, line: string): void {
+    const parsed = parseBuildProblem(line);
+    if (parsed === null) return;
+    const state = this.buildProblems.get(runId);
+    if (state === undefined) return;
+    state.problems.push(parsed);
+    this.markers?.setExternal(buildOwner(state.path), [
+      { path: state.path, title: titleOf(state.path), problems: state.problems },
+    ]);
   }
 
   private fail(message: string): false {

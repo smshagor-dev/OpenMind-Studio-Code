@@ -29,6 +29,7 @@ pub fn language_id(path: &str) -> Option<&'static str> {
         "rs" => "rust",
         "c" | "h" => "c",
         "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => "cpp",
+        "f" | "for" | "f90" | "f95" | "f03" | "f08" => "fortran",
         _ => return None,
     })
 }
@@ -53,6 +54,7 @@ mod tests {
         assert_eq!(language_id("src/main.rs"), Some("rust"));
         assert_eq!(language_id("x.h"), Some("c"));
         assert_eq!(language_id("x.hpp"), Some("cpp"));
+        assert_eq!(language_id("solver.F90"), Some("fortran"));
     }
 
     #[test]

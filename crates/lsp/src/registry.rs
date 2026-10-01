@@ -19,6 +19,8 @@ pub enum Source {
     },
     /// A native program that only the LSP bundle carries (pinned by SHA256 in `servers/bundle-sources.json`).
     Native,
+    /// A Python package pinned by `requirements.txt`.
+    Python { requirements: &'static str },
 }
 
 /// A package installed once, holding one or more servers.
@@ -44,6 +46,8 @@ pub enum Runtime {
     Node,
     /// `<entry> <args>`: the entry is the program itself.
     Native,
+    /// `python -m <entry> <args>` with the package folder on `PYTHONPATH`.
+    PythonModule,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,6 +89,20 @@ macro_rules! npm {
     };
 }
 
+macro_rules! python {
+    ($id:literal, $revision:literal, $contents:literal, $redistributable:literal) => {
+        Package {
+            id: $id,
+            revision: $revision,
+            contents: $contents,
+            redistributable: $redistributable,
+            source: Source::Python {
+                requirements: include_str!(concat!("../servers/", $id, "/requirements.txt")),
+            },
+        }
+    };
+}
+
 pub const PACKAGES: &[Package] = &[
     npm!(
         "typescript",
@@ -118,6 +136,7 @@ pub const PACKAGES: &[Package] = &[
         source: Source::Native,
         redistributable: true,
     },
+    python!("fortran", "1", "fortls 3.2.2", false),
 ];
 
 pub const SERVERS: &[ServerDef] = &[
@@ -274,6 +293,19 @@ pub const SERVERS: &[ServerDef] = &[
         after_initialized: PLAIN.1,
         env: PLAIN.2,
     },
+    ServerDef {
+        id: "fortran",
+        name: "fortls",
+        package: "fortran",
+        entry: "fortls",
+        args: &["--stdio"],
+        runtime: Runtime::PythonModule,
+        languages: &["fortran"],
+        note: Some("Fortran language server. Best results come from source files inside the open folder."),
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
+    },
 ];
 
 pub fn server_by_id(id: &str) -> Option<&'static ServerDef> {
@@ -339,6 +371,9 @@ mod tests {
                 (Runtime::Native, Source::Native) => {
                     assert!(server.entry.ends_with(".exe"), "{}", server.id);
                 }
+                (Runtime::PythonModule, Source::Python { .. }) => {
+                    assert!(!server.entry.contains(['/', '\\']), "{}", server.id);
+                }
                 _ => panic!("{}: runtime and package source disagree", server.id),
             }
             assert!(!server.entry.contains(".."), "{}", server.id);
@@ -366,6 +401,7 @@ mod tests {
         assert_eq!(server_for_path("main.rs").map(|s| s.id), Some("rust"));
         assert_eq!(server_for_path("a.cpp").map(|s| s.id), Some("clangd"));
         assert_eq!(server_for_path("a.h").map(|s| s.id), Some("clangd"));
+        assert_eq!(server_for_path("solver.f90").map(|s| s.id), Some("fortran"));
         assert!(server_for_path("notes.txt").is_none());
     }
 
@@ -392,6 +428,9 @@ mod tests {
             {
                 assert!(package_lock.contains("\"integrity\""), "{}", package.id);
                 assert!(package_json.contains("\"dependencies\""));
+            }
+            if let Source::Python { requirements } = package.source {
+                assert!(requirements.contains("=="), "{}", package.id);
             }
         }
     }

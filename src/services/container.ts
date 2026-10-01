@@ -252,6 +252,7 @@ const runCode = new RunCodeService(
     saveBeforeRun: () => settings.bool("run.saveBeforeRun", true),
     clearOutputBeforeRun: () => settings.bool("run.clearOutputBeforeRun", true),
   },
+  markers,
 );
 // An interpreter appearing or going (install / delete / switch) changes what can run.
 runtime.subscribe(() => {

@@ -286,6 +286,8 @@ fn default_program(kind: RunnableKind) -> &'static str {
         RunnableKind::Cpp => "clang++",
         RunnableKind::Java => "javac",
         RunnableKind::Rust => "rustc",
+        RunnableKind::Fortran => "gfortran",
+        RunnableKind::Pascal => "fpc64",
         RunnableKind::MariaDb => "mysqld",
     }
 }

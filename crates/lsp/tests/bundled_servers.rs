@@ -104,6 +104,7 @@ fn run(server_id: &str, file_name: &str, source: &str, check: Check) {
         app_root: app_root.clone(),
         workspace: workspace.clone(),
         node: (def.runtime == Runtime::Node).then_some(node),
+        python: None,
         path_prepend: vec![],
         vars: vec![("PATH".into(), system32_only())],
     };

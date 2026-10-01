@@ -15,6 +15,8 @@ pub enum RunnableKind {
     Cpp,
     Java,
     Rust,
+    Fortran,
+    Pascal,
     /// Not a file Run Code can run: the database server's own processes.
     MariaDb,
 }
@@ -31,6 +33,8 @@ impl RunnableKind {
             Self::Cpp => "C++",
             Self::Java => "Java",
             Self::Rust => "Rust",
+            Self::Fortran => "Fortran",
+            Self::Pascal => "Pascal",
             Self::MariaDb => "MariaDB",
         }
     }
@@ -45,6 +49,8 @@ impl RunnableKind {
             Self::Java => "jdk",
             // Not a Runtime Manager download: rustup manages Rust.
             Self::Rust => "rust",
+            Self::Fortran => "fortran",
+            Self::Pascal => "pascal",
             Self::MariaDb => "mariadb",
         }
     }
@@ -62,14 +68,19 @@ impl RunnableKind {
             Self::Cpp => "clang++",
             Self::Java => "javac",
             Self::Rust => "rustc",
+            Self::Fortran => "gfortran",
+            Self::Pascal => "fpc64",
             // Never used: MariaDB's commands are built by `stack.rs`, not from a template.
             Self::MariaDb => "mysqld",
         }
     }
 
-    /// Built before it runs (C, C++, Java, Rust).
+    /// Built before it runs (C, C++, Java, Rust, Fortran, Pascal).
     pub fn is_compiled(self) -> bool {
-        matches!(self, Self::C | Self::Cpp | Self::Java | Self::Rust)
+        matches!(
+            self,
+            Self::C | Self::Cpp | Self::Java | Self::Rust | Self::Fortran | Self::Pascal
+        )
     }
 
     /// Extra environment for the child so its output isn't held back by pipe buffering.
@@ -110,6 +121,10 @@ pub fn detect(path: &Path) -> Detection {
         Some("cpp" | "cc" | "cxx" | "c++") => Detection::Runnable(RunnableKind::Cpp),
         Some("java") => Detection::Runnable(RunnableKind::Java),
         Some("rs") => Detection::Runnable(RunnableKind::Rust),
+        Some("f" | "for" | "f90" | "f95" | "f03" | "f08") => {
+            Detection::Runnable(RunnableKind::Fortran)
+        }
+        Some("pas" | "pp") => Detection::Runnable(RunnableKind::Pascal),
         Some("md" | "markdown") => not(
             "Markdown files aren't run — open the preview instead.",
             true,
@@ -157,6 +172,10 @@ mod tests {
         }
         assert_eq!(kind("A.java"), Detection::Runnable(RunnableKind::Java));
         assert_eq!(kind("main.rs"), Detection::Runnable(RunnableKind::Rust));
+        assert_eq!(kind("main.f90"), Detection::Runnable(RunnableKind::Fortran));
+        assert_eq!(kind("legacy.F"), Detection::Runnable(RunnableKind::Fortran));
+        assert_eq!(kind("main.pas"), Detection::Runnable(RunnableKind::Pascal));
+        assert_eq!(kind("unit.PP"), Detection::Runnable(RunnableKind::Pascal));
         assert!(RunnableKind::Rust.is_compiled() && !RunnableKind::Python.is_compiled());
         // A header is not a program.
         assert!(matches!(kind("a.h"), Detection::NotRunnable { .. }));

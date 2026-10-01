@@ -546,6 +546,36 @@ pub const LANGUAGES: &[LanguageDef] = &[
         ["gcc", "clang", "cmake", "make"],
         [Hl, Lsp, Format, Run, Build]
     ),
+    lang!(
+        "fortran",
+        "Fortran",
+        Systems,
+        [".f", ".for", ".f90", ".f95", ".f03", ".f08"],
+        [],
+        "!",
+        "fortran",
+        Exact,
+        [],
+        [],
+        ["fortls"],
+        ["gfortran", "make", "gdb"],
+        [Hl, Lsp, Run, Build]
+    ),
+    lang!(
+        "pascal",
+        "Pascal",
+        Systems,
+        [".pas", ".pp"],
+        [],
+        "//",
+        "pascal",
+        Exact,
+        [],
+        [],
+        [],
+        ["fpc"],
+        [Hl, Run, Build]
+    ),
     // Shell / scripting
     lang!(
         "shellscript",
@@ -960,6 +990,10 @@ mod tests {
             ("ViewController.swift", "swift"),
             ("main.c", "c"),
             ("main.cpp", "cpp"),
+            ("solver.f90", "fortran"),
+            ("legacy.F", "fortran"),
+            ("program.pas", "pascal"),
+            ("unit.pp", "pascal"),
             ("run.sh", "shellscript"),
             ("build.ps1", "powershell"),
             ("go.bat", "bat"),
@@ -1031,10 +1065,11 @@ mod tests {
             "rust",
             "c",
             "cpp",
+            "fortran",
         ] {
             assert!(lsp.contains(&expected), "{expected}");
         }
-        for not_yet in ["go", "java", "csharp", "vue", "kotlin", "dart", "sql"] {
+        for not_yet in ["go", "java", "csharp", "vue", "kotlin", "dart", "sql", "pascal"] {
             assert!(!lsp.contains(&not_yet), "{not_yet} has no built-in server");
         }
         // The debugger supports Python and JavaScript only.
@@ -1060,7 +1095,9 @@ mod tests {
                 "rust",
                 "java",
                 "c",
-                "cpp"
+                "cpp",
+                "fortran",
+                "pascal"
             ]
         );
         // A language with no highlighting says so.

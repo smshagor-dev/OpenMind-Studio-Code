@@ -15,7 +15,7 @@ use openmind_lsp::bundle::{self, Bundle};
 use openmind_lsp::{
     install, package_by_id, resolve_lsp_node, resolve_node, server_by_id, server_for_path,
     summaries, unpack, Capabilities, LogLevel, LspError, LspEvents, LspManager, NodeExecutable,
-    PublishedDiagnostics, Runtime, ServerDef, ServerState, StartContext,
+    PublishedDiagnostics, PythonExecutable, Runtime, ServerDef, ServerState, StartContext,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -129,6 +129,8 @@ struct Resolved {
     node: Result<NodeExecutable, LspError>,
     /// A Node with npm next to it, for installing from npm (the bundled Node has none).
     npm_node: Result<NodeExecutable, LspError>,
+    /// Python for Python-package language servers.
+    python: Result<PythonExecutable, LspError>,
     bundle: Option<Bundle>,
     bundle_problem: Option<String>,
     path_prepend: Vec<PathBuf>,
@@ -145,6 +147,26 @@ async fn resolve(state: &AppState) -> Resolved {
         }
     };
     let system = std::env::var_os("PATH");
+    let python = openmind_runner::runtime::resolve_executable(
+        "python",
+        &environment,
+        &[],
+        system.as_deref(),
+    )
+    .map(|found| PythonExecutable {
+        label: match found.source {
+            openmind_runner::RuntimeSource::Portable => {
+                match openmind_runner::portable_version(&found.path) {
+                    Some(version) => format!("OpenMind portable Python {version}"),
+                    None => "OpenMind portable Python".to_string(),
+                }
+            }
+            openmind_runner::RuntimeSource::Project => "Project Python".to_string(),
+            openmind_runner::RuntimeSource::System => "System Python".to_string(),
+        },
+        path: found.path,
+    })
+    .ok_or_else(|| LspError::InstallFailed("Python was not found. Install Python from the Runtime Manager.".into()));
     Resolved {
         node: resolve_lsp_node(
             bundle.as_ref().and_then(Bundle::node_path),
@@ -152,6 +174,7 @@ async fn resolve(state: &AppState) -> Resolved {
             system.clone(),
         ),
         npm_node: resolve_node(&environment.path_prepend, system),
+        python,
         bundle,
         bundle_problem,
         path_prepend: environment.path_prepend,
@@ -173,20 +196,22 @@ fn install_blocked(resolved: &Resolved, def: &ServerDef, live: &ServerState) -> 
     if bundled(resolved, def) {
         return None;
     }
-    let bundle_only = package_by_id(def.package)
-        .is_some_and(|package| matches!(package.source, openmind_lsp::Source::Native));
-    if bundle_only {
-        return Some(format!(
+    match package_by_id(def.package).map(|package| package.source) {
+        Some(openmind_lsp::Source::Native) => Some(format!(
             "{} ships only in OpenMind Studio's offline LSP bundle, which this copy doesn't have.",
             def.name
-        ));
-    }
-    match &resolved.npm_node {
-        Err(err) => Some(err.to_string()),
-        Ok(node) if node.npm_cli().is_none() => {
-            Some("npm was not found next to Node.js. Repair the Node.js runtime.".to_string())
-        }
-        Ok(_) => None,
+        )),
+        Some(openmind_lsp::Source::Python { .. }) => match &resolved.python {
+            Err(err) => Some(err.to_string()),
+            Ok(_) => None,
+        },
+        _ => match &resolved.npm_node {
+            Err(err) => Some(err.to_string()),
+            Ok(node) if node.npm_cli().is_none() => {
+                Some("npm was not found next to Node.js. Repair the Node.js runtime.".to_string())
+            }
+            Ok(_) => None,
+        },
     }
 }
 
@@ -373,13 +398,28 @@ pub async fn lsp_install(server: String, state: State<'_, AppState>) -> Result<(
             .map(|_| ())
             .map_err(|err| err.to_string());
     }
-    let node = resolved.npm_node.map_err(|err| err.to_string())?;
     // npm downloads through the proxy the user configured (nothing when there is none).
     let proxy = crate::commands::network::process_env(&state).await;
-    tokio::task::spawn_blocking(move || manager.install_package_env(def, &root, &node, &proxy))
-        .await
-        .map_err(|err| format!("The installer stopped unexpectedly: {err}"))?
-        .map_err(|err| err.to_string())
+    match package_by_id(def.package).map(|package| package.source) {
+        Some(openmind_lsp::Source::Python { .. }) => {
+            let python = resolved.python.map_err(|err| err.to_string())?;
+            tokio::task::spawn_blocking(move || {
+                manager.install_python_package_env(def, &root, &python, &proxy)
+            })
+            .await
+            .map_err(|err| format!("The installer stopped unexpectedly: {err}"))?
+            .map_err(|err| err.to_string())
+        }
+        _ => {
+            let node = resolved.npm_node.map_err(|err| err.to_string())?;
+            tokio::task::spawn_blocking(move || {
+                manager.install_package_env(def, &root, &node, &proxy)
+            })
+            .await
+            .map_err(|err| format!("The installer stopped unexpectedly: {err}"))?
+            .map_err(|err| err.to_string())
+        }
+    }
 }
 
 /// What happened to a document sync, so the UI can say why a file has no language features.
@@ -457,10 +497,20 @@ pub async fn lsp_sync_document(
         (Runtime::Node, Err(_)) => return Ok(SyncOutcome::NodeMissing),
         (_, node) => node.ok(),
     };
+    let python = match (def.runtime, resolved.python) {
+        (Runtime::PythonModule, Err(err)) => {
+            return Ok(SyncOutcome::Failed {
+                server: def.id,
+                message: err.to_string(),
+            })
+        }
+        (_, python) => python.ok(),
+    };
     let context = StartContext {
         app_root: state.app_root.clone(),
         workspace,
         node,
+        python,
         path_prepend: resolved.path_prepend,
         vars: resolved.vars,
     };

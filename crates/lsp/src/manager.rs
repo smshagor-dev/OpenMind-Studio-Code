@@ -22,7 +22,7 @@ use crate::protocol::{
     initialize_params, is_allowed_request, parse_capabilities, parse_diagnostics, Capabilities,
     PublishedDiagnostics,
 };
-use crate::registry::{package_by_id, Runtime, ServerDef, PACKAGES, SERVERS};
+use crate::registry::{package_by_id, Runtime, ServerDef, Source, PACKAGES, SERVERS};
 use crate::session::{Session, SessionEvents, Workspace};
 use crate::unpack;
 use crate::uri::path_to_uri;
@@ -53,9 +53,17 @@ pub struct StartContext {
     pub workspace: PathBuf,
     /// The Node.js for Node-based servers (`None`: only native servers can start).
     pub node: Option<NodeExecutable>,
+    /// The Python executable for Python-package servers (`None`: they cannot start).
+    pub python: Option<PythonExecutable>,
     /// The Runtime Manager's folders, put first on the *server's* PATH only.
     pub path_prepend: Vec<PathBuf>,
     pub vars: Vec<(String, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PythonExecutable {
+    pub path: PathBuf,
+    pub label: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -250,7 +258,7 @@ impl LspManager {
         let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
         let entry =
             install::entry_path(&context.app_root, def, package).ok_or(LspError::NotInstalled)?;
-        let (program, mut args, mut path_prepend, runtime_label) = match def.runtime {
+        let (program, args, path_prepend, runtime_label) = match def.runtime {
             Runtime::Node => {
                 let node = context.node.as_ref().ok_or(LspError::NodeMissing)?;
                 (
@@ -264,15 +272,53 @@ impl LspManager {
                 )
             }
             Runtime::Native => (entry, Vec::new(), Vec::new(), "native program".to_string()),
+            Runtime::PythonModule => {
+                let python = context.python.as_ref().ok_or(LspError::NodeMissing)?;
+                let path = install::package_dir(&context.app_root, package);
+                let mut vars = context.vars.clone();
+                vars.push(("PYTHONPATH".into(), path.display().to_string()));
+                vars.push(("PYTHONNOUSERSITE".into(), "1".into()));
+                vars.extend(
+                    def.env
+                        .iter()
+                        .map(|(key, value)| ((*key).to_string(), (*value).to_string())),
+                );
+                return self.launch_with(
+                    def,
+                    context,
+                    python.path.clone(),
+                    vec!["-m".into(), def.entry.into()],
+                    python
+                        .path
+                        .parent()
+                        .map(|dir| vec![dir.to_path_buf()])
+                        .unwrap_or_default(),
+                    python.label.clone(),
+                    vars,
+                );
+            }
         };
-        args.extend(def.args.iter().map(|arg| (*arg).to_string()));
-        path_prepend.extend(context.path_prepend.iter().cloned());
         let mut vars = context.vars.clone();
         vars.extend(
             def.env
                 .iter()
                 .map(|(key, value)| ((*key).to_string(), (*value).to_string())),
         );
+        self.launch_with(def, context, program, args, path_prepend, runtime_label, vars)
+    }
+
+    fn launch_with(
+        &self,
+        def: &'static ServerDef,
+        context: &StartContext,
+        program: PathBuf,
+        mut args: Vec<String>,
+        mut path_prepend: Vec<PathBuf>,
+        runtime_label: String,
+        vars: Vec<(String, String)>,
+    ) -> Result<Arc<Running>, LspError> {
+        args.extend(def.args.iter().map(|arg| (*arg).to_string()));
+        path_prepend.extend(context.path_prepend.iter().cloned());
         let spawned = spawn(&SpawnSpec {
             program,
             args,
@@ -516,6 +562,11 @@ impl LspManager {
         env: &[(String, String)],
     ) -> Result<(), LspError> {
         let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
+        if !matches!(package.source, Source::Npm { .. }) {
+            return Err(LspError::InstallFailed(
+                "This language server is not installed with npm.".into(),
+            ));
+        }
         let members: Vec<&'static str> = SERVERS
             .iter()
             .filter(|server| server.package == package.id)
@@ -540,11 +591,71 @@ impl LspManager {
         self.log(
             def.id,
             LogLevel::Info,
-            &format!("Installing {} with {}…", package.contents, node.label()),
+            &format!("Installing {} with {}...", package.contents, node.label()),
         );
         let sink = self.clone();
         let sink_id = def.id;
         let outcome = install::install(app_root, package, node, env, move |line| {
+            sink.log(sink_id, LogLevel::Info, line);
+        });
+        let next = match &outcome {
+            Ok(()) => ServerState::Stopped,
+            Err(err) => ServerState::Error {
+                message: err.to_string(),
+            },
+        };
+        for id in &members {
+            self.set_state(id, next.clone());
+        }
+        match &outcome {
+            Ok(()) => self.log(def.id, LogLevel::Info, "Installed."),
+            Err(err) => self.log(def.id, LogLevel::Error, &err.to_string()),
+        }
+        outcome
+    }
+
+    pub fn install_python_package_env(
+        &self,
+        def: &'static ServerDef,
+        app_root: &std::path::Path,
+        python: &PythonExecutable,
+        env: &[(String, String)],
+    ) -> Result<(), LspError> {
+        let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
+        if !matches!(package.source, Source::Python { .. }) {
+            return Err(LspError::InstallFailed(
+                "This language server is not installed with Python.".into(),
+            ));
+        }
+        let members: Vec<&'static str> = SERVERS
+            .iter()
+            .filter(|server| server.package == package.id)
+            .map(|server| server.id)
+            .collect();
+        {
+            let mut slots = lock(&self.inner.slots);
+            if members.iter().any(|id| {
+                slots
+                    .get(id)
+                    .is_some_and(|slot| slot.state == ServerState::Installing)
+            }) {
+                return Err(LspError::InstallFailed("It is already installing.".into()));
+            }
+            for id in &members {
+                if let Some(slot) = slots.get_mut(id) {
+                    slot.state = ServerState::Installing;
+                }
+            }
+        }
+        self.inner.events.status_changed();
+        self.log(
+            def.id,
+            LogLevel::Info,
+            &format!("Installing {} with {}...", package.contents, python.label),
+        );
+        let sink = self.clone();
+        let sink_id = def.id;
+        let outcome = install::install_python(app_root, package, &python.path, env, move |line| {
             sink.log(sink_id, LogLevel::Info, line);
         });
         let next = match &outcome {
@@ -662,6 +773,7 @@ mod tests {
                 path: root.join("node.exe"),
                 source: crate::node::NodeSource::Portable,
             }),
+            python: None,
             path_prepend: vec![],
             vars: vec![],
         }

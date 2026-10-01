@@ -5,12 +5,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 import { installMonacoEnvironment } from "./editor/monacoEnvironment";
+import { registerBuiltInLanguages } from "./editor/builtinLanguages";
 import { initLanguage, type UiLanguage } from "./i18n";
 import { StartupErrorPage } from "./startupError/StartupErrorPage";
 import { STARTUP_ERROR_WINDOW_LABEL, tauriStartupErrorApi } from "./startupError/startupErrorApi";
 import "./styles/app.css";
 
 installMonacoEnvironment(self, import.meta.env.BASE_URL);
+registerBuiltInLanguages();
 
 // Must match `PHP_WINDOW_LABEL` in PhpServerWindow.tsx (not imported: that module pulls in the PHP window's services).
 const PHP_WINDOW_LABEL = "php-server";

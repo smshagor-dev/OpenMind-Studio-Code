@@ -10,7 +10,13 @@ import { buildMenuBar, collectCommandIds } from "./menus";
 import { OutputService } from "./outputService";
 import { PanelService } from "./panelService";
 import { RunConfigurationService, validateCommand } from "./runConfigurationService";
-import { channelFor, describeRunButton, RunCodeService, shellStyleFor } from "./runCodeService";
+import {
+  channelFor,
+  describeRunButton,
+  parseBuildProblem,
+  RunCodeService,
+  shellStyleFor,
+} from "./runCodeService";
 import { registerRunCommands } from "./runCommands";
 import { buildRunMenu } from "./runMenu";
 import { TerminalService } from "./terminalService";
@@ -1046,6 +1052,21 @@ describe("Run Code for compiled languages (Milestone 22.5)", () => {
     expect(lines[lines.length - 1]).toBe("Build failed. (0.31s)");
     expect(lines.some((line) => line.startsWith("Process exited"))).toBe(false);
     expect(r.service.getState().lastRun).toMatchObject({ path: "C:/p/hello.c", code: 1 });
+  });
+
+  it("compiler output can become Problems entries", () => {
+    expect(parseBuildProblem("hello.f90:7:14: Error: Symbol 'x' has no IMPLICIT type")).toMatchObject({
+      severity: "error",
+      source: "compiler",
+      line: 7,
+      column: 14,
+      message: "Symbol 'x' has no IMPLICIT type",
+    });
+    expect(parseBuildProblem("program.pas(3,5) Warning: Variable \"i\" does not seem to be initialized")).toMatchObject({
+      severity: "warning",
+      line: 3,
+      column: 5,
+    });
   });
 
   it("a C, C++, Java or Rust file that reads the keyboard is offered the terminal first", async () => {

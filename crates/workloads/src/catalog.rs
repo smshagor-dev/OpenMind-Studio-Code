@@ -227,6 +227,8 @@ pub const COMPONENTS: &[Component] = &[
     rt("cmake", "CMake", Tool, Some("cmake"), &[]),
     rt("ninja", "Ninja", Tool, Some("ninja"), &[]),
     rt("llvm-mingw", "C/C++ toolchain (LLVM-MinGW)", Sdk, Some("clang"), &[]),
+    rt("fortran", "Fortran compiler (gfortran)", Sdk, Some("gfortran"), &[]),
+    rt("pascal", "Free Pascal compiler", Sdk, Some("fpc"), &[]),
     rt("kubectl", "kubectl", Tool, Some("kubectl"), &[]),
     rt("helm", "Helm", Tool, Some("helm"), &[]),
     rt("terraform", "Terraform", Tool, Some("terraform"), &[]),
@@ -258,6 +260,8 @@ pub const COMPONENTS: &[Component] = &[
     lsp("lsp-dockerfile", "Dockerfile language server", "dockerfile"),
     lsp("lsp-rust-analyzer", "rust-analyzer", "rust"),
     lsp("lsp-clangd", "clangd", "clangd"),
+    c("lsp-fortls", "fortls (Fortran language server)", LanguageServer, Provision::LspOnRequest { server: "fortran" }, Some("fortls"),
+      "Installed with Python/pip when you click Install in Language Tools.", &["python"]),
     c("lsp-intelephense", "Intelephense (PHP language server)", LanguageServer, Provision::LspOnRequest { server: "php" }, Some("intelephense"),
       "Its licence doesn't allow bundling: installed from npm when you click Install in Language Tools.", &["node"]),
     // Added to a project by its package manager.
@@ -548,8 +552,8 @@ pub const WORKLOADS: &[Workload] = &[
         frameworks: &["flutter-app", "dart-package", "android-project", "react-native", "expo", "ionic", "capacitor"],
     },
     Workload {
-        id: "systems", name: "Systems development", summary: "Go, a C/C++ toolchain (LLVM-MinGW with LLDB), CMake, Ninja, clangd and rust-analyzer. Rust itself installs with rustup.",
-        components: &["go", "gopls", "llvm-mingw", "lldb", "cmake", "ninja", "lsp-clangd", "lsp-rust-analyzer", "rustup", "cargo", "gdb", "msvc"],
+        id: "systems", name: "Systems development", summary: "Go, C/C++, Fortran, Pascal, CMake, Ninja, clangd, fortls and rust-analyzer. Rust itself installs with rustup.",
+        components: &["go", "gopls", "llvm-mingw", "lldb", "fortran", "pascal", "cmake", "ninja", "lsp-clangd", "lsp-fortls", "lsp-rust-analyzer", "rustup", "cargo", "gdb", "msvc"],
         frameworks: &["cargo-project", "go-module", "cmake-project", "makefile-project"],
     },
     Workload {
@@ -569,7 +573,7 @@ pub const WORKLOADS: &[Workload] = &[
     },
     Workload {
         id: "full-offline", name: "Full offline toolkit", summary: "Every runtime and SDK OpenMind can install, the offline language servers, the debuggers and the offline cache. Several GB: deselect the heavy SDKs you don't need.",
-        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
+        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
         frameworks: &[],
     },
 ];

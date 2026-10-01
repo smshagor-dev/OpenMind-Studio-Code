@@ -34,6 +34,8 @@ fn compilers(kind: RunnableKind) -> &'static [&'static str] {
         RunnableKind::Cpp => &["clang++", "g++"],
         RunnableKind::Java => &["javac"],
         RunnableKind::Rust => &["rustc"],
+        RunnableKind::Fortran => &["gfortran"],
+        RunnableKind::Pascal => &["fpc64", "fpc"],
         _ => &[],
     }
 }
@@ -50,6 +52,12 @@ pub fn missing_compiler(kind: RunnableKind) -> String {
             "No Java compiler (javac) found. Install the Java JDK from the Runtime Manager.".into()
         }
         RunnableKind::Rust => "rustc was not found. Rust is managed outside OpenMind Studio: install it with rustup (https://rustup.rs), then restart OpenMind Studio.".into(),
+        RunnableKind::Fortran => {
+            "No Fortran compiler (gfortran) found. Install Fortran from the Runtime Manager.".into()
+        }
+        RunnableKind::Pascal => {
+            "No Pascal compiler (fpc64 or fpc) found. Install Pascal from the Runtime Manager.".into()
+        }
         _ => format!("{} has no compiler.", kind.display_name()),
     }
 }
@@ -250,6 +258,25 @@ pub(crate) fn plan_compiled(
                 java,
             )
         }
+        RunnableKind::Pascal => {
+            let output = build_dir.join(executable_name(&stem));
+            let output_text = output.to_string_lossy().into_owned();
+            let exe = executable_name(&stem);
+            (
+                vec![
+                    compiler_path,
+                    "-FE".into(),
+                    dir,
+                    "-o".into(),
+                    output_text.clone(),
+                    source,
+                ],
+                vec![compiler_name, file_name, "-o".into(), exe.clone()],
+                vec![output_text],
+                vec![exe],
+                output,
+            )
+        }
         _ => {
             let output = build_dir.join(executable_name(&stem));
             let output_text = output.to_string_lossy().into_owned();
@@ -343,6 +370,8 @@ mod tests {
         assert!(missing_compiler(RunnableKind::C).contains("(clang or gcc)"));
         assert!(missing_compiler(RunnableKind::Cpp).contains("C++ compiler found (clang++ or g++)"));
         assert!(missing_compiler(RunnableKind::Java).contains("JDK"));
+        assert!(missing_compiler(RunnableKind::Fortran).contains("gfortran"));
+        assert!(missing_compiler(RunnableKind::Pascal).contains("fpc64"));
         let rust = missing_compiler(RunnableKind::Rust);
         assert!(rust.contains("rustup") && rust.contains("outside OpenMind"));
     }

@@ -22,7 +22,9 @@ pub mod uri;
 
 pub use error::LspError;
 pub use language::language_id;
-pub use manager::{LogLevel, LspEvents, LspManager, RuntimeStatus, ServerState, StartContext};
+pub use manager::{
+    LogLevel, LspEvents, LspManager, PythonExecutable, RuntimeStatus, ServerState, StartContext,
+};
 pub use node::{resolve_lsp_node, resolve_node, NodeExecutable, NodeSource};
 pub use protocol::{Capabilities, Diagnostic, PublishedDiagnostics};
 pub use registry::{

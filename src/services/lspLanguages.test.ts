@@ -10,6 +10,7 @@ describe("lspLanguageId", () => {
     expect(lspLanguageId("src/main.rs")).toBe("rust");
     expect(lspLanguageId("inc/util.h")).toBe("c");
     expect(lspLanguageId("src/app.hpp")).toBe("cpp");
+    expect(lspLanguageId("src/solver.F90")).toBe("fortran");
     expect(lspLanguageId("notes.txt")).toBeNull();
     expect(lspLanguageId("README")).toBeNull();
   });
@@ -24,7 +25,7 @@ describe("lspLanguageId", () => {
   it("registers providers under Monaco's own language ids", () => {
     expect(monacoLanguageFor("shellscript")).toBe("shell");
     expect(monacoLanguageFor("typescriptreact")).toBe("typescript");
-    for (const id of ["yaml", "shell", "dockerfile", "rust", "c", "cpp"]) {
+    for (const id of ["yaml", "shell", "dockerfile", "rust", "c", "cpp", "fortran"]) {
       expect(LSP_MONACO_LANGUAGES).toContain(id);
     }
   });

@@ -21,6 +21,7 @@ pub fn builtin_server(tool_id: &str) -> Option<&'static str> {
         "docker-langserver" => Some("dockerfile"),
         "rust-analyzer" => Some("rust"),
         "clangd" => Some("clangd"),
+        "fortls" => Some("fortran"),
         _ => None,
     }
 }
@@ -110,6 +111,7 @@ mod tests {
                 "clangd",
                 "css",
                 "dockerfile",
+                "fortran",
                 "html",
                 "json",
                 "php",

@@ -71,6 +71,7 @@ fn the_typescript_server_installs_starts_and_answers() {
         app_root: app_root.clone(),
         workspace: workspace.clone(),
         node: Some(node),
+        python: None,
         path_prepend: vec![],
         vars: vec![],
     };
@@ -186,6 +187,7 @@ fn diagnoses(server_id: &str, file_name: &str, source: &str, expect: &str, hover
         app_root,
         workspace,
         node: Some(node),
+        python: None,
         path_prepend: vec![],
         vars: vec![],
     };
