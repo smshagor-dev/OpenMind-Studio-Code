@@ -9,6 +9,11 @@
 }
 
 .workbench__body {
+  --activity-bar-width: 48px;
+  --primary-sidebar-min-width: 170px;
+  --secondary-sidebar-min-width: 220px;
+  --compact-editor-min-width: 360px;
+  --workbench-inline-chrome: 24px;
   gap: 4px;
   padding: 0 4px 4px;
 }
@@ -148,6 +153,23 @@
 
 .sidebar {
   background-color: var(--sidebar-bg);
+  max-width: max(
+    var(--primary-sidebar-min-width),
+    calc(
+      100vw - var(--activity-bar-width) - var(--compact-editor-min-width) -
+        var(--workbench-inline-chrome)
+    )
+  );
+}
+
+.workbench__body--secondary-visible .sidebar {
+  max-width: max(
+    var(--primary-sidebar-min-width),
+    calc(
+      100vw - var(--activity-bar-width) - var(--secondary-sidebar-min-width) -
+        var(--compact-editor-min-width) - var(--workbench-inline-chrome)
+    )
+  );
 }
 
 .sidebar__title-label {
@@ -406,6 +428,13 @@
   display: flex;
   flex-direction: column;
   min-width: 220px;
+  max-width: max(
+    var(--secondary-sidebar-min-width),
+    calc(
+      100vw - var(--activity-bar-width) - var(--primary-sidebar-min-width) -
+        var(--compact-editor-min-width) - var(--workbench-inline-chrome)
+    )
+  );
   min-height: 0;
   border: 1px solid var(--card-border);
   border-radius: var(--card-radius);

@@ -115,7 +115,60 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
     assert_eq!(ids("node"), ["npm", "npx"]);
     assert_eq!(ids("git"), ["git"]);
     assert_eq!(ids("php"), ["cli", "server", "ini"]);
+    assert_eq!(ids("fortran"), ["gfortran", "gcc-toolchain", "make"]);
+    assert_eq!(ids("pascal"), ["compiler", "win64-target", "rtl-units"]);
     assert_eq!(ids("composer"), ["phar"]);
+}
+
+#[test]
+fn fortran_and_pascal_are_portable_windows_compilers() {
+    let registry = RuntimeRegistry::builtin();
+
+    let fortran = registry.get("fortran").expect("fortran");
+    let artifact = fortran
+        .artifact(&fortran.default_version, "windows-x64")
+        .expect("windows artifact");
+    assert_eq!(fortran.bin_dirs, ["bin"]);
+    assert!(
+        artifact.url.contains("w64devkit-fortran"),
+        "{}",
+        artifact.url
+    );
+    assert_eq!(
+        artifact.archive,
+        openmind_runtime_manager::manifest::ArchiveKind::Zip
+    );
+    assert_eq!(artifact.strip_components, 1);
+    for file in [
+        "bin/gfortran.exe",
+        "bin/gcc.exe",
+        "bin/ld.exe",
+        "bin/as.exe",
+    ] {
+        assert!(fortran.verify_files.iter().any(|f| f == file), "{file}");
+    }
+
+    let pascal = registry.get("pascal").expect("pascal");
+    let artifact = pascal
+        .artifact(&pascal.default_version, "windows-x64")
+        .expect("windows artifact");
+    assert_eq!(pascal.bin_dirs, ["bin/i386-win32"]);
+    assert!(
+        artifact
+            .url
+            .starts_with("https://downloads.freepascal.org/fpc/snapshot/"),
+        "{}",
+        artifact.url
+    );
+    assert_eq!(
+        artifact.archive,
+        openmind_runtime_manager::manifest::ArchiveKind::Zip
+    );
+    assert!(pascal
+        .verify_files
+        .iter()
+        .any(|f| f == "bin/i386-win32/ppcrossx64.exe"));
+    assert_eq!(pascal.shims[0].name, "fpc64");
 }
 
 #[test]

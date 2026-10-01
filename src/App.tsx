@@ -130,11 +130,13 @@ export function App() {
         onMenuOpen={refreshRecents}
       />
       <div
-        className={
-          layout.sidebarPosition === "right"
-            ? "workbench__body workbench__body--sidebar-right"
-            : "workbench__body"
-        }
+        className={[
+          "workbench__body",
+          layout.sidebarPosition === "right" ? "workbench__body--sidebar-right" : "",
+          secondary.visible ? "workbench__body--secondary-visible" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         <div className="workbench__side">
           <ActivityBar sidebarVisible={layout.sidebarVisible} />

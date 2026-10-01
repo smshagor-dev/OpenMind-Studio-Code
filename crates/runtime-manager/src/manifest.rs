@@ -5,11 +5,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 28] = [
+const BUILTIN: [&str; 30] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
     include_str!("../manifests/php.json"),
+    include_str!("../manifests/fortran.json"),
+    include_str!("../manifests/pascal.json"),
     include_str!("../manifests/composer.json"),
     include_str!("../manifests/mariadb.json"),
     include_str!("../manifests/phpmyadmin.json"),

@@ -4,10 +4,12 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  min-width: 0;
   height: 30px;
   background-color: var(--titlebar-bg);
   color: var(--titlebar-fg);
   font-size: 13px;
+  overflow: hidden;
 }
 
 .titlebar__icon {
@@ -28,7 +30,9 @@
   display: flex;
   align-items: stretch;
   height: 100%;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .menubar__item {
@@ -79,11 +83,13 @@
 
 .titlebar__layout-controls {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   padding: 0 4px;
 }
 
 .titlebar__action {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -105,6 +111,7 @@
 }
 
 .window-controls {
+  flex: 0 0 auto;
   display: flex;
   align-self: stretch;
 }
@@ -130,8 +137,18 @@
 }
 
 /* Like VS Code, the command center gives way first when the window gets narrow. */
-@media (max-width: 860px) {
+@media (max-width: 1100px) {
   .command-center {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .titlebar__nav {
+    display: none;
+  }
+
+  .menubar__item {
+    padding-inline: 6px;
   }
 }

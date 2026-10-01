@@ -1,0 +1,64 @@
+{
+  "id": "fortran",
+  "displayName": "Fortran (GFortran)",
+  "description": "GNU Fortran compiler with a portable MinGW-w64 toolchain from w64devkit.",
+  "defaultVersion": "13.1.0",
+  "versionCommand": {
+    "executable": "bin/gfortran.exe",
+    "args": [
+      "-dumpfullversion"
+    ],
+    "outputPrefix": ""
+  },
+  "binDirs": [
+    "bin"
+  ],
+  "verifyFiles": [
+    "bin/gfortran.exe",
+    "bin/gcc.exe",
+    "bin/ld.exe",
+    "bin/as.exe"
+  ],
+  "features": [
+    {
+      "id": "gfortran",
+      "label": "GNU Fortran compiler",
+      "verifyFile": "bin/gfortran.exe",
+      "missingNote": "gfortran.exe isn't in this install. Use Repair to reinstall it."
+    },
+    {
+      "id": "gcc-toolchain",
+      "label": "GCC, assembler and linker",
+      "verifyFile": "bin/as.exe",
+      "missingNote": "The assembler/linker tools are missing. Use Repair to reinstall the toolchain."
+    },
+    {
+      "id": "make",
+      "label": "GNU Make",
+      "verifyFile": "bin/mingw32-make.exe",
+      "missingNote": "GNU Make isn't in this install."
+    }
+  ],
+  "license": {
+    "name": "Unlicense build scripts; bundled GNU/GCC/MinGW-w64 component licences",
+    "url": "https://github.com/skeeto/w64devkit",
+    "acceptanceRequired": false
+  },
+  "notes": "w64devkit fortran ZIP: portable MinGW-w64 GCC 13.1.0 with gfortran, gcc, binutils, GDB and GNU Make. OpenMind Studio adds this install's bin folder to launched processes only; the system PATH is not changed.",
+  "versions": [
+    {
+      "version": "13.1.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/skeeto/w64devkit/releases/download/v1.19.0/w64devkit-fortran-1.19.0.zip",
+          "installBytes": 364450201,
+          "sha256": "2cef625a7a5a85877533b4059c648344aca295bd100b79ce3c80fb2c2ad2d5f5",
+          "sizeBytes": 92783519,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "id": "pascal",
+  "displayName": "Pascal (Free Pascal)",
+  "description": "Free Pascal compiler snapshot for Windows x64 targets.",
+  "defaultVersion": "3.2.3",
+  "versionCommand": {
+    "executable": "bin/i386-win32/ppcrossx64.exe",
+    "args": [
+      "-iV"
+    ],
+    "outputPrefix": ""
+  },
+  "binDirs": [
+    "bin/i386-win32"
+  ],
+  "verifyFiles": [
+    "bin/i386-win32/ppcrossx64.exe",
+    "units/x86_64-win64/rtl/system.ppu",
+    "units/x86_64-win64/rtl/sysutils.ppu"
+  ],
+  "shims": [
+    {
+      "name": "fpc64",
+      "target": "bin/i386-win32/ppcrossx64.exe"
+    }
+  ],
+  "features": [
+    {
+      "id": "compiler",
+      "label": "Free Pascal compiler",
+      "verifyFile": "bin/i386-win32/ppcrossx64.exe",
+      "missingNote": "The Free Pascal compiler isn't in this install. Use Repair to reinstall it."
+    },
+    {
+      "id": "win64-target",
+      "label": "Windows x64 target",
+      "verifyFile": "units/x86_64-win64/rtl/system.ppu",
+      "missingNote": "The Windows x64 RTL units are missing. Use Repair to reinstall this compiler."
+    },
+    {
+      "id": "rtl-units",
+      "label": "Runtime library units",
+      "verifyFile": "units/x86_64-win64/rtl/sysutils.ppu",
+      "missingNote": "The Free Pascal runtime library units are missing."
+    }
+  ],
+  "license": {
+    "name": "GNU GPL and modified LGPL runtime library license",
+    "url": "https://www.freepascal.org/faq.var#general-license",
+    "acceptanceRequired": false
+  },
+  "notes": "Free Pascal fixes_3_2 Windows x64 snapshot ZIP from downloads.freepascal.org. The stable 3.2.2 Windows x64 page does not ship a native x64 compiler package, so this uses the official single-ZIP snapshot that can be extracted portably. The command `fpc64` is a small OpenMind shim over ppcrossx64.exe.",
+  "versions": [
+    {
+      "version": "3.2.3",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://downloads.freepascal.org/fpc/snapshot/fixes_3_2/x86_64-win64/fpc-3.2.3.x86_64-win64.zip",
+          "installBytes": 393077606,
+          "sha256": "626efd03212d2648e38cda377f76ec98ce936957cb514a7c1db851453d428362",
+          "sizeBytes": 72326864,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

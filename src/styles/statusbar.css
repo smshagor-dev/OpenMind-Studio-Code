@@ -5,6 +5,7 @@
   display: flex;
   align-items: stretch;
   justify-content: space-between;
+  min-width: 0;
   padding: 0 5px;
   background-color: var(--statusbar-bg);
   color: var(--statusbar-fg);
@@ -23,15 +24,28 @@
   min-width: 0;
 }
 
+.statusbar__left {
+  flex: 1 1 0;
+}
+
+.statusbar__right {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  max-width: 70%;
+}
+
 .statusbar__item {
   display: flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
   padding: 0 5px;
   border: none;
   background: transparent;
   color: inherit;
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: default;
 }
@@ -64,4 +78,18 @@ button.statusbar__item:hover {
 .statusbar__left,
 .statusbar__right {
   overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+  .statusbar {
+    padding-inline: 3px;
+  }
+
+  .statusbar__right {
+    max-width: 58%;
+  }
+
+  .statusbar__item {
+    padding-inline: 4px;
+  }
 }
