@@ -52,7 +52,8 @@ export async function installAllMissing(lsp: {
 }): Promise<{ installed: string[]; failed: string[] }> {
   const installed: string[] = [];
   const failed: string[] = [];
-  for (const server of installableServers(lsp.servers(), lsp.isInstalling)) {
+  // Called on the service (never detached): its methods use `this`.
+  for (const server of installableServers(lsp.servers(), (id) => lsp.isInstalling(id))) {
     if (await lsp.install(server.id)) installed.push(server.name);
     else failed.push(server.name);
   }

@@ -168,6 +168,30 @@ describe("Install all missing", () => {
     expect(order).toEqual(["fortran", "php"]);
     expect(result).toEqual({ installed: ["Intelephense"], failed: ["fortls"] });
   });
+
+  it("works with a real service object whose methods use `this` (found by a physical install)", async () => {
+    class Service {
+      private readonly installing = new Set<string>();
+      readonly done: string[] = [];
+      servers() {
+        return all;
+      }
+      isInstalling(id: string) {
+        return this.installing.has(id);
+      }
+      async install(id: string) {
+        this.installing.add(id);
+        await Promise.resolve();
+        this.installing.delete(id);
+        this.done.push(id);
+        return true;
+      }
+    }
+    const service = new Service();
+    const result = await installAllMissing(service);
+    expect(service.done).toEqual(["fortran", "php"]);
+    expect(result.failed).toEqual([]);
+  });
 });
 
 describe("the editor's install card", () => {
