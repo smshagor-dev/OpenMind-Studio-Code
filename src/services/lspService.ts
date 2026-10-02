@@ -353,6 +353,23 @@ export class LspService {
     }
   }
 
+  /**
+   * Something the servers need was just installed (a runtime, Node.js, Python): reads the status again and tells every
+   * open file that has no working server about it once more, so its server starts now instead of after a restart.
+   * Files whose server is already running are left alone.
+   */
+  async retryUnready(): Promise<void> {
+    await this.refresh();
+    for (const id of this.documents.fileBackedIds()) {
+      if (this.isCandidate(id) === null) continue;
+      const outcome = this.outcomes.get(id);
+      if (outcome?.state === "ready") continue;
+      if (outcome?.state === "failed") this.reported.delete(outcome.server);
+      if (!this.watchers.has(id)) this.track(id);
+      else await this.syncNow(id);
+    }
+  }
+
   // --- Actions the user takes ---
 
   async stopAll(): Promise<void> {

@@ -100,7 +100,7 @@ import { i18n, t } from "../i18n";
 import { tauriBrokerIpc } from "./network/brokerIpc";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
-import { wireLanguageTools } from "./languageTools/languageToolsWiring";
+import { refreshAfterInstalls, wireLanguageTools } from "./languageTools/languageToolsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
 import { tauriDepsIpc } from "./deps/depsIpc";
 import { wireDeps } from "./deps/depsWiring";
@@ -492,18 +492,17 @@ commands.register("view.toggleTheme", async () => {
   await theme.setMode(theme.getTheme() === "dark" ? "light" : "dark");
 });
 
+// As in VS Code: the Explorer asks for the name in the tree; nothing is created until one is given.
 commands.register("explorer.newFile", async () => {
-  const root = explorer.getSnapshot().rootPath;
-  if (root) {
-    await explorer.createFile(root);
-  }
+  if (!explorer.getSnapshot().rootPath) return;
+  await layout.showView("explorer");
+  events.emit("explorerCreate", { kind: "file" });
 });
 
 commands.register("explorer.newFolder", async () => {
-  const root = explorer.getSnapshot().rootPath;
-  if (root) {
-    await explorer.createFolder(root);
-  }
+  if (!explorer.getSnapshot().rootPath) return;
+  await layout.showView("explorer");
+  events.emit("explorerCreate", { kind: "folder" });
 });
 
 commands.register("explorer.refresh", async () => {
@@ -711,7 +710,7 @@ const network = wireNetwork({
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
 const workloads = wireWorkloads({ events, commands, runtime, lsp });
 /** Language tools: Missing / Install on the Runtime Manager cards and the editor's one-click install card. */
-const languageTools = wireLanguageTools({ events, lsp, runtime });
+const languageTools = wireLanguageTools({ events, lsp });
 languageTools.start();
 /** Python: Install Bundled Packages (the offline Python bundle, into the active portable Python). */
 registerPythonPackagesCommands({ commands, events, ipc: tauriIpcClient, editor });
@@ -835,6 +834,16 @@ const formatting = wireFormatting({
   settings,
   log: log("Formatting"),
 }).service;
+/** A runtime installed, removed or switched takes effect everywhere at once — no restart. */
+refreshAfterInstalls(runtime, [
+  () => lsp.retryUnready(),
+  () => language.support.refresh(),
+  () => dependencies.refresh(),
+  () => formatting.refreshStatus(),
+  () => {
+    extensions.retryAfterInstall();
+  },
+]);
 /** Extension API v2: terminals, tasks, documents, custom schemes, webview views, file events (Milestone 18). */
 const extensionApis = wireExtensionApis({
   extensions,

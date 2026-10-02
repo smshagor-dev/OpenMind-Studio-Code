@@ -320,6 +320,16 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     contributions.started(deps.workspacePath());
   }
 
+  /**
+   * A runtime was installed: when the host couldn't start for lack of Node.js, the extensions that run at start-up
+   * (`*`, `onStartupFinished`, `workspaceContains:`) are woken again now instead of at the next launch. A host that is
+   * running, stopped or crashed is left alone.
+   */
+  function retryAfterInstall(): void {
+    if (!startupFinished || host.status().state !== "unavailable") return;
+    contributions.started(deps.workspacePath());
+  }
+
   return {
     prompts,
     registry,
@@ -333,5 +343,6 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     webviews,
     start,
     finishStartup,
+    retryAfterInstall,
   };
 }

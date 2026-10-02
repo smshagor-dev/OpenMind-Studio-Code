@@ -150,6 +150,43 @@ describe("ExplorerService", () => {
     expect(created).toBe("C:/proj/Untitled 2");
   });
 
+  it("createNamed creates exactly the typed name, refuses a name already there, and ignores an empty one", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi.fn().mockImplementation((path: string) =>
+        Promise.resolve(path === "C:/proj" ? [entry("C:/proj/README.md", "README.md", false)] : []),
+      ),
+      fsCreateFile: vi.fn().mockResolvedValue("C:/proj/main.f90"),
+      fsCreateFolder: vi.fn().mockResolvedValue("C:/proj/lib"),
+    });
+    const errors: string[] = [];
+    events.on("appError", ({ message }) => errors.push(message));
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+
+    expect(await service.createNamed("C:/proj", "main.f90", "file")).toBe("C:/proj/main.f90");
+    expect(ipc.fsCreateFile).toHaveBeenCalledWith("C:/proj", "C:/proj", "main.f90");
+    expect(await service.createNamed("C:/proj", "lib", "folder")).toBe("C:/proj/lib");
+    expect(ipc.fsCreateFolder).toHaveBeenCalledWith("C:/proj", "C:/proj", "lib");
+
+    expect(await service.createNamed("C:/proj", "readme.md", "file")).toBeNull();
+    expect(errors[0]).toContain('"readme.md" already exists');
+    expect(await service.createNamed("C:/proj", "", "file")).toBeNull();
+    expect(ipc.fsCreateFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("prepareCreate opens a closed folder so its name box shows inside it", async () => {
+    const ipc = createFakeIpc({
+      fsReadDir: vi.fn().mockImplementation((path: string) =>
+        Promise.resolve(path === "C:/proj" ? [entry("C:/proj/src", "src", true)] : []),
+      ),
+    });
+    const service = new ExplorerService(new FileSystemService(ipc), ipc, events);
+    await service.setRoot("C:/proj", "proj");
+    await service.prepareCreate("C:/proj/src");
+    expect(service.getSnapshot().expandedPaths.has("C:/proj/src")).toBe(true);
+    expect(service.getSnapshot().childrenByPath.has("C:/proj/src")).toBe(true);
+  });
+
   it("rename, delete, move, and duplicate refresh the affected directories", async () => {
     const ipc = createFakeIpc({
       fsReadDir: vi.fn().mockResolvedValue([]),

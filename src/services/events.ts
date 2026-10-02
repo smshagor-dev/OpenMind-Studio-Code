@@ -50,6 +50,8 @@ export interface AppEvents extends Record<string, unknown> {
   appError: { message: string };
   /** UI-only requests raised by commands (menus/keybindings) that a component must fulfil. */
   showAbout: undefined;
+  /** New File / New Folder from a menu or the palette: the Explorer shows a name box in the tree. */
+  explorerCreate: { kind: "file" | "folder" };
   focusExplorer: undefined;
   /** Focus the Search view's input (Find in Files). */
   focusSearch: undefined;

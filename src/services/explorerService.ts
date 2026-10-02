@@ -165,6 +165,48 @@ export class ExplorerService {
   }
 
   /** Creates a uniquely-named file in `parentDir` and returns its path, for the caller to enter rename mode on. */
+  /** Before a new item is named in the tree: its folder's contents are loaded and the folder is open. */
+  async prepareCreate(parentDir: string): Promise<void> {
+    const { rootPath } = this.snapshot;
+    if (!rootPath) return;
+    if (parentDir !== rootPath && !this.snapshot.expandedPaths.has(parentDir)) {
+      await this.toggleExpand(parentDir);
+    } else if (!this.snapshot.childrenByPath.has(parentDir)) {
+      await this.loadChildren(parentDir);
+      this.emitChanged();
+    }
+  }
+
+  /**
+   * Creates a file or folder with the name the user typed (VS Code: nothing exists until a name is given). An existing
+   * name is refused with a message; the new entry's path, or `null`.
+   */
+  async createNamed(parentDir: string, name: string, kind: "file" | "folder"): Promise<string | null> {
+    const { rootPath } = this.snapshot;
+    if (!rootPath || name === "") return null;
+    const taken = (this.snapshot.childrenByPath.get(parentDir) ?? []).some(
+      (child) => this.snapshot.nodesByPath.get(child)?.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (taken) {
+      this.events.emit("appError", {
+        message: `A file or folder "${name}" already exists here. Choose a different name.`,
+      });
+      return null;
+    }
+    const created = await safely(
+      this.events,
+      () =>
+        kind === "file"
+          ? this.fs.createFile(rootPath, parentDir, name)
+          : this.fs.createFolder(rootPath, parentDir, name),
+      `create "${name}"`,
+      null,
+    );
+    if (created === null) return null;
+    await this.refresh(parentDir);
+    return created;
+  }
+
   async createFile(parentDir: string): Promise<string | null> {
     return this.createEntry(parentDir, "Untitled", (root, dir, name) =>
       this.fs.createFile(root, dir, name),

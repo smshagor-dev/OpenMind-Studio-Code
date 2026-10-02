@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
-import { visibleTreeRows } from "../services/explorerTree";
+import { visibleTreeRows, withDraft } from "../services/explorerTree";
 import { FileTypeIcon, FolderTypeIcon } from "./fileIcons";
 import { ChevronIcon } from "./icons";
 import { InlineNameInput } from "./InlineNameInput";
@@ -17,6 +17,10 @@ export interface FileTreeProps {
   activeDocPath: string | null;
   editingPath: string | null;
   editingInitialValue: string;
+  /** A new file/folder being named: a name box is drawn at the top of `parentDir`'s contents. */
+  creating?: { parentDir: string; kind: "file" | "folder" } | null;
+  onCommitCreate?: (name: string) => void;
+  onCancelCreate?: () => void;
   /** Bumped by the parent to move keyboard focus into the tree (e.g. Ctrl+Shift+E). */
   focusToken: number;
   onToggleExpand: (path: string) => void;
@@ -92,16 +96,55 @@ export function FileTree(props: FileTreeProps) {
         if (source) props.onMove(source, target);
       }}
     >
-      {rows.map(({ path, depth }) => (
-        <TreeRow
-          key={path}
-          path={path}
-          depth={depth}
-          dropTarget={dropTarget}
-          setDropTarget={setDropTarget}
-          {...props}
+      {withDraft(rows, rootPath, props.creating ?? null).map((row) =>
+        row.draft ? (
+          <DraftRow key="__new__" depth={row.depth} kind={row.draft} {...props} />
+        ) : (
+          <TreeRow
+            key={row.path}
+            path={row.path}
+            depth={row.depth}
+            dropTarget={dropTarget}
+            setDropTarget={setDropTarget}
+            {...props}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+/** The name box of a new file or folder (VS Code): Enter creates it, Escape or an empty name creates nothing. */
+function DraftRow(props: FileTreeProps & { depth: number; kind: "file" | "folder" }) {
+  const { depth, kind } = props;
+  return (
+    <div
+      className="tree-row tree-row--selected tree-row--draft"
+      style={{ paddingLeft: `${GUTTER + depth * INDENT}px` }}
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-selected={true}
+      aria-label={kind === "file" ? "New file name" : "New folder name"}
+    >
+      {Array.from({ length: depth }, (_, level) => (
+        <span
+          key={level}
+          className="tree-row__guide"
+          style={{ left: `${GUTTER + level * INDENT + INDENT}px` }}
+          aria-hidden="true"
         />
       ))}
+      <span className="tree-row__twistie">{kind === "folder" ? <ChevronIcon expanded={false} /> : null}</span>
+      {kind === "folder" ? <FolderTypeIcon name="" open={false} /> : <FileTypeIcon name="" />}
+      <InlineNameInput
+        initialValue=""
+        onCommit={(value) => {
+          props.onCommitCreate?.(value);
+        }}
+        onCancel={() => {
+          props.onCancelCreate?.();
+        }}
+      />
     </div>
   );
 }

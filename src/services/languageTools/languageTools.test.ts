@@ -9,7 +9,7 @@ import type { LspServerInfo, LspSnapshot, LspSyncOutcome, RuntimeStatus } from "
 import { LspService } from "../lspService";
 import { runtimeServers, serverLanguage, toolState } from "./languageToolsModel";
 import { LanguageToolsPromptService } from "./languageToolsPrompt";
-import { runtimeInstallFingerprint, wireLanguageTools } from "./languageToolsWiring";
+import { refreshAfterInstalls, runtimeInstallFingerprint } from "./languageToolsWiring";
 
 const F90 = "C:/My Work/shapes.f90";
 const F90_B = "C:/My Work/other.f90";
@@ -244,7 +244,7 @@ describe("the editor's install card", () => {
   });
 });
 
-describe("language tools wiring", () => {
+describe("after an install, no restart", () => {
   function runtimes(list: Partial<RuntimeStatus>[], loaded = true) {
     let state = { loaded, runtimes: list as RuntimeStatus[] };
     const listeners = new Set<() => void>();
@@ -261,18 +261,34 @@ describe("language tools wiring", () => {
     };
   }
 
-  it("reads the language tools' status again when a runtime is installed or removed", () => {
+  it("refreshes everything that depends on runtimes when one is installed, and nothing at start-up", async () => {
     const python = { id: "python", activeVersion: null, installed: [] };
     const runtime = runtimes([python]);
-    const lsp = { refresh: vi.fn().mockResolvedValue(undefined), subscribe: () => () => undefined } as unknown as Parameters<
-      typeof wireLanguageTools
-    >[0]["lsp"];
-    wireLanguageTools({ events: new EventBus<AppEvents>(), lsp, runtime });
+    const refreshers = [vi.fn(), vi.fn().mockRejectedValue(new Error("boom")), vi.fn()];
+    refreshAfterInstalls(runtime, refreshers);
     runtime.set([python]);
-    expect(lsp.refresh).not.toHaveBeenCalled();
+    await Promise.resolve();
+    for (const refresh of refreshers) expect(refresh).not.toHaveBeenCalled();
     const installedPython = { id: "python", activeVersion: "3.14.7", installed: [{ version: "3.14.7", healthy: true }] };
     runtime.set([installedPython] as Partial<RuntimeStatus>[]);
-    expect(lsp.refresh).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      // One failing refresher doesn't stop the others.
+      for (const refresh of refreshers) expect(refresh).toHaveBeenCalledTimes(1);
+    });
     expect(runtimeInstallFingerprint(runtime)).toBe("python:3.14.7:1");
+  });
+
+  it("starts the server of a file that had none once what it needed is installed", async () => {
+    const s = await session();
+    const id = await s.open(F90);
+    expect(s.lsp.fileStatus(id).outcome?.state).toBe("notInstalled");
+    // Installed outside this window's install button (the Runtime Manager, a workload, another window).
+    s.status.current = snapshot([server({ installed: true })]);
+    await s.lsp.retryUnready();
+    expect(s.lsp.fileStatus(id).outcome).toEqual({ state: "ready", server: "fortran" });
+    // A file whose server already runs isn't told again.
+    const calls = vi.mocked(s.ipc.lspSyncDocument).mock.calls.length;
+    await s.lsp.retryUnready();
+    expect(vi.mocked(s.ipc.lspSyncDocument).mock.calls.length).toBe(calls);
   });
 });

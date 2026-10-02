@@ -61,3 +61,21 @@ export function pathSegments(filePath: string, rootPath: string | null): PathSeg
   }
   return segments;
 }
+
+export type DisplayRow = { path: string; depth: number; draft?: undefined } | { path: null; depth: number; draft: "file" | "folder" };
+
+/** The visible rows plus, while a new item is being named, its name box first inside its folder. */
+export function withDraft(
+  rows: readonly { path: string; depth: number }[],
+  rootPath: string,
+  creating: { parentDir: string; kind: "file" | "folder" } | null,
+): DisplayRow[] {
+  const display: DisplayRow[] = rows.map((row) => ({ path: row.path, depth: row.depth }));
+  if (creating === null) return display;
+  const draft = (depth: number): DisplayRow => ({ path: null, depth, draft: creating.kind });
+  if (creating.parentDir === rootPath) return [draft(0), ...display];
+  const parent = rows.findIndex((row) => row.path === creating.parentDir);
+  if (parent < 0) return [draft(0), ...display];
+  const depth = (rows[parent]?.depth ?? 0) + 1;
+  return [...display.slice(0, parent + 1), draft(depth), ...display.slice(parent + 1)];
+}
