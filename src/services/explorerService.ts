@@ -177,18 +177,20 @@ export class ExplorerService {
     );
   }
 
-  async rename(parentDir: string, path: string, newName: string): Promise<void> {
+  /** Renames an entry; the new path, or `null` when it failed (the error is shown). */
+  async rename(parentDir: string, path: string, newName: string): Promise<string | null> {
     const { rootPath } = this.snapshot;
     if (!rootPath) {
-      return;
+      return null;
     }
-    await safely(
+    const renamed = await safely<string | null>(
       this.events,
       () => this.fs.rename(rootPath, path, newName),
       "rename that item",
-      undefined,
+      null,
     );
     await this.refresh(parentDir);
+    return renamed;
   }
 
   async deleteEntry(parentDir: string, path: string): Promise<void> {

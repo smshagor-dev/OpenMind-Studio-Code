@@ -36,12 +36,16 @@ export class EditorLayoutService {
   private paused = false;
   private scheduled = false;
   private unsubscribe: (() => void) | null = null;
+  /** A failed save was reported already (one message per session, not one per keystroke). */
+  private reportedFailure = false;
 
   constructor(
     private readonly ipc: IpcClient,
     private readonly groups: EditorGroupService,
     /** Resolves a document id to its file path (`null` for untitled buffers). */
     private readonly pathOf: (docId: string) => string | null,
+    /** Told when the layout can't be saved (a full disk, a locked database): the tabs wouldn't come back after a restart. */
+    private readonly onSaveFailed: (error: unknown) => void = () => undefined,
   ) {}
 
   /** Starts saving after every change to the groups. Safe to call more than once. */
@@ -80,7 +84,14 @@ export class EditorLayoutService {
   async save(): Promise<void> {
     if (this.paused) return;
     const payload = JSON.stringify({ version: LAYOUT_VERSION, ...this.serialize() });
-    await this.ipc.settingsSet(LAYOUT_KEY, payload).catch(() => undefined);
+    try {
+      await this.ipc.settingsSet(LAYOUT_KEY, payload);
+      this.reportedFailure = false;
+    } catch (error) {
+      if (this.reportedFailure) return;
+      this.reportedFailure = true;
+      this.onSaveFailed(error);
+    }
   }
 
   /** The saved layout, or `null` if there is none (first run, or unreadable). */

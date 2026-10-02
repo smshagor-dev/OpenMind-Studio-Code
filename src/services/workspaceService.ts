@@ -106,7 +106,16 @@ export class WorkspaceService {
     this.associations = deps.associations ?? new EditorAssociationService(ipc);
     this.previews = deps.previews ?? new PreviewEditorService(ipc);
     this.filePreviews = deps.filePreviews ?? new FilePreviewService(ipc);
-    this.layout = new EditorLayoutService(ipc, this.groups, (docId) => this.docPath(docId));
+    this.layout = new EditorLayoutService(
+      ipc,
+      this.groups,
+      (docId) => this.docPath(docId),
+      (error) => {
+        this.events.emit("appError", {
+          message: `Couldn't save the open editors, so they won't reopen after a restart: ${String(error)}`,
+        });
+      },
+    );
     this.unsubscribers.push(
       this.groups.subscribe(() => {
         this.recompute();

@@ -9,6 +9,8 @@ export interface PendingEdit {
   path: string;
   parentDir: string;
   initialValue: string;
+  /** Set for an entry the user just created: a new file opens in the editor once it is named (as in VS Code). */
+  created?: "file" | "folder";
 }
 
 export type PendingConfirm =
@@ -48,7 +50,7 @@ export function useExplorerInteractions(snapshot: ExplorerSnapshot) {
     if (created) {
       await container.explorer.revealPath(created);
       const initialValue = kind === "file" ? "Untitled" : "New Folder";
-      setPendingEdit({ path: created, parentDir, initialValue });
+      setPendingEdit({ path: created, parentDir, initialValue, created: kind });
     }
   }
 
@@ -65,8 +67,21 @@ export function useExplorerInteractions(snapshot: ExplorerSnapshot) {
   function commitEdit(node: ExplorerNode, newName: string) {
     const edit = pendingEdit;
     setPendingEdit(null);
-    if (!edit || newName === "" || newName === edit.initialValue) return;
-    void container.explorer.rename(edit.parentDir, node.path, newName);
+    if (!edit) return;
+    const opensFile = edit.created === "file";
+    if (newName === "" || newName === edit.initialValue) {
+      if (opensFile) void openCreated(node.path);
+      return;
+    }
+    void container.explorer.rename(edit.parentDir, node.path, newName).then((renamed) => {
+      if (opensFile && renamed !== null) void openCreated(renamed);
+    });
+  }
+
+  /** A new file opens as a kept (not provisional) tab, selected in the tree, like VS Code. */
+  async function openCreated(path: string) {
+    await container.workspace.openPath(path);
+    await container.explorer.revealPath(path);
   }
 
   const actions: ExplorerMenuActions = {
