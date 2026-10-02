@@ -27,6 +27,7 @@ export function PhpServerWindow() {
     void container.php.initialize();
     void container.mariaDb.initialize();
     void container.phpMyAdmin.initialize();
+    void container.mySql.initialize();
     void container.composer.initialize();
     void container.controlPanel.initialize();
     // The UI language follows the setting here too (the settings are re-read when this window gets focus).
@@ -40,6 +41,7 @@ export function PhpServerWindow() {
       void container.php.refreshPort();
       void container.mariaDb.refresh();
       void container.phpMyAdmin.refresh();
+      void container.mySql.refresh();
       void container.composer.refreshProject();
       void container.controlPanel.refreshConfigPaths();
     };
@@ -50,6 +52,7 @@ export function PhpServerWindow() {
       container.php.dispose();
       container.mariaDb.dispose();
       container.phpMyAdmin.dispose();
+      container.mySql.dispose();
       container.composer.dispose();
       container.controlPanel.dispose();
     };

@@ -7,6 +7,7 @@ import { EventBus } from "../services/eventBus";
 import type { AppEvents } from "../services/events";
 import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { MariaDbService } from "../services/mariaDbService";
+import { MySqlService } from "../services/mySqlService";
 import { OutputService } from "../services/outputService";
 import { PanelService } from "../services/panelService";
 import { registerPhpCommands } from "../services/phpCommands";
@@ -14,7 +15,7 @@ import { PhpMyAdminService } from "../services/phpMyAdminService";
 import { PhpServerService } from "../services/phpServerService";
 import { PortsService } from "../services/portsService";
 import { RuntimeService } from "../services/runtimeService";
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { createFakeIpc, STOPPED_MYSQL } from "../testUtils/fakeIpcClient";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
 
@@ -94,9 +95,20 @@ async function setup(
   await phpMyAdmin.initialize();
   const composer = new ComposerService(ipc, events, output, runtime, panel);
   await composer.initialize();
-  harness.current = { php, mariaDb, phpMyAdmin, composer, runtime, output, ipc };
-  return { ipc, php, mariaDb, output, events };
+  const mySql = new MySqlService(ipc, events, output, runtime);
+  await mySql.initialize();
+  harness.current = { php, mariaDb, phpMyAdmin, composer, mySql, runtime, output, ipc };
+  return { ipc, php, mariaDb, mySql, output, events };
 }
+
+const NOTHING_INSTALLED = {
+  ...STOPPED_MYSQL,
+  state: "notInstalled" as const,
+  missing: ["MariaDB", "phpMyAdmin"],
+  initialized: false,
+  mariadbVersion: null,
+  phpmyadminVersion: null,
+};
 
 describe("Database section", () => {
   beforeEach(() => {
@@ -113,48 +125,83 @@ describe("Database section", () => {
         configFile: "",
         hasPassword: false,
       }),
+      mysqlStatus: vi.fn().mockResolvedValue(NOTHING_INSTALLED),
     });
     render(<DatabaseSection />);
 
     expect(screen.getAllByText("Not installed")).toHaveLength(2); // status and version
-    const start = screen.getByRole("button", { name: "Start MariaDB" });
+    const start = screen.getByRole("button", { name: "Start MySQL" });
     expect(start).toBeDisabled();
-    expect(start).toHaveAttribute("title", "MariaDB runtime is not installed yet.");
-    expect(screen.getByRole("button", { name: "Stop MariaDB" })).toHaveAttribute(
+    expect(start).toHaveAttribute(
       "title",
-      expect.stringContaining("isn't running"),
+      "Not installed yet: MariaDB, phpMyAdmin. Install it with Config > Install.",
+    );
+    expect(screen.getByRole("button", { name: "Stop MySQL" })).toHaveAttribute(
+      "title",
+      "MySQL isn't running.",
     );
     expect(screen.getByRole("button", { name: "Reveal Password" })).toBeDisabled();
   });
 
-  it("installed and initialized: Start is enabled, the port is shown as free, paths can be copied", async () => {
+  it("installed: one MySQL Start, no separate Initialize / Start MariaDB, port and paths shown", async () => {
     await setup([status("php", [installed("8.4.26")]), status("mariadb", [installed("11.8.9")])]);
     render(<DatabaseSection />);
 
-    expect(screen.getByRole("button", { name: "Start MariaDB" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Initialize Database" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start MySQL" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Initialize Database" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start MariaDB" })).toBeNull();
+    expect(screen.getByText(/MariaDB starts and stops with MySQL/)).toBeInTheDocument();
     expect(await screen.findByText("Free")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("3307")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("3306")).toBeInTheDocument();
     expect(screen.getByText("C:/My Studio/data/mariadb")).toHaveAttribute(
       "title",
       "C:/My Studio/data/mariadb",
     );
   });
 
-  it("a busy port blocks Start and says so", async () => {
+  it("a busy default port is shown, and Start stays available (MySQL falls back to another port)", async () => {
     await setup([status("php", [installed("8.4.26")]), status("mariadb", [installed("11.8.9")])], {
       phpPortFree: vi.fn().mockResolvedValue(false),
     });
     render(<DatabaseSection />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Start MariaDB" })).toBeDisabled();
-    });
-    expect(screen.getByText(/Busy — another program is using it/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Start MariaDB" })).toHaveAttribute(
-      "title",
-      expect.stringContaining("Port 3307 is already in use"),
+    expect(await screen.findByText(/Busy — another program is using it/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start MySQL" })).toBeEnabled();
+  });
+
+  it("Start MySQL, Stop MySQL and Restart MySQL each call one backend command", async () => {
+    const running = {
+      ...STOPPED_MYSQL,
+      state: "running" as const,
+      mariadb: { run: { runId: "m", file: "", pid: 1 }, port: 3306, url: null, ready: true, version: null, phpVersion: null },
+      phpmyadmin: { run: { runId: "p", file: "", pid: 2 }, port: 8081, url: "http://127.0.0.1:8081", ready: true, version: null, phpVersion: null },
+    };
+    const { ipc } = await setup(
+      [status("php", [installed("8.4.26")]), status("mariadb", [installed("11.8.9")])],
+      {
+        mysqlStart: vi.fn().mockResolvedValue(running),
+        mysqlRestart: vi.fn().mockResolvedValue(running),
+        mysqlStop: vi.fn().mockResolvedValue(STOPPED_MYSQL),
+      },
     );
+    render(<DatabaseSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Start MySQL" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Stop MySQL" })).toBeEnabled();
+    });
+    expect(ipc.mysqlStart).toHaveBeenCalledTimes(1);
+    expect(ipc.mariadbInitialize).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Restart MySQL" }));
+    await waitFor(() => {
+      expect(ipc.mysqlRestart).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Stop MySQL" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Stop MySQL" }));
+    await waitFor(() => {
+      expect(ipc.mysqlStop).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("Reveal Password fetches it only on request, Hide hides it, Copy uses the clipboard", async () => {
@@ -202,16 +249,39 @@ describe("phpMyAdmin and Composer sections", () => {
     harness.current = null;
   });
 
-  it("phpMyAdmin: not installed → Start disabled with its reason, Open needs a running server", async () => {
-    await setup([status("php", [installed("8.4.26")])]);
+  it("phpMyAdmin: no Start/Stop of its own; Open phpMyAdmin says what is missing", async () => {
+    await setup([status("php", [installed("8.4.26")])], {
+      mysqlStatus: vi.fn().mockResolvedValue(NOTHING_INSTALLED),
+    });
     render(<PhpMyAdminSection />);
 
-    expect(screen.getByRole("button", { name: "Start phpMyAdmin" })).toHaveAttribute(
-      "title",
-      "phpMyAdmin is not installed yet.",
-    );
-    expect(screen.getByRole("button", { name: "Open phpMyAdmin" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Start phpMyAdmin" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop phpMyAdmin" })).toBeNull();
+    const open = screen.getByRole("button", { name: "Open phpMyAdmin" });
+    expect(open).toBeDisabled();
+    expect(open).toHaveAttribute("title", expect.stringContaining("Not installed yet"));
+    expect(screen.getByText(/phpMyAdmin starts and stops with MySQL/)).toBeInTheDocument();
     expect(screen.getByDisplayValue("8081")).toBeInTheDocument();
+  });
+
+  it("Open phpMyAdmin starts MySQL first when it is stopped, then opens its address", async () => {
+    const running = {
+      ...STOPPED_MYSQL,
+      state: "running" as const,
+      mariadb: { run: { runId: "m", file: "", pid: 1 }, port: 3306, url: null, ready: true, version: null, phpVersion: null },
+      phpmyadmin: { run: { runId: "p", file: "", pid: 2 }, port: 8082, url: "http://127.0.0.1:8082", ready: true, version: null, phpVersion: null },
+    };
+    const { ipc } = await setup(
+      [status("php", [installed("8.4.26")]), status("mariadb", [installed("11.8.9")]), status("phpmyadmin", [installed("5.2.3")])],
+      { mysqlStart: vi.fn().mockResolvedValue(running) },
+    );
+    render(<PhpMyAdminSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Open phpMyAdmin" }));
+    await waitFor(() => {
+      expect(ipc.openExternalUrl).toHaveBeenCalledWith("http://127.0.0.1:8082");
+    });
+    expect(ipc.mysqlStart).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/signs in by itself as root/)).toBeInTheDocument();
   });
 
   it("Composer: no composer.json → every action is disabled with that reason", async () => {

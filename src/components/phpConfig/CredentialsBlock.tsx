@@ -29,7 +29,7 @@ export function CredentialsBlock() {
         </div>
         <div className="pcfg-facts__row">
           <dt>{t("php.col.port")}</dt>
-          <dd>{state.port}</dd>
+          <dd>{container.mariaDb.connectionPort()}</dd>
         </div>
         <div className="pcfg-facts__row">
           <dt>{t("php.user")}</dt>

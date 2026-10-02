@@ -1,31 +1,40 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, ListeningPort, PanelModule } from "./ipc";
-import type { MariaDbService } from "./mariaDbService";
+import type { MySqlService } from "./mySqlService";
 import type { OutputService } from "./outputService";
-import type { PhpMyAdminService } from "./phpMyAdminService";
 import type { PhpServerService } from "./phpServerService";
 import type { Availability } from "./runtimeService";
 import { t } from "../i18n";
 
-export type ModuleId = PanelModule;
+/** The servers the table lists: PHP, and MySQL (MariaDB + phpMyAdmin started and stopped together). */
+export type ModuleId = "php" | "mysql";
 export type PanelPage = "main" | "config" | "netstat" | "help";
 
-/** The three modules, in the order the table lists them. */
-export const MODULE_IDS: readonly ModuleId[] = ["php", "mariadb", "phpmyadmin"];
+/** The two modules, in the order the table lists them. */
+export const MODULE_IDS: readonly ModuleId[] = ["php", "mysql"];
 
 export const MODULE_NAMES: Record<ModuleId, string> = {
-  php: "PHP Server",
-  mariadb: "MariaDB",
-  phpmyadmin: "phpMyAdmin",
+  php: "PHP",
+  mysql: "MySQL",
 };
+
+/** The config file each row's Config button opens (MySQL's is MariaDB's `my.ini`). */
+const CONFIG_MODULE: Record<ModuleId, PanelModule> = { php: "php", mysql: "mariadb" };
 
 /** Output channel → the tag the log shows (Composer has a channel but no row). */
 const CHANNEL_TAGS: Record<string, string> = {
-  "PHP Server": "PHP Server",
+  "PHP Server": "PHP",
+  MySQL: "MySQL",
   MariaDB: "MariaDB",
   phpMyAdmin: "phpMyAdmin",
   Composer: "Composer",
+};
+
+/** The log tags a row's Logs filter shows. */
+const MODULE_TAGS: Record<ModuleId, readonly string[]> = {
+  php: ["PHP"],
+  mysql: ["MySQL", "MariaDB", "phpMyAdmin"],
 };
 
 /** How many log lines the panel keeps. */
@@ -73,7 +82,7 @@ const INITIAL: ControlPanelState = {
   page: "main",
   filter: null,
   lines: [],
-  configPaths: { php: null, mariadb: null, phpmyadmin: null },
+  configPaths: { php: null, mysql: null },
   netstat: { rows: [], loading: false, error: null, loadedAt: null },
 };
 
@@ -117,8 +126,7 @@ export class ControlPanelService {
     private readonly events: EventBus<AppEvents>,
     private readonly output: OutputService,
     private readonly php: PhpServerService,
-    private readonly mariaDb: MariaDbService,
-    private readonly pma: PhpMyAdminService,
+    private readonly mysql: MySqlService,
     private readonly closeWindow: () => Promise<void>,
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -164,7 +172,7 @@ export class ControlPanelService {
       name: MODULE_NAMES[id],
       running,
       pid: server?.pid ?? null,
-      ports: server === null ? "" : String(server.port),
+      ports: server?.ports ?? "",
       status: this.statusOf(id),
       toggle: {
         label: running ? "Stop" : "Start",
@@ -175,52 +183,38 @@ export class ControlPanelService {
     };
   }
 
-  private info(id: ModuleId): { pid: number; port: number } | null {
+  /** The row's process and ports; MySQL counts as running while any part of it is up (so Stop can end it). */
+  private info(id: ModuleId): { pid: number; ports: string } | null {
     if (id === "php") {
       const server = this.php.getState().server;
-      return server === null ? null : { pid: server.pid, port: server.port };
+      return server === null ? null : { pid: server.pid, ports: String(server.port) };
     }
-    const info = id === "mariadb" ? this.mariaDb.getState().server : this.pma.getState().server;
-    return info === null ? null : { pid: info.run.pid, port: info.port };
+    const pid = this.mysql.pid();
+    return pid === null ? null : { pid, ports: this.mysql.ports() };
   }
 
   private statusOf(id: ModuleId): string {
-    if (id === "mariadb") {
-      const status = this.mariaDb.status();
-      if (status === "running") return "Running";
-      if (status === "starting") return "Starting…";
-      if (status === "error") return "Error";
-    }
+    if (id === "mysql") return this.mysql.label();
     return this.info(id) === null ? "Stopped" : "Running";
   }
 
   private startState(id: ModuleId): Availability {
-    if (id === "php") return this.php.startState();
-    return id === "mariadb" ? this.mariaDb.startState() : this.pma.startState();
+    return id === "php" ? this.php.startState() : this.mysql.startState();
   }
 
   private stopState(id: ModuleId): Availability {
-    if (id === "php") return this.php.stopState();
-    return id === "mariadb" ? this.mariaDb.stopState() : this.pma.stopState();
+    return id === "php" ? this.php.stopState() : this.mysql.stopState();
   }
 
   private adminState(id: ModuleId): Availability {
-    if (id === "php") return this.php.browserState();
-    const state = this.pma.openState();
-    return id === "mariadb" && !state.enabled
-      ? {
-          enabled: false,
-          reason: t("php.reason.mariadbAdmin"),
-        }
-      : state;
+    return id === "php" ? this.php.browserState() : this.mysql.adminState();
   }
 
   private configState(id: ModuleId): Availability {
     if (this.state.configPaths[id] !== null) return { enabled: true };
     const reasons: Record<ModuleId, string> = {
       php: t("php.reason.noPhpIni"),
-      mariadb: t("php.reason.mariadbConfig"),
-      phpmyadmin: t("php.reason.pmaConfig"),
+      mysql: t("php.reason.mariadbConfig"),
     };
     return { enabled: false, reason: reasons[id] };
   }
@@ -245,13 +239,13 @@ export class ControlPanelService {
 
   private runToggle(id: ModuleId, running: boolean): Promise<boolean> {
     if (id === "php") return running ? this.php.stop() : this.php.start();
-    if (id === "mariadb") return running ? this.mariaDb.stop() : this.mariaDb.start();
-    return running ? this.pma.stop() : this.pma.start();
+    return running ? this.mysql.stop() : this.mysql.start();
   }
 
+  /** PHP: open the site. MySQL: open phpMyAdmin (starting MySQL first when it is stopped). */
   async admin(id: ModuleId): Promise<boolean> {
     if (!this.adminState(id).enabled) return false;
-    return id === "php" ? this.php.openBrowser() : this.pma.open();
+    return id === "php" ? this.php.openBrowser() : this.mysql.openAdmin();
   }
 
   async config(id: ModuleId): Promise<boolean> {
@@ -297,7 +291,8 @@ export class ControlPanelService {
   async refreshConfigPaths(): Promise<void> {
     const entries = await Promise.all(
       MODULE_IDS.map(
-        async (id) => [id, await this.ipc.panelConfigPath(id).catch(() => null)] as const,
+        async (id) =>
+          [id, await this.ipc.panelConfigPath(CONFIG_MODULE[id]).catch(() => null)] as const,
       ),
     );
     this.update({
@@ -319,19 +314,21 @@ export class ControlPanelService {
     }
   }
 
-  /** Which of our modules owns this PID, for highlighting it in Netstat. */
+  /** Which of our modules owns this PID, for highlighting it in Netstat (MySQL's two processes are named). */
   ownerOf(pid: number): string | null {
-    const row = this.rows().find((entry) => entry.pid === pid);
-    return row?.name ?? null;
+    if (this.php.getState().server?.pid === pid) return MODULE_NAMES.php;
+    const status = this.mysql.getState().status;
+    if (status?.mariadb?.run.pid === pid) return "MySQL (MariaDB)";
+    if (status?.phpmyadmin?.run.pid === pid) return "MySQL (phpMyAdmin)";
+    return null;
   }
 
   /** The lines the log shows: all, or one module's (plus the panel's own notes never hide). */
   visibleLines(): readonly PanelLogLine[] {
     const filter = this.state.filter;
     if (filter === null) return this.state.lines;
-    return this.state.lines.filter(
-      (line) => line.tag === MODULE_NAMES[filter] || line.tag === "main",
-    );
+    const tags = MODULE_TAGS[filter];
+    return this.state.lines.filter((line) => tags.includes(line.tag) || line.tag === "main");
   }
 
   // --- Internals ---

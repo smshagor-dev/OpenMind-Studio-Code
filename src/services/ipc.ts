@@ -673,6 +673,12 @@ export interface IpcClient
   pmaStatus: () => Promise<ServiceInfo | null>;
   onPmaEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
   onPmaChanged: (handler: () => void) => Promise<() => void>;
+  /** MySQL: MariaDB + phpMyAdmin started, checked and stopped together. */
+  mysqlStatus: () => Promise<MySqlStatus>;
+  mysqlStart: () => Promise<MySqlStatus>;
+  mysqlStop: () => Promise<MySqlStatus>;
+  mysqlRestart: () => Promise<MySqlStatus>;
+  onMysqlChanged: (handler: () => void) => Promise<() => void>;
   phpProjectInfo: (root: string) => Promise<ProjectInfo>;
   composerRun: (action: ComposerAction, root: string) => Promise<RunInfo>;
   composerStop: () => Promise<void>;
@@ -1018,6 +1024,24 @@ export interface MariaDbStatus {
   logDir: string;
   configFile: string;
   hasPassword: boolean;
+}
+
+export type MySqlState =
+  "notInstalled" | "initializing" | "starting" | "running" | "stopping" | "stopped" | "error";
+
+/** The MySQL service (MariaDB + phpMyAdmin) as one status (mirrors `commands::mysql::MySqlStatus`). */
+export interface MySqlStatus {
+  state: MySqlState;
+  /** What isn't installed yet: "MariaDB", "phpMyAdmin", "PHP". */
+  missing: string[];
+  initialized: boolean;
+  error: string | null;
+  mariadb: ServiceInfo | null;
+  phpmyadmin: ServiceInfo | null;
+  mariadbVersion: string | null;
+  phpmyadminVersion: string | null;
+  /** phpMyAdmin signs in by itself (root / root); otherwise it shows its login page. */
+  autoLogin: boolean;
 }
 
 export interface DbCredentials {
@@ -1399,6 +1423,14 @@ export const tauriIpcClient: IpcClient = {
     }),
   onPmaChanged: (handler) =>
     listen("pma:changed", () => {
+      handler();
+    }),
+  mysqlStatus: () => invoke<MySqlStatus>("mysql_status"),
+  mysqlStart: () => invoke<MySqlStatus>("mysql_start"),
+  mysqlStop: () => invoke<MySqlStatus>("mysql_stop"),
+  mysqlRestart: () => invoke<MySqlStatus>("mysql_restart"),
+  onMysqlChanged: (handler) =>
+    listen("mysql:changed", () => {
       handler();
     }),
   phpProjectInfo: (root) => invoke<ProjectInfo>("php_project_info", { root }),

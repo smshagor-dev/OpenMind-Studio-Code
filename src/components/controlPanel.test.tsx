@@ -6,6 +6,7 @@ import { EventBus } from "../services/eventBus";
 import type { AppEvents } from "../services/events";
 import type { RuntimeStatus } from "../services/ipc";
 import { MariaDbService } from "../services/mariaDbService";
+import { MySqlService } from "../services/mySqlService";
 import { OutputService } from "../services/outputService";
 import { PanelService } from "../services/panelService";
 import { PhpMyAdminService } from "../services/phpMyAdminService";
@@ -13,7 +14,7 @@ import { PhpServerService } from "../services/phpServerService";
 import { PortsService } from "../services/portsService";
 import { RuntimeService } from "../services/runtimeService";
 import { PhpRuntimeService } from "../services/phpRuntimeService";
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { createFakeIpc, STOPPED_MYSQL } from "../testUtils/fakeIpcClient";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
 
@@ -62,12 +63,14 @@ async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
   await php.initialize();
   const mariaDb = new MariaDbService(ipc, events, output, runtime, ports, panel);
   const pma = new PhpMyAdminService(ipc, events, output, runtime, ports, panel, php, mariaDb);
-  const controlPanel = new ControlPanelService(ipc, events, output, php, mariaDb, pma, () =>
+  const mySql = new MySqlService(ipc, events, output, runtime);
+  await mySql.initialize();
+  const controlPanel = new ControlPanelService(ipc, events, output, php, mySql, () =>
     Promise.resolve(),
   );
   await controlPanel.initialize();
   const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma });
-  harness.current = { controlPanel, php, mariaDb, phpMyAdmin: pma, runtime, phpRuntime };
+  harness.current = { controlPanel, php, mariaDb, phpMyAdmin: pma, mySql, runtime, phpRuntime };
   return { controlPanel, output };
 }
 
@@ -76,16 +79,23 @@ describe("ControlPanel", () => {
     harness.current = null;
   });
 
-  it("shows one row per module with Start, Admin, Config and Logs, and the side buttons", async () => {
+  it("lists exactly two servers, PHP and MySQL — no separate MariaDB or phpMyAdmin rows", async () => {
     await setup();
     render(<ControlPanel />);
 
-    for (const name of ["PHP Server", "MariaDB", "phpMyAdmin"]) {
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual(["PHP", "MySQL"]);
+    for (const name of ["PHP", "MySQL"]) {
       const row = within(screen.getByRole("row", { name }));
       expect(row.getByRole("button", { name: `Start ${name}` })).toBeInTheDocument();
-      expect(row.getByRole("button", { name: `Admin ${name}` })).toBeDisabled();
       expect(row.getByRole("button", { name: `Logs ${name}` })).toBeEnabled();
     }
+    expect(screen.getByRole("button", { name: "Admin PHP" })).toBeDisabled();
+    // With everything installed, Open phpMyAdmin is available (it starts MySQL first).
+    expect(screen.getByRole("button", { name: "Open phpMyAdmin" })).toBeEnabled();
+    expect(screen.queryByRole("row", { name: "MariaDB" })).toBeNull();
+    expect(screen.queryByRole("row", { name: "phpMyAdmin" })).toBeNull();
+    expect(screen.getByText(/MySQL: MariaDB 11\.8\.9 · phpMyAdmin 5\.2\.3/)).toBeInTheDocument();
     for (const label of ["Config", "Netstat", "Shell", "Explorer", "Help", "Quit"]) {
       expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
     }
@@ -105,36 +115,85 @@ describe("ControlPanel", () => {
     });
     render(<ControlPanel />);
 
-    const php = screen.getByRole("row", { name: "PHP Server" });
+    const php = screen.getByRole("row", { name: "PHP" });
     const name = within(php).getByRole("rowheader");
     expect(name).toHaveClass("cp__module--running");
     expect(name).toHaveAttribute("title", "Running");
     expect(php).toHaveTextContent("4242");
     expect(php).toHaveTextContent("8000");
-    expect(within(php).getByRole("button", { name: "Stop PHP Server" })).toBeEnabled();
-    const db = within(screen.getByRole("row", { name: "MariaDB" })).getByRole("rowheader");
+    expect(within(php).getByRole("button", { name: "Stop PHP" })).toBeEnabled();
+    const db = within(screen.getByRole("row", { name: "MySQL" })).getByRole("rowheader");
     expect(db).not.toHaveClass("cp__module--running");
     expect(db).toHaveAttribute("title", "Stopped");
   });
 
-  it("a disabled button explains itself in its tooltip", async () => {
-    await setup();
+  it("MySQL running shows MariaDB's PID, both ports and the engine's real name", async () => {
+    await setup({
+      mysqlStatus: vi.fn().mockResolvedValue({
+        ...STOPPED_MYSQL,
+        state: "running",
+        mariadb: { run: { runId: "m", file: "", pid: 5150 }, port: 3306, url: null, ready: true, version: "11.8.9", phpVersion: null },
+        phpmyadmin: { run: { runId: "p", file: "", pid: 5151 }, port: 8081, url: "http://127.0.0.1:8081", ready: true, version: "5.2.3", phpVersion: "8.4.26" },
+      }),
+    });
     render(<ControlPanel />);
-    expect(screen.getByRole("button", { name: "Start MariaDB" })).toHaveAttribute(
-      "title",
-      "MariaDB runtime is not installed yet.",
+    const row = await screen.findByRole("row", { name: "MySQL" });
+    await vi.waitFor(() => {
+      expect(within(row).getByRole("rowheader")).toHaveClass("cp__module--running");
+    });
+    expect(row).toHaveTextContent("5150");
+    expect(row).toHaveTextContent("3306, 8081");
+    expect(within(row).getByRole("button", { name: "Stop MySQL" })).toBeEnabled();
+    expect(screen.getByText(/127\.0\.0\.1:3306/)).toHaveTextContent("user root, password root");
+  });
+
+  it("a disabled Start explains in its tooltip what is not installed", async () => {
+    await setup({
+      mysqlStatus: vi.fn().mockResolvedValue({
+        ...STOPPED_MYSQL,
+        missing: ["MariaDB", "phpMyAdmin"],
+        state: "notInstalled",
+      }),
+    });
+    render(<ControlPanel />);
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Start MySQL" })).toHaveAttribute(
+        "title",
+        "Not installed yet: MariaDB, phpMyAdmin. Install it with Config > Install.",
+      );
+    });
+  });
+
+  it("shows why MySQL isn't running when half of it failed", async () => {
+    await setup({
+      mysqlStatus: vi.fn().mockResolvedValue({
+        ...STOPPED_MYSQL,
+        state: "error",
+        error: "MariaDB is running, but phpMyAdmin could not start: Port 8081 is already in use.",
+        mariadb: { run: { runId: "m", file: "", pid: 7 }, port: 3306, url: null, ready: true, version: null, phpVersion: null },
+      }),
+    });
+    render(<ControlPanel />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "MySQL: MariaDB is running, but phpMyAdmin could not start",
     );
+    const name = within(screen.getByRole("row", { name: "MySQL" })).getByRole("rowheader");
+    expect(name).toHaveClass("cp__module--error");
+    // Stop can still end the half that runs.
+    expect(screen.getByRole("button", { name: "Stop MySQL" })).toBeEnabled();
   });
 
   it("Logs filters the log and the filter can be cleared", async () => {
     const { output } = await setup();
     render(<ControlPanel />);
     output.append("MariaDB", "db line");
+    output.append("phpMyAdmin", "pma line");
     output.append("PHP Server", "php line");
 
-    fireEvent.click(screen.getByRole("button", { name: "Logs MariaDB" }));
+    fireEvent.click(screen.getByRole("button", { name: "Logs MySQL" }));
     const log = screen.getByRole("log", { name: "Log" });
     expect(log).toHaveTextContent("db line");
+    expect(log).toHaveTextContent("pma line");
     expect(log).not.toHaveTextContent("php line");
     fireEvent.click(screen.getByRole("button", { name: "show all" }));
     expect(log).toHaveTextContent("php line");
@@ -164,6 +223,6 @@ describe("ControlPanel", () => {
     expect(chips.getByText("MariaDB: Not installed")).toBeInTheDocument();
     expect(chips.getByText("phpMyAdmin: Not installed")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
-    expect(screen.getByRole("row", { name: "MariaDB" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "MySQL" })).toBeInTheDocument();
   });
 });

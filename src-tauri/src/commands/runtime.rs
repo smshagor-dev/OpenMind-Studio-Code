@@ -60,6 +60,20 @@ pub async fn runtime_install(
             }
         }
     }
+    // A new MariaDB gets its database at once (root / root, test-started and stopped), so MySQL > Start just works. An
+    // existing database is never touched. A failure leaves MariaDB installed and is reported; MySQL > Start retries it.
+    let result = match result {
+        Ok(installed) if kind == "mariadb" => {
+            match crate::commands::mysql::after_install(&app, &state).await {
+                Ok(()) => Ok(installed),
+                Err(err) => Err(format!(
+                    "MariaDB {} was installed, but its database couldn't be set up: {err} Starting MySQL tries again.",
+                    installed.version
+                )),
+            }
+        }
+        other => other,
+    };
     notify_changed(&app);
     result
 }

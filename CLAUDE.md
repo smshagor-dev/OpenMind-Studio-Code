@@ -248,6 +248,20 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   here is a Windows service. The main page copies XAMPP's layout (logo + title, a "Modules" group box, a
   side column of icon buttons from `controlPanelIcons.tsx`, the log below; a running module's name cell is
   green, MariaDB starting yellow / error red — the status text is the cell's tooltip).
+  **MySQL service (after Milestone 23.1)**: the table lists **PHP** and **MySQL** only. MySQL = MariaDB (the MySQL-compatible
+  engine, named as such in every detail) + phpMyAdmin, one lifecycle in `src-tauri/src/commands/mysql.rs`
+  (`mysql_status|start|stop|restart`, `mysql:changed`; `AppState.mysql`): Start = runtimes present → database created when
+  `data/mariadb` has none → MariaDB → a ping answers → phpMyAdmin → its page loads without a database error; only then
+  Running (`derive_state`: half a stack is `error` with the reason). Stop = phpMyAdmin, then MariaDB's own `shutdown`
+  (the tree is killed only after 10 s). Installing MariaDB runs `mysql::after_install` (initialize + test start/ping/
+  shutdown); a failure is the install's error and the Runtime Manager card's "Database: Not set up" line, and Start
+  retries. **Defaults**: root password `root` for a database OpenMind creates (`MARIADB_DEFAULT_PASSWORD`; 127.0.0.1 only),
+  phpMyAdmin then signs in by itself (`PmaLogin::Automatic`); a database initialized earlier keeps its generated
+  password and phpMyAdmin's login page (never written to a file). `initialize_database` never touches an existing
+  database and refuses a non-empty folder that isn't one (nothing deleted). Ports: the user's saved port (busy → refused
+  with the reason), else the port in `my.ini` from the last start, then 3306, 3307 (`MARIADB_DEFAULT_PORTS`);
+  phpMyAdmin 8081-8085. Frontend: `MySqlService`; the Config page's MariaDB/phpMyAdmin cards keep the details, with
+  Start/Stop/Restart MySQL and Open phpMyAdmin (which starts MySQL first) instead of separate controls.
   **Tray mode**: closing the *main* window while the PHP server, MariaDB or phpMyAdmin runs hides the app
   to the system tray instead of quitting (`src-tauri/src/tray.rs`, `tray::servers_running`; needs Tauri's
   `tray-icon` feature). The servers keep running; the tray menu has Show OpenMind Studio (also a left

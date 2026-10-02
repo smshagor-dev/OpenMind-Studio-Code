@@ -79,6 +79,7 @@ import { GitStashService } from "./gitStashService";
 import { SourceControlService } from "./sourceControlService";
 import { ControlPanelService } from "./controlPanelService";
 import { MariaDbService } from "./mariaDbService";
+import { MySqlService } from "./mySqlService";
 import { PhpMyAdminService } from "./phpMyAdminService";
 import { PhpRuntimeService } from "./phpRuntimeService";
 import { registerTerminalCommands } from "./terminalCommands";
@@ -179,13 +180,14 @@ const phpMyAdmin = new PhpMyAdminService(
 );
 const composer = new ComposerService(tauriIpcClient, events, output, runtime, panel);
 const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
+/** MySQL: MariaDB + phpMyAdmin as one service in the PHP Server window. */
+const mySql = new MySqlService(tauriIpcClient, events, output, runtime);
 const controlPanel = new ControlPanelService(
   tauriIpcClient,
   events,
   output,
   php,
-  mariaDb,
-  phpMyAdmin,
+  mySql,
   () => windowService.close(),
 );
 const gitService = new GitService(tauriIpcClient, output);
@@ -1013,6 +1015,7 @@ export const container = {
   phpRuntime,
   mariaDb,
   phpMyAdmin,
+  mySql,
   composer,
   controlPanel,
   git: gitService,

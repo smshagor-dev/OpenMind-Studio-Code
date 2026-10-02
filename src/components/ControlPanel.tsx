@@ -37,6 +37,7 @@ function usePanel() {
     (listener) => container.phpMyAdmin.subscribe(listener),
     () => container.phpMyAdmin.getState(),
   );
+  useSyncExternalStore(container.mySql.subscribe, container.mySql.getState);
   useSyncExternalStore(
     (listener) => container.runtime.subscribe(listener),
     () => container.runtime.getState(),
@@ -77,6 +78,9 @@ function PanelButton(props: {
 const STATUS_KEYS: Record<string, string> = {
   Running: "php.status.running",
   "Starting…": "php.status.starting",
+  "Stopping…": "php.status.stopping",
+  "Initializing…": "php.status.initializing",
+  "Not installed": "runtimes.notInstalled",
   Error: "php.status.error",
   Stopped: "php.status.stopped",
 };
@@ -87,14 +91,16 @@ function statusText(status: string): string {
   return key === undefined ? status : t(key);
 }
 
-/** "PHP Server" is a description and is translated; MariaDB and phpMyAdmin are names. */
+/** "PHP" and "MySQL" are names: never translated. */
 function moduleName(name: string): string {
-  return name === "PHP Server" ? t("activity.phpServer") : name;
+  return name;
 }
 
-/** XAMPP colors the module name by state: green running, yellow starting, red error. */
+/** XAMPP colors the module name by state: green running, yellow while busy, red error. */
 function moduleTone(row: ModuleRow): string {
-  if (row.status === "Starting…") return "cp__module cp__module--starting";
+  if (["Starting…", "Stopping…", "Initializing…"].includes(row.status)) {
+    return "cp__module cp__module--starting";
+  }
   if (row.status === "Error") return "cp__module cp__module--error";
   return row.running ? "cp__module cp__module--running" : "cp__module";
 }
@@ -128,7 +134,7 @@ function ModuleTableRow({ row }: { row: ModuleRow }) {
             }}
           />
           <PanelButton
-            label={`${t("php.admin")} ${moduleName(row.name)}`}
+            label={row.id === "mysql" ? t("php.mysql.openAdmin") : `${t("php.admin")} ${moduleName(row.name)}`}
             text={t("php.admin")}
             availability={row.admin}
             onClick={() => {
@@ -154,6 +160,29 @@ function ModuleTableRow({ row }: { row: ModuleRow }) {
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Under the table: what MySQL is made of and where it listens, or why it isn't running. */
+function MySqlNote() {
+  usePanel();
+  const mysql = container.mySql;
+  const error = mysql.error();
+  if (error !== null) {
+    return (
+      <p className="cp__note cp__note--error" role="alert">
+        {t("php.mysql.problem", { error })}
+      </p>
+    );
+  }
+  const details = mysql.details();
+  if (details === "") return null;
+  const status = mysql.getState().status;
+  return (
+    <p className="cp__note" title={t("php.mysql.detailsTitle")}>
+      {t("php.mysql.details", { details })}
+      {status?.state === "running" && status.autoLogin ? ` · ${t("php.mysql.credentials")}` : ""}
+    </p>
   );
 }
 
@@ -278,6 +307,7 @@ function MainPage() {
                 ))}
               </tbody>
             </table>
+            <MySqlNote />
           </fieldset>
         </div>
         <SideButtons />
@@ -374,6 +404,7 @@ function NetstatPage() {
 
 const HELP_KEYS = [
   "php.help.startStop",
+  "php.help.mysql",
   "php.help.webRoot",
   "php.help.admin",
   "php.help.config",

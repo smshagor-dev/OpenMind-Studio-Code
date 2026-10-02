@@ -15,7 +15,8 @@ use openmind_runner::{
     composer_plan, mariadb_admin_plan, mariadb_init_plan, mariadb_start_plan, php_server_plan,
     port_is_free, portable_version, render_mariadb_config, render_phpmyadmin_config,
     run_to_completion, server_url, AdminAction, ComposerAction, EventSink, MariaDbPaths,
-    PhpServerRequest, RunError, RunEvent, RunEventKind, RunInfo, RunRegistry, MARIADB_USER,
+    PhpServerRequest, PmaLogin, RunError, RunEvent, RunEventKind, RunInfo, RunRegistry,
+    MARIADB_DEFAULT_PASSWORD, MARIADB_USER,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -24,7 +25,7 @@ use crate::app_state::AppState;
 use crate::commands::run::environment;
 use crate::secret;
 
-const PASSWORD_KEY: &str = "mariadb.rootPassword";
+pub(crate) const PASSWORD_KEY: &str = "mariadb.rootPassword";
 const SECRET_KEY: &str = "phpmyadmin.secret";
 
 /// A started service: what every window shows for it.
@@ -61,22 +62,7 @@ pub struct Credentials {
     pub password: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProjectInfo {
-    pub is_dir: bool,
-    pub has_composer_json: bool,
-    /// `composer.json` requires `laravel/framework` and there is an `artisan` file.
-    pub is_laravel: bool,
-    /// The project's packages are installed (`vendor/` exists).
-    pub has_vendor: bool,
-    /// A `.env` file exists (nothing here ever writes it).
-    pub has_env: bool,
-    /// `package.json` scripts that the Laravel helper offers: `dev` and `build` when they exist.
-    pub npm_scripts: Vec<String>,
-}
-
-async fn setting(state: &AppState, key: &str) -> Option<String> {
+pub(crate) async fn setting(state: &AppState, key: &str) -> Option<String> {
     EditorSettingsRepository::new(state.db.pool())
         .get(key)
         .await
@@ -92,7 +78,7 @@ async fn save_setting(state: &AppState, key: &str, value: &str) -> Result<(), St
 }
 
 /// A stored secret, decrypted. An older plain-text value is re-saved encrypted the first time it is read.
-async fn secret_setting(state: &AppState, key: &str) -> Result<Option<String>, String> {
+pub(crate) async fn secret_setting(state: &AppState, key: &str) -> Result<Option<String>, String> {
     let Some(stored) = setting(state, key).await else {
         return Ok(None);
     };
@@ -130,7 +116,7 @@ fn random_alphanumeric(len: usize) -> Result<String, String> {
     Ok(out)
 }
 
-fn append_log(path: &Path, text: &str) {
+pub(crate) fn append_log(path: &Path, text: &str) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -140,7 +126,7 @@ fn append_log(path: &Path, text: &str) {
 }
 
 /// The active, healthy install of runtime `kind`: (version, folder).
-async fn active_install(state: &AppState, kind: &str) -> Option<(String, PathBuf)> {
+pub(crate) async fn active_install(state: &AppState, kind: &str) -> Option<(String, PathBuf)> {
     let list = state.runtime.list().await.ok()?;
     let status = list.into_iter().find(|entry| entry.id == kind)?;
     let entry = status
@@ -150,7 +136,7 @@ async fn active_install(state: &AppState, kind: &str) -> Option<(String, PathBuf
     Some((entry.version, PathBuf::from(entry.path)))
 }
 
-fn app_paths(state: &AppState) -> MariaDbPaths {
+pub(crate) fn app_paths(state: &AppState) -> MariaDbPaths {
     MariaDbPaths::new(&state.app_root)
 }
 
@@ -203,7 +189,7 @@ fn clear_pma(state: &AppState) {
     }
 }
 
-fn running_info(
+pub(crate) fn running_info(
     registry: &RunRegistry,
     slot: &std::sync::Mutex<Option<ServiceInfo>>,
 ) -> Option<ServiceInfo> {
@@ -215,6 +201,14 @@ fn running_info(
 
 // --- MariaDB ---
 
+/// root's password for the managed database: the one stored for it (encrypted; databases initialized before root/root
+/// became the default keep their generated one), else the default local `root`.
+pub(crate) async fn root_password(state: &AppState) -> Result<String, String> {
+    Ok(secret_setting(state, PASSWORD_KEY)
+        .await?
+        .unwrap_or_else(|| MARIADB_DEFAULT_PASSWORD.to_string()))
+}
+
 #[tauri::command]
 pub async fn mariadb_status(state: State<'_, AppState>) -> Result<MariaDbStatus, String> {
     let paths = app_paths(&state);
@@ -224,39 +218,55 @@ pub async fn mariadb_status(state: State<'_, AppState>) -> Result<MariaDbStatus,
         data_dir: paths.data_dir.to_string_lossy().into_owned(),
         log_dir: paths.log_dir.to_string_lossy().into_owned(),
         config_file: paths.config_file.to_string_lossy().into_owned(),
-        has_password: setting(&state, PASSWORD_KEY).await.is_some(),
+        has_password: paths.is_initialized() || setting(&state, PASSWORD_KEY).await.is_some(),
     })
 }
 
-/// The root user and the password OpenMind generated when it initialized the
-/// database (kept in the local SQLite settings; the portable data folder is
-/// as private as the rest of the app folder).
+/// The root user and its password (the default `root`, or the one generated for an older database), only once the
+/// database exists. Kept encrypted in the local SQLite settings.
 #[tauri::command]
 pub async fn mariadb_credentials(state: State<'_, AppState>) -> Result<Credentials, String> {
+    let password = if app_paths(&state).is_initialized() {
+        Some(root_password(&state).await?)
+    } else {
+        secret_setting(&state, PASSWORD_KEY).await?
+    };
     Ok(Credentials {
         username: MARIADB_USER.to_string(),
-        password: secret_setting(&state, PASSWORD_KEY).await?,
+        password,
     })
 }
 
-/// Creates the system tables in `data/mariadb` and gives `root` a generated
-/// password. Refuses to touch an already initialized folder; a failed run
-/// removes what it created so it can be tried again.
-#[tauri::command]
-pub async fn mariadb_initialize(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let paths = app_paths(&state);
-    if !state.db_server.active().is_empty() {
-        return Err("Stop MariaDB before initializing it.".into());
-    }
+/// Whether `dir` exists and has anything in it.
+fn has_entries(dir: &Path) -> bool {
+    std::fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_some())
+}
+
+/// Creates the system tables in `data/mariadb`, root's password `root`. It never touches an existing database: an
+/// initialized folder is left as it is (`Ok(false)`), and a folder that holds files but no complete database is refused
+/// with the reason — it is never emptied. A failed run removes only what it created itself (the folder was empty).
+pub(crate) async fn initialize_database(state: &AppState) -> Result<bool, String> {
+    let paths = app_paths(state);
     if paths.is_initialized() {
-        return Err("The database is already initialized.".into());
+        return Ok(false);
     }
-    let password = random_alphanumeric(24)?;
-    let environment = environment(&state).await;
-    let plan = mariadb_init_plan(&environment, &paths, &password, std::env::var_os("PATH"))
+    if !state.db_server.active().is_empty() {
+        return Err(
+            "MariaDB is running on a folder that isn't a complete database. Stop MySQL first."
+                .into(),
+        );
+    }
+    if has_entries(&paths.data_dir) {
+        return Err(format!(
+            "{} holds files but no complete MariaDB database, so OpenMind won't initialize over it. Nothing was \
+             deleted: move its contents somewhere else, then start MySQL again.",
+            paths.data_dir.display()
+        ));
+    }
+    let password = MARIADB_DEFAULT_PASSWORD;
+    let environment = environment(state).await;
+    let plan = mariadb_init_plan(&environment, &paths, password, std::env::var_os("PATH"))
         .map_err(|err| err.to_string())?;
-    // A half-made folder from an earlier failure would confuse the initializer.
-    let _ = std::fs::remove_dir_all(&paths.data_dir);
     std::fs::create_dir_all(&paths.data_dir).map_err(|err| err.to_string())?;
     append_log(&paths.log_file, &format!("[initialize] {}", plan.display));
     let done =
@@ -266,6 +276,7 @@ pub async fn mariadb_initialize(app: AppHandle, state: State<'_, AppState>) -> R
             .map_err(|err| err.to_string())?;
     append_log(&paths.log_file, done.output.trim_end());
     if !done.success() || !paths.is_initialized() {
+        // The folder was empty before this run: everything in it now is this run's.
         let _ = std::fs::remove_dir_all(&paths.data_dir);
         let tail: Vec<&str> = done.output.lines().rev().take(6).collect();
         return Err(format!(
@@ -274,7 +285,17 @@ pub async fn mariadb_initialize(app: AppHandle, state: State<'_, AppState>) -> R
             tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
         ));
     }
-    save_secret(&state, PASSWORD_KEY, &password).await?;
+    save_secret(state, PASSWORD_KEY, password).await?;
+    Ok(true)
+}
+
+/// Creates the database (root / root). Refuses an already initialized folder, which it never touches.
+#[tauri::command]
+pub async fn mariadb_initialize(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if app_paths(&state).is_initialized() {
+        return Err("The database is already initialized.".into());
+    }
+    initialize_database(&state).await?;
     let _ = app.emit("mariadb:changed", ());
     Ok(())
 }
@@ -296,28 +317,25 @@ async fn write_mariadb_config(
     std::fs::write(&paths.config_file, text).map_err(|err| err.to_string())
 }
 
-#[tauri::command]
-pub async fn mariadb_start(
+/// Starts `mysqld` on `port` (127.0.0.1 only) as a child of the app; `ready` stays false until a ping answers.
+pub(crate) async fn spawn_mariadb(
+    app: &AppHandle,
+    state: &AppState,
     port: u16,
-    app: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<ServiceInfo, String> {
     if !state.db_server.active().is_empty() {
         return Err("MariaDB is already running.".into());
     }
-    let paths = app_paths(&state);
-    let environment = environment(&state).await;
+    let paths = app_paths(state);
+    let environment = environment(state).await;
     let plan = mariadb_start_plan(&environment, &paths, std::env::var_os("PATH"))
         .map_err(|err| err.to_string())?;
     if !port_is_free(port) {
         return Err(RunError::PortInUse(port).to_string());
     }
-    let password = secret_setting(&state, PASSWORD_KEY)
-        .await?
-        .ok_or("The database has no saved password — initialize it first.")?;
-    write_mariadb_config(&state, &paths, port).await?;
+    write_mariadb_config(state, &paths, port).await?;
     let sink = service_sink(
-        &app,
+        app,
         "mariadb:event",
         "mariadb:changed",
         Some(paths.log_file.clone()),
@@ -339,6 +357,27 @@ pub async fn mariadb_start(
         *slot = Some(info.clone());
     }
     let _ = app.emit("mariadb:changed", ());
+    Ok(info)
+}
+
+/// Marks the running MariaDB as accepting connections.
+pub(crate) fn mark_ready(state: &AppState) {
+    if let Ok(mut slot) = state.db_info.lock() {
+        if let Some(info) = slot.as_mut() {
+            info.ready = true;
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn mariadb_start(
+    port: u16,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ServiceInfo, String> {
+    let password = root_password(&state).await?;
+    let info = spawn_mariadb(&app, &state, port).await?;
+    let environment = environment(&state).await;
     spawn_ready_watch(app, environment, port, password);
     Ok(info)
 }
@@ -366,11 +405,7 @@ fn spawn_ready_watch(
                 return;
             }
             if run_to_completion(&ping, Duration::from_secs(5)).is_ok_and(|done| done.success()) {
-                if let Ok(mut slot) = state.db_info.lock() {
-                    if let Some(info) = slot.as_mut() {
-                        info.ready = true;
-                    }
-                }
+                mark_ready(&state);
                 let _ = app.emit("mariadb:changed", ());
                 return;
             }
@@ -379,7 +414,8 @@ fn spawn_ready_watch(
     });
 }
 
-/// Asks MariaDB to shut down cleanly, then makes sure the process is gone.
+/// Asks MariaDB to shut down cleanly (it flushes and closes its files), waits up to 10 s for it to exit, and only then
+/// ends the process tree.
 pub fn stop_mariadb_blocking(app: &AppHandle) {
     let state = app.state::<AppState>();
     if state.db_server.active().is_empty() {
@@ -390,9 +426,7 @@ pub fn stop_mariadb_blocking(app: &AppHandle) {
         .lock()
         .ok()
         .and_then(|slot| slot.as_ref().map(|i| i.port));
-    let password = tauri::async_runtime::block_on(secret_setting(&state, PASSWORD_KEY))
-        .ok()
-        .flatten();
+    let password = tauri::async_runtime::block_on(root_password(&state)).ok();
     let environment = tauri::async_runtime::block_on(environment(&state));
     if let (Some(port), Some(password)) = (port, password) {
         if let Ok(plan) = mariadb_admin_plan(
@@ -411,6 +445,7 @@ pub fn stop_mariadb_blocking(app: &AppHandle) {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+    tracing::warn!("MariaDB didn't shut down within 10 s; ending its process");
     state.db_server.stop_all();
 }
 
@@ -427,7 +462,8 @@ fn temp_dir(state: &AppState) -> PathBuf {
     state.app_root.join("cache").join("phpmyadmin")
 }
 
-/// Writes phpMyAdmin's `config.inc.php` (regenerated on every start).
+/// Writes phpMyAdmin's `config.inc.php` (regenerated on every start). With the default local password phpMyAdmin
+/// signs in by itself; a database with its own password gets the login page (the password is never written to a file).
 async fn write_pma_config(state: &AppState, dir: &Path, mariadb_port: u16) -> Result<(), String> {
     let secret = match secret_setting(state, SECRET_KEY).await? {
         Some(secret) => secret,
@@ -439,28 +475,44 @@ async fn write_pma_config(state: &AppState, dir: &Path, mariadb_port: u16) -> Re
     };
     let temp = temp_dir(state);
     std::fs::create_dir_all(&temp).map_err(|err| err.to_string())?;
-    let text =
-        render_phpmyadmin_config(&secret, mariadb_port, &temp).map_err(|err| err.to_string())?;
+    let password = root_password(state).await?;
+    let login = if password == MARIADB_DEFAULT_PASSWORD {
+        PmaLogin::Automatic {
+            password: MARIADB_DEFAULT_PASSWORD,
+        }
+    } else {
+        PmaLogin::Cookie
+    };
+    let text = render_phpmyadmin_config(&secret, mariadb_port, &temp, login)
+        .map_err(|err| err.to_string())?;
     std::fs::write(dir.join("config.inc.php"), text).map_err(|err| err.to_string())
 }
 
-#[tauri::command]
-pub async fn pma_start(
+/// Whether phpMyAdmin signs in by itself (the default local password) or shows its login page.
+pub(crate) async fn pma_signs_in_by_itself(state: &AppState) -> bool {
+    root_password(state)
+        .await
+        .is_ok_and(|password| password == MARIADB_DEFAULT_PASSWORD)
+}
+
+/// Serves the active phpMyAdmin with the active portable PHP's built-in server on 127.0.0.1:`port`, pointed at the
+/// managed MariaDB on `mariadb_port`.
+pub(crate) async fn spawn_pma(
+    app: &AppHandle,
+    state: &AppState,
     port: u16,
     mariadb_port: u16,
-    app: AppHandle,
-    state: State<'_, AppState>,
 ) -> Result<ServiceInfo, String> {
     if !state.pma.active().is_empty() {
         return Err("phpMyAdmin is already running.".into());
     }
-    let (version, dir) = active_install(&state, "phpmyadmin").await.ok_or_else(|| {
+    let (version, dir) = active_install(state, "phpmyadmin").await.ok_or_else(|| {
         RunError::RuntimeMissing {
             runtime: "phpMyAdmin".into(),
         }
         .to_string()
     })?;
-    let environment = environment(&state).await;
+    let environment = environment(state).await;
     let plan = php_server_plan(
         &PhpServerRequest {
             root: dir.clone(),
@@ -473,13 +525,9 @@ pub async fn pma_start(
     if !port_is_free(port) {
         return Err(RunError::PortInUse(port).to_string());
     }
-    write_pma_config(&state, &dir, mariadb_port).await?;
-    let log = state
-        .app_root
-        .join("logs")
-        .join("phpmyadmin")
-        .join("phpmyadmin.log");
-    let sink = service_sink(&app, "pma:event", "pma:changed", Some(log), clear_pma);
+    write_pma_config(state, &dir, mariadb_port).await?;
+    let log = pma_log_file(state);
+    let sink = service_sink(app, "pma:event", "pma:changed", Some(log), clear_pma);
     let run = state
         .pma
         .start(&plan, sink)
@@ -499,6 +547,24 @@ pub async fn pma_start(
     Ok(info)
 }
 
+pub(crate) fn pma_log_file(state: &AppState) -> PathBuf {
+    state
+        .app_root
+        .join("logs")
+        .join("phpmyadmin")
+        .join("phpmyadmin.log")
+}
+
+#[tauri::command]
+pub async fn pma_start(
+    port: u16,
+    mariadb_port: u16,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ServiceInfo, String> {
+    spawn_pma(&app, &state, port, mariadb_port).await
+}
+
 #[tauri::command]
 pub fn pma_stop(state: State<'_, AppState>) {
     state.pma.stop_all();
@@ -510,42 +576,6 @@ pub fn pma_status(state: State<'_, AppState>) -> Option<ServiceInfo> {
 }
 
 // --- Composer ---
-
-#[tauri::command]
-pub fn php_project_info(root: String) -> ProjectInfo {
-    project_info(Path::new(&root))
-}
-
-/// What the PHP configuration page may say about a project folder (it only looks; nothing is written).
-fn project_info(path: &Path) -> ProjectInfo {
-    let is_dir = path.is_absolute() && path.is_dir();
-    let composer = std::fs::read_to_string(path.join("composer.json")).ok();
-    let is_laravel = is_dir
-        && path.join("artisan").is_file()
-        && composer
-            .as_deref()
-            .is_some_and(|text| text.contains("\"laravel/framework\""));
-    let npm_scripts = std::fs::read_to_string(path.join("package.json"))
-        .ok()
-        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .and_then(|json| json.get("scripts").cloned())
-        .map(|scripts| {
-            ["dev", "build"]
-                .into_iter()
-                .filter(|name| scripts.get(name).is_some_and(serde_json::Value::is_string))
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
-    ProjectInfo {
-        is_dir,
-        has_composer_json: path.join("composer.json").is_file(),
-        is_laravel,
-        has_vendor: path.join("vendor").is_dir(),
-        has_env: path.join(".env").is_file(),
-        npm_scripts,
-    }
-}
 
 /// Runs `composer <action>` in `root` on the portable PHP; output arrives as
 /// `composer:event`s and the run's end as `composer:changed`.
@@ -609,50 +639,4 @@ pub fn stop_all_services(app: &AppHandle) {
     state.pma.stop_all();
     state.composer.stop_all();
     stop_mariadb_blocking(app);
-}
-
-#[cfg(test)]
-mod project_info_tests {
-    use super::*;
-
-    fn write(dir: &Path, name: &str, text: &str) {
-        std::fs::write(dir.join(name), text).expect("file");
-    }
-
-    #[test]
-    fn a_laravel_project_is_recognised_by_its_manifest_and_artisan() {
-        let dir = tempfile::tempdir().expect("tmp");
-        let root = dir.path().join("My Laravel Site");
-        std::fs::create_dir_all(root.join("vendor")).expect("vendor");
-        write(
-            &root,
-            "composer.json",
-            r#"{"require":{"laravel/framework":"^11"}}"#,
-        );
-        write(&root, "artisan", "<?php");
-        write(
-            &root,
-            "package.json",
-            r#"{"scripts":{"dev":"vite","build":"vite build","lint":"x"}}"#,
-        );
-        let info = project_info(&root);
-        assert!(info.is_dir && info.has_composer_json && info.is_laravel && info.has_vendor);
-        assert!(!info.has_env, "no .env, and nothing creates one");
-        assert_eq!(info.npm_scripts, ["dev", "build"]);
-    }
-
-    #[test]
-    fn a_plain_composer_project_or_a_missing_folder_is_not_laravel() {
-        let dir = tempfile::tempdir().expect("tmp");
-        write(
-            dir.path(),
-            "composer.json",
-            r#"{"require":{"monolog/monolog":"^3"}}"#,
-        );
-        write(dir.path(), "artisan", "<?php");
-        assert!(!project_info(dir.path()).is_laravel);
-        let missing = project_info(&dir.path().join("nope"));
-        assert!(!missing.is_dir && !missing.is_laravel && missing.npm_scripts.is_empty());
-        assert!(!project_info(Path::new("relative/path")).is_dir);
-    }
 }

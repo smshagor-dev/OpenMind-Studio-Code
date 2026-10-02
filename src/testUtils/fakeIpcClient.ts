@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-import type { IpcClient } from "../services/ipc";
+import type { IpcClient, MySqlStatus } from "../services/ipc";
 import type { IndexStatus } from "../services/searchIpc";
 import { createFakeExtensionsIpc } from "./fakeExtensionsIpc";
 import { emptyPreferences } from "./preferencesFixture";
@@ -28,6 +28,19 @@ export function idleStatus(overrides: Partial<IndexStatus> = {}): IndexStatus {
  * override the handful of methods it actually cares about instead of
  * re-declaring every method on the interface.
  */
+/** MySQL with everything installed, initialized and stopped. */
+export const STOPPED_MYSQL: MySqlStatus = {
+  state: "stopped",
+  missing: [],
+  initialized: true,
+  error: null,
+  mariadb: null,
+  phpmyadmin: null,
+  mariadbVersion: "11.8.9",
+  phpmyadminVersion: "5.2.3",
+  autoLogin: true,
+};
+
 export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
   return {
     ...createFakeExtensionsIpc(),
@@ -386,6 +399,11 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     pmaStatus: vi.fn().mockResolvedValue(null),
     onPmaEvent: vi.fn().mockResolvedValue(() => undefined),
     onPmaChanged: vi.fn().mockResolvedValue(() => undefined),
+    mysqlStatus: vi.fn().mockResolvedValue(STOPPED_MYSQL),
+    mysqlStart: vi.fn().mockResolvedValue(STOPPED_MYSQL),
+    mysqlStop: vi.fn().mockResolvedValue(STOPPED_MYSQL),
+    mysqlRestart: vi.fn().mockResolvedValue(STOPPED_MYSQL),
+    onMysqlChanged: vi.fn().mockResolvedValue(() => undefined),
     phpProjectInfo: vi.fn().mockResolvedValue({ isDir: true, hasComposerJson: true }),
     composerRun: vi.fn().mockResolvedValue({ runId: "composer-1", file: "", pid: 3 }),
     composerStop: vi.fn().mockResolvedValue(undefined),

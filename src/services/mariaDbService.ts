@@ -11,7 +11,7 @@ import type { Availability, RuntimeService } from "./runtimeService";
 
 export const MARIADB_CHANNEL = "MariaDB";
 export const MARIADB_PORT_SOURCE = "mariadb";
-export const DEFAULT_MARIADB_PORT = 3307;
+export const DEFAULT_MARIADB_PORT = 3306;
 export const MARIADB_USER = "root";
 const SETTINGS_KEY = "mariadb.config";
 
@@ -168,6 +168,11 @@ export class MariaDbService {
 
   isRunning(): boolean {
     return this.state.server !== null;
+  }
+
+  /** The port to connect to: the one MariaDB runs on (MySQL may have used a fallback), else the configured one. */
+  connectionPort(): number {
+    return this.state.server?.port ?? this.state.port;
   }
 
   startState(): Availability {
@@ -351,7 +356,7 @@ export class MariaDbService {
 
   /** Copies `mysql://root@127.0.0.1:<port>` — no password, so it is safe to paste anywhere. */
   async copyConnectionString(): Promise<boolean> {
-    await this.ipc.clipboardWriteText(connectionString(this.state.port));
+    await this.ipc.clipboardWriteText(connectionString(this.connectionPort()));
     return true;
   }
 
@@ -361,7 +366,7 @@ export class MariaDbService {
     if (password === null) {
       return failed ? false : this.fail("There is no password to copy yet.");
     }
-    await this.ipc.clipboardWriteText(envBlock(this.state.port, password));
+    await this.ipc.clipboardWriteText(envBlock(this.connectionPort(), password));
     return true;
   }
 

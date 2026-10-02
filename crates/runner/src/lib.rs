@@ -38,8 +38,9 @@ pub use session::{
 pub use stack::{
     composer_plan, mariadb_admin_plan, mariadb_init_plan, mariadb_start_plan,
     render_mariadb_config, render_phpmyadmin_config, resolve_portable, validate_service_port,
-    AdminAction, ComposerAction, MariaDbPaths, MARIADB_DEFAULT_PORT, MARIADB_USER,
-    PHPMYADMIN_DEFAULT_PORT,
+    AdminAction, ComposerAction, MariaDbPaths, PmaLogin, MARIADB_DEFAULT_PASSWORD,
+    MARIADB_DEFAULT_PORT, MARIADB_DEFAULT_PORTS, MARIADB_USER, PHPMYADMIN_DEFAULT_PORT,
+    PHPMYADMIN_DEFAULT_PORTS,
 };
 pub use webroot::{ensure_web_root, WEB_ROOT_DIR};
 

@@ -108,6 +108,18 @@
   color: var(--on-accent-fg);
 }
 
+/* MySQL's line under the table: what it is made of, or why it isn't running. */
+.cp__note {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.cp__note--error {
+  color: var(--error-fg);
+}
+
 .cp__pid,
 .cp__port {
   min-width: 56px;

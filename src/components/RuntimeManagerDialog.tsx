@@ -4,6 +4,7 @@ import { container } from "../services/container";
 import type { AddonStatus, InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { describeProgress, injectionStatus } from "../services/runtimeService";
 import "../styles/toolchains.css";
+import { RuntimeDatabaseLine } from "./RuntimeDatabaseLine";
 import { RuntimeLanguageTools } from "./RuntimeLanguageTools";
 import { ToolsPanel } from "./toolchains/ToolsPanel";
 import { WorkloadsPage } from "./workloads/WorkloadsPage";
@@ -281,6 +282,7 @@ function RuntimeCard({
         {runtime.description}
       </p>
       <RuntimeLanguageTools runtimeId={runtime.id} />
+      {runtime.id === "mariadb" ? <RuntimeDatabaseLine installed={installed} /> : null}
 
       {runtime.installed.length > 0 ? (
         <ul className="runtime-card__versions">

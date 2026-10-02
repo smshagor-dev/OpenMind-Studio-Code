@@ -2,9 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { COMPOSER_ACTIONS } from "../services/composerService";
 import { container } from "../services/container";
-import type { DatabaseStatus } from "../services/mariaDbService";
 import {
-  adminAvailability,
   composerChip,
   LOCAL_HOST,
   mariaDbChip,
@@ -112,14 +110,21 @@ function PortField(props: Parameters<typeof PortFieldInner>[0]) {
   return <PortFieldInner key={props.value} {...props} />;
 }
 
-const DATABASE_LABELS: Record<DatabaseStatus, string> = {
-  notInstalled: "runtimes.notInstalled",
-  needsInit: "php.db.needsInit",
-  stopped: "php.status.stopped",
-  starting: "php.status.starting",
-  running: "php.status.running",
-  error: "php.status.error",
+/** MySQL's status word (`MySqlService.label`, English) in the UI language. */
+const MYSQL_STATUS_KEYS: Record<string, string> = {
+  "Not installed": "runtimes.notInstalled",
+  "Initializing…": "php.status.initializing",
+  "Starting…": "php.status.starting",
+  Running: "php.status.running",
+  "Stopping…": "php.status.stopping",
+  Stopped: "php.status.stopped",
+  Error: "php.status.error",
 };
+
+function mySqlStatusText(label: string): string {
+  const key = MYSQL_STATUS_KEYS[label];
+  return key === undefined ? label : t(key);
+}
 
 function portStatus(running: boolean, free: boolean | null, owner: string): string {
   if (running) return t("php.port.inUseBy", { owner });
@@ -136,13 +141,14 @@ export function DatabaseSection() {
     (listener) => container.runtime.subscribe(listener),
     () => container.runtime.getState(),
   );
+  useSyncExternalStore(container.mySql.subscribe, container.mySql.getState);
   const db = container.mariaDb;
+  const mysql = container.mySql;
   const state = db.getState();
   const status = db.status();
-  const start = db.startState();
+  const start = mysql.startState();
   const installed = db.installed();
-  const statusText =
-    state.busy === "initializing" ? t("php.db.initializing") : t(DATABASE_LABELS[status]);
+  const statusText = mySqlStatusText(mysql.label());
   return (
     <Card
       title="MariaDB"
@@ -192,34 +198,28 @@ export function DatabaseSection() {
         <span className="php-view__label">{t("php.logDirectory")}</span>
         <PathValue path={state.logDir === "" ? null : state.logDir} label={t("php.logDirectoryLower")} />
       </div>
+      <span className="php-view__hint">{t("php.mysql.together")}</span>
       <div className="php-view__row">
         <StackButton
-          label={t("php.db.initialize")}
-          availability={db.initializeState()}
-          onClick={() => {
-            void db.initializeDatabase();
-          }}
-        />
-        <StackButton
-          label={t("php.db.start")}
+          label={t("php.mysql.start")}
           availability={start}
           primary
           onClick={() => {
-            void db.start();
+            void mysql.start();
           }}
         />
         <StackButton
-          label={t("php.db.stop")}
-          availability={db.stopState()}
+          label={t("php.mysql.stop")}
+          availability={mysql.stopState()}
           onClick={() => {
-            void db.stop();
+            void mysql.stop();
           }}
         />
         <StackButton
-          label={t("php.db.restart")}
-          availability={db.restartState()}
+          label={t("php.mysql.restart")}
+          availability={mysql.restartState()}
           onClick={() => {
-            void db.restart();
+            void mysql.restart();
           }}
         />
         <button
@@ -238,7 +238,7 @@ export function DatabaseSection() {
           {start.reason}
         </div>
       ) : null}
-      {state.error ? <div className="php-view__error">{state.error}</div> : null}
+      {mysql.error() !== null ? <div className="php-view__error">{mysql.error()}</div> : null}
       <CredentialsBlock />
     </Card>
   );
@@ -257,21 +257,15 @@ export function PhpMyAdminSection() {
     (listener) => container.mariaDb.subscribe(listener),
     () => container.mariaDb.getState(),
   );
+  useSyncExternalStore(container.mySql.subscribe, container.mySql.getState);
   const pma = container.phpMyAdmin;
+  const mysql = container.mySql;
   const state = pma.getState();
-  const start = pma.startState();
   const note = pma.databaseNote();
   const notice = pma.restartNotice();
   const installedVersion = pma.installedVersion();
   const running = state.server !== null;
   const url = state.server?.url ?? null;
-  const admin = adminAvailability({
-    installed: installedVersion !== null,
-    running,
-    dbStatus: container.mariaDb.status(),
-    url,
-  });
-  const open = pma.openState();
   return (
     <Card
       title="phpMyAdmin"
@@ -316,27 +310,14 @@ export function PhpMyAdminSection() {
         bad={state.portFree === false}
         onApply={(text) => pma.setPort(text)}
       />
+      <span className="php-view__hint">{t("php.mysql.pmaTogether")}</span>
       <div className="php-view__row">
         <StackButton
-          label={t("php.pma.start")}
-          availability={start}
+          label={t("php.pma.open")}
+          availability={mysql.adminState()}
           primary
           onClick={() => {
-            void pma.start();
-          }}
-        />
-        <StackButton
-          label={t("php.pma.stop")}
-          availability={pma.stopState()}
-          onClick={() => {
-            void pma.stop();
-          }}
-        />
-        <StackButton
-          label={t("php.pma.open")}
-          availability={open.enabled && !admin.enabled ? admin : open}
-          onClick={() => {
-            void pma.open();
+            void mysql.openAdmin();
           }}
         />
         <StackButton
@@ -361,14 +342,9 @@ export function PhpMyAdminSection() {
           {t("php.pma.openLogs")}
         </button>
       </div>
-      {!start.enabled && !running ? (
+      {!mysql.adminState().enabled && installedVersion !== null ? (
         <div className="php-view__reason" role="note">
-          {start.reason}
-        </div>
-      ) : null}
-      {!admin.enabled && installedVersion !== null && admin.reason ? (
-        <div className="php-view__reason" role="note">
-          {t("php.adminReason", { reason: admin.reason })}
+          {t("php.adminReason", { reason: mysql.adminState().reason ?? "" })}
         </div>
       ) : null}
       {note ? (
@@ -383,7 +359,7 @@ export function PhpMyAdminSection() {
       ) : null}
       {state.error ? <div className="php-view__error">{state.error}</div> : null}
       <span className="php-view__hint">
-        {t("php.pma.loginHint")}
+        {mysql.getState().status?.autoLogin === false ? t("php.pma.loginHint") : t("php.pma.autoLoginHint")}
       </span>
     </Card>
   );

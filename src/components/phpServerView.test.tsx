@@ -7,6 +7,7 @@ import type { AppEvents } from "../services/events";
 import type { InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { ComposerService } from "../services/composerService";
 import { MariaDbService } from "../services/mariaDbService";
+import { MySqlService } from "../services/mySqlService";
 import { OutputService } from "../services/outputService";
 import { PanelService } from "../services/panelService";
 import { registerPhpCommands } from "../services/phpCommands";
@@ -88,6 +89,7 @@ async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
     php,
     mariaDb,
     phpMyAdmin,
+    mySql: new MySqlService(ipc, events, output, runtime),
     composer,
     ipc,
     phpRuntime: new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin }),

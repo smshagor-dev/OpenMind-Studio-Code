@@ -6,6 +6,7 @@ import { EventBus } from "../../services/eventBus";
 import type { AppEvents } from "../../services/events";
 import type { InstalledVersion, RuntimeStatus } from "../../services/ipc";
 import { MariaDbService } from "../../services/mariaDbService";
+import { MySqlService } from "../../services/mySqlService";
 import { OutputService } from "../../services/outputService";
 import { PanelService } from "../../services/panelService";
 import { PhpMyAdminService } from "../../services/phpMyAdminService";
@@ -13,7 +14,7 @@ import { PhpRuntimeService } from "../../services/phpRuntimeService";
 import { PhpServerService } from "../../services/phpServerService";
 import { PortsService } from "../../services/portsService";
 import { RuntimeService } from "../../services/runtimeService";
-import { createFakeIpc } from "../../testUtils/fakeIpcClient";
+import { createFakeIpc, STOPPED_MYSQL } from "../../testUtils/fakeIpcClient";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
 
@@ -98,7 +99,9 @@ async function setup(
   const composer = new ComposerService(ipc, events, output, runtime, panel);
   await composer.initialize();
   const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
-  harness.current = { php, mariaDb, phpMyAdmin, composer, runtime, output, ipc, phpRuntime };
+  const mySql = new MySqlService(ipc, events, output, runtime);
+  await mySql.initialize();
+  harness.current = { php, mariaDb, phpMyAdmin, composer, mySql, runtime, output, ipc, phpRuntime };
   return { ipc, php, mariaDb, phpMyAdmin, composer, output };
 }
 
@@ -112,7 +115,7 @@ describe("Configuration page: MariaDB card and credentials", () => {
     render(<DatabaseSection />);
     const connection = within(screen.getByRole("group", { name: "Connection details" }));
     expect(connection.getByText("127.0.0.1")).toBeInTheDocument();
-    expect(connection.getByText("3307")).toBeInTheDocument();
+    expect(connection.getByText("3306")).toBeInTheDocument();
     expect(connection.getByText("root")).toBeInTheDocument();
     expect(connection.getByLabelText("Password hidden")).toHaveTextContent("••••••••");
     expect(screen.queryByText("abc123XYZ")).toBeNull();
@@ -139,7 +142,7 @@ describe("Configuration page: MariaDB card and credentials", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Copy Connection String" }));
     await waitFor(() => {
-      expect(ipc.clipboardWriteText).toHaveBeenCalledWith("mysql://root@127.0.0.1:3307");
+      expect(ipc.clipboardWriteText).toHaveBeenCalledWith("mysql://root@127.0.0.1:3306");
     });
     const copied = vi.mocked(ipc.clipboardWriteText).mock.calls.map((call) => call[0]);
     expect(copied.filter((text) => text.includes("abc123XYZ"))).toEqual(["abc123XYZ"]);
@@ -205,25 +208,33 @@ describe("Configuration page: MariaDB card and credentials", () => {
 });
 
 describe("Configuration page: phpMyAdmin card", () => {
-  it("Admin (Open phpMyAdmin) is disabled with the reason while phpMyAdmin is not running", async () => {
+  it("stopped: Open phpMyAdmin is available (it starts MySQL first); there is no address to copy yet", async () => {
     await setup();
     render(<PhpMyAdminSection />);
     const open = screen.getByRole("button", { name: "Open phpMyAdmin" });
-    expect(open).toBeDisabled();
+    expect(open).toBeEnabled();
     expect(screen.getByText("phpMyAdmin: Available")).toBeInTheDocument();
     expect(screen.getByText("None until it runs")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy phpMyAdmin URL" })).toBeDisabled();
   });
 
   it("missing phpMyAdmin: says so and offers no working Admin", async () => {
-    await setup([status("php", [installed("8.4.26")])]);
+    await setup([status("php", [installed("8.4.26")])], {
+      mysqlStatus: vi.fn().mockResolvedValue({
+        ...STOPPED_MYSQL,
+        state: "notInstalled",
+        missing: ["MariaDB", "phpMyAdmin"],
+      }),
+    });
     render(<PhpMyAdminSection />);
     expect(screen.getByText("phpMyAdmin: Not installed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open phpMyAdmin" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Start phpMyAdmin" })).toHaveAttribute(
+    const open = screen.getByRole("button", { name: "Open phpMyAdmin" });
+    expect(open).toBeDisabled();
+    expect(open).toHaveAttribute(
       "title",
-      "phpMyAdmin is not installed yet.",
+      "Not installed yet: MariaDB, phpMyAdmin. Install it with Config > Install.",
     );
+    expect(screen.queryByRole("button", { name: "Start phpMyAdmin" })).toBeNull();
   });
 
   it("running phpMyAdmin with MariaDB running: Admin opens the address and the URL can be copied", async () => {
@@ -245,18 +256,37 @@ describe("Configuration page: phpMyAdmin card", () => {
     expect(ipc.clipboardWriteText).toHaveBeenCalledWith("http://127.0.0.1:8081");
   });
 
-  it("running phpMyAdmin but MariaDB stopped: Admin says Start MariaDB first", async () => {
-    const { phpMyAdmin } = await setup();
-    vi.spyOn(phpMyAdmin, "getState").mockReturnValue({
-      ...phpMyAdmin.getState(),
-      server: { runId: "p1", pid: 7, port: 8081, url: "http://127.0.0.1:8081", version: "5.2.3" },
-    } as never);
-    vi.spyOn(phpMyAdmin, "openState").mockReturnValue({ enabled: true });
+  it("phpMyAdmin running without MariaDB: Open phpMyAdmin starts MySQL again before opening", async () => {
+    const half = {
+      ...STOPPED_MYSQL,
+      state: "error" as const,
+      error: "phpMyAdmin is running, but MariaDB isn't (it stopped or never started).",
+      phpmyadmin: {
+        run: { runId: "p1", file: "", pid: 7 },
+        port: 8081,
+        url: "http://127.0.0.1:8081",
+        ready: true,
+        version: "5.2.3",
+        phpVersion: "8.4.26",
+      },
+    };
+    const { ipc } = await setup(ALL, {
+      mysqlStatus: vi.fn().mockResolvedValue(half),
+      mysqlStart: vi.fn().mockResolvedValue({
+        ...half,
+        state: "running",
+        error: null,
+        mariadb: { ...half.phpmyadmin, port: 3306, url: null, run: { runId: "m", file: "", pid: 8 } },
+      }),
+    });
     render(<PhpMyAdminSection />);
     const open = screen.getByRole("button", { name: "Open phpMyAdmin" });
-    expect(open).toBeDisabled();
-    expect(open).toHaveAttribute("title", "Start MariaDB first.");
-    expect(screen.getByText("Admin: Start MariaDB first.")).toBeInTheDocument();
+    expect(open).toBeEnabled();
+    fireEvent.click(open);
+    await waitFor(() => {
+      expect(ipc.openExternalUrl).toHaveBeenCalledWith("http://127.0.0.1:8081");
+    });
+    expect(ipc.mysqlStart).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -322,7 +352,7 @@ describe("Configuration page: header, summary and Laravel helper", () => {
     fireEvent.click(card.getByRole("button", { name: "Copy DB Credentials for .env" }));
     await waitFor(() => {
       expect(ipc.clipboardWriteText).toHaveBeenCalledWith(
-        "DB_CONNECTION=mariadb\nDB_HOST=127.0.0.1\nDB_PORT=3307\nDB_DATABASE=\nDB_USERNAME=root\nDB_PASSWORD=abc123XYZ",
+        "DB_CONNECTION=mariadb\nDB_HOST=127.0.0.1\nDB_PORT=3306\nDB_DATABASE=\nDB_USERNAME=root\nDB_PASSWORD=abc123XYZ",
       );
     });
     // Copy only: no file is written.

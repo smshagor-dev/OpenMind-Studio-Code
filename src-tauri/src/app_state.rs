@@ -52,6 +52,8 @@ pub struct AppState {
     /// phpMyAdmin, served by the portable PHP's built-in server.
     pub pma: RunRegistry,
     pub pma_info: std::sync::Mutex<Option<crate::commands::database::ServiceInfo>>,
+    /// The MySQL service (MariaDB + phpMyAdmin started and stopped together).
+    pub mysql: crate::commands::mysql::MySqlStack,
     /// The Composer command that is running, if any (one at a time).
     pub composer: RunRegistry,
     /// One watcher per editor window, on that window's open folder (external file changes).

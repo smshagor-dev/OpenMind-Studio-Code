@@ -4,14 +4,13 @@ import { ControlPanelService, clockTime, withoutStamp, withoutTag } from "./cont
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { InstalledVersion, RuntimeStatus } from "./ipc";
-import { MariaDbService } from "./mariaDbService";
+import { MySqlService } from "./mySqlService";
 import { OutputService } from "./outputService";
 import { PanelService } from "./panelService";
-import { PhpMyAdminService } from "./phpMyAdminService";
 import { PhpServerService } from "./phpServerService";
 import { PortsService } from "./portsService";
 import { RuntimeService } from "./runtimeService";
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { createFakeIpc, STOPPED_MYSQL } from "../testUtils/fakeIpcClient";
 
 function installed(version: string): InstalledVersion {
   return { version, path: "C:/x", active: true, healthy: true, features: [] };
@@ -50,28 +49,27 @@ async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
   const panel = new PanelService(ipc);
   const php = new PhpServerService(ipc, events, output, runtime, ports, panel);
   await php.initialize();
-  const mariaDb = new MariaDbService(ipc, events, output, runtime, ports, panel);
-  const pma = new PhpMyAdminService(ipc, events, output, runtime, ports, panel, php, mariaDb);
+  const mySql = new MySqlService(ipc, events, output, runtime);
+  await mySql.initialize();
   const close = vi.fn().mockResolvedValue(undefined);
   const control = new ControlPanelService(
     ipc,
     events,
     output,
     php,
-    mariaDb,
-    pma,
+    mySql,
     close,
     () => new Date(2026, 0, 1, 10, 58, 2),
   );
   await control.initialize();
-  return { control, php, output, ipc, close, events };
+  return { control, php, mySql, output, ipc, close, events };
 }
 
 describe("ControlPanelService", () => {
-  it("lists the three modules stopped, with no PID or port", async () => {
+  it("lists the two servers, PHP and MySQL, stopped, with no PID or port", async () => {
     const { control } = await setup();
     const rows = control.rows();
-    expect(rows.map((row) => row.name)).toEqual(["PHP Server", "MariaDB", "phpMyAdmin"]);
+    expect(rows.map((row) => row.name)).toEqual(["PHP", "MySQL"]);
     for (const row of rows) {
       expect(row).toMatchObject({ running: false, pid: null, ports: "", status: "Stopped" });
       expect(row.toggle.label).toBe("Start");
@@ -81,6 +79,9 @@ describe("ControlPanelService", () => {
   it("every disabled button carries a reason", async () => {
     const { control } = await setup({
       phpWebRoot: vi.fn().mockRejectedValue("Couldn't create the web root folder: denied"),
+      mysqlStatus: vi
+        .fn()
+        .mockResolvedValue({ ...STOPPED_MYSQL, state: "notInstalled", missing: ["MariaDB"] }),
     });
     const rows = control.rows();
     expect(rows[0]?.toggle.availability).toEqual({
@@ -89,9 +90,10 @@ describe("ControlPanelService", () => {
     });
     expect(rows[0]?.admin.reason).toBe("Start the server first — there is no URL yet.");
     expect(rows[0]?.config.reason).toContain("php.ini");
-    expect(rows[1]?.toggle.availability.reason).toBe("MariaDB runtime is not installed yet.");
-    expect(rows[1]?.admin.reason).toContain("phpMyAdmin");
-    expect(rows[2]?.toggle.availability.reason).toBe("phpMyAdmin is not installed yet.");
+    expect(rows[1]?.toggle.availability.reason).toBe(
+      "Not installed yet: MariaDB. Install it with Config > Install.",
+    );
+    expect(rows[1]?.admin.reason).toBe(rows[1]?.toggle.availability.reason);
     expect(control.explorerState().reason).toBe("Choose a web root folder first — use Config.");
   });
 
@@ -115,7 +117,9 @@ describe("ControlPanelService", () => {
     });
     await control.refreshConfigPaths();
     expect(control.row("php").config).toEqual({ enabled: true });
-    expect(control.row("mariadb").config.enabled).toBe(false);
+    expect(control.row("mysql").config.enabled).toBe(false);
+    // MySQL's Config is MariaDB's my.ini.
+    expect(ipc.panelConfigPath).toHaveBeenCalledWith("mariadb");
     await control.config("php");
     expect(ipc.panelOpenFile).toHaveBeenCalledWith("C:/app/runtimes/php/php.ini");
   });
@@ -128,20 +132,49 @@ describe("ControlPanelService", () => {
     const lines = control.visibleLines();
     expect(lines.map((line) => `${line.tag}|${line.text}`)).toEqual([
       "main|Control Panel Ready",
-      "PHP Server|php -S 127.0.0.1:8000",
+      "PHP|php -S 127.0.0.1:8000",
       "MariaDB|ready for connections",
     ]);
     expect(lines[1]?.time).toBe(clockTime(new Date(2026, 0, 1, 10, 58, 2)));
   });
 
-  it("Logs filters the log to one module, and again shows everything", async () => {
+  it("Logs filters the log to one module (MySQL = MariaDB + phpMyAdmin), and again shows everything", async () => {
     const { control, output } = await setup();
     output.append("PHP Server", "a");
     output.append("MariaDB", "b");
-    control.toggleFilter("mariadb");
-    expect(control.visibleLines().map((line) => line.text)).toEqual(["Control Panel Ready", "b"]);
-    control.toggleFilter("mariadb");
-    expect(control.visibleLines()).toHaveLength(3);
+    output.append("phpMyAdmin", "c");
+    output.append("MySQL", "d");
+    control.toggleFilter("mysql");
+    expect(control.visibleLines().map((line) => line.text)).toEqual([
+      "Control Panel Ready",
+      "b",
+      "c",
+      "d",
+    ]);
+    control.toggleFilter("mysql");
+    expect(control.visibleLines()).toHaveLength(5);
+  });
+
+  it("MySQL's toggle starts and stops the whole stack through one backend command each", async () => {
+    const running = {
+      ...STOPPED_MYSQL,
+      state: "running" as const,
+      mariadb: { run: { runId: "m", file: "", pid: 900 }, port: 3306, url: null, ready: true, version: null, phpVersion: null },
+      phpmyadmin: { run: { runId: "p", file: "", pid: 901 }, port: 8081, url: "http://127.0.0.1:8081", ready: true, version: null, phpVersion: null },
+    };
+    const { control, ipc } = await setup({
+      mysqlStart: vi.fn().mockResolvedValue(running),
+      mysqlStop: vi.fn().mockResolvedValue(STOPPED_MYSQL),
+    });
+    expect(await control.toggle("mysql")).toBe(true);
+    expect(ipc.mysqlStart).toHaveBeenCalledTimes(1);
+    expect(ipc.mariadbStart).not.toHaveBeenCalled();
+    expect(ipc.pmaStart).not.toHaveBeenCalled();
+    expect(control.row("mysql")).toMatchObject({ running: true, pid: 900, ports: "3306, 8081", status: "Running" });
+    expect(control.ownerOf(901)).toBe("MySQL (phpMyAdmin)");
+    expect(await control.toggle("mysql")).toBe(true);
+    expect(ipc.mysqlStop).toHaveBeenCalledTimes(1);
+    expect(control.row("mysql")).toMatchObject({ running: false, status: "Stopped" });
   });
 
   it("Explorer, Shell and Quit call the backend / window", async () => {
@@ -172,7 +205,7 @@ describe("ControlPanelService", () => {
       panelNetstat: vi
         .fn()
         .mockResolvedValue([
-          { address: "127.0.0.1", port: 3307, pid: 4400, process: "mysqld.exe" },
+          { address: "127.0.0.1", port: 3306, pid: 4400, process: "mysqld.exe" },
         ]),
     });
     control.setPage("netstat");
