@@ -2093,5 +2093,19 @@
   "network.palette.showDownloads": "নেটওয়ার্ক: প্যাকেজ ডাউনলোড",
   "network.palette.exportDiagnostics": "নেটওয়ার্ক: নেটওয়ার্ক ডায়াগনস্টিক সংরক্ষণ করুন",
   "command.network.showDownloads": "প্যাকেজ ডাউনলোড",
-  "command.network.exportDiagnostics": "নেটওয়ার্ক ডায়াগনস্টিক সংরক্ষণ করুন"
+  "command.network.exportDiagnostics": "নেটওয়ার্ক ডায়াগনস্টিক সংরক্ষণ করুন",
+  "languageTools.missing": "ভাষা টুলস: নেই",
+  "languageTools.present": "ভাষা টুলস: {contents}",
+  "languageTools.installingRow": "ভাষা টুলস: {name} ইনস্টল হচ্ছে…",
+  "languageTools.status.ready": "অবস্থা: প্রস্তুত",
+  "languageTools.status.running": "অবস্থা: চলছে",
+  "languageTools.status.included": "অবস্থা: সঙ্গে দেওয়া — প্রথম ব্যবহারে আনপ্যাক হয়, ডাউনলোড লাগে না",
+  "languageTools.install": "ভাষা টুলস ইনস্টল করুন",
+  "languageTools.installTitle": "{name} ({contents}) OpenMind Studio-র নিজস্ব ফোল্ডারে ইনস্টল করুন",
+  "languageTools.installing": "ইনস্টল হচ্ছে…",
+  "languageTools.prompt.label": "ভাষা টুলস নেই",
+  "languageTools.prompt.text": "{name} ইনস্টল করা নেই, তাই {language} ভাষার সাপোর্ট অসম্পূর্ণ।",
+  "languageTools.prompt.hint": "এক ক্লিকে এটি OpenMind Studio-র নিজস্ব ফোল্ডারে ইনস্টল হবে। কম্পিউটারের আর কিছু বদলাবে না।",
+  "languageTools.prompt.install": "এখনই ইনস্টল করুন",
+  "languageTools.prompt.installing": "{name} ইনস্টল হচ্ছে…"
 }

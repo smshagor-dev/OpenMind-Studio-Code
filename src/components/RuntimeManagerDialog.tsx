@@ -4,6 +4,7 @@ import { container } from "../services/container";
 import type { AddonStatus, InstalledVersion, RuntimeStatus } from "../services/ipc";
 import { describeProgress, injectionStatus } from "../services/runtimeService";
 import "../styles/toolchains.css";
+import { RuntimeLanguageTools } from "./RuntimeLanguageTools";
 import { ToolsPanel } from "./toolchains/ToolsPanel";
 import { WorkloadsPage } from "./workloads/WorkloadsPage";
 import { t } from "../i18n";
@@ -279,6 +280,7 @@ function RuntimeCard({
       <p className="runtime-card__description" title={runtime.description}>
         {runtime.description}
       </p>
+      <RuntimeLanguageTools runtimeId={runtime.id} />
 
       {runtime.installed.length > 0 ? (
         <ul className="runtime-card__versions">

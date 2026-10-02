@@ -2093,5 +2093,19 @@
   "network.palette.showDownloads": "Network: Package Downloads",
   "network.palette.exportDiagnostics": "Network: Save Network Diagnostics",
   "command.network.showDownloads": "Package Downloads",
-  "command.network.exportDiagnostics": "Save Network Diagnostics"
+  "command.network.exportDiagnostics": "Save Network Diagnostics",
+  "languageTools.missing": "Language Tools: Missing",
+  "languageTools.present": "Language Tools: {contents}",
+  "languageTools.installingRow": "Language Tools: installing {name}…",
+  "languageTools.status.ready": "Status: Ready",
+  "languageTools.status.running": "Status: Running",
+  "languageTools.status.included": "Status: Included — unpacked on first use, no download",
+  "languageTools.install": "Install Language Tools",
+  "languageTools.installTitle": "Install {name} ({contents}) into OpenMind Studio's own folder",
+  "languageTools.installing": "Installing…",
+  "languageTools.prompt.label": "Language tools missing",
+  "languageTools.prompt.text": "{language} language support is incomplete because {name} is not installed.",
+  "languageTools.prompt.hint": "One click installs it into OpenMind Studio's own folder. Nothing else on this computer changes.",
+  "languageTools.prompt.install": "Install now",
+  "languageTools.prompt.installing": "Installing {name}…"
 }

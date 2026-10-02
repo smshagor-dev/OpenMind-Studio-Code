@@ -2123,5 +2123,19 @@
   "network.palette.showDownloads": "Сеть: загрузки пакетов",
   "network.palette.exportDiagnostics": "Сеть: сохранить диагностику сети",
   "command.network.showDownloads": "Загрузки пакетов",
-  "command.network.exportDiagnostics": "Сохранить диагностику сети"
+  "command.network.exportDiagnostics": "Сохранить диагностику сети",
+  "languageTools.missing": "Языковые инструменты: отсутствуют",
+  "languageTools.present": "Языковые инструменты: {contents}",
+  "languageTools.installingRow": "Языковые инструменты: установка {name}…",
+  "languageTools.status.ready": "Состояние: готово",
+  "languageTools.status.running": "Состояние: работает",
+  "languageTools.status.included": "Состояние: входит в комплект — распаковывается при первом использовании, без загрузки",
+  "languageTools.install": "Установить языковые инструменты",
+  "languageTools.installTitle": "Установить {name} ({contents}) в собственную папку OpenMind Studio",
+  "languageTools.installing": "Установка…",
+  "languageTools.prompt.label": "Нет языковых инструментов",
+  "languageTools.prompt.text": "Поддержка языка {language} неполная: {name} не установлен.",
+  "languageTools.prompt.hint": "Один щелчок установит его в собственную папку OpenMind Studio. Больше на компьютере ничего не изменится.",
+  "languageTools.prompt.install": "Установить",
+  "languageTools.prompt.installing": "Установка {name}…"
 }

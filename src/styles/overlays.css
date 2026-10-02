@@ -264,6 +264,35 @@
   background-color: var(--danger-bg);
 }
 
+.runtime-card__language-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.runtime-language-tool {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 12px;
+}
+
+.runtime-language-tool[data-state="missing"] .runtime-language-tool__label,
+.runtime-language-tool[data-state="unavailable"] .runtime-language-tool__label {
+  color: var(--warning-fg);
+}
+
+.runtime-language-tool__status {
+  color: var(--success-fg);
+}
+
+.runtime-language-tool__reason {
+  flex-basis: 100%;
+  color: var(--fg-muted);
+}
+
 .runtime-card__install {
   display: flex;
   align-items: center;

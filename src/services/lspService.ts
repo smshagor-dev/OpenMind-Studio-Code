@@ -51,6 +51,8 @@ export class LspService {
   private confirmRemove: (server: LspServerInfo) => Promise<boolean> = () => Promise.resolve(false);
   private readonly reported = new Set<string>();
   private readonly removing = new Set<string>();
+  /** Installs started from this window that haven't answered yet (a second click starts nothing). */
+  private readonly installs = new Set<string>();
   private previouslyRunning = new Set<string>();
   private offs: (() => void)[] = [];
 
@@ -406,16 +408,22 @@ export class LspService {
    */
   async install(serverId: string): Promise<boolean> {
     const server = this.servers().find((entry) => entry.id === serverId);
-    if (!server?.canInstall) return false;
+    if (!server?.canInstall || this.isInstalling(serverId)) return false;
+    this.installs.add(serverId);
+    // A new snapshot object, so views reading `getState()` see the change.
+    this.state = { ...this.state };
+    this.notify();
     try {
       await this.ipc.lspInstall(serverId);
     } catch (error) {
+      this.installs.delete(serverId);
       this.events.emit("appError", {
         message: `Installing ${server.name} failed: ${String(error)}`,
       });
       await this.refresh();
       return false;
     }
+    this.installs.delete(serverId);
     this.events.emit("appNotice", {
       message: server.bundled
         ? `${server.name} is ready (unpacked from the offline bundle).`
@@ -425,6 +433,11 @@ export class LspService {
     await this.refresh();
     await this.resyncAll(server.languages);
     return true;
+  }
+
+  /** An install of this server is running (started here, or reported by the backend). */
+  isInstalling(serverId: string): boolean {
+    return this.installs.has(serverId) || this.servers().some((entry) => entry.id === serverId && entry.state === "installing");
   }
 
   /** Asks the user before a server is removed (`true` = go ahead); without it nothing is removed. */

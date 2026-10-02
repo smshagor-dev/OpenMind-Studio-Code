@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "../services/eventBus";
 import type { AppEvents } from "../services/events";
-import type { InstallProgress, RuntimeStatus } from "../services/ipc";
+import type { InstallProgress, LspServerInfo, RuntimeStatus } from "../services/ipc";
 import { RuntimeService } from "../services/runtimeService";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
@@ -42,7 +42,7 @@ describe("RuntimeManagerDialog", () => {
   let service: RuntimeService;
   let pushProgress: (p: InstallProgress) => void;
 
-  async function open(runtimes: RuntimeStatus[]) {
+  async function open(runtimes: RuntimeStatus[], servers: LspServerInfo[] = []) {
     ipc = createFakeIpc({
       runtimeList: vi.fn().mockResolvedValue(runtimes),
       runtimeInstall: vi.fn().mockResolvedValue({}),
@@ -52,7 +52,19 @@ describe("RuntimeManagerDialog", () => {
       }),
     });
     service = new RuntimeService(ipc, new EventBus<AppEvents>());
-    harness.current = { runtime: service, workloads: { takeRequestedTab: () => null, peekRequestedTab: () => null } };
+    const lspState = { snapshot: null };
+    const lsp = {
+      subscribe: () => () => undefined,
+      getState: () => lspState,
+      servers: () => servers,
+      isInstalling: () => false,
+      install: vi.fn().mockResolvedValue(true),
+    };
+    harness.current = {
+      runtime: service,
+      lsp,
+      workloads: { takeRequestedTab: () => null, peekRequestedTab: () => null },
+    };
     const onClose = vi.fn();
     render(<RuntimeManagerDialog onClose={onClose} />);
     await screen.findByRole("region", { name: runtimes[0]?.displayName ?? "" });
@@ -61,6 +73,45 @@ describe("RuntimeManagerDialog", () => {
 
   beforeEach(() => {
     harness.current = null;
+  });
+
+  it("shows a runtime's missing language tools on its card with a one-click install", async () => {
+    const fortls = {
+      id: "fortran",
+      name: "fortls",
+      languages: ["fortran"],
+      note: null,
+      contents: "fortls 3.2.2",
+      runtime: "pythonModule",
+      installed: false,
+      bundled: false,
+      installSource: null,
+      state: "stopped",
+      workspace: null,
+      node: null,
+      capabilities: null,
+      openDocuments: 0,
+      pid: null,
+      canInstall: true,
+      installBlocked: null,
+      logPath: "C:/app/logs/lsp/fortran.log",
+      logExists: false,
+    } satisfies LspServerInfo;
+    await open(
+      [
+        runtime({ id: "fortran", displayName: "Fortran" }),
+        runtime({ id: "pascal", displayName: "Free Pascal" }),
+      ],
+      [fortls],
+    );
+    const fortran = screen.getByRole("region", { name: "Fortran" });
+    expect(within(fortran).getByText("Language Tools: Missing")).toBeTruthy();
+    fireEvent.click(within(fortran).getByRole("button", { name: "Install Language Tools" }));
+    const lsp = (harness.current as { lsp: { install: ReturnType<typeof vi.fn> } }).lsp;
+    expect(lsp.install).toHaveBeenCalledWith("fortran");
+    // Pascal has no registered language tool: its card says nothing about one.
+    const pascal = screen.getByRole("region", { name: "Free Pascal" });
+    expect(within(pascal).queryByText(/Language Tools/)).toBeNull();
   });
 
   it("lists each runtime with its installed / not installed status", async () => {

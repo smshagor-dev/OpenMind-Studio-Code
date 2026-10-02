@@ -100,6 +100,7 @@ import { i18n, t } from "../i18n";
 import { tauriBrokerIpc } from "./network/brokerIpc";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
+import { wireLanguageTools } from "./languageTools/languageToolsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
 import { tauriDepsIpc } from "./deps/depsIpc";
 import { wireDeps } from "./deps/depsWiring";
@@ -709,6 +710,9 @@ const network = wireNetwork({
 });
 /** Runtime Manager > Workloads and the first-run page (installs through the RuntimeService). */
 const workloads = wireWorkloads({ events, commands, runtime, lsp });
+/** Language tools: Missing / Install on the Runtime Manager cards and the editor's one-click install card. */
+const languageTools = wireLanguageTools({ events, lsp, runtime });
+languageTools.start();
 /** Python: Install Bundled Packages (the offline Python bundle, into the active portable Python). */
 registerPythonPackagesCommands({ commands, events, ipc: tauriIpcClient, editor });
 /** PATH / File Explorer integration on request (portable copies; the installer offers the same as check boxes). */
@@ -1051,6 +1055,7 @@ export const container = {
   deps,
   dependencies,
   workloads,
+  languageTools,
   reportStartup,
   startFormatting,
   startExtensions: extensions.start,
