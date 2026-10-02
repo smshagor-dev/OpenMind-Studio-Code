@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-eslint",
+  "private": true,
+  "dependencies": { "eslint": "10.11.0" }
+}

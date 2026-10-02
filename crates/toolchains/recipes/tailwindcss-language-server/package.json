@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-tailwindcss-language-server",
+  "private": true,
+  "dependencies": { "@tailwindcss/language-server": "0.16.0" }
+}

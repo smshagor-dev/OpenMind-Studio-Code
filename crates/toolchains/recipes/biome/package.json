@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-biome",
+  "private": true,
+  "dependencies": { "@biomejs/biome": "2.5.15" }
+}

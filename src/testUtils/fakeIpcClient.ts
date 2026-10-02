@@ -91,6 +91,8 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     }),
     toolchainsSetActive: vi.fn(),
     toolchainsVerify: vi.fn(),
+    toolchainsInstall: vi.fn(),
+    toolchainsRemove: vi.fn(),
     languageRegistry: vi.fn().mockResolvedValue([]),
     languageWorkspaceStatus: vi.fn().mockResolvedValue({ os: "windows", projects: [], tools: [] }),
     languageFileStatus: vi.fn(),

@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-vue-language-server",
+  "private": true,
+  "dependencies": { "@vue/language-server": "3.3.12","typescript": "5.9.3" }
+}

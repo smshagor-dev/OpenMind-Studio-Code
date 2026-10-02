@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { container } from "../../services/container";
 import type { ToolEntry } from "../../services/toolchains/toolchainIpc";
+import { routeState, TOOL_ROUTES, type RouteState } from "../../services/toolchains/toolInstallRoutes";
 import {
   missingLine,
   sectionsOf,
@@ -97,14 +98,67 @@ function BundledTools() {
   );
 }
 
+/** The card's chip, line and buttons for how the tool is installed (see `toolInstallRoutes`). */
+function installView(tool: ToolEntry): {
+  chip: { label: string; tone: string } | null;
+  line: string | null;
+  canInstall: boolean;
+  canRemove: boolean;
+  busy: boolean;
+  reason: string | null;
+} {
+  const route = TOOL_ROUTES[tool.id];
+  const busy = container.toolInstall.isBusy(tool.id);
+  const none = { chip: null, line: null, canInstall: false, canRemove: false, busy, reason: null };
+  if (route === undefined) return none;
+  if (route.kind === "package") {
+    const active = tool.versions.find((version) => version.status === "active");
+    if (busy) return { ...none, chip: { label: "Installing", tone: "info" }, line: "Downloading and installing into the app folder…" };
+    if (active !== undefined) {
+      return { ...none, canRemove: active.installed, line: active.installed ? `Installed from Language Tools: ${active.version}` : null };
+    }
+    // A listed copy whose program is gone stays "Broken"; installing puts a working one in place.
+    if (tool.status === "broken") return { ...none, canInstall: true };
+    return {
+      ...none,
+      chip: { label: "Missing", tone: "warn" },
+      line: "Install downloads it into OpenMind Studio's tools folder (pinned and checked); nothing outside the app changes.",
+      canInstall: true,
+    };
+  }
+  // A copy shipped with the app (tools/toolchains.json) that is active already wins.
+  if (tool.status === "active" && !busy) return none;
+  const routed: RouteState | null = routeState(route, container.runtime.getState().runtimes, container.lsp.servers(), busy);
+  if (routed === null) return none;
+  switch (routed.state) {
+    case "installed":
+      return { ...none, chip: { label: "Installed", tone: "ok" }, line: routed.detail };
+    case "missing":
+      return { ...none, chip: { label: "Missing", tone: "warn" }, line: routed.detail, canInstall: true };
+    case "installing":
+      return { ...none, chip: { label: "Installing", tone: "info" }, line: "Installing…", busy: true };
+    case "unavailable":
+      return { ...none, chip: { label: "Missing", tone: "warn" }, line: routed.reason, reason: routed.reason };
+    case "external":
+      return { ...none, chip: { label: "External", tone: "info" }, line: routed.reason };
+  }
+}
+
 function ToolCard({ tool }: { tool: ToolEntry }) {
   const service = container.toolchains;
   const state = useSyncExternalStore(
     (listener) => service.subscribe(listener),
     () => service.getState(),
   );
-  const chip = statusChip(tool);
-  const hint = missingLine(tool);
+  useSyncExternalStore(container.toolInstall.subscribe, container.toolInstall.getState);
+  useSyncExternalStore(
+    (listener) => container.runtime.subscribe(listener),
+    () => container.runtime.getState(),
+  );
+  useSyncExternalStore(container.lsp.subscribe.bind(container.lsp), () => container.lsp.getState());
+  const install = installView(tool);
+  const chip = install.chip ?? statusChip(tool);
+  const hint = install.line ?? missingLine(tool);
   const verified = state.verified[tool.id];
   const canVerify = tool.versions.length > 0 && state.verifying === null;
   return (
@@ -144,6 +198,22 @@ function ToolCard({ tool }: { tool: ToolEntry }) {
         </p>
       ) : null}
       <footer className="tc-card__actions">
+        {install.canInstall || install.reason !== null || install.busy ? (
+          <button
+            type="button"
+            className="tc-card__install"
+            disabled={!install.canInstall || install.busy}
+            title={install.reason ?? `Install ${tool.name}`}
+            onClick={() => void container.toolInstall.install(tool.id, tool.name)}
+          >
+            {install.busy ? "Installing…" : "Install"}
+          </button>
+        ) : null}
+        {install.canRemove ? (
+          <button type="button" onClick={() => void container.toolInstall.remove(tool.id, tool.name)}>
+            Remove
+          </button>
+        ) : null}
         {tool.versions.length > 1 ? (
           <label className="tc-card__select">
             <span className="tc-visually-hidden">{`${tool.name} version`}</span>

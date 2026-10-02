@@ -66,6 +66,7 @@ import { registerShellIntegrationCommands } from "./shellIntegrationCommands";
 import { registerPythonPackagesCommands } from "./pythonPackagesCommands";
 import { offerEnglish } from "./languageOffer";
 import { ToolchainService } from "./toolchains/toolchainService";
+import { ToolInstallService } from "./toolchains/toolInstallService";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -940,6 +941,33 @@ registerMenuFillCommands({
 const toolchains = new ToolchainService(tauriIpcClient, () => {
   void language.support.refresh();
 });
+/** Language Tools > Install: runtimes through the Runtime Manager, servers through Language Tools, tool packages into tools/. */
+const toolInstall = new ToolInstallService({
+  events,
+  runtime,
+  lsp,
+  installPackage: async (id) => {
+    await tauriIpcClient.toolchainsInstall(id);
+  },
+  removePackage: async (id) => {
+    await tauriIpcClient.toolchainsRemove(id);
+  },
+  refreshTools: async () => {
+    await toolchains.refresh();
+    void language.support.refresh();
+  },
+  acceptLicence: async ({ tool, name, url }) =>
+    (await extensions.prompts.confirm({
+      extension: "Language Tools",
+      title: `Accept the ${name} to install ${tool}?`,
+      details: [
+        { label: "Licence", value: name },
+        { label: "Terms", value: url },
+      ],
+      notes: [`${tool} is installed only after you accept its vendor's licence. Read the terms at the address above.`],
+      buttons: ["Accept and Install"],
+    })) === "Accept and Install",
+});
 // Extensions' languages win; then the registry's grammar for languages the editor's own table doesn't know (Go, Rust ...).
 documents.setLanguageResolver(
   (path) =>
@@ -1060,6 +1088,7 @@ export const container = {
   startAi,
   language,
   toolchains,
+  toolInstall,
   startLanguage,
   formatting,
   profiles,

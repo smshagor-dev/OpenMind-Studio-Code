@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-graphql-language-service",
+  "private": true,
+  "dependencies": { "graphql-language-service-cli": "3.5.0" }
+}

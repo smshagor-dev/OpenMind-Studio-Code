@@ -75,10 +75,18 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
             RunEnvironment::default()
         }
     };
+    let tools = crate::commands::toolchains::injection(state).await;
     let path_prepend = path_order(
         state.broker.shims_dir(),
-        crate::commands::toolchains::bundled_dirs(state).await,
+        tools.path_prepend,
         std::mem::take(&mut environment.path_prepend),
+    );
+    // Variables an installed tool needs (absolute paths inside the app folder), for this process only.
+    environment.vars.extend(
+        tools
+            .env
+            .into_iter()
+            .map(|(name, path)| (name, path.display().to_string())),
     );
     state.broker.set_tool_dirs(&path_prepend);
     let mut search = path_prepend.clone();

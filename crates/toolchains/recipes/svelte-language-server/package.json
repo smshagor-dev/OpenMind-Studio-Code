@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-svelte-language-server",
+  "private": true,
+  "dependencies": { "svelte-language-server": "0.18.4" }
+}

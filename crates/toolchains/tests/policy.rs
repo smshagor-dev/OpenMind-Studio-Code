@@ -45,7 +45,13 @@ fn nothing_here_downloads_or_changes_the_system_path() {
     ];
     for file in &files {
         let text = fs::read_to_string(file).expect("source");
+        // `recipes.rs` is data: the pinned addresses the app's installer downloads from. Addresses are allowed there,
+        // network code (the other needles) is not.
+        let is_recipes = file.file_name().is_some_and(|n| n == "recipes.rs");
         for needle in forbidden {
+            if is_recipes && needle.ends_with("://") {
+                continue;
+            }
             let in_code = text
                 .lines()
                 .filter(|l| !l.trim_start().starts_with("//"))

@@ -1,0 +1,5 @@
+{
+  "name": "openmind-tool-astro-language-server",
+  "private": true,
+  "dependencies": { "@astrojs/language-server": "2.17.1","typescript": "5.9.3" }
+}

@@ -40,6 +40,7 @@ pub mod ssh_diag;
 pub mod system;
 pub mod tasks;
 pub mod terminal;
+pub mod tool_packages;
 pub mod toolchains;
 pub mod watch;
 pub mod workloads;

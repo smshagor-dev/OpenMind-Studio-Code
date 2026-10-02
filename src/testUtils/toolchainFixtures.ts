@@ -10,6 +10,8 @@ export function toolVersion(overrides: Partial<ToolVersion> = {}): ToolVersion {
     license: null,
     licenseUrl: null,
     verifyArgs: null,
+    installed: false,
+    env: [],
     ...overrides,
   };
 }

@@ -3,7 +3,9 @@
 
 use std::path::{Component, Path};
 
-use serde::Deserialize;
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ManifestError {
@@ -13,14 +15,14 @@ pub enum ManifestError {
     Unreadable(String),
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     #[serde(default)]
     pub tools: Vec<ManifestTool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManifestTool {
     pub id: String,
@@ -36,7 +38,7 @@ pub struct ManifestTool {
     pub active_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ManifestVersion {
     pub version: String,
@@ -55,6 +57,13 @@ pub struct ManifestVersion {
     /// Arguments that make the program print its version (`["--version"]`). Only used by Verify, on a click.
     #[serde(default)]
     pub verify_args: Option<Vec<String>>,
+    /// Variables a process needs to use it, each a path relative to the app folder (the Rust toolchain's
+    /// `RUSTUP_HOME` and `CARGO_HOME`). Only for processes OpenMind starts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
+    /// Set while loading for versions from `tools/installed.json` (installed from Language Tools, not shipped).
+    #[serde(skip)]
+    pub installed: bool,
 }
 
 fn yes() -> bool {

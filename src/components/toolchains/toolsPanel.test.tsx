@@ -30,6 +30,18 @@ const NO_SERVERS = {
   refresh: () => Promise.resolve(),
 };
 const NO_SERVERS_STATE = { snapshot: null };
+const INSTALL_STATE = { busy: [] };
+const RUNTIME_STATE = { runtimes: [] };
+const INSTALL_STUBS = {
+  toolInstall: {
+    subscribe: () => () => undefined,
+    getState: () => INSTALL_STATE,
+    isBusy: () => false,
+    install: () => Promise.resolve(false),
+    remove: () => Promise.resolve(false),
+  },
+  runtime: { subscribe: () => () => undefined, getState: () => RUNTIME_STATE },
+};
 
 function tools() {
   return [
@@ -78,7 +90,7 @@ async function mount(list = tools(), overrides: Parameters<typeof createFakeIpc>
     ...overrides,
   });
   const toolchains = new ToolchainService(ipc);
-  harness.current = { toolchains, lsp: NO_SERVERS };
+  harness.current = { toolchains, lsp: NO_SERVERS, ...INSTALL_STUBS };
   render(<ToolsPanel />);
   await screen.findByRole("region", { name: "Version Control" });
   return { ipc, toolchains };
@@ -123,15 +135,17 @@ describe("ToolsPanel", () => {
     await mount();
     const prettier = screen.getByRole("article", { name: "Prettier" });
     expect(within(prettier).getByText("Missing")).toHaveClass("tc-chip--warn");
-    expect(within(prettier).getByText(/Not bundled in this build/)).toBeInTheDocument();
+    // Missing tools can now be installed from here.
+    expect(within(prettier).getByText(/Install downloads it into OpenMind Studio's tools folder/)).toBeInTheDocument();
+    expect(within(prettier).getByRole("button", { name: "Install" })).toBeEnabled();
     expect(within(screen.getByRole("article", { name: "ESLint" })).getByText("Broken")).toHaveClass(
       "tc-chip--error",
     );
+    // An SDK the Runtime Manager provides is installed from here too.
     const flutter = screen.getByRole("article", { name: "Flutter SDK" });
-    expect(within(flutter).getByText("External")).toHaveClass("tc-chip--info");
-    expect(
-      within(flutter).getByText(/Install the Flutter SDK from flutter\.dev/),
-    ).toBeInTheDocument();
+    expect(within(flutter).getByText("Missing")).toHaveClass("tc-chip--warn");
+    expect(within(flutter).getByText(/Installs flutter with the Runtime Manager/)).toBeInTheDocument();
+    expect(within(flutter).getByRole("button", { name: "Install" })).toBeEnabled();
     // Nothing without a program on disk offers Verify.
     expect(within(flutter).getByRole("button", { name: "Verify" })).toBeDisabled();
     expect(within(prettier).getByRole("button", { name: "Verify" })).toBeDisabled();
@@ -210,7 +224,7 @@ describe("ToolsPanel", () => {
         }),
       ),
     });
-    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS };
+    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS, ...INSTALL_STUBS };
     render(<ToolsPanel />);
     expect(
       await screen.findByText(
@@ -226,7 +240,7 @@ describe("ToolsPanel", () => {
       toolEntry({ id: "flutter-sdk", name: "Flutter SDK", category: "sdk", status: "external" }),
     ];
     const ipc = createFakeIpc({ toolchainsList: vi.fn().mockResolvedValue(packs(list)) });
-    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS };
+    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS, ...INSTALL_STUBS };
     render(<ToolsPanel />);
     expect(await screen.findByText("No tools bundled")).toBeInTheDocument();
     expect(

@@ -28,6 +28,10 @@ export interface ToolVersion {
   license: string | null;
   licenseUrl: string | null;
   verifyArgs: string[] | null;
+  /** Installed from Language Tools (`tools/installed.json`) rather than shipped with the app. */
+  installed: boolean;
+  /** Variables a process needs for it: [name, absolute path]. */
+  env: [string, string][];
 }
 
 export interface ToolEntry {
@@ -70,6 +74,10 @@ export interface ToolchainIpc {
   toolchainsList: () => Promise<ToolchainPacks>;
   toolchainsSetActive: (id: string, version: string) => Promise<ToolchainPacks>;
   toolchainsVerify: (id: string, version: string | null) => Promise<VerifyResult>;
+  /** Downloads and installs a tool package into `tools/` (Language Tools > Install). */
+  toolchainsInstall: (id: string) => Promise<ToolchainPacks>;
+  /** Removes a tool installed from Language Tools. */
+  toolchainsRemove: (id: string) => Promise<ToolchainPacks>;
 }
 
 export const tauriToolchainIpc: ToolchainIpc = {
@@ -77,4 +85,6 @@ export const tauriToolchainIpc: ToolchainIpc = {
   toolchainsSetActive: (id, version) =>
     invoke<ToolchainPacks>("toolchains_set_active", { id, version }),
   toolchainsVerify: (id, version) => invoke<VerifyResult>("toolchains_verify", { id, version }),
+  toolchainsInstall: (id) => invoke<ToolchainPacks>("toolchains_install", { id }),
+  toolchainsRemove: (id) => invoke<ToolchainPacks>("toolchains_remove", { id }),
 };

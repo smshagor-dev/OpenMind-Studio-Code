@@ -137,6 +137,20 @@ struct Resolved {
     vars: Vec<(String, String)>,
 }
 
+/// Node with npm, and Python, chosen as for language servers: for the Language Tools tool installer.
+pub(crate) async fn installers(
+    state: &AppState,
+) -> (Result<NodeExecutable, String>, Result<PathBuf, String>) {
+    let resolved = resolve(state).await;
+    (
+        resolved.npm_node.map_err(|err| err.to_string()),
+        resolved
+            .python
+            .map(|python| python.path)
+            .map_err(|err| err.to_string()),
+    )
+}
+
 async fn resolve(state: &AppState) -> Resolved {
     let environment = environment(state).await;
     let (bundle, bundle_problem) = match bundle::load(&state.app_root) {

@@ -47,6 +47,12 @@ pub(crate) async fn bundled_dirs(state: &AppState) -> Vec<PathBuf> {
     packs(state).await.injection().path_prepend
 }
 
+/// The PATH folders and the variables of the active tools (the Rust toolchain's `RUSTUP_HOME`/`CARGO_HOME`), for a
+/// process OpenMind starts.
+pub(crate) async fn injection(state: &AppState) -> openmind_toolchains::Injection {
+    packs(state).await.injection()
+}
+
 /// The folder holding `debugpy/adapter/__main__.py` of the active bundled debugpy, when there is one.
 pub(crate) async fn debugpy_dir(state: &AppState) -> Option<PathBuf> {
     debugpy_root(&packs(state).await.active_program("debugpy")?)

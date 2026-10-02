@@ -301,6 +301,8 @@ fn main() {
             commands::deps::deps_project_info,
             commands::toolchains::toolchains_list,
             commands::toolchains::toolchains_set_active,
+            commands::tool_packages::toolchains_install,
+            commands::tool_packages::toolchains_remove,
             commands::toolchains::toolchains_verify,
             commands::index::index_start,
             commands::index::index_status,

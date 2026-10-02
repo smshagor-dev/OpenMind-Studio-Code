@@ -517,6 +517,16 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   `<v>/debugpy/adapter/__main__.py` — is the adapter folder before the Runtime Manager's) and `composer_run` (an active bundled `composer.phar` before the Runtime Manager's Composer). Git needs no change:
   its resolver takes the first folder that has `git.exe`. **What is physically bundled in this build: nothing** — the system, manifest, detection, selection, Verify, UI and packaging check are built and tested
   against fixture folders; every tool shows Missing (or External) until real files are added. Do not claim "last five versions" shipped until they are.
+  **Installable from Language Tools (after Milestone 23.1)**: every tool on the tab has an install route (`src/services/toolchains/toolInstallRoutes.ts`,
+  `ToolInstallService`): Runtime Manager runtimes (Git, Composer + PHP, debugpy, Go, JDK, .NET, LLVM-MinGW + CMake + Ninja, Flutter, Android — a licence
+  that must be accepted is asked first), the Intelephense language server, or a tool package installed by `commands::tool_packages`
+  (`toolchains_install|remove`) from `openmind_toolchains::recipes` (data only): npm tools from embedded lockfiles in `crates/toolchains/recipes/`, pip tools
+  into `lib/` with a relocatable `<cmd>.cmd` launcher (`python -m`), PHP archives and rustup-init by SHA-256, gopls with `go install` (app-local GOPATH/
+  caches), the Rust toolchain with `rustup toolchain install stable-x86_64-pc-windows-gnu` and copied proxies (never `rustup-init` self-install, which
+  writes the Registry). Installs are staged in `tools/<id>/.installing`, renamed into `tools/<id>/<version>/` and recorded in `tools/installed.json`,
+  which `packs::load` merges (versions marked `installed`; a version may carry `env` paths, e.g. `RUSTUP_HOME`/`CARGO_HOME`, added by `run::environment`).
+  npm tools expose only their own `<cmd>.cmd` launcher (a dependency's `.bin` — the Svelte server's Prettier — never shadows another tool). Not
+  installable, with the reason on the card: Docker (service + admin), Xcode (macOS), Phpactor (needs PHP's posix extension, absent on Windows).
   Since Milestone 17 the servers of the offline LSP bundle (Pyright, typescript-language-server, vscode-langservers-extracted, rust-analyzer, clangd, YAML, Dockerfile)
   are no longer tool-pack entries in `catalog` (they live in `lsp/` and Language Tools; listing them here showed them "Missing"; a test keeps them out).
 

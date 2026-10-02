@@ -63,6 +63,10 @@ pub struct VersionView {
     pub license: Option<String>,
     pub license_url: Option<String>,
     pub verify_args: Option<Vec<String>>,
+    /// Installed from Language Tools (`tools/installed.json`) rather than shipped with the app.
+    pub installed: bool,
+    /// Variables a process needs for it: name and absolute path.
+    pub env: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -100,15 +104,44 @@ pub struct Packs {
     pub tools: Vec<ToolView>,
 }
 
-/// The folders to put on the PATH of a process OpenMind starts (never the system PATH).
+/// The folders to put on the PATH of a process OpenMind starts (never the system PATH), and the variables an active
+/// tool needs (absolute paths inside the app folder).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Injection {
     pub path_prepend: Vec<PathBuf>,
+    pub env: Vec<(String, PathBuf)>,
 }
 
 /// Where the manifest lives.
 pub fn manifest_path(app_root: &Path) -> PathBuf {
     app_root.join("tools").join("toolchains.json")
+}
+
+/// Where the tools installed from Language Tools are recorded (same format; written by the app's installer).
+pub fn installed_path(app_root: &Path) -> PathBuf {
+    app_root.join("tools").join("installed.json")
+}
+
+/// Adds the installed tools' versions to the manifest's (an installed version replaces a listed one of the same name).
+fn merge_installed(manifest: &mut manifest::Manifest, installed: manifest::Manifest) {
+    for tool in installed.tools {
+        match manifest.tools.iter_mut().find(|entry| entry.id == tool.id) {
+            Some(entry) => {
+                for mut version in tool.versions {
+                    version.installed = true;
+                    entry.versions.retain(|v| v.version != version.version);
+                    entry.versions.push(version);
+                }
+            }
+            None => {
+                let mut tool = tool;
+                for version in &mut tool.versions {
+                    version.installed = true;
+                }
+                manifest.tools.push(tool);
+            }
+        }
+    }
 }
 
 /// Reads the manifest and builds the view. `chosen` = the user's active versions by tool id.
@@ -129,6 +162,12 @@ pub fn load(app_root: &Path, platform: &str, chosen: &HashMap<String, String>) -
             manifest::Manifest::default()
         }
     };
+    let mut manifest = manifest;
+    match manifest::read(&installed_path(app_root)) {
+        Ok(Some(installed)) => merge_installed(&mut manifest, installed),
+        Ok(None) => {}
+        Err(err) => warnings.push(format!("tools/installed.json was ignored: {err}")),
+    }
     let mut tools: Vec<ToolView> = KNOWN
         .iter()
         .map(|k| {
@@ -186,7 +225,7 @@ fn build(
         .map(|e| {
             e.versions
                 .iter()
-                .filter(|v| v.bundled && v.platform == platform)
+                .filter(|v| (v.bundled || v.installed) && v.platform == platform)
                 .collect()
         })
         .unwrap_or_default();
@@ -229,6 +268,18 @@ fn build(
                 license: v.license.clone(),
                 license_url: v.license_url.clone(),
                 verify_args: v.verify_args.clone(),
+                installed: v.installed,
+                env: v
+                    .env
+                    .iter()
+                    .filter(|(_, path)| is_safe_relative(path))
+                    .map(|(name, path)| {
+                        (
+                            name.clone(),
+                            app_root.join(path).to_string_lossy().replace('\\', "/"),
+                        )
+                    })
+                    .collect(),
             }
         })
         .collect();
@@ -302,6 +353,24 @@ impl Packs {
     /// The folders of every active bundled program, in category order. Only for processes OpenMind launches.
     /// A debugger's files are not a command, so they are left out.
     pub fn injection(&self) -> Injection {
+        let mut env: Vec<(String, PathBuf)> = Vec::new();
+        for tool in &self.tools {
+            if tool.status != ToolStatus::Active {
+                continue;
+            }
+            if let Some(version) = tool
+                .versions
+                .iter()
+                .find(|v| v.status == VersionStatus::Active)
+            {
+                env.extend(
+                    version
+                        .env
+                        .iter()
+                        .map(|(name, path)| (name.clone(), PathBuf::from(path))),
+                );
+            }
+        }
         let mut dirs: Vec<PathBuf> = Vec::new();
         for tool in self
             .tools
@@ -317,7 +386,10 @@ impl Packs {
                 }
             }
         }
-        Injection { path_prepend: dirs }
+        Injection {
+            path_prepend: dirs,
+            env,
+        }
     }
 
     /// Whether `version` of `id` can be chosen: it is listed and its program exists.
