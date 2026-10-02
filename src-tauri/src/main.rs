@@ -98,6 +98,7 @@ fn main() {
             commands::settings::workspace_unpin_folder,
             commands::settings::workspace_list_pinned_folders,
             commands::terminal::terminal_list_shells,
+            commands::terminal::terminal_busy,
             commands::terminal::terminal_create,
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,

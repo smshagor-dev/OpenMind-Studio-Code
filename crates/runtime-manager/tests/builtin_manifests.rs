@@ -120,6 +120,30 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
     assert_eq!(ids("composer"), ["phar"]);
 }
 
+/// `node`, `npm` and `npx` must all work in an OpenMind PowerShell terminal, also where scripts are disabled
+/// (`Restricted`, the Windows default on many managed PCs): PowerShell would pick Node's npm.ps1/npx.ps1, so npm and
+/// npx get .cmd launchers that come before Node's own folder on PATH.
+#[test]
+fn npm_and_npx_have_cmd_launchers_that_work_under_any_powershell_policy() {
+    let registry = RuntimeRegistry::builtin();
+    let node = registry.get("node").expect("node");
+    assert_eq!(node.bin_dirs, ["."]);
+    let shims: Vec<(&str, &str)> = node
+        .shims
+        .iter()
+        .map(|shim| (shim.name.as_str(), shim.target.as_str()))
+        .collect();
+    assert_eq!(shims, [("npm", "npm.cmd"), ("npx", "npx.cmd")]);
+    for file in ["node.exe", "npm.cmd", "npx.cmd"] {
+        assert!(node.verify_files.iter().any(|f| f == file), "{file}");
+    }
+    #[cfg(windows)]
+    assert_eq!(
+        openmind_runtime_manager::shims::render(&node.shims[0], "24.21.0"),
+        "@echo off\r\n\"%~dp0..\\..\\versions\\24.21.0\\npm.cmd\" %*\r\n"
+    );
+}
+
 #[test]
 fn fortran_and_pascal_are_portable_windows_compilers() {
     let registry = RuntimeRegistry::builtin();

@@ -337,6 +337,30 @@ impl RuntimeManager {
                 continue;
             };
             if !self.ensure_shims(manifest, &entry.kind, &entry.version) {
+                // Say exactly why the active runtime isn't on the PATH of new terminals and runs.
+                match manifest
+                    .verify_files
+                    .iter()
+                    .map(|file| dir.join(file))
+                    .find(|path| !path.exists())
+                {
+                    Some(missing) => tracing::warn!(
+                        kind = %entry.kind,
+                        version = %entry.version,
+                        missing = %missing.display(),
+                        "{} {} is the active runtime but {} was not found; it is not put on PATH (use Repair)",
+                        manifest.display_name,
+                        entry.version,
+                        missing.display()
+                    ),
+                    None => tracing::warn!(
+                        kind = %entry.kind,
+                        version = %entry.version,
+                        "{} {} is the active runtime but its command launchers couldn't be written; it is not put on PATH",
+                        manifest.display_name,
+                        entry.version
+                    ),
+                }
                 continue;
             }
             // Shims first: their commands must win over launchers a tool

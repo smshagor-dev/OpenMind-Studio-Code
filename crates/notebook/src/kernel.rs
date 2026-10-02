@@ -170,10 +170,10 @@ fn command(spec: &KernelSpec, runner: &Path) -> Command {
         command.env(key, value);
     }
     if !spec.path_prepend.is_empty() {
-        let existing = std::env::var_os("PATH")
-            .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-            .unwrap_or_default();
-        if let Ok(path) = std::env::join_paths(spec.path_prepend.iter().cloned().chain(existing)) {
+        let existing = std::env::var_os("PATH");
+        if let Some(path) =
+            openmind_core::path_env::prepend_path(&spec.path_prepend, existing.as_deref())
+        {
             command.env("PATH", path);
         }
     }

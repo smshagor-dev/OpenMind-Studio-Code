@@ -170,6 +170,8 @@ export class ExtensionTaskService {
 
   private async run(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
     const sessionId = await this.deps.terminals.createTerminal(undefined, task.cwd, {
+      // The extension holds this terminal's id: it is never restarted for new runtimes.
+      refreshable: false,
       title: t("tasks.terminalName", { label: task.name }),
       show: true,
     });

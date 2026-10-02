@@ -575,6 +575,8 @@ export interface IpcClient
 
   // Terminal (PTY sessions live in Rust; output/exit arrive as pushed events)
   terminalListShells: () => Promise<ShellInfo[]>;
+  /** Whether a program besides the shell runs in that terminal (`null`: unknown). */
+  terminalBusy: (id: string) => Promise<boolean | null>;
   terminalCreate: (
     shell: ShellKind | null,
     cwd: string | null,
@@ -1189,6 +1191,7 @@ export const tauriIpcClient: IpcClient = {
   settingsSet: (key, value) => invoke("settings_set", { key, value }),
 
   terminalListShells: () => invoke<ShellInfo[]>("terminal_list_shells"),
+  terminalBusy: (id) => invoke<boolean | null>("terminal_busy", { id }),
 
   terminalCreate: (shell, cwd, cols, rows) =>
     invoke<TerminalSessionInfo>("terminal_create", { shell, cwd, cols, rows }),

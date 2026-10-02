@@ -42,16 +42,13 @@ impl SpawnSpec {
     }
 }
 
-/// `prepend` in front of `existing`, or `None` when there is nothing to add.
+/// `prepend` in front of `existing` (each folder once: `openmind_core::path_env`), or `None` when there is nothing to
+/// add.
 pub fn joined_path(prepend: &[PathBuf], existing: Option<OsString>) -> Option<OsString> {
     if prepend.is_empty() {
         return None;
     }
-    let mut dirs: Vec<PathBuf> = prepend.to_vec();
-    if let Some(existing) = existing {
-        dirs.extend(std::env::split_paths(&existing));
-    }
-    std::env::join_paths(dirs).ok()
+    openmind_core::path_env::prepend_path(prepend, existing.as_deref())
 }
 
 /// A running child and its process tree.

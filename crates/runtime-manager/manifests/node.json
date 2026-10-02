@@ -13,6 +13,16 @@
   "binDirs": [
     "."
   ],
+  "shims": [
+    {
+      "name": "npm",
+      "target": "npm.cmd"
+    },
+    {
+      "name": "npx",
+      "target": "npx.cmd"
+    }
+  ],
   "verifyFiles": [
     "node.exe",
     "npm.cmd",
@@ -33,7 +43,7 @@
       "missingNote": "npx isn't in this install. Use Repair to reinstall it."
     }
   ],
-  "notes": "Official nodejs.org Windows ZIP; SHA256 from the release's SHASUMS256.txt.",
+  "notes": "Official nodejs.org Windows ZIP; SHA256 from the release's SHASUMS256.txt. npm and npx also have small .cmd launchers placed before Node's folder on the PATH of OpenMind terminals: PowerShell would otherwise pick npm.ps1/npx.ps1, which a Restricted execution policy refuses to run.",
   "versions": [
     {
       "version": "24.21.0",

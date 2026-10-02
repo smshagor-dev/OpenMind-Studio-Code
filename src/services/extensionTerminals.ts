@@ -64,6 +64,8 @@ export class ExtensionTerminalService {
     const name = str(params.name, extension).slice(0, 80);
     const cwd = typeof params.cwd === "string" ? params.cwd : null;
     const sessionId = await this.deps.terminals.createTerminal(undefined, cwd, {
+      // The extension holds this terminal's id: it is never restarted for new runtimes.
+      refreshable: false,
       title: `${name} (${extension})`,
       show: false,
     });

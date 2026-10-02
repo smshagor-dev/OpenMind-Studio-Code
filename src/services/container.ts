@@ -25,7 +25,9 @@ import { registerPreviewCommands } from "./previewCommands";
 import { PreviewEditorService } from "./previewEditorService";
 import { RunConfigurationService } from "./runConfigurationService";
 import { RunCodeService } from "./runCodeService";
+import type { RuntimeStatus } from "./ipc";
 import { RunArgumentsService } from "./runArgumentsService";
+import { describeRuntimeChange, runtimeFingerprint, TerminalRefreshService } from "./terminalRefreshService";
 import { registerRunCommands } from "./runCommands";
 import { RuntimeService } from "./runtimeService";
 import { SearchService } from "./searchService";
@@ -255,6 +257,30 @@ const runCode = new RunCodeService(
   },
   markers,
 );
+// A shell keeps the PATH it started with: when the active runtimes change (Node.js installed, a version switched or
+// removed), idle terminals are started again in their folder so `node`/`npm`/`npx` work at once; busy ones wait.
+const terminalRefresh = new TerminalRefreshService({
+  terminal,
+  isBusy: (id) => tauriIpcClient.terminalBusy(id),
+  note: (change, folder) => t("terminal.refresh.note", { change, folder }),
+  waiting: (titles) => {
+    events.emit("appNotice", { message: t("terminal.refresh.waiting", { titles: titles.join(", ") }) });
+  },
+});
+let refreshedRuntimes: RuntimeStatus[] | null = null;
+runtime.subscribe(() => {
+  const { loaded, runtimes } = runtime.getState();
+  if (!loaded) return;
+  if (refreshedRuntimes === null) {
+    terminalRefresh.start(runtimeFingerprint(runtimes));
+  } else if (runtimeFingerprint(runtimes) !== runtimeFingerprint(refreshedRuntimes)) {
+    const change = describeRuntimeChange(refreshedRuntimes, runtimes, (name) =>
+      t("terminal.refresh.removed", { name }),
+    );
+    void terminalRefresh.runtimesChanged(runtimeFingerprint(runtimes), change);
+  }
+  refreshedRuntimes = runtimes;
+});
 // An interpreter appearing or going (install / delete / switch) changes what can run.
 runtime.subscribe(() => {
   runCode.noteRuntimesChanged(

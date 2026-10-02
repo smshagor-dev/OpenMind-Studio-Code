@@ -246,6 +246,17 @@ impl TerminalRegistry {
             .map_err(TerminalError::Resize)
     }
 
+    /// Whether a program is running in the session besides its shell (`None` for an unknown session, or where the
+    /// process tree can't be read). A busy terminal is never restarted behind the user's back.
+    pub fn is_busy(&self, id: &str) -> Option<bool> {
+        let sessions = self.sessions.lock().ok()?;
+        match &sessions.get(id)?.killer {
+            #[cfg(windows)]
+            Killer::Tree(tree) => tree.active_processes().ok().map(|count| count > 1),
+            Killer::Direct(_) => None,
+        }
+    }
+
     /// Kills this session's whole process tree and forgets it. Safe to call
     /// on a session whose shell already exited on its own — killing an
     /// already-dead process tree is a no-op, not an error.
@@ -300,11 +311,9 @@ fn make_killer(child: &(dyn Child + Send + Sync)) -> Killer {
 /// `dirs` in front of `existing`, PATH-joined. Pure, so it's unit-tested
 /// without spawning anything.
 fn prepend_to_path(dirs: &[PathBuf], existing: Option<std::ffi::OsString>) -> std::ffi::OsString {
-    let mut all: Vec<PathBuf> = dirs.to_vec();
-    if let Some(existing) = existing {
-        all.extend(std::env::split_paths(&existing));
-    }
-    std::env::join_paths(all).unwrap_or_default()
+    openmind_core::path_env::prepend_path(dirs, existing.as_deref())
+        .or(existing)
+        .unwrap_or_default()
 }
 
 fn resolve_cwd(requested: Option<&Path>, fallback: &Path) -> PathBuf {
@@ -465,6 +474,36 @@ mod tests {
                 Err(TerminalError::NotFound(_))
             ));
         }
+    }
+
+    /// A terminal is busy while a program it started runs, and idle again at the prompt: what decides whether it
+    /// may be restarted for a new runtime environment.
+    #[cfg(windows)]
+    #[test]
+    fn a_session_is_busy_only_while_a_program_runs_in_it() {
+        let registry = std::sync::Arc::new(TerminalRegistry::new());
+        let info = create_answering_cursor_queries(&registry);
+        let idle = (0..50).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            registry.is_busy(&info.id) == Some(false)
+        });
+        assert!(idle, "an idle shell counted as busy");
+
+        registry
+            .write(&info.id, b"ping -n 4 127.0.0.1 > nul\r\n")
+            .expect("start child");
+        let busy = (0..50).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            registry.is_busy(&info.id) == Some(true)
+        });
+        assert!(busy, "a running program wasn't seen");
+        let idle_again = (0..100).any(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            registry.is_busy(&info.id) == Some(false)
+        });
+        assert!(idle_again, "the shell stayed busy after its program ended");
+        assert_eq!(registry.is_busy("no such session"), None);
+        registry.close(&info.id).expect("close");
     }
 
     /// The whole point of the job object: a process the shell started must die

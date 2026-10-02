@@ -21,9 +21,12 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, RawHandle};
 
 use filedescriptor::OwnedHandle;
 use winapi::um::jobapi2::TerminateJobObject;
-use winapi::um::jobapi2::{AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject};
+use winapi::um::jobapi2::{
+    AssignProcessToJobObject, CreateJobObjectW, QueryInformationJobObject, SetInformationJobObject,
+};
 use winapi::um::winnt::{
-    JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JobObjectBasicAccountingInformation, JobObjectExtendedLimitInformation,
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 
@@ -78,6 +81,28 @@ impl ProcessTree {
             Err(io::Error::last_os_error())
         } else {
             Ok(())
+        }
+    }
+
+    /// How many processes are alive in the tree right now (the first process plus everything it started that is
+    /// still running): a shell sitting at its prompt counts 1.
+    pub fn active_processes(&self) -> io::Result<u32> {
+        let mut info: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: `self.job` is a valid job object handle; `info` is a zeroed instance of the struct this information
+        // class fills, and the length argument is its size.
+        let ok = unsafe {
+            QueryInformationJobObject(
+                self.job.as_raw_handle() as _,
+                JobObjectBasicAccountingInformation,
+                std::ptr::addr_of_mut!(info) as _,
+                std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(info.ActiveProcesses)
         }
     }
 

@@ -63,7 +63,7 @@ describe("ExtensionTerminalService", () => {
   it("creates a terminal without opening the panel and refuses another extension's ids", async () => {
     const r = rig();
     await r.service.create(base);
-    expect(r.terminals.createTerminal).toHaveBeenCalledWith(undefined, null, { title: "Build (pub.ext)", show: false });
+    expect(r.terminals.createTerminal).toHaveBeenCalledWith(undefined, null, { refreshable: false, title: "Build (pub.ext)", show: false });
     expect(r.showPanel).not.toHaveBeenCalled();
     expect(r.service.countFor("pub.ext")).toBe(1);
     await expect(r.service.create({ ...base, id: "other.ext#term-1" })).rejects.toThrow("Invalid terminal request.");

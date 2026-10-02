@@ -345,11 +345,8 @@ pub(crate) fn child_path(
     if resolved.source == RuntimeSource::Project {
         dirs.extend(project_dirs.iter().cloned());
     }
-    if let Some(existing) = system_path {
-        dirs.extend(std::env::split_paths(&existing));
-    }
-    std::env::join_paths(dirs).map_err(|_| {
-        RunError::BadCommand("a PATH folder contains a ';' or other invalid character".into())
+    openmind_core::path_env::prepend_path(&dirs, system_path.as_deref()).ok_or_else(|| {
+        RunError::BadCommand("a PATH folder contains a '\"' or other invalid character".into())
     })
 }
 

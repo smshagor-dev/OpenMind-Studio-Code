@@ -12,6 +12,11 @@ export interface TerminalSession {
   /** The shell process ended (typed `exit`, crashed, ...); the tab stays until the user closes it. */
   exited: boolean;
   exitCode: number | null;
+  /**
+   * An ordinary shell the app may start again in its folder when the runtimes change (it would keep a stale PATH).
+   * Never a task's program or a terminal an extension owns (the extension holds its id).
+   */
+  refreshable?: boolean;
 }
 
 export interface TerminalState {
@@ -128,7 +133,7 @@ export class TerminalService {
   async createTerminal(
     shell?: ShellKind,
     cwdOverride?: string | null,
-    options: { title?: string; show?: boolean } = {},
+    options: { title?: string; show?: boolean; refreshable?: boolean } = {},
   ): Promise<string | null> {
     if (shell !== undefined && !this.state.shells.some((candidate) => candidate.kind === shell)) {
       // Only shells found on this machine are ever offered, so this is a stale or foreign request.
@@ -159,6 +164,7 @@ export class TerminalService {
       cwd: info.cwd,
       exited: false,
       exitCode: null,
+      refreshable: options.refreshable ?? true,
     };
     this.update({
       sessions: [...this.state.sessions, session],
@@ -254,6 +260,36 @@ export class TerminalService {
       await this.panel.hide();
     }
     await this.persist();
+  }
+
+  /**
+   * Starts the same shell again in `cwd` in place of `id`: same tab position and title, still active if it was, and
+   * `note` shown at the top of the new view (written to the screen only, never typed into the shell). The new shell
+   * starts first; if it can't, the old terminal is kept. Returns the new session id.
+   */
+  async restartTerminal(id: string, cwd: string, note?: string): Promise<string | null> {
+    const index = this.state.sessions.findIndex((session) => session.id === id);
+    const old = this.state.sessions[index];
+    if (old === undefined) return null;
+    const info = await safely(
+      this.events,
+      () => this.ipc.terminalCreate(old.shell, cwd, INITIAL_COLS, INITIAL_ROWS),
+      "restart the terminal",
+      null,
+    );
+    if (info === null) return null;
+    if (note !== undefined) this.pending.set(info.id, [new TextEncoder().encode(`\x1b[2m${note}\x1b[0m\r\n`)]);
+    const replacement: TerminalSession = { ...old, id: info.id, cwd: info.cwd, exited: false, exitCode: null };
+    const sessions = this.state.sessions.map((session) => (session.id === id ? replacement : session));
+    this.sinks.delete(id);
+    this.pending.delete(id);
+    this.taps.delete(id);
+    this.closedIds.add(id);
+    this.settle(id, null);
+    this.update({ sessions, activeId: this.state.activeId === id ? info.id : this.state.activeId });
+    this.log(`Restarted ${old.title} in ${info.cwd}`);
+    await safely(this.events, () => this.ipc.terminalClose(id), "close the old terminal", undefined);
+    return info.id;
   }
 
   async closeActive(): Promise<void> {

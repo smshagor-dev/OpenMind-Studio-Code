@@ -58,12 +58,7 @@ fn child_path(prepend: &[PathBuf]) -> Option<OsString> {
     if prepend.is_empty() {
         return None;
     }
-    let existing = std::env::var_os("PATH").unwrap_or_default();
-    let all = prepend
-        .iter()
-        .cloned()
-        .chain(std::env::split_paths(&existing));
-    std::env::join_paths(all).ok()
+    openmind_core::path_env::prepend_path(prepend, std::env::var_os("PATH").as_deref())
 }
 
 fn drain<R: Read + Send + 'static>(pipe: Option<R>, limit: usize) -> thread::JoinHandle<Vec<u8>> {

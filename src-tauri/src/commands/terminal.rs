@@ -68,6 +68,13 @@ pub async fn terminal_create(
     start_session(&state, app, id, owner, request)
 }
 
+/// Whether a program other than its shell is running in terminal `id` (`None`: unknown, or it can't be told). The
+/// frontend restarts an idle terminal when the runtimes change and leaves a busy one alone.
+#[tauri::command]
+pub fn terminal_busy(id: String, state: State<'_, AppState>) -> Option<bool> {
+    state.terminal.is_busy(&id)
+}
+
 /// Starts a terminal session owned by the window `owner`: its output and exit go to that window only.
 pub(crate) fn start_session(
     state: &AppState,

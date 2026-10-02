@@ -3083,6 +3083,7 @@ dependencies = [
 name = "openmind-format"
 version = "1.0.0"
 dependencies = [
+ "openmind-core",
  "openmind-language",
  "openmind-process",
  "serde",
@@ -3130,6 +3131,7 @@ dependencies = [
 name = "openmind-lsp"
 version = "1.0.0"
 dependencies = [
+ "openmind-core",
  "openmind-process",
  "serde",
  "serde_json",
@@ -3160,6 +3162,7 @@ dependencies = [
 name = "openmind-notebook"
 version = "1.0.0"
 dependencies = [
+ "openmind-core",
  "openmind-process",
  "serde",
  "serde_json",
@@ -3193,6 +3196,7 @@ dependencies = [
 name = "openmind-runner"
 version = "1.0.0"
 dependencies = [
+ "openmind-core",
  "openmind-fs",
  "openmind-process",
  "serde",
@@ -3315,6 +3319,7 @@ name = "openmind-terminal"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "openmind-core",
  "openmind-process",
  "portable-pty",
  "serde",

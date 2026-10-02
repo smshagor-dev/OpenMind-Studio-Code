@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+openmind-core.workspace = true
 openmind-fs = { version = "1.0.0", path = "../fs" }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true

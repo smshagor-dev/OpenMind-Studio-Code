@@ -242,6 +242,44 @@ async fn a_second_version_is_not_active_until_switched_and_environment_follows_t
     );
 }
 
+/// The environment is read again for every new terminal and run: an active runtime whose executable is gone (deleted
+/// by hand, quarantined) leaves new environments at once instead of putting a dead folder first on PATH, and comes back
+/// when it is repaired.
+#[tokio::test]
+async fn an_active_runtime_whose_executable_is_missing_leaves_new_environments() {
+    let fx = fixture().await;
+    fx.manager
+        .install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("install");
+    let exe = versions_dir(&fx).join("1.0.0").join("demo.exe");
+    assert!(!fx
+        .manager
+        .environment()
+        .await
+        .expect("env")
+        .path_prepend
+        .is_empty());
+
+    fs::remove_file(&exe).expect("remove");
+    assert!(fx
+        .manager
+        .environment()
+        .await
+        .expect("env")
+        .path_prepend
+        .is_empty());
+
+    fs::write(&exe, b"MZ-demo").expect("restore");
+    assert!(!fx
+        .manager
+        .environment()
+        .await
+        .expect("env")
+        .path_prepend
+        .is_empty());
+}
+
 #[tokio::test]
 async fn switching_to_a_version_that_is_not_installed_fails_and_changes_nothing() {
     let fx = fixture().await;
