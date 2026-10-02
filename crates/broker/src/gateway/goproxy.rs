@@ -12,6 +12,13 @@ use crate::staging::Provider;
 
 const SUMDBS: &[&str] = &["sum.golang.org"];
 
+/// Go escapes a capital letter in a module path as `!` + the lowercase letter (`github.com/!burnt!sushi/toml`) and its
+/// HTTP client sends that `!` percent-encoded (`%21`). Only this one escape is decoded; every other `%` stays and is
+/// refused by the checks.
+fn unescape_bang(path: &str) -> String {
+    path.replace("%21", "!")
+}
+
 /// A module proxy path: escaped module path characters (`!` marks capitals), versions, never `..`.
 fn valid_path(path: &str) -> bool {
     !path.is_empty()
@@ -35,6 +42,8 @@ pub(crate) fn handle(
     if request.method != "GET" {
         return write_error(out, 405, "only GET is served for Go");
     }
+    let rest = unescape_bang(rest);
+    let rest = rest.as_str();
     if let Some(sumdb) = rest.strip_prefix("sumdb/") {
         return sum_database(shared, request, sumdb, out);
     }
@@ -99,5 +108,19 @@ mod tests {
         );
         assert!(!valid_path("../x/@v/list"));
         assert!(!valid_path("a//b"));
+    }
+
+    #[test]
+    fn go_s_percent_encoded_capital_escapes_are_accepted() {
+        // What `go` really sends for github.com/BurntSushi/toml (found by installing gopls through the gateway).
+        let sent = "github.com/%21burnt%21sushi/toml/@v/v1.6.0.zip";
+        assert!(valid_path(&unescape_bang(sent)));
+        assert_eq!(
+            unescape_bang(sent),
+            "github.com/!burnt!sushi/toml/@v/v1.6.0.zip"
+        );
+        // Nothing else is decoded: other escapes are still refused.
+        assert!(!valid_path(&unescape_bang("github.com/%2e%2e/x/@v/list")));
+        assert!(!valid_path(&unescape_bang("a/%2f/b")));
     }
 }
