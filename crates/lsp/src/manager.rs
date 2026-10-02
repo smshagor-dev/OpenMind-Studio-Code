@@ -258,7 +258,8 @@ impl LspManager {
         let package = package_by_id(def.package).ok_or(LspError::Unsupported)?;
         let entry =
             install::entry_path(&context.app_root, def, package).ok_or(LspError::NotInstalled)?;
-        let (program, args, path_prepend, runtime_label) = match def.runtime {
+        // (program, arguments, folders for the server's PATH, label, variables of this runtime)
+        let (program, args, path_prepend, runtime_label, mut vars) = match def.runtime {
             Runtime::Node => {
                 let node = context.node.as_ref().ok_or(LspError::NodeMissing)?;
                 (
@@ -269,23 +270,24 @@ impl LspManager {
                         .map(|dir| vec![dir.to_path_buf()])
                         .unwrap_or_default(),
                     node.label(),
+                    Vec::new(),
                 )
             }
-            Runtime::Native => (entry, Vec::new(), Vec::new(), "native program".to_string()),
+            Runtime::Native => (
+                entry,
+                Vec::new(),
+                Vec::new(),
+                "native program".to_string(),
+                Vec::new(),
+            ),
             Runtime::PythonModule => {
-                let python = context.python.as_ref().ok_or(LspError::NodeMissing)?;
+                let python = context.python.as_ref().ok_or_else(|| {
+                    LspError::StartFailed(
+                        "Python was not found. Install Python from the Runtime Manager.".into(),
+                    )
+                })?;
                 let path = install::package_dir(&context.app_root, package);
-                let mut vars = context.vars.clone();
-                vars.push(("PYTHONPATH".into(), path.display().to_string()));
-                vars.push(("PYTHONNOUSERSITE".into(), "1".into()));
-                vars.extend(
-                    def.env
-                        .iter()
-                        .map(|(key, value)| ((*key).to_string(), (*value).to_string())),
-                );
-                return self.launch_with(
-                    def,
-                    context,
+                (
                     python.path.clone(),
                     vec!["-m".into(), def.entry.into()],
                     python
@@ -294,38 +296,44 @@ impl LspManager {
                         .map(|dir| vec![dir.to_path_buf()])
                         .unwrap_or_default(),
                     python.label.clone(),
-                    vars,
-                );
+                    vec![
+                        ("PYTHONPATH".to_string(), path.display().to_string()),
+                        ("PYTHONNOUSERSITE".to_string(), "1".to_string()),
+                    ],
+                )
             }
         };
-        let mut vars = context.vars.clone();
+        vars.splice(0..0, context.vars.iter().cloned());
         vars.extend(
             def.env
                 .iter()
                 .map(|(key, value)| ((*key).to_string(), (*value).to_string())),
         );
-        self.launch_with(def, context, program, args, path_prepend, runtime_label, vars)
-    }
-
-    fn launch_with(
-        &self,
-        def: &'static ServerDef,
-        context: &StartContext,
-        program: PathBuf,
-        mut args: Vec<String>,
-        mut path_prepend: Vec<PathBuf>,
-        runtime_label: String,
-        vars: Vec<(String, String)>,
-    ) -> Result<Arc<Running>, LspError> {
-        args.extend(def.args.iter().map(|arg| (*arg).to_string()));
-        path_prepend.extend(context.path_prepend.iter().cloned());
-        let spawned = spawn(&SpawnSpec {
+        let command = SpawnSpec {
             program,
             args,
             cwd: context.workspace.clone(),
             vars,
             path_prepend,
-        })?;
+        };
+        self.launch_with(def, context, command, runtime_label)
+    }
+
+    /// Starts `command` (the server's own arguments and the Runtime Manager's PATH folders are added here).
+    fn launch_with(
+        &self,
+        def: &'static ServerDef,
+        context: &StartContext,
+        mut command: SpawnSpec,
+        runtime_label: String,
+    ) -> Result<Arc<Running>, LspError> {
+        command
+            .args
+            .extend(def.args.iter().map(|arg| (*arg).to_string()));
+        command
+            .path_prepend
+            .extend(context.path_prepend.iter().cloned());
+        let spawned = spawn(&command)?;
         let pid = spawned.process.id();
         let stopping = Arc::new(AtomicBool::new(false));
         let stderr_manager = self.clone();

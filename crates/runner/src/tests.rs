@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use crate::*;
 
 mod compiled;
+mod fortran_pascal;
 
 fn plan_for(file: &str, argv: &[&str]) -> RunPlan {
     RunPlan {

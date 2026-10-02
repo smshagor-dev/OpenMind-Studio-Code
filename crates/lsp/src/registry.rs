@@ -298,13 +298,17 @@ pub const SERVERS: &[ServerDef] = &[
         name: "fortls",
         package: "fortran",
         entry: "fortls",
-        args: &["--stdio"],
+        // fortls speaks LSP over stdio by default and refuses `--stdio`. Without `--disable_autoupdate` it asks
+        // pypi.org for a newer version at every start and runs `pip install fortls --upgrade --user`, which would
+        // write into the user's own Python folder; `PIP_NO_INDEX` keeps that pip from downloading anything even if a
+        // project's `.fortlsrc` turns the update back on.
+        args: &["--disable_autoupdate"],
         runtime: Runtime::PythonModule,
         languages: &["fortran"],
         note: Some("Fortran language server. Best results come from source files inside the open folder."),
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
-        env: PLAIN.2,
+        env: &[("PIP_NO_INDEX", "1")],
     },
 ];
 
@@ -403,6 +407,15 @@ mod tests {
         assert_eq!(server_for_path("a.h").map(|s| s.id), Some("clangd"));
         assert_eq!(server_for_path("solver.f90").map(|s| s.id), Some("fortran"));
         assert!(server_for_path("notes.txt").is_none());
+    }
+
+    #[test]
+    fn fortls_starts_on_stdio_without_updating_itself() {
+        let fortls = server_by_id("fortran").expect("fortls");
+        // fortls refuses `--stdio` (stdio is its default) and must never pip-install updates on its own.
+        assert_eq!(fortls.args, ["--disable_autoupdate"]);
+        assert!(fortls.env.contains(&("PIP_NO_INDEX", "1")));
+        assert_eq!(fortls.runtime, Runtime::PythonModule);
     }
 
     #[test]

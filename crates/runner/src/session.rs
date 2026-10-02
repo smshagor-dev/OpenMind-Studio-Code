@@ -146,11 +146,11 @@ pub struct RunRegistry {
     counter: Arc<AtomicU64>,
 }
 
-fn command_for(argv: &[String], plan: &RunPlan) -> Command {
+fn command_for(argv: &[String], cwd: &Path, plan: &RunPlan) -> Command {
     let mut command = Command::new(&argv[0]);
     command
         .args(&argv[1..])
-        .current_dir(&plan.cwd)
+        .current_dir(cwd)
         .env("PATH", &plan.path_var)
         .envs(plan.env.iter().cloned())
         .stdin(Stdio::null())
@@ -224,19 +224,20 @@ impl RunRegistry {
             return Err(RunError::AlreadyRunning(file_key));
         }
 
-        let (argv, display) = match &plan.build {
+        let (argv, display, cwd) = match &plan.build {
             Some(build) => {
                 prepare_build_dir(&build.dir)?;
-                (&build.argv, &build.display)
+                (&build.argv, &build.display, &build.cwd)
             }
-            None => (&plan.argv, &plan.display),
+            None => (&plan.argv, &plan.display, &plan.cwd),
         };
-        let mut child = command_for(argv, plan)
-            .spawn()
-            .map_err(|err| RunError::StartFailed {
-                command: display.clone(),
-                reason: err.to_string(),
-            })?;
+        let mut child =
+            command_for(argv, cwd, plan)
+                .spawn()
+                .map_err(|err| RunError::StartFailed {
+                    command: display.clone(),
+                    reason: err.to_string(),
+                })?;
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let pid = child.id();
@@ -414,7 +415,7 @@ fn run_program(watch: &Watch) -> Option<i32> {
     if watch.stopped.load(Ordering::SeqCst) {
         return None;
     }
-    let mut program = match command_for(&watch.plan.argv, &watch.plan).spawn() {
+    let mut program = match command_for(&watch.plan.argv, &watch.plan.cwd, &watch.plan).spawn() {
         Ok(program) => program,
         Err(err) => {
             watch.sink(RunEvent {

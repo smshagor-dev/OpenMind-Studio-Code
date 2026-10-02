@@ -123,6 +123,12 @@ function BundleLine({ bundle }: { bundle: LspBundleInfo }) {
   );
 }
 
+/** What a server runs on, for "runs on {runtime}": Node.js, Python (fortls) or its own program. */
+function runtimeName(runtime: LspServerInfo["runtime"]): string {
+  if (runtime === "native") return t("lsp.ownProgram");
+  return runtime === "pythonModule" ? "Python" : "Node.js";
+}
+
 /** The availability badge: ready (and from where), bundled but not unpacked yet, or missing. */
 function availabilityBadge(server: LspServerInfo): { text: string; ready: boolean } {
   if (server.installed) {
@@ -190,7 +196,7 @@ function ServerCard({ server }: { server: LspServerInfo }) {
       <p className="runtime-card__notes">
         {t(server.bundled || server.installSource === "bundle" ? "lsp.contains" : "lsp.installs", {
           contents: server.contents,
-          runtime: server.runtime === "native" ? t("lsp.ownProgram") : "Node.js",
+          runtime: runtimeName(server.runtime),
         })}
       </p>
       {!server.installed && server.installBlocked ? (

@@ -149,4 +149,34 @@ describe("interactive input", () => {
     for (const [extension, text] of notReads) expect(needsInteractiveInput(extension, text), text).toBe(false);
     expect(isMissingInputError('Exception in thread "main" java.util.NoSuchElementException: No line found')).toBe(true);
   });
+
+  it("recognizes standard input in Fortran and Pascal, and not reads from files", () => {
+    const reads: [string, string][] = [
+      [".f90", "read (*, *) age"],
+      ["f90", "read(*,'(a)') name"],
+      ["f95", "read *, x"],
+      ["f08", "READ (UNIT=INPUT_UNIT, FMT=*) N"],
+      ["f", "      READ(5,*) N"],
+      ["for", "      READ (5, 100) N"],
+      [".pas", "readln(name);"],
+      ["pas", "Write('Age: ');\nReadLn(age);"],
+      ["pp", "repeat until KeyPressed; c := ReadKey;"],
+      ["pas", "writeln('Press Enter'); readln;"],
+    ];
+    for (const [extension, text] of reads) expect(needsInteractiveInput(extension, text), text).toBe(true);
+    const notReads: [string, string][] = [
+      ["f90", "open(newunit=u, file='data.txt')\nread (u, *) x"],
+      ["f90", "read (10, *) x"],
+      ["f90", "print *, 'thread count'"],
+      ["pas", "readln(f, line);"],
+      ["pas", "AssignFile(f, 'data.txt'); Reset(f); Read(f, x);"],
+      ["pp", "writeln('ReadFile is a Windows call');"],
+      ["pas", "writeln('Please read the manual');"],
+    ];
+    for (const [extension, text] of notReads) expect(needsInteractiveInput(extension, text), text).toBe(false);
+    expect(
+      isMissingInputError("At line 6 of file E:/w\\input.f90 (unit = 5, file = 'stdin')"),
+    ).toBe(true);
+    expect(isMissingInputError("At line 6 of file E:/w\\read.f90 (unit = 10, file = 'data.txt')")).toBe(false);
+  });
 });

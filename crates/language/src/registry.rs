@@ -1069,7 +1069,9 @@ mod tests {
         ] {
             assert!(lsp.contains(&expected), "{expected}");
         }
-        for not_yet in ["go", "java", "csharp", "vue", "kotlin", "dart", "sql", "pascal"] {
+        for not_yet in [
+            "go", "java", "csharp", "vue", "kotlin", "dart", "sql", "pascal",
+        ] {
             assert!(!lsp.contains(&not_yet), "{not_yet} has no built-in server");
         }
         // The debugger supports Python and JavaScript only.

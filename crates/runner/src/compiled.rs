@@ -1,5 +1,5 @@
-//! Run Code for compiled languages (C, C++, Java, Rust): one execution description shared by all four — which
-//! compiler, the build command, the output (an executable or a Java class), the working folder, the environment
+//! Run Code for compiled languages (C, C++, Java, Rust, Fortran, Pascal): one execution description shared by
+//! all of them — which compiler, the build command, the output (an executable or a Java class), the working folder, the environment
 //! and the build folder that is removed after the run. Compilers are found like interpreters: OpenMind's portable
 //! toolchains first, the system PATH last; nothing is installed and PATH is changed only for the child.
 
@@ -24,6 +24,10 @@ pub struct BuildStep {
     pub display: String,
     pub compiler: PathBuf,
     pub dir: PathBuf,
+    /// The folder the compiler runs in: the source file's own folder, so a compiler that looks in its working
+    /// folder first (Free Pascal's units, gfortran's module files) finds the files next to the source, not
+    /// same-named ones in the workspace root. The program itself still runs in the plan's `cwd`.
+    pub cwd: PathBuf,
 }
 
 /// Compilers tried for a kind, in order. The first one found in OpenMind's portable toolchains wins; otherwise the
@@ -92,12 +96,21 @@ fn compiler_label(tool: &ResolvedExecutable) -> String {
                 .components()
                 .map(|part| part.as_os_str().to_string_lossy().into_owned())
                 .collect::<Vec<_>>();
-            let kind = runtime
+            // `runtimes/<kind>/versions/<version>/...`, or a runtime's launcher `runtimes/<kind>/shims/<version>/<name>.cmd`
+            // (Free Pascal's `fpc64`).
+            let shim = runtime
                 .iter()
-                .position(|part| part == "versions")
+                .position(|part| part == "shims")
+                .filter(|index| index + 3 == runtime.len());
+            let marker = runtime.iter().position(|part| part == "versions").or(shim);
+            let kind = marker
                 .and_then(|index| index.checked_sub(1))
                 .and_then(|index| runtime.get(index).cloned());
-            match (kind, portable_version(&tool.path)) {
+            let version = match shim {
+                Some(index) if marker == Some(index) => runtime.get(index + 1).cloned(),
+                _ => portable_version(&tool.path),
+            };
+            match (kind, version) {
                 (Some(kind), Some(version)) => {
                     format!("OpenMind portable {name} ({kind} {version})")
                 }
@@ -191,7 +204,50 @@ pub fn java_main_class(source: &str, stem: &str) -> Result<String, RunError> {
     })
 }
 
-/// The plan for a C, C++, Java or Rust file: compile into `build_dir`, then run the result from `cwd`.
+/// The first word of a Pascal source after its comments and compiler directives: `program`, `unit`, `library` ...
+fn pascal_first_word(text: &str) -> String {
+    let mut rest = text.trim_start_matches('\u{feff}');
+    loop {
+        rest = rest.trim_start();
+        if let Some(after) = rest.strip_prefix("//") {
+            rest = after.split_once('\n').map_or("", |(_, tail)| tail);
+        } else if let Some(after) = rest.strip_prefix('{') {
+            rest = after.split_once('}').map_or("", |(_, tail)| tail);
+        } else if let Some(after) = rest.strip_prefix("(*") {
+            rest = after.split_once("*)").map_or("", |(_, tail)| tail);
+        } else {
+            break;
+        }
+    }
+    rest.chars()
+        .take_while(char::is_ascii_alphabetic)
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// A Pascal unit or library, or a Fortran file of modules/procedures only, compiles but has no program to run:
+/// say so instead of building it and then failing to start (or link) an executable.
+fn refuse_library_file(kind: RunnableKind, file: &Path) -> Result<(), RunError> {
+    let reason = match kind {
+        RunnableKind::Pascal => {
+            let text = std::fs::read_to_string(file).unwrap_or_default();
+            match pascal_first_word(&text).as_str() {
+                "unit" => "This is a Pascal unit, not a program: run the program that uses it.",
+                "library" => {
+                    "This is a Pascal library (a DLL), not a program, so there is nothing to run."
+                }
+                _ => return Ok(()),
+            }
+        }
+        RunnableKind::Fortran if crate::fortran::is_library_file(file) => {
+            "This file has no main program (only modules or procedures): run the file with the `program` that uses it."
+        }
+        _ => return Ok(()),
+    };
+    Err(RunError::NotRunnable(reason.into()))
+}
+
+/// The plan for a C, C++, Java, Rust, Fortran or Pascal file: compile into `build_dir`, then run the result from `cwd`.
 pub(crate) fn plan_compiled(
     kind: RunnableKind,
     file: &Path,
@@ -200,6 +256,7 @@ pub(crate) fn plan_compiled(
     system_path: Option<OsString>,
     build_dir: &Path,
 ) -> Result<RunPlan, RunError> {
+    refuse_library_file(kind, file)?;
     let compiler = find_compiler(kind, environment, system_path.as_deref())
         .ok_or_else(|| RunError::CompilerMissing(missing_compiler(kind)))?;
     let stem = file
@@ -265,17 +322,44 @@ pub(crate) fn plan_compiled(
             (
                 vec![
                     compiler_path,
-                    "-FE".into(),
-                    dir,
-                    "-o".into(),
-                    output_text.clone(),
+                    // Warnings and notes: without an fpc.cfg Free Pascal prints errors only.
+                    "-vwn".into(),
+                    format!("-FE{dir}"),
+                    format!("-o{output_text}"),
                     source,
                 ],
-                vec![compiler_name, file_name, "-o".into(), exe.clone()],
+                vec![compiler_name, file_name, format!("-o{exe}")],
                 vec![output_text],
                 vec![exe],
                 output,
             )
+        }
+        RunnableKind::Fortran => {
+            let output = build_dir.join(executable_name(&stem));
+            let output_text = output.to_string_lossy().into_owned();
+            let exe = executable_name(&stem);
+            let companions = crate::fortran::companion_sources(file);
+            let mut argv = vec![
+                compiler_path,
+                // One line per problem (`file:line:col: Error: text`), so it can become a Problems entry.
+                "-fdiagnostics-plain-output".into(),
+                // Module files go to the build folder, never into the project.
+                "-J".into(),
+                dir,
+            ];
+            let mut shown = vec![compiler_name];
+            for companion in &companions {
+                argv.push(companion.to_string_lossy().into_owned());
+                shown.push(
+                    companion
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                );
+            }
+            argv.extend([source, "-o".into(), output_text.clone()]);
+            shown.extend([file_name, "-o".into(), exe.clone()]);
+            (argv, shown, vec![output_text], vec![exe], output)
         }
         _ => {
             let output = build_dir.join(executable_name(&stem));
@@ -306,6 +390,7 @@ pub(crate) fn plan_compiled(
     };
 
     let path_var = child_path(environment, &[], &compiler, system_path)?;
+    let build_cwd = file.parent().map_or_else(|| cwd.clone(), Path::to_path_buf);
     Ok(RunPlan {
         kind,
         file: file.to_path_buf(),
@@ -322,6 +407,7 @@ pub(crate) fn plan_compiled(
             display: command_line(&build_shown),
             compiler: compiler.path,
             dir: build_dir.to_path_buf(),
+            cwd: build_cwd,
         }),
     })
 }
@@ -356,12 +442,46 @@ mod tests {
     }
 
     #[test]
+    fn pascal_sources_are_read_past_their_comments() {
+        assert_eq!(pascal_first_word("unit Pricing;\ninterface"), "unit");
+        assert_eq!(
+            pascal_first_word("\u{feff}{ header }\n(* more *)\n// line\n{$mode objfpc}\nUNIT X;"),
+            "unit"
+        );
+        assert_eq!(pascal_first_word("library Tools;"), "library");
+        assert_eq!(pascal_first_word("{ demo }\nprogram Hello;"), "program");
+        assert_eq!(
+            pascal_first_word("begin writeln('no header'); end."),
+            "begin"
+        );
+    }
+
+    #[test]
     fn rust_crate_names_are_made_valid() {
         assert_eq!(rust_crate_name("hello world"), "hello_world");
         assert_eq!(rust_crate_name("user-input"), "user_input");
         assert_eq!(rust_crate_name("1st"), "_1st");
         assert_eq!(rust_crate_name("main"), "main");
         assert_eq!(rust_crate_name(""), "_");
+    }
+
+    #[test]
+    fn portable_compilers_are_labelled_with_their_runtime_and_version() {
+        let label = |path: &str| {
+            compiler_label(&ResolvedExecutable {
+                path: PathBuf::from(path),
+                source: RuntimeSource::Portable,
+            })
+        };
+        assert_eq!(
+            label("E:/app/runtimes/fortran/versions/13.1.0/bin/gfortran.exe"),
+            "OpenMind portable gfortran (fortran 13.1.0)"
+        );
+        assert_eq!(
+            label("E:/app/runtimes/pascal/shims/3.2.3/fpc64.cmd"),
+            "OpenMind portable fpc64 (pascal 3.2.3)"
+        );
+        assert_eq!(label("E:/app/shims/tool.cmd"), "OpenMind portable tool");
     }
 
     #[test]

@@ -1,5 +1,7 @@
 import * as monaco from "monaco-editor";
 
+import { FORTRAN_TOKENS, PASCAL_TOKENS } from "./builtinGrammars";
+
 let registered = false;
 
 export function registerBuiltInLanguages(): void {
@@ -54,64 +56,7 @@ function registerFortran(): void {
       { open: "'", close: "'" },
     ],
   });
-  monaco.languages.setMonarchTokensProvider("fortran", {
-    ignoreCase: true,
-    keywords: [
-      "program",
-      "module",
-      "subroutine",
-      "function",
-      "contains",
-      "use",
-      "implicit",
-      "none",
-      "integer",
-      "real",
-      "logical",
-      "character",
-      "complex",
-      "if",
-      "then",
-      "else",
-      "elseif",
-      "endif",
-      "do",
-      "enddo",
-      "select",
-      "case",
-      "call",
-      "return",
-      "allocate",
-      "deallocate",
-      "intent",
-      "in",
-      "out",
-      "inout",
-      "end",
-    ],
-    tokenizer: {
-      root: [
-        [/!.*/, "comment"],
-        [/"([^"\\]|\\.)*$/, "string.invalid"],
-        [/"/, "string", "@string_double"],
-        [/'([^'\\]|\\.)*$/, "string.invalid"],
-        [/'/, "string", "@string_single"],
-        [/[a-z_]\w*/, { cases: { "@keywords": "keyword", "@default": "identifier" } }],
-        [/\d+(\.\d+)?([ed][+-]?\d+)?/, "number"],
-        [/[+\-*/=<>:,.;]+/, "operator"],
-      ],
-      string_double: [
-        [/[^"]+/, "string"],
-        [/""/, "string.escape"],
-        [/"/, "string", "@pop"],
-      ],
-      string_single: [
-        [/[^']+/, "string"],
-        [/''/, "string.escape"],
-        [/'/, "string", "@pop"],
-      ],
-    },
-  });
+  monaco.languages.setMonarchTokensProvider("fortran", FORTRAN_TOKENS);
   registerSnippets("fortran", [
     ["program", "program ${1:name}\n  implicit none\n  ${0}\nend program ${1:name}", "Program"],
     ["subroutine", "subroutine ${1:name}(${2:args})\n  implicit none\n  ${0}\nend subroutine ${1:name}", "Subroutine"],
@@ -135,61 +80,7 @@ function registerPascal(): void {
       { open: "'", close: "'" },
     ],
   });
-  monaco.languages.setMonarchTokensProvider("pascal", {
-    ignoreCase: true,
-    keywords: [
-      "program",
-      "unit",
-      "interface",
-      "implementation",
-      "uses",
-      "var",
-      "const",
-      "type",
-      "procedure",
-      "function",
-      "begin",
-      "end",
-      "if",
-      "then",
-      "else",
-      "case",
-      "of",
-      "for",
-      "to",
-      "downto",
-      "do",
-      "while",
-      "repeat",
-      "until",
-      "array",
-      "record",
-      "class",
-      "try",
-      "except",
-      "finally",
-    ],
-    tokenizer: {
-      root: [
-        [/\/\/.*/, "comment"],
-        [/\{/, "comment", "@comment_brace"],
-        [/\(\*/, "comment", "@comment_paren"],
-        [/'([^']|'')*'/, "string"],
-        [/[a-z_]\w*/, { cases: { "@keywords": "keyword", "@default": "identifier" } }],
-        [/\$[0-9a-f]+|\d+(\.\d+)?/, "number"],
-        [/[+\-*/=<>:,.;]+/, "operator"],
-      ],
-      comment_brace: [
-        [/[^}]+/, "comment"],
-        [/\}/, "comment", "@pop"],
-      ],
-      comment_paren: [
-        [/[^(*)]+/, "comment"],
-        [/\*\)/, "comment", "@pop"],
-        [/[(*)]/, "comment"],
-      ],
-    },
-  });
+  monaco.languages.setMonarchTokensProvider("pascal", PASCAL_TOKENS);
   registerSnippets("pascal", [
     ["program", "program ${1:Name};\n\nbegin\n  ${0}\nend.", "Program"],
     ["procedure", "procedure ${1:Name};\nbegin\n  ${0}\nend;", "Procedure"],

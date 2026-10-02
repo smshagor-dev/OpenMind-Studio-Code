@@ -1,4 +1,5 @@
 import { t } from "../i18n";
+import { addBuildProblem, parseBuildLine, type BuildProblemFile } from "./buildProblems";
 import { isMissingInputError, needsInteractiveInput } from "./deps/dependencyModel";
 import { extensionOf } from "./editorAssociationService";
 import type { EventBus } from "./eventBus";
@@ -14,7 +15,7 @@ import type {
 import type { OutputService } from "./outputService";
 import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
-import type { MarkerService, Problem } from "./markerService";
+import type { MarkerService } from "./markerService";
 import type { RunConfigurationService, RunTarget } from "./runConfigurationService";
 import type { TerminalService } from "./terminalService";
 import type { WorkspaceService } from "./workspaceService";
@@ -83,31 +84,6 @@ export function channelFor(language: string): string {
 
 function buildOwner(path: string): string {
   return `run:${path}`;
-}
-
-function titleOf(path: string): string {
-  return path.split(/[/\\]/).pop() || path;
-}
-
-export function parseBuildProblem(line: string): Problem | null {
-  const gcc = /^(.*?):(\d+):(?:(\d+):)?\s*(fatal error|error|warning|note):\s*(.*)$/i.exec(line);
-  const fpc = /^(.*?)\((\d+),(\d+)\)\s+(Fatal|Error|Warning|Note):\s*(.*)$/i.exec(line);
-  const match = gcc ?? fpc;
-  if (!match) return null;
-  const lineNumber = Number(match[2]);
-  const columnNumber = Number(match[3] ?? "1");
-  const kind = (match[4] ?? "").toLowerCase();
-  const message = match[5] ?? line;
-  const severity = kind.includes("warning") ? "warning" : kind.includes("note") ? "info" : "error";
-  return {
-    severity,
-    message,
-    source: "compiler",
-    line: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : 1,
-    column: Number.isFinite(columnNumber) && columnNumber > 0 ? columnNumber : 1,
-    endLine: Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : 1,
-    endColumn: Number.isFinite(columnNumber) && columnNumber > 0 ? columnNumber + 1 : 2,
-  };
 }
 
 /** Terminal shell -> how its command line is quoted. WSL is not supported. */
@@ -211,7 +187,7 @@ export class RunCodeService {
   private readonly unsubscribers: (() => void)[] = [];
   /** Process id -> the file it runs and the Output channel its lines go to. */
   private readonly processes = new Map<string, { path: string; channel: string }>();
-  private readonly buildProblems = new Map<string, { path: string; problems: Problem[] }>();
+  private readonly buildProblems = new Map<string, { path: string; files: BuildProblemFile[] }>();
   /** Files whose run was requested but hasn't reported `started` yet. */
   private readonly starting = new Set<string>();
   /** Files whose run should bring the Output panel up once its channel is known. */
@@ -513,7 +489,7 @@ export class RunCodeService {
   /** A compiled language (C, C++, Java, Rust): the compile command comes first, its output under it. */
   private onBuilding(event: Extract<CodeRunEvent, { type: "building" }>): void {
     const channel = this.track(event.runId, event.file, event.language);
-    this.buildProblems.set(event.runId, { path: event.file, problems: [] });
+    this.buildProblems.set(event.runId, { path: event.file, files: [] });
     this.markers?.setExternal(buildOwner(event.file), []);
     const header = `[Run Code] ${event.commandLine}`;
     this.output.append(RUN_CHANNEL, stamped(header));
@@ -578,14 +554,12 @@ export class RunCodeService {
   }
 
   private recordBuildProblem(runId: string, line: string): void {
-    const parsed = parseBuildProblem(line);
+    const parsed = parseBuildLine(line);
     if (parsed === null) return;
     const state = this.buildProblems.get(runId);
     if (state === undefined) return;
-    state.problems.push(parsed);
-    this.markers?.setExternal(buildOwner(state.path), [
-      { path: state.path, title: titleOf(state.path), problems: state.problems },
-    ]);
+    state.files = addBuildProblem(state.files, state.path, parsed);
+    this.markers?.setExternal(buildOwner(state.path), state.files);
   }
 
   private fail(message: string): false {

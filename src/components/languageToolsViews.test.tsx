@@ -175,6 +175,21 @@ describe("Language Tools dialog", () => {
     expect(card.getByRole("button", { name: "Install" })).toBeDisabled();
   });
 
+  it("fortls is installed with pip and says it runs on Python, not Node.js", () => {
+    const fortls = server({
+      id: "fortran",
+      name: "fortls",
+      languages: ["fortran"],
+      runtime: "pythonModule",
+      contents: "fortls 3.2.2",
+    });
+    harness.current = { lsp: fakeLsp(snapshot([fortls])), run: vi.fn() };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    const card = within(screen.getByRole("region", { name: "fortls" }));
+    expect(card.getByText("Installs: fortls 3.2.2 · runs on Python")).toBeInTheDocument();
+    expect(card.queryByText(/Node\.js/)).toBeNull();
+  });
+
   it("without Node.js, Install is disabled and the reason is written out", () => {
     const blocked = server({
       canInstall: false,

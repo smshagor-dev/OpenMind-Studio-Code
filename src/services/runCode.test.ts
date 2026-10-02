@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { parseBuildProblem } from "./buildProblems";
 import { CommandRegistry } from "./commandRegistry";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
@@ -13,7 +14,6 @@ import { RunConfigurationService, validateCommand } from "./runConfigurationServ
 import {
   channelFor,
   describeRunButton,
-  parseBuildProblem,
   RunCodeService,
   shellStyleFor,
 } from "./runCodeService";

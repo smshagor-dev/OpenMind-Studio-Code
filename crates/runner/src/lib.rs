@@ -7,6 +7,7 @@
 pub mod compiled;
 pub mod display;
 pub mod error;
+pub mod fortran;
 pub mod kind;
 pub mod netstat;
 pub mod oneshot;

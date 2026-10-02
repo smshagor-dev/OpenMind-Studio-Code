@@ -152,7 +152,8 @@ export function diagnoseDependency(output: string): DependencyIssue | null {
 
 /**
  * Whether a file reads the keyboard (Run Code's Output can't answer it). Conservative: only the usual calls of the
- * languages Run Code runs (Python, JavaScript/TypeScript, PHP). Comments aren't parsed, so a commented-out `input(` counts.
+ * languages Run Code runs (Python, JavaScript/TypeScript, PHP, C/C++, Java, Rust, Fortran, Pascal). Comments aren't
+ * parsed, so a commented-out `input(` counts.
  */
 export function needsInteractiveInput(extension: string, text: string): boolean {
   // `extensionOf` gives ".py"; accept "py" too.
@@ -181,10 +182,26 @@ export function needsInteractiveInput(extension: string, text: string): boolean 
       return /\bSystem\.in\b|\bSystem\.console\s*\(/.test(text);
     case "rs":
       return /\bstdin\s*\(\s*\)|\bio::stdin\b|\bstd::io::Stdin\b/.test(text);
+    case "f":
+    case "for":
+    case "f90":
+    case "f95":
+    case "f03":
+    case "f08":
+      return FORTRAN_STDIN.test(text);
+    case "pas":
+    case "pp":
+      return PASCAL_STDIN.test(text);
     default:
       return false;
   }
 }
+
+/** Fortran reading the keyboard: `read *, x`, `read (*, *) x`, `read (5, ...)`, `read (unit=input_unit, ...)`. */
+const FORTRAN_STDIN = /\bread\s*(?:\*\s*,|\(\s*(?:unit\s*=\s*)?(?:\*|5|input_unit)\s*[,)])/i;
+
+/** Pascal reading the keyboard: `readln`, `read(x)`, `readln(name)` — not `read(f, x)` from a file variable. */
+const PASCAL_STDIN = /\b(?:readln\b|read\s*[(;])(?!\s*\(?\s*[a-z_]\w*\s*,)|\breadkey\b/i;
 
 /** C's ways of reading the keyboard: `scanf`, `getchar`, `gets`, and `fgets`/`fscanf`/`getc`/`fgetc`/`getline` on `stdin`. */
 const C_STDIN =
@@ -192,8 +209,11 @@ const C_STDIN =
 
 /**
  * The error a program shows when it asked for input and got none (Run Code's Output has no keyboard): Python's
- * EOFError and Java's `Scanner` ("No line found"). C, C++ and Rust just read nothing, with no error to recognize.
+ * EOFError, Java's `Scanner` ("No line found") and gfortran's runtime error on unit 5 (`At line 6 of file x.f90
+ * (unit = 5, file = 'stdin')`). C, C++, Rust and Pascal just read nothing, with no error to recognize.
  */
 export function isMissingInputError(line: string): boolean {
-  return /EOFError: EOF when reading a line|java\.util\.NoSuchElementException: No line found/.test(line);
+  return /EOFError: EOF when reading a line|java\.util\.NoSuchElementException: No line found|\(unit = 5, file = 'stdin'\)/.test(
+    line,
+  );
 }

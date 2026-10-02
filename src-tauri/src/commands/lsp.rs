@@ -166,7 +166,11 @@ async fn resolve(state: &AppState) -> Resolved {
         },
         path: found.path,
     })
-    .ok_or_else(|| LspError::InstallFailed("Python was not found. Install Python from the Runtime Manager.".into()));
+    .ok_or_else(|| {
+        LspError::InstallFailed(
+            "Python was not found. Install Python from the Runtime Manager.".into(),
+        )
+    });
     Resolved {
         node: resolve_lsp_node(
             bundle.as_ref().and_then(Bundle::node_path),

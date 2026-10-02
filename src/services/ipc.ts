@@ -182,8 +182,8 @@ export interface LspServerInfo {
   note: string | null;
   /** What the server package holds ("pyright 1.1.414"). */
   contents: string;
-  /** `node`: runs on Node.js; `native`: its own program (rust-analyzer, clangd). */
-  runtime: "node" | "native";
+  /** `node`: runs on Node.js; `native`: its own program (rust-analyzer, clangd); `pythonModule`: on Python (fortls). */
+  runtime: "node" | "native" | "pythonModule";
   installed: boolean;
   /** The offline LSP bundle shipped with the app carries it: unpacked on first use, never downloaded. */
   bundled: boolean;
