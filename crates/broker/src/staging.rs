@@ -166,6 +166,14 @@ impl Staging {
         self.root.join(provider.dir())
     }
 
+    /// Where the download of `key` writes while it is under way (`<slot>/<file>.part`), so the gateway can pass the
+    /// bytes on as they arrive. Nothing is created.
+    pub fn part_file(&self, provider: Provider, key: &str, file_name: &str) -> PathBuf {
+        self.provider_dir(provider)
+            .join(key_dir(key))
+            .join(format!("{}.part", safe_file_name(file_name)))
+    }
+
     /// The folder for `key` (usually the artifact's address), held until the slot is dropped. Fails with
     /// `WouldBlock` when another process holds it.
     pub fn slot(&self, provider: Provider, key: &str, file_name: &str) -> io::Result<Slot> {

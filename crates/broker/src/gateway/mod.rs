@@ -8,6 +8,7 @@ pub mod fetch;
 pub mod git;
 pub mod goproxy;
 pub mod http1;
+mod live;
 pub mod npm;
 pub mod pypi;
 pub mod rustup;

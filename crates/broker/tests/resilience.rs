@@ -90,7 +90,8 @@ fn request(port: u16, path: &str) -> TcpStream {
     stream
 }
 
-/// Status and body of a Content-Length answer.
+/// Status and body of an answer: Content-Length, or chunked (a download still arriving is passed on as it comes;
+/// an empty body means the chunked answer was cut off before its end).
 fn answer(stream: TcpStream) -> (u16, Vec<u8>) {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
@@ -101,6 +102,7 @@ fn answer(stream: TcpStream) -> (u16, Vec<u8>) {
         .and_then(|code| code.parse().ok())
         .expect("code");
     let mut length = 0;
+    let mut chunked = false;
     loop {
         let mut line = String::new();
         reader.read_line(&mut line).expect("header");
@@ -111,10 +113,29 @@ fn answer(stream: TcpStream) -> (u16, Vec<u8>) {
         if let Some(value) = line.strip_prefix("content-length:") {
             length = value.trim().parse().expect("length");
         }
+        chunked |= line == "transfer-encoding: chunked";
     }
-    let mut body = vec![0; length];
-    reader.read_exact(&mut body).expect("body");
-    (status, body)
+    if !chunked {
+        let mut body = vec![0; length];
+        reader.read_exact(&mut body).expect("body");
+        return (status, body);
+    }
+    let mut body = Vec::new();
+    loop {
+        let mut size = String::new();
+        if reader.read_line(&mut size).unwrap_or(0) == 0 {
+            return (status, Vec::new());
+        }
+        let size = usize::from_str_radix(size.trim(), 16).expect("hex size");
+        let mut chunk = vec![0; size + 2];
+        if reader.read_exact(&mut chunk).is_err() {
+            return (status, Vec::new());
+        }
+        if size == 0 {
+            return (status, body);
+        }
+        body.extend_from_slice(&chunk[..size]);
+    }
 }
 
 #[test]

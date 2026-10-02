@@ -87,6 +87,18 @@ fails unexpectedly still releases its waiters with an error and its place in the
 connection problems; a hash mismatch, a 404 or a refusal is not retried. A tool download is retried by running the command
 again (the Downloads list has no Retry button because the tool that asked owns the download); the kept part resumes.
 
+## Large files
+
+A file is passed on to the tool **while it downloads** (`gateway::live`): the answer starts as soon as the first bytes
+land in the staging `.part` file (or after 8 s at the latest) and is sent chunked as they arrive. Before, the tool got
+nothing until the broker had the whole file, and pip gave up on large wheels such as TensorFlow's
+(`ReadTimeoutError ... read timeout=15`). The checksum is still enforced: the chunked answer ends properly only when
+the download succeeded *and* the bytes already sent equal the verified file; otherwise the connection is cut before
+the last chunk, so the tool sees a broken transfer and never a finished wrong file (pip checks the hash too and
+retries). A file that is already staged, or arrives within the first wait, is answered with its length as before.
+pip in OpenMind's terminals also gets `PIP_TIMEOUT=120` (seconds between two reads) unless the user set a timeout
+(`PIP_TIMEOUT`, `PIP_DEFAULT_TIMEOUT` or `timeout` in a pip.ini).
+
 ## Security
 
 - 127.0.0.1 only, random ports, per-run token, `Host` header checked (no DNS rebinding); the npm port serves registry

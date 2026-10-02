@@ -1,23 +1,49 @@
 //! Serving helpers shared by the providers, and the explicit download endpoint `<base>/fetch?url=<https URL>[&sha256=]`
 //! that `openmind-fetch` uses: the file is downloaded by the broker (resume, retries, checksum when given, staging) and
-//! only then streamed to the caller.
+//! passed on to the caller while it arrives (see `live`), so a large file never runs into the tool's read timeout.
 
 use std::io::{self, Write};
+use std::sync::{mpsc, Arc};
+use std::time::Duration;
 
 use super::http1::{write_error, write_stream, Request};
+use super::live::{wait_for_start, LiveRead, Start};
 use super::server::Shared;
 use super::upstream::{request_headers, UpRequest};
 use crate::broker::ArtifactRequest;
 use crate::staging::{safe_file_name, Provider};
 
-/// Downloads `artifact` through the broker and streams the verified file; a failure is answered with a status the
-/// tool understands and the broker's precise reason.
+/// How long the answer waits for the first downloaded bytes before it starts anyway (headers out, body to follow).
+const FIRST_BYTE_WAIT: Duration = Duration::from_secs(8);
+
+/// Downloads `artifact` through the broker and passes it on: a file that is already there (or arrives at once) with
+/// its length as before; otherwise its bytes as they arrive, the answer completing only once the broker has verified
+/// the whole file. A failure before any byte is answered with a status the tool understands and the precise reason.
 pub(crate) fn serve_artifact(
     shared: &Shared,
     artifact: &ArtifactRequest,
     out: &mut dyn Write,
 ) -> io::Result<()> {
-    let lease = match shared.broker.fetch(artifact) {
+    let (done, outcome) = mpsc::channel();
+    let broker = Arc::clone(&shared.broker);
+    let request = artifact.clone();
+    // The download runs on its own: a tool that gives up doesn't cancel a download other requests may share.
+    std::thread::spawn(move || {
+        let _ = done.send(broker.fetch(&request));
+    });
+    let name = safe_file_name(&artifact.url);
+    let part = shared
+        .broker
+        .staging()
+        .part_file(artifact.provider, &artifact.url, &artifact.url);
+    let finished = match wait_for_start(&part, &outcome, FIRST_BYTE_WAIT) {
+        Start::Finished(result) => result,
+        Start::Streaming => {
+            let mut body = LiveRead::new(part, outcome);
+            return write_stream(out, 200, &download_headers(&name), &mut body, None).map(|_| ());
+        }
+    };
+    let lease = match finished {
         Ok(lease) => lease,
         Err(error) => {
             let status = error.kind.gateway_status(error.status);
@@ -29,8 +55,18 @@ pub(crate) fn serve_artifact(
         }
     };
     let mut file = lease.open()?;
-    let name = safe_file_name(&artifact.url);
-    let headers = vec![
+    write_stream(
+        out,
+        200,
+        &download_headers(&name),
+        &mut file,
+        Some(lease.len()),
+    )
+    .map(|_| ())
+}
+
+fn download_headers(name: &str) -> Vec<(String, String)> {
+    vec![
         (
             "Content-Type".to_string(),
             "application/octet-stream".to_string(),
@@ -39,8 +75,7 @@ pub(crate) fn serve_artifact(
             "Content-Disposition".to_string(),
             format!("attachment; filename=\"{name}\""),
         ),
-    ];
-    write_stream(out, 200, &headers, &mut file, Some(lease.len())).map(|_| ())
+    ]
 }
 
 /// Passes one GET on to `url` and streams the answer back (status and allowed headers kept).

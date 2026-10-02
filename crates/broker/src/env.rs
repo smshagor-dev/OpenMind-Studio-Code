@@ -122,6 +122,30 @@ fn pip_own_index(inherited: &Inherited) -> Option<String> {
     if inherited.var("PIP_INDEX_URL").is_some() {
         return Some("PIP_INDEX_URL is set".into());
     }
+    pip_config_files(inherited).into_iter().find_map(|file| {
+        let text = read_small(&file)?;
+        has_key(&text, &["index-url", "index_url"])
+            .map(|_| format!("index-url is set in {}", file.display()))
+    })
+}
+
+/// pip's network timeout through the gateway, in seconds. pip's own default (15 s between two reads) is too short for a
+/// mirror or a slow link; the gateway already passes bytes on as they arrive.
+pub const PIP_TIMEOUT_SECS: u32 = 120;
+
+/// The user chose pip's timeout (environment or a pip.ini): theirs stays.
+fn pip_own_timeout(inherited: &Inherited) -> bool {
+    inherited.var("PIP_TIMEOUT").is_some()
+        || inherited.var("PIP_DEFAULT_TIMEOUT").is_some()
+        || pip_config_files(inherited).into_iter().any(|file| {
+            read_small(&file)
+                .and_then(|text| has_key(&text, &["timeout", "default-timeout", "default_timeout"]))
+                .is_some()
+        })
+}
+
+/// The pip.ini files pip reads for this user (PIP_CONFIG_FILE first; `nul` means none).
+fn pip_config_files(inherited: &Inherited) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if let Some(file) = inherited.var("PIP_CONFIG_FILE") {
         if !file.eq_ignore_ascii_case("nul") && file != "/dev/null" {
@@ -137,11 +161,7 @@ fn pip_own_index(inherited: &Inherited) -> Option<String> {
     if let Some(data) = &inherited.program_data {
         files.push(data.join("pip").join("pip.ini"));
     }
-    files.into_iter().find_map(|file| {
-        let text = read_small(&file)?;
-        has_key(&text, &["index-url", "index_url"])
-            .map(|_| format!("index-url is set in {}", file.display()))
-    })
+    files
 }
 
 fn npm_own_registry(inherited: &Inherited) -> Option<String> {
@@ -251,7 +271,12 @@ pub fn process_env(endpoints: &Endpoints, inherited: &Inherited) -> ProcessEnv {
     let mut skip = |tool: &'static str, reason: String| skipped.push(Skipped { tool, reason });
     match pip_own_index(inherited) {
         Some(reason) => skip("pip", reason),
-        None => set("PIP_INDEX_URL", format!("{base}/pypi/simple/")),
+        None => {
+            set("PIP_INDEX_URL", format!("{base}/pypi/simple/"));
+            if !pip_own_timeout(inherited) {
+                set("PIP_TIMEOUT", PIP_TIMEOUT_SECS.to_string());
+            }
+        }
     }
     // npm: OpenMind's file at the *global* level, so a project's or the user's own registry always wins (npm's own
     // precedence). pnpm doesn't read that level: it gets the same file as its user configuration when the user has no
@@ -476,6 +501,49 @@ mod tests {
             "the user's own entries are untouched"
         );
         assert_eq!(get(&env, "NO_PROXY"), Some(".corp,127.0.0.1,localhost"));
+    }
+
+    #[test]
+    fn pip_gets_a_longer_timeout_unless_the_user_chose_one() {
+        let env = process_env(&endpoints(), &Inherited::default());
+        assert_eq!(get(&env, "PIP_TIMEOUT"), Some("120"));
+
+        for name in ["PIP_TIMEOUT", "PIP_DEFAULT_TIMEOUT"] {
+            let mut inherited = Inherited::default();
+            inherited.vars.insert(name.into(), "30".into());
+            assert_eq!(
+                get(&process_env(&endpoints(), &inherited), "PIP_TIMEOUT"),
+                None,
+                "{name} is the user's"
+            );
+        }
+
+        let tmp = tempfile::tempdir().expect("tmp");
+        let appdata = tmp.path().join("AppData");
+        fs::create_dir_all(appdata.join("pip")).expect("dir");
+        fs::write(
+            appdata.join("pip").join("pip.ini"),
+            "[global]
+timeout = 60
+",
+        )
+        .expect("pip");
+        let inherited = Inherited {
+            vars: HashMap::new(),
+            home: None,
+            appdata: Some(appdata),
+            program_data: None,
+        };
+        let env = process_env(&endpoints(), &inherited);
+        assert_eq!(
+            get(&env, "PIP_TIMEOUT"),
+            None,
+            "pip.ini's timeout stays in force"
+        );
+        assert!(
+            get(&env, "PIP_INDEX_URL").is_some(),
+            "pip still goes through the gateway"
+        );
     }
 
     #[test]
