@@ -39,6 +39,7 @@ export function buildRunMenu(ctx: RunMenuContext): HeaderMenuRow[] {
     start("Run Code", "run.code", true),
     start("Run Code in Terminal", "run.codeInTerminal"),
     start("Run Code and Show Output", "run.codeShowOutput"),
+    start("Run Code with Arguments...", "run.codeWithArguments"),
   ];
 
   if (availability?.previewable === true) {

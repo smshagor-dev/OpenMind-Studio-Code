@@ -111,6 +111,10 @@ fn compiler_label(tool: &ResolvedExecutable) -> String {
                 _ => portable_version(&tool.path),
             };
             match (kind, version) {
+                // w64devkit (the Fortran runtime) is a whole GCC: its gcc/g++ build C and C++ too, so say where it is from.
+                (Some(kind), Some(version)) if kind == "fortran" => {
+                    format!("OpenMind portable {name} (w64devkit GCC from the Fortran runtime {version})")
+                }
                 (Some(kind), Some(version)) => {
                     format!("OpenMind portable {name} ({kind} {version})")
                 }
@@ -475,7 +479,16 @@ mod tests {
         };
         assert_eq!(
             label("E:/app/runtimes/fortran/versions/13.1.0/bin/gfortran.exe"),
-            "OpenMind portable gfortran (fortran 13.1.0)"
+            "OpenMind portable gfortran (w64devkit GCC from the Fortran runtime 13.1.0)"
+        );
+        // Its gcc builds C too: the label says it isn't the C/C++ toolchain (LLVM-MinGW).
+        assert_eq!(
+            label("E:/app/runtimes/fortran/shims/13.1.0/gcc.cmd"),
+            "OpenMind portable gcc (w64devkit GCC from the Fortran runtime 13.1.0)"
+        );
+        assert_eq!(
+            label("E:/app/runtimes/llvm-mingw/versions/20260922/bin/clang.exe"),
+            "OpenMind portable clang (llvm-mingw 20260922)"
         );
         assert_eq!(
             label("E:/app/runtimes/pascal/shims/3.2.3/fpc64.cmd"),

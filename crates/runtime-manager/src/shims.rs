@@ -22,7 +22,7 @@ pub fn shim_file_name(shim: &Shim) -> String {
 /// Names, targets and arguments are validated by the manifest (no quotes,
 /// `%`, `&`, ...), so they can be written into a script as they are.
 pub fn render(shim: &Shim, version: &str) -> String {
-    let text = render_plain(shim, version);
+    let text = with_path_dirs(shim, version, render_plain(shim, version));
     let Some(var) = &shim.proxy_env else {
         return text;
     };
@@ -37,6 +37,42 @@ pub fn render(shim: &Shim, version: &str) -> String {
         text.replacen(
             "#!/bin/sh\n",
             &format!("#!/bin/sh\n[ -n \"${var}\" ] && export HTTPS_PROXY=\"${var}\"\n"),
+            1,
+        )
+    }
+}
+
+/// Puts the shim's `pathDirs` in front of PATH for the command it starts only (`setlocal` on Windows; a variable of the
+/// `exec`ed process elsewhere), found relative to the shim like its target.
+fn with_path_dirs(shim: &Shim, version: &str, text: String) -> String {
+    if shim.path_dirs.is_empty() {
+        return text;
+    }
+    if cfg!(windows) {
+        let dirs: String = shim
+            .path_dirs
+            .iter()
+            .map(|dir| {
+                format!(
+                    "%~dp0..\\..\\versions\\{version}\\{};",
+                    dir.replace('/', "\\")
+                )
+            })
+            .collect();
+        text.replacen(
+            "@echo off\r\n",
+            &format!("@echo off\r\nsetlocal\r\nset \"PATH={dirs}%PATH%\"\r\n"),
+            1,
+        )
+    } else {
+        let dirs: String = shim
+            .path_dirs
+            .iter()
+            .map(|dir| format!("$(dirname \"$0\")/../../versions/{version}/{dir}:"))
+            .collect();
+        text.replacen(
+            "#!/bin/sh\n",
+            &format!("#!/bin/sh\nPATH=\"{dirs}$PATH\"\nexport PATH\n"),
             1,
         )
     }
@@ -127,7 +163,85 @@ mod tests {
             args: vec!["-m".into(), "pip".into()],
             via_env: None,
             proxy_env: None,
+            path_dirs: Vec::new(),
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_dirs_reach_only_the_command_the_shim_starts() {
+        let gcc = Shim {
+            name: "gcc".into(),
+            target: "bin/gcc.exe".into(),
+            args: Vec::new(),
+            via_env: None,
+            proxy_env: None,
+            path_dirs: vec!["bin".into()],
+        };
+        assert_eq!(
+            render(&gcc, "13.1.0"),
+            "@echo off\r\nsetlocal\r\nset \"PATH=%~dp0..\\..\\versions\\13.1.0\\bin;%PATH%\"\r\n\"%~dp0..\\..\\versions\\13.1.0\\bin\\gcc.exe\" %*\r\n"
+        );
+        // Without path_dirs nothing changes.
+        assert!(!render(&pip(), "3.14.7").contains("setlocal"));
+    }
+
+    /// A launcher written for the real w64devkit (`OPENMIND_TEST_W64DEVKIT` = the install folder holding `bin/`) runs
+    /// gcc with a PATH that has only System32, and the build still finds `as` and `ld`.
+    #[cfg(windows)]
+    #[test]
+    fn a_path_dirs_launcher_builds_with_a_bare_path() {
+        let Some(install) = std::env::var_os("OPENMIND_TEST_W64DEVKIT") else {
+            eprintln!("skipped: OPENMIND_TEST_W64DEVKIT is not set");
+            return;
+        };
+        let temp = tempfile::tempdir().expect("tempdir");
+        let kind = temp.path().join("runtimes").join("fortran");
+        let version = kind.join("versions").join("13.1.0");
+        std::fs::create_dir_all(version.parent().expect("parent")).expect("dirs");
+        // The install is too big to copy: `versions/13.1.0` is a directory junction to it (no privileges needed).
+        let linked = std::process::Command::new("cmd")
+            .arg("/c")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&version)
+            .arg(&install)
+            .output()
+            .is_ok_and(|out| out.status.success());
+        assert!(linked, "couldn't create the junction");
+        let shim_dir = kind.join("shims").join("13.1.0");
+        std::fs::create_dir_all(&shim_dir).expect("shims");
+        let gfortran = Shim {
+            name: "gfortran".into(),
+            target: "bin/gfortran.exe".into(),
+            args: Vec::new(),
+            via_env: None,
+            proxy_env: None,
+            path_dirs: vec!["bin".into()],
+        };
+        std::fs::write(shim_dir.join("gfortran.cmd"), render(&gfortran, "13.1.0")).expect("shim");
+        let source = temp.path().join("hello.f90");
+        std::fs::write(
+            &source,
+            "program hello\n  print '(a)', 'shim ok'\nend program\n",
+        )
+        .expect("source");
+        let exe = temp.path().join("hello.exe");
+        let system32 =
+            std::path::PathBuf::from(std::env::var_os("SystemRoot").expect("SystemRoot"))
+                .join("System32");
+        let status = std::process::Command::new(shim_dir.join("gfortran.cmd"))
+            .arg(&source)
+            .arg("-o")
+            .arg(&exe)
+            .env("PATH", &system32)
+            .status()
+            .expect("run shim");
+        assert!(status.success(), "the build failed through the launcher");
+        let out = std::process::Command::new(&exe)
+            .output()
+            .expect("run program");
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "shim ok");
     }
 
     #[cfg(windows)]
@@ -148,6 +262,7 @@ mod tests {
             args: vec![],
             via_env: Some("OPENMIND_PHP".into()),
             proxy_env: None,
+            path_dirs: Vec::new(),
         };
 
         let text = render(&shim, "2.10.3");
@@ -170,6 +285,7 @@ mod tests {
             args: vec![],
             via_env: None,
             proxy_env: None,
+            path_dirs: Vec::new(),
         };
 
         let text = render(&shim, "2.55.0.5");
@@ -187,6 +303,7 @@ mod tests {
             args: vec![],
             via_env: Some("OPENMIND_PHP".into()),
             proxy_env: Some("OPENMIND_COMPOSER_PROXY".into()),
+            path_dirs: Vec::new(),
         };
         let text = render(&shim, "2.10.3");
         assert!(
@@ -196,6 +313,7 @@ mod tests {
         assert!(text.contains("\"%OPENMIND_PHP%\""), "{text}");
         let plain = Shim {
             proxy_env: None,
+            path_dirs: Vec::new(),
             ..shim
         };
         assert!(

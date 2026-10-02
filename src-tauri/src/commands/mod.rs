@@ -17,6 +17,7 @@ pub mod index;
 pub mod integration;
 pub mod language;
 pub mod lsp;
+pub mod lsp_manage;
 pub mod marketplace;
 pub mod network;
 pub mod network_diag;

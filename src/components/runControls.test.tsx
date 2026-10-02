@@ -197,6 +197,7 @@ describe("RunCodeDropdown", () => {
       "Run Code",
       "Run Code in Terminal",
       "Run Code and Show Output",
+      "Run Code with Arguments...",
       "Configure Run Command…",
       "Select Runtime…",
     ]);

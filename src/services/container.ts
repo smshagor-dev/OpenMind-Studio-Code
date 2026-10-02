@@ -25,6 +25,7 @@ import { registerPreviewCommands } from "./previewCommands";
 import { PreviewEditorService } from "./previewEditorService";
 import { RunConfigurationService } from "./runConfigurationService";
 import { RunCodeService } from "./runCodeService";
+import { RunArgumentsService } from "./runArgumentsService";
 import { registerRunCommands } from "./runCommands";
 import { RuntimeService } from "./runtimeService";
 import { SearchService } from "./searchService";
@@ -499,7 +500,30 @@ commands.register("explorer.revealActiveFile", async () => {
 
 registerTerminalCommands(commands, terminal);
 registerViewCommands({ commands, events, layout, panel, output, search });
-registerRunCommands({ commands, events, runCode, configs: runConfigs });
+// Command-line arguments per file, remembered across restarts; every run of that file (Output or terminal) gets them.
+const runArguments = new RunArgumentsService(tauriIpcClient);
+runCode.setArgumentsSource((path) => runArguments.get(path));
+runArguments.subscribe(() => {
+  void runCode.refresh();
+});
+registerRunCommands({
+  commands,
+  events,
+  runCode,
+  configs: runConfigs,
+  arguments: {
+    store: runArguments,
+    ask: (file, current) =>
+      extensions.prompts.inputBox({
+        extension: t("run.interactive.source"),
+        title: t("run.arguments.title"),
+        prompt: t("run.arguments.prompt", { file: file.split(/[/\\]/).pop() ?? file }),
+        placeHolder: t("run.arguments.placeholder"),
+        value: current,
+        password: false,
+      }),
+  },
+});
 registerEditorCommands({
   commands,
   workspace,
@@ -732,6 +756,18 @@ runCode.setInteractiveHost({
     return answer === terminalLabel ? "terminal" : "output";
   },
 });
+// Removing a downloaded language server always asks first, naming what is deleted.
+lsp.setRemoveConfirmation(async (server) => {
+  const button = t("lsp.removeConfirm.button");
+  const answer = await extensions.prompts.confirm({
+    extension: t("runtimes.tab.tools"),
+    title: t("lsp.removeConfirm.title", { name: server.name }),
+    details: [{ label: t("lsp.removeConfirm.removes"), value: server.contents }],
+    notes: [t("lsp.removeConfirm.note")],
+    buttons: [button],
+  });
+  return answer === button;
+});
 const ai = wireAi({
   ipc: tauriIpcClient,
   events,
@@ -931,6 +967,7 @@ export const container = {
   panel,
   output,
   runCode,
+  runArguments,
   runConfigs,
   ports,
   php,

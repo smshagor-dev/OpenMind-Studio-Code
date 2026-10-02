@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { LspBundleInfo, LspServerInfo } from "../services/ipc";
+import { removeBlocked } from "../services/lspAvailability";
 import { t } from "../i18n";
 // Its own layout: this dialog is a lazy chunk that can open before the Runtime Manager (which also imports it) ever has,
 // and without the stylesheet it was a fixed 460px box that ran off the bottom of the window.
@@ -199,6 +200,27 @@ function ServerCard({ server }: { server: LspServerInfo }) {
           runtime: runtimeName(server.runtime),
         })}
       </p>
+      {server.python ? (
+        <p
+          className={server.pythonIsSystem ? "runtime-card__notes lsp-problem" : "runtime-card__notes"}
+          data-testid="lsp-python"
+        >
+          {server.pythonIsSystem
+            ? t("lsp.pythonSystem", { python: server.python })
+            : t("lsp.python", { python: server.python })}{" "}
+          {server.pythonIsSystem ? (
+            <button
+              type="button"
+              className="button button--link"
+              onClick={() => {
+                container.run("runtime.manage");
+              }}
+            >
+              {t("lsp.installPython")}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
       {!server.installed && server.installBlocked ? (
         <p className="runtime-card__notes lsp-problem">{server.installBlocked}</p>
       ) : null}
@@ -247,6 +269,18 @@ function ServerCard({ server }: { server: LspServerInfo }) {
         >
           {t("lsp.stop")}
         </button>
+        {server.installed && server.installSource !== "bundle" ? (
+          <button
+            type="button"
+            disabled={removeBlocked(server) !== null}
+            title={removeBlocked(server) ?? t("lsp.removeTitle", { name: server.name })}
+            onClick={() => {
+              void lsp.uninstall(server.id);
+            }}
+          >
+            {t("lsp.remove")}
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={!server.logExists}

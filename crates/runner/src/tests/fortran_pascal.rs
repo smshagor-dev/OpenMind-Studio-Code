@@ -39,6 +39,7 @@ impl Project {
             file: file.to_path_buf(),
             workspace: Some(self.workspace.clone()),
             template: None,
+            arguments: None,
         };
         let env = RunEnvironment {
             path_prepend: vec![bin],
@@ -188,6 +189,191 @@ fn pascal_plans_attached_options_warnings_and_the_source_folder_as_build_folder(
 }
 
 #[test]
+fn c_uses_llvm_mingw_clang_over_the_fortran_runtimes_gcc_and_gcc_only_without_it() {
+    let p = project();
+    let root = p.workspace.parent().expect("parent").to_path_buf();
+    let fortran_shims = root
+        .join("app")
+        .join("runtimes")
+        .join("fortran")
+        .join("shims")
+        .join("13.1.0");
+    let llvm_bin = root
+        .join("app")
+        .join("runtimes")
+        .join("llvm-mingw")
+        .join("versions")
+        .join("20260922")
+        .join("bin");
+    for (dir, file) in [
+        (&fortran_shims, "gcc.cmd"),
+        (&fortran_shims, "g++.cmd"),
+        (&llvm_bin, "clang.exe"),
+    ] {
+        fs::create_dir_all(dir).expect("dir");
+        fs::write(dir.join(file), "").expect("stand-in");
+    }
+    let main = p.write("hello.c", "int main(void) { return 0; }\n");
+    let plan_with = |dirs: Vec<PathBuf>, build: &str| {
+        let request = RunRequest {
+            file: main.clone(),
+            workspace: Some(p.workspace.clone()),
+            template: None,
+            arguments: None,
+        };
+        let env = RunEnvironment {
+            path_prepend: dirs,
+            vars: Vec::new(),
+        };
+        plan(
+            &request,
+            &env,
+            &root,
+            Some(OsString::new()),
+            &p.builds.join(build),
+        )
+        .expect("plan")
+    };
+
+    // Both installed (in either order on PATH): the C/C++ toolchain wins.
+    for dirs in [
+        vec![fortran_shims.clone(), llvm_bin.clone()],
+        vec![llvm_bin.clone(), fortran_shims.clone()],
+    ] {
+        let both = plan_with(dirs, "run c1");
+        assert_eq!(
+            both.runtime_label,
+            "OpenMind portable clang (llvm-mingw 20260922)"
+        );
+    }
+    // Only the Fortran runtime: its gcc, labelled as such.
+    let only = plan_with(vec![fortran_shims.clone()], "run c2");
+    assert_eq!(
+        only.runtime_label,
+        "OpenMind portable gcc (w64devkit GCC from the Fortran runtime 13.1.0)"
+    );
+    let cpp = p.write("hello.cpp", "int main() { return 0; }\n");
+    let request = RunRequest {
+        file: cpp,
+        workspace: Some(p.workspace.clone()),
+        template: None,
+        arguments: None,
+    };
+    let env = RunEnvironment {
+        path_prepend: vec![fortran_shims],
+        vars: Vec::new(),
+    };
+    let cpp_plan = plan(
+        &request,
+        &env,
+        &root,
+        Some(OsString::new()),
+        &p.builds.join("run c3"),
+    )
+    .expect("plan");
+    assert!(cpp_plan
+        .runtime_label
+        .starts_with("OpenMind portable g++ (w64devkit GCC"));
+}
+
+#[test]
+fn arguments_follow_the_program_for_compiled_and_interpreted_files() {
+    let p = project();
+    let bin = stand_ins(&p, &["gfortran.exe", "python.exe"]);
+    let fortran = p.write("args.f90", "program args\nend program\n");
+    let request = |file: &Path| RunRequest {
+        file: file.to_path_buf(),
+        workspace: Some(p.workspace.clone()),
+        template: None,
+        arguments: Some(r#"7 "two words""#.into()),
+    };
+    let env = RunEnvironment {
+        path_prepend: vec![bin],
+        vars: Vec::new(),
+    };
+    let root = p.workspace.parent().expect("parent");
+    let compiled = plan(
+        &request(&fortran),
+        &env,
+        root,
+        Some(OsString::new()),
+        &p.builds.join("run a"),
+    )
+    .expect("plan");
+    assert_eq!(compiled.argv[1..], ["7", "two words"]);
+    assert_eq!(compiled.display, "args.exe 7 \"two words\"");
+    assert!(
+        !compiled
+            .build
+            .expect("build")
+            .argv
+            .iter()
+            .any(|arg| arg == "7"),
+        "not given to the compiler"
+    );
+
+    let script = p.write("args.py", "import sys\n");
+    let interpreted = plan(
+        &request(&script),
+        &env,
+        root,
+        Some(OsString::new()),
+        &p.builds.join("run b"),
+    )
+    .expect("plan");
+    assert_eq!(
+        interpreted.argv[interpreted.argv.len() - 3..][1..],
+        ["7", "two words"]
+    );
+    assert!(interpreted.argv[interpreted.argv.len() - 3].ends_with("args.py"));
+    assert!(interpreted.display.ends_with("args.py 7 \"two words\""));
+}
+
+#[test]
+fn a_fortran_and_a_pascal_program_receive_their_arguments() {
+    let p = project();
+    let fortran = p.write(
+        "args.f90",
+        "program args\n  character(len=40) :: a\n  integer :: i\n  print '(a,i0)', 'count=', command_argument_count()\n  do i = 1, command_argument_count()\n    call get_command_argument(i, a)\n    print '(a)', trim(a)\n  end do\nend program\n",
+    );
+    let pascal = p.write(
+        "args.pas",
+        "program args;\nvar i: integer;\nbegin\n  writeln('count=', ParamCount);\n  for i := 1 to ParamCount do writeln(ParamStr(i));\nend.\n",
+    );
+    for (file, variable) in [
+        (fortran, "OPENMIND_TEST_FORTRAN"),
+        (pascal, "OPENMIND_TEST_PASCAL"),
+    ] {
+        let Some(bin) = std::env::var_os(variable).map(PathBuf::from) else {
+            eprintln!("skipped: {variable} is not set");
+            continue;
+        };
+        let request = RunRequest {
+            file: file.clone(),
+            workspace: Some(p.workspace.clone()),
+            template: None,
+            arguments: Some(r#"7 "two words""#.into()),
+        };
+        let env = RunEnvironment {
+            path_prepend: vec![bin],
+            vars: Vec::new(),
+        };
+        let root = p.workspace.parent().expect("parent");
+        let plan = plan(
+            &request,
+            &env,
+            root,
+            Some(OsString::new()),
+            &p.builds.join(variable),
+        )
+        .expect("plan");
+        let (stdout, build, code, _) = run(&plan);
+        assert_eq!(stdout, ["count=2", "7", "two words"], "{build:?}");
+        assert_eq!(code, Some(0));
+    }
+}
+
+#[test]
 fn pascal_falls_back_to_fpc_when_there_is_no_fpc64_and_prefers_the_portable_one() {
     let p = project();
     let main = p.write("hello.pas", "program hello;\nbegin\nend.\n");
@@ -210,6 +396,7 @@ fn pascal_falls_back_to_fpc_when_there_is_no_fpc64_and_prefers_the_portable_one(
         file: main.clone(),
         workspace: Some(p.workspace.clone()),
         template: None,
+        arguments: None,
     };
     let env = RunEnvironment {
         path_prepend: vec![portable],

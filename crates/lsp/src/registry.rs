@@ -139,6 +139,10 @@ pub const PACKAGES: &[Package] = &[
     python!("fortran", "1", "fortls 3.2.2", false),
 ];
 
+/// fortls publishes problems only when a file is opened or saved, and both re-read the file from disk: asking for them
+/// while the user types would make it forget the unsaved edits (and report the saved text), so OpenMind doesn't.
+pub const FORTLS_NOTE: &str = "Fortran language server. Problems are checked when a file is opened or saved (fortls reads the saved file), not while you type; turn on Auto Save to have them follow your edits. Best results come from source files inside the open folder.";
+
 pub const SERVERS: &[ServerDef] = &[
     ServerDef {
         id: "typescript",
@@ -305,7 +309,7 @@ pub const SERVERS: &[ServerDef] = &[
         args: &["--disable_autoupdate"],
         runtime: Runtime::PythonModule,
         languages: &["fortran"],
-        note: Some("Fortran language server. Best results come from source files inside the open folder."),
+        note: Some(FORTLS_NOTE),
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: &[("PIP_NO_INDEX", "1")],
@@ -416,6 +420,9 @@ mod tests {
         assert_eq!(fortls.args, ["--disable_autoupdate"]);
         assert!(fortls.env.contains(&("PIP_NO_INDEX", "1")));
         assert_eq!(fortls.runtime, Runtime::PythonModule);
+        // Its problems follow saves only, and the card says so.
+        assert_eq!(fortls.note, Some(FORTLS_NOTE));
+        assert!(FORTLS_NOTE.contains("opened or saved"));
     }
 
     #[test]

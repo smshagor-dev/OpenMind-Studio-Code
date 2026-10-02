@@ -127,6 +127,30 @@ fn fortls_installs_starts_and_navigates_between_files() {
     assert!(symbols.to_string().contains("main"), "{symbols}");
     let completion = ask("textDocument/completion", 4, 7, json!({}));
     assert!(completion.to_string().contains("area"), "{completion}");
+
+    // Workspace symbols (Ctrl+T): fortls offers them and finds `area` in the other file.
+    let caps = manager
+        .status("fortran")
+        .capabilities
+        .expect("capabilities");
+    assert!(caps.workspace_symbol);
+    let answer = manager
+        .request(
+            "fortran",
+            "workspace/symbol",
+            &json!({ "query": "area" }),
+            Duration::from_secs(30),
+        )
+        .expect("workspace/symbol");
+    let hits = openmind_lsp::symbols::parse_workspace_symbols(&answer, &workspace, "area");
+    let area = hits
+        .iter()
+        .find(|hit| hit.name.eq_ignore_ascii_case("area"))
+        .unwrap_or_else(|| panic!("{answer}"));
+    assert!(area.relative_path.ends_with("shapes.f90"), "{area:?}");
+    assert_eq!(area.kind, "function");
+    assert_eq!(area.line, 4);
+
     let references = ask(
         "textDocument/references",
         4,

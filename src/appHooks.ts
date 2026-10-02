@@ -82,6 +82,7 @@ export function useAppStartup(): boolean {
       const usable = timings.elapsed();
       await Promise.all([
         container.runCode.initialize(),
+        container.runArguments.load(),
         container.php.initialize(),
         // The main window mirrors the database services' output and ports too.
         container.mariaDb.initialize(),

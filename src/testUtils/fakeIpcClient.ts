@@ -298,6 +298,8 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       servers: [],
     }),
     lspInstall: vi.fn().mockResolvedValue(undefined),
+    lspUninstall: vi.fn().mockResolvedValue(undefined),
+    lspWorkspaceSymbols: vi.fn().mockResolvedValue([]),
     lspSyncDocument: vi.fn().mockResolvedValue({ state: "unsupported" }),
     lspSaveDocument: vi.fn().mockResolvedValue(undefined),
     lspCloseDocument: vi.fn().mockResolvedValue(undefined),

@@ -69,6 +69,7 @@ function fakeLsp(
     getState: () => stable,
     refresh: vi.fn().mockResolvedValue(undefined),
     install: vi.fn().mockResolvedValue(true),
+    uninstall: vi.fn().mockResolvedValue(true),
     restart: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     openLog: vi.fn().mockResolvedValue(true),
@@ -188,6 +189,50 @@ describe("Language Tools dialog", () => {
     const card = within(screen.getByRole("region", { name: "fortls" }));
     expect(card.getByText("Installs: fortls 3.2.2 · runs on Python")).toBeInTheDocument();
     expect(card.queryByText(/Node\.js/)).toBeNull();
+  });
+
+  it("a downloaded fortls can be removed; a bundled server has no Remove button", () => {
+    const fortls = server({
+      id: "fortran",
+      name: "fortls",
+      languages: ["fortran"],
+      runtime: "pythonModule",
+      contents: "fortls 3.2.2",
+      installed: true,
+      installSource: "download",
+      python: "OpenMind portable Python 3.14.7",
+      pythonIsSystem: false,
+    });
+    const bundled = server({ installed: true, installSource: "bundle", bundled: true });
+    const lsp = fakeLsp(snapshot([fortls, bundled]));
+    harness.current = { lsp, run: vi.fn() };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    const card = within(screen.getByRole("region", { name: "fortls" }));
+    expect(card.getByTestId("lsp-python")).toHaveTextContent("Python: OpenMind portable Python 3.14.7.");
+    fireEvent.click(card.getByRole("button", { name: "Remove" }));
+    expect(lsp.uninstall).toHaveBeenCalledWith("fortran");
+    const other = within(screen.getByRole("region", { name: "TypeScript Language Server" }));
+    expect(other.queryByRole("button", { name: "Remove" })).toBeNull();
+  });
+
+  it("says plainly when fortls would use the system Python, and offers OpenMind's own", () => {
+    const fortls = server({
+      id: "fortran",
+      name: "fortls",
+      languages: ["fortran"],
+      runtime: "pythonModule",
+      contents: "fortls 3.2.2",
+      python: "System Python at C:/Python314/python.exe",
+      pythonIsSystem: true,
+    });
+    const run = vi.fn();
+    harness.current = { lsp: fakeLsp(snapshot([fortls])), run };
+    render(<LanguageToolsDialog onClose={() => undefined} />);
+    const note = within(screen.getByRole("region", { name: "fortls" })).getByTestId("lsp-python");
+    expect(note).toHaveTextContent("Uses System Python at C:/Python314/python.exe, because OpenMind's portable Python isn't installed.");
+    expect(note).toHaveTextContent("that Python, its packages and your pip settings are not changed");
+    fireEvent.click(within(note).getByRole("button", { name: "Install OpenMind Python" }));
+    expect(run).toHaveBeenCalledWith("runtime.manage");
   });
 
   it("without Node.js, Install is disabled and the reason is written out", () => {

@@ -38,10 +38,11 @@ export function wireSearch(deps: SearchWiringDeps) {
   const getRoot = () => workspace.getActiveWorkspace()?.path ?? null;
   const panel = new SearchPanelService();
   const fileSearch = new FileSearchService(ipc, workspace, getRoot, () => index.hasFiles());
-  const symbolSearch = new SymbolSearchService(ipc, workspace, getRoot, () => index.hasFiles());
+  const serverSymbols = (query: string, limit: number) => ipc.lspWorkspaceSymbols(query, limit);
+  const symbolSearch = new SymbolSearchService(ipc, workspace, getRoot, () => index.hasFiles(), serverSymbols);
   const quickOpen = new QuickOpenService(
     new FileSearchService(ipc, workspace, getRoot, () => index.hasFiles()),
-    new SymbolSearchService(ipc, workspace, getRoot, () => index.hasFiles()),
+    new SymbolSearchService(ipc, workspace, getRoot, () => index.hasFiles(), serverSymbols),
   );
   const references = new ReferenceSearchService(ipc, workspace, getRoot, () => index.isReady());
 

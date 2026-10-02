@@ -158,6 +158,8 @@ fn main() {
             commands::lsp::lsp_save_document,
             commands::lsp::lsp_close_document,
             commands::lsp::lsp_request,
+            commands::lsp_manage::lsp_workspace_symbols,
+            commands::lsp_manage::lsp_uninstall,
             commands::lsp::lsp_stop,
             commands::lsp::lsp_stop_all,
             commands::lsp::lsp_set_verbose,

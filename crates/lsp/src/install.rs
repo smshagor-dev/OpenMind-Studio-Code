@@ -57,18 +57,58 @@ pub fn npm_args(npm_cli: &Path) -> Vec<String> {
     ]
 }
 
-pub fn pip_args(requirements: &Path, target: &Path) -> Vec<String> {
-    vec![
-        "-m".into(),
-        "pip".into(),
-        "install".into(),
-        "--disable-pip-version-check".into(),
-        "--no-warn-script-location".into(),
+/// OpenMind's own pip settings (the download gateway's index, a proxy, offline wheels) and the option each becomes.
+const PIP_SETTINGS: &[(&str, &str)] = &[
+    ("PIP_INDEX_URL", "--index-url"),
+    ("PIP_EXTRA_INDEX_URL", "--extra-index-url"),
+    ("PIP_TRUSTED_HOST", "--trusted-host"),
+    ("PIP_FIND_LINKS", "--find-links"),
+    ("PIP_PROXY", "--proxy"),
+    ("PIP_CERT", "--cert"),
+];
+
+/// The pip command for a Python-package server, isolated from the Python it runs on: `-I` (no user site, no
+/// `PYTHON*` variables) and `--isolated` (no `pip.ini`, no inherited `PIP_*` such as `PIP_USER`, `PIP_TARGET` or
+/// `PIP_REQUIRE_VIRTUALENV`), so even a system Python's own packages and the user's pip setup are never read or changed.
+/// The settings OpenMind passes in `env` go on the command line instead, and the cache stays in the app folder.
+pub fn pip_args(
+    requirements: &Path,
+    target: &Path,
+    cache: &Path,
+    env: &[(String, String)],
+) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "-I",
+        "-m",
+        "pip",
+        "install",
+        "--isolated",
+        "--disable-pip-version-check",
+        "--no-warn-script-location",
+        "--no-input",
+        "--cache-dir",
+    ]
+    .map(String::from)
+    .to_vec();
+    args.push(cache.display().to_string());
+    for (variable, option) in PIP_SETTINGS {
+        let Some((_, value)) = env
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(variable))
+        else {
+            continue;
+        };
+        for part in value.split_whitespace() {
+            args.extend([(*option).to_string(), part.to_string()]);
+        }
+    }
+    args.extend([
         "--target".into(),
         target.display().to_string(),
         "-r".into(),
         requirements.display().to_string(),
-    ]
+    ]);
+    args
 }
 
 /// Installs `package`. `log` gets every line npm prints. `env` is added to npm's environment (the app's proxy
@@ -144,18 +184,18 @@ pub fn install_python(
     std::fs::create_dir_all(&staging).map_err(io_err)?;
     let requirements_path = staging.join("requirements.txt");
     std::fs::write(&requirements_path, requirements).map_err(io_err)?;
-    let mut vars: Vec<(String, String)> = env.to_vec();
-    vars.extend([
-        (
-            "PIP_CACHE_DIR".into(),
-            app_root.join("cache").join("pip").display().to_string(),
-        ),
-        ("PIP_DISABLE_PIP_VERSION_CHECK".into(), "1".into()),
-        ("PYTHONNOUSERSITE".into(), "1".into()),
-    ]);
+    // The proxy variables still reach pip (`--isolated` ignores only pip's own settings); OpenMind's `PIP_*` settings
+    // are passed as options by `pip_args`.
+    let mut vars: Vec<(String, String)> = env
+        .iter()
+        .filter(|(key, _)| !key.to_ascii_uppercase().starts_with("PIP_"))
+        .cloned()
+        .collect();
+    vars.push(("PYTHONNOUSERSITE".into(), "1".into()));
+    let cache = app_root.join("cache").join("pip");
     let spec = SpawnSpec {
         program: python.to_path_buf(),
-        args: pip_args(&requirements_path, &staging),
+        args: pip_args(&requirements_path, &staging, &cache, env),
         cwd: staging.clone(),
         vars,
         path_prepend: python
@@ -273,10 +313,94 @@ fn io_err(err: std::io::Error) -> LspError {
     LspError::InstallFailed(err.to_string())
 }
 
+/// Removes everything installed for `package` (`language-servers/<package>/`: every revision and a leftover staging
+/// folder). Nothing else is touched: a link in its place is refused rather than followed. Removing a package that isn't
+/// there is not an error.
+pub fn uninstall(app_root: &Path, package: &Package) -> Result<(), LspError> {
+    let dir = packages_root(app_root).join(package.id);
+    match std::fs::symlink_metadata(&dir) {
+        Err(_) => Ok(()),
+        Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
+            Err(LspError::InstallFailed(format!(
+                "{} is not a folder OpenMind created; it was left alone.",
+                dir.display()
+            )))
+        }
+        Ok(_) => std::fs::remove_dir_all(&dir).map_err(|err| {
+            LspError::InstallFailed(format!("Couldn't remove {}: {err}", dir.display()))
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::registry::{package_by_id, server_by_id};
+
+    #[test]
+    fn pip_is_isolated_from_the_python_and_the_users_pip_setup() {
+        let env = vec![
+            (
+                "PIP_INDEX_URL".to_string(),
+                "http://127.0.0.1:5/t/pypi/simple/".to_string(),
+            ),
+            (
+                "PIP_TRUSTED_HOST".to_string(),
+                "127.0.0.1 localhost".to_string(),
+            ),
+            ("HTTPS_PROXY".to_string(), "http://proxy:8080".to_string()),
+        ];
+        let args = pip_args(
+            Path::new("C:/app/req.txt"),
+            Path::new("C:/app/language-servers/fortran/.installing"),
+            Path::new("C:/app/cache/pip"),
+            &env,
+        );
+        assert_eq!(args[..5], ["-I", "-m", "pip", "install", "--isolated"]);
+        let joined = args.join(" ");
+        assert!(joined.contains("--cache-dir C:/app/cache/pip"), "{joined}");
+        assert!(
+            joined.contains("--index-url http://127.0.0.1:5/t/pypi/simple/"),
+            "{joined}"
+        );
+        assert!(
+            joined.contains("--trusted-host 127.0.0.1 --trusted-host localhost"),
+            "{joined}"
+        );
+        assert!(joined
+            .ends_with("--target C:/app/language-servers/fortran/.installing -r C:/app/req.txt"));
+        for never in [
+            "--user",
+            "--upgrade",
+            "proxy:8080",
+            "--break-system-packages",
+        ] {
+            assert!(!joined.contains(never), "{never} in {joined}");
+        }
+    }
+
+    #[test]
+    fn uninstall_removes_only_the_package_folder() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let server = server_by_id("fortran").expect("fortls");
+        let package = package_by_id(server.package).expect("package");
+        let entry = package_dir(root.path(), package)
+            .join(server.entry)
+            .join("__main__.py");
+        std::fs::create_dir_all(entry.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&entry, b"").expect("entry");
+        std::fs::create_dir_all(staging_dir(root.path(), package)).expect("staging");
+        let neighbour = packages_root(root.path()).join("python").join("1");
+        std::fs::create_dir_all(&neighbour).expect("neighbour");
+        assert!(is_installed(root.path(), server, package));
+
+        uninstall(root.path(), package).expect("uninstall");
+
+        assert!(!is_installed(root.path(), server, package));
+        assert!(!packages_root(root.path()).join("fortran").exists());
+        assert!(neighbour.exists(), "another server's files stay");
+        uninstall(root.path(), package).expect("removing it again is fine");
+    }
 
     #[test]
     fn a_package_lives_under_language_servers_with_its_revision() {

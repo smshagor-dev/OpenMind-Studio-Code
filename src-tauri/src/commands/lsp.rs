@@ -114,7 +114,7 @@ impl LspEvents for Sink {
 }
 
 /// The open workspace folder, if any.
-async fn workspace_path(state: &AppState) -> Option<PathBuf> {
+pub(crate) async fn workspace_path(state: &AppState) -> Option<PathBuf> {
     state
         .workspace_folder
         .active_workspace()
@@ -162,7 +162,10 @@ async fn resolve(state: &AppState) -> Resolved {
                 }
             }
             openmind_runner::RuntimeSource::Project => "Project Python".to_string(),
-            openmind_runner::RuntimeSource::System => "System Python".to_string(),
+            // Explicit: a server installed and run with this Python never changes it (see `install::pip_args`).
+            openmind_runner::RuntimeSource::System => {
+                format!("System Python at {}", found.path.display())
+            }
         },
         path: found.path,
     })
@@ -261,6 +264,10 @@ pub struct ServerInfo {
     /// Whether "Install" would work right now; when not, `install_blocked` says why.
     can_install: bool,
     install_blocked: Option<String>,
+    /// For a Python-package server (fortls): the Python it installs and runs with, and whether that is the computer's
+    /// own Python because OpenMind's portable one isn't installed.
+    python: Option<String>,
+    python_is_system: bool,
     log_path: String,
     log_exists: bool,
 }
@@ -342,10 +349,23 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
         Ok(node) => (Some(node.label()), None),
         Err(err) => (None, Some(err.to_string())),
     };
+    let python_system = resolved
+        .python
+        .as_ref()
+        .is_ok_and(|python| python.label.starts_with("System Python"));
     let servers = summaries()
         .into_iter()
         .filter_map(|summary| {
             let def = server_by_id(summary.id)?;
+            let python = (def.runtime == Runtime::PythonModule)
+                .then(|| {
+                    resolved
+                        .python
+                        .as_ref()
+                        .ok()
+                        .map(|python| python.label.clone())
+                })
+                .flatten();
             let package = package_by_id(def.package)?;
             let installed = install::is_installed(&state.app_root, def, package);
             let live = state.lsp.status(def.id);
@@ -369,6 +389,8 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
                 pid: live.pid,
                 can_install: blocked.is_none(),
                 install_blocked: blocked,
+                python: python.clone(),
+                python_is_system: python.is_some() && python_system,
                 log_exists: path.is_file(),
                 log_path: path.display().to_string(),
             })

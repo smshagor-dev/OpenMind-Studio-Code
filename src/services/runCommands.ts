@@ -3,6 +3,7 @@ import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import { extensionOf } from "./editorAssociationService";
 import type { RunConfigurationService } from "./runConfigurationService";
+import type { RunArgumentsService } from "./runArgumentsService";
 import type { RunCodeService } from "./runCodeService";
 
 export interface RunCommandDeps {
@@ -10,6 +11,11 @@ export interface RunCommandDeps {
   events: EventBus<AppEvents>;
   runCode: RunCodeService;
   configs: RunConfigurationService;
+  /** The remembered command-line arguments, and how to ask for new ones (`null` = the user cancelled). */
+  arguments?: {
+    store: RunArgumentsService;
+    ask: (file: string, current: string) => Promise<string | null>;
+  };
 }
 
 /**
@@ -67,6 +73,23 @@ export function registerRunCommands(deps: RunCommandDeps): void {
       enabled: () => configs.supports(extensionOf(runCode.activeEditor()?.path ?? null)),
     },
   );
+  const args = deps.arguments;
+  if (args) {
+    // Asks for the program's arguments (the remembered ones filled in), remembers them for this file and runs it.
+    commands.register(
+      "run.codeWithArguments",
+      async () => {
+        const file = runCode.activeEditor()?.path;
+        if (file == null) return;
+        const answer = await args.ask(file, args.store.get(file));
+        if (answer === null) return;
+        await args.store.set(file, answer);
+        await runCode.refresh();
+        await runCode.run();
+      },
+      { enabled: canRun },
+    );
+  }
   // Which runtime a run uses is chosen where runtimes are managed: the active version there wins.
   commands.register("run.selectRuntime", () => {
     events.emit("showRuntimeManager", undefined);

@@ -128,7 +128,38 @@ fn fortran_and_pascal_are_portable_windows_compilers() {
     let artifact = fortran
         .artifact(&fortran.default_version, "windows-x64")
         .expect("windows artifact");
-    assert_eq!(fortran.bin_dirs, ["bin"]);
+    // w64devkit's `bin` also holds BusyBox's find, sort, tar, timeout, bash ...: it is never put on a terminal's PATH.
+    // Only launchers for the toolchain are, and each gives its own command that folder (gcc runs `as` and `ld`).
+    assert!(fortran.bin_dirs.is_empty(), "{:?}", fortran.bin_dirs);
+    let names: Vec<&str> = fortran
+        .shims
+        .iter()
+        .map(|shim| shim.name.as_str())
+        .collect();
+    for tool in [
+        "gfortran",
+        "gcc",
+        "g++",
+        "gdb",
+        "make",
+        "mingw32-make",
+        "ld",
+        "as",
+    ] {
+        assert!(names.contains(&tool), "{tool} missing from {names:?}");
+    }
+    for busybox in [
+        "find", "sort", "tar", "timeout", "bash", "sh", "which", "wget", "whoami", "cc",
+    ] {
+        assert!(
+            !names.contains(&busybox),
+            "{busybox} must not shadow the system's"
+        );
+    }
+    for shim in &fortran.shims {
+        assert_eq!(shim.path_dirs, ["bin"], "{}", shim.name);
+        assert!(shim.target.starts_with("bin/") && shim.target.ends_with(".exe"));
+    }
     assert!(
         artifact.url.contains("w64devkit-fortran"),
         "{}",

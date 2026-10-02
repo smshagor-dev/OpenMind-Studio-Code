@@ -341,6 +341,7 @@ describe("RunCodeService", () => {
       file: "C:/p/hello.py",
       workspace: "C:/p",
       template: null,
+      arguments: null,
     });
     expect(r.service.buttonView()).toMatchObject({ state: "ready", enabled: true });
     expect(r.service.canRun()).toBe(true);
@@ -630,7 +631,7 @@ describe("RunCodeService", () => {
       expect(await r.service.run({ target: "terminal" })).toBe(true);
 
       expect(r.ipc.runTerminalCommand).toHaveBeenCalledWith(
-        { file: "C:/p/hello.py", workspace: "C:/p", template: null },
+        { file: "C:/p/hello.py", workspace: "C:/p", template: null, arguments: null },
         "powerShell",
       );
       expect(r.ipc.terminalWrite).toHaveBeenCalledWith(
@@ -713,6 +714,7 @@ describe("Run menu", () => {
       "Run Code",
       "Run Code in Terminal",
       "Run Code and Show Output",
+      "Run Code with Arguments...",
       "Configure Run Command…",
       "Select Runtime…",
     ]);

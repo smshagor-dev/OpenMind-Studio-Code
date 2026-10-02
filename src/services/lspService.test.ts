@@ -17,7 +17,7 @@ import type {
   LspSnapshot,
   LspSyncOutcome,
 } from "./ipc";
-import { actionAvailability, fileProblem, restartAvailability } from "./lspAvailability";
+import { actionAvailability, fileProblem, removeBlocked, restartAvailability } from "./lspAvailability";
 import { registerLspCommands } from "./lspCommands";
 import { LSP_DISABLED_REASON, LspService, SYNC_DELAY_MS } from "./lspService";
 import { OutputService } from "./outputService";
@@ -622,5 +622,68 @@ describe("DiagnosticsService: markers from the server", () => {
     expect(markers()).toHaveLength(1);
     documents.close(id);
     expect(markers()).toHaveLength(0);
+  });
+});
+
+describe("Removing a language server", () => {
+  const fortls = (patch: Partial<LspServerInfo> = {}) =>
+    server({
+      id: "fortran",
+      name: "fortls",
+      languages: ["fortran"],
+      runtime: "pythonModule",
+      contents: "fortls 3.2.2",
+      installSource: "download",
+      ...patch,
+    });
+
+  it("asks first, then removes a downloaded server and reloads the status", async () => {
+    const r = await rig([fortls()]);
+    const confirm = vi.fn().mockResolvedValue(true);
+    r.lsp.setRemoveConfirmation(confirm);
+    const notices: string[] = [];
+    r.events.on("appNotice", ({ message }) => notices.push(message));
+
+    expect(await r.lsp.uninstall("fortran")).toBe(true);
+
+    expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ id: "fortran" }));
+    expect(r.ipc.lspUninstall).toHaveBeenCalledWith("fortran");
+    expect(notices).toContain("fortls removed.");
+    expect(r.ipc.lspStatus).toHaveBeenCalled();
+  });
+
+  it("a second click while the question is open asks nothing more", async () => {
+    const r = await rig([fortls()]);
+    let answer: (value: boolean) => void = () => undefined;
+    const confirm = vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve)));
+    r.lsp.setRemoveConfirmation(confirm);
+    const first = r.lsp.uninstall("fortran");
+    expect(await r.lsp.uninstall("fortran")).toBe(false);
+    answer(true);
+    expect(await first).toBe(true);
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(r.ipc.lspUninstall).toHaveBeenCalledOnce();
+  });
+
+  it("removes nothing when the user declines, or without a confirmation at all", async () => {
+    const declined = await rig([fortls()]);
+    declined.lsp.setRemoveConfirmation(() => Promise.resolve(false));
+    expect(await declined.lsp.uninstall("fortran")).toBe(false);
+    expect(declined.ipc.lspUninstall).not.toHaveBeenCalled();
+
+    const unwired = await rig([fortls()]);
+    expect(await unwired.lsp.uninstall("fortran")).toBe(false);
+    expect(unwired.ipc.lspUninstall).not.toHaveBeenCalled();
+  });
+
+  it("refuses a server from the offline bundle, one not installed, and one installing", async () => {
+    expect(removeBlocked(fortls({ installSource: "bundle" }))).toContain("offline bundle");
+    expect(removeBlocked(fortls({ installed: false }))).toBe("fortls is not installed.");
+    expect(removeBlocked(fortls({ state: "installing" }))).toContain("installing");
+    expect(removeBlocked(fortls())).toBeNull();
+    const r = await rig([fortls({ installSource: "bundle" })]);
+    r.lsp.setRemoveConfirmation(() => Promise.resolve(true));
+    expect(await r.lsp.uninstall("fortran")).toBe(false);
+    expect(r.ipc.lspUninstall).not.toHaveBeenCalled();
   });
 });

@@ -51,6 +51,7 @@ impl Setup {
             file: file.to_path_buf(),
             workspace: Some(self.workspace.clone()),
             template: None,
+            arguments: None,
         };
         let root = self.workspace.parent().expect("parent");
         match plan(
@@ -261,6 +262,7 @@ fn a_missing_compiler_is_a_clear_reason_and_a_custom_command_is_refused() {
         file: file.clone(),
         workspace: None,
         template: template.map(Into::into),
+        arguments: None,
     };
     let empty = RunEnvironment::default();
     let error = plan(

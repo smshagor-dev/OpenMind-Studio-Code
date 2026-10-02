@@ -179,6 +179,7 @@ export interface RunInteractiveHost {
 export class RunCodeService {
   private state: RunState = INITIAL;
   private interactive: RunInteractiveHost | null = null;
+  private argumentsOf: (path: string) => string = () => "";
   /** Runs whose program asked for input it couldn't get (Python's EOFError). */
   private readonly missedInput = new Set<string>();
   /** Files that read input and were run in the Output anyway ("Run Anyway"). */
@@ -568,16 +569,24 @@ export class RunCodeService {
     return false;
   }
 
+  /** Where a file's command-line arguments come from (`RunArgumentsService`); none until the composition root sets it. */
+  setArgumentsSource(source: (path: string) => string): void {
+    this.argumentsOf = source;
+    void this.refresh();
+  }
+
   private requestFor(path: string): RunRequestArgs {
+    const args = this.argumentsOf(path).trim();
     return {
       file: path,
       workspace: this.workspace.getActiveWorkspace()?.path ?? null,
       template: this.configs.templateFor(extensionOf(path)),
+      arguments: args === "" ? null : args,
     };
   }
 
   private keyFor(path: string): string {
-    return `${path}|${this.configs.templateFor(extensionOf(path)) ?? ""}`;
+    return `${path}|${this.configs.templateFor(extensionOf(path)) ?? ""}|${this.argumentsOf(path)}`;
   }
 
   /** Called by the composition root when the installed/active runtimes change: an interpreter may have appeared or gone. */

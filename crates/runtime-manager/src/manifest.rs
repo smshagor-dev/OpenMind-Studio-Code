@@ -153,6 +153,11 @@ pub struct Shim {
     /// never reaches the shell that called it or any other program.
     #[serde(default)]
     pub proxy_env: Option<String>,
+    /// Folders of the install (relative) put in front of PATH for this command only, inside the launcher's own scope:
+    /// a toolchain whose programs call each other (gcc runs `as` and `ld`) works without its whole `bin` folder being
+    /// on every terminal's PATH.
+    #[serde(default)]
+    pub path_dirs: Vec<String>,
 }
 
 /// A capability of a runtime that an install may or may not have (pip for
@@ -374,6 +379,19 @@ impl RuntimeManifest {
             if !variable(&shim.via_env) || !variable(&shim.proxy_env) {
                 return bad(format!(
                     "shim \"{}\": viaEnv and proxyEnv must be upper-case variable names",
+                    shim.name
+                ));
+            }
+            // Written into a script: a plain relative path only (no quotes, `%`, `&`, `;`).
+            let plain_dir = |dir: &String| {
+                is_safe_relative(dir)
+                    && dir.chars().all(|c| {
+                        c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | '+')
+                    })
+            };
+            if !shim.path_dirs.iter().all(plain_dir) {
+                return bad(format!(
+                    "shim \"{}\": pathDirs must be plain relative folders inside the install",
                     shim.name
                 ));
             }

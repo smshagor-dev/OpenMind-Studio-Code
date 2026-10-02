@@ -37,10 +37,29 @@ export interface SymbolOpener {
   ) => Promise<string | null>;
 }
 
+/** Workspace symbols from the running language servers that offer them (fortls for Fortran). */
+export type ServerSymbolSource = (query: string, limit: number) => Promise<SymbolHit[]>;
+
 /**
- * Symbol search over the whole workspace, from the index. The symbols are read from source text with line-based
- * patterns (TypeScript/JavaScript, Python, PHP, Rust, Markdown headings, JSON keys) — a heuristic fallback, not a
- * language server: it can miss or misread unusual code. UI-free.
+ * The language servers' symbols first (they parse the code), then the index's symbols that aren't the same symbol
+ * again (same file, line and name); `kind` filters both; at most `limit`.
+ */
+export function mergeSymbolHits(
+  fromServers: readonly SymbolHit[],
+  fromIndex: readonly SymbolHit[],
+  kind: string | null,
+  limit: number,
+): SymbolHit[] {
+  const key = (hit: SymbolHit) => `${hit.path.replaceAll("\\", "/").toLowerCase()}|${String(hit.line)}|${hit.name}`;
+  const servers = fromServers.filter((hit) => kind === null || hit.kind === kind);
+  const seen = new Set(servers.map(key));
+  return [...servers, ...fromIndex.filter((hit) => !seen.has(key(hit)))].slice(0, limit);
+}
+
+/**
+ * Symbol search over the whole workspace: the symbols of running language servers that offer workspace symbols (fortls
+ * for Fortran), then the index's symbols, which are read from source text with line-based patterns (TypeScript/JavaScript,
+ * Python, PHP, Rust, Markdown headings, JSON keys) — a heuristic fallback that can miss or misread unusual code. UI-free.
  */
 export class SymbolSearchService {
   private state: SymbolSearchState = {
@@ -59,6 +78,7 @@ export class SymbolSearchService {
     private readonly opener: SymbolOpener,
     private readonly getRoot: () => string | null,
     private readonly hasFiles: () => boolean,
+    private readonly fromServers: ServerSymbolSource | null = null,
   ) {}
 
   getState(): SymbolSearchState {
@@ -101,7 +121,20 @@ export class SymbolSearchService {
       this.update({ results: [], status: "error", error: "Open a folder to search for symbols." });
       return;
     }
+    this.update({ status: "searching", error: null });
+    // A server that fails or isn't running adds nothing; the index answers as before.
+    const query = this.state.query;
+    const servers =
+      this.fromServers !== null && query.trim() !== ""
+        ? this.fromServers(query, SYMBOL_RESULT_LIMIT).catch((): SymbolHit[] => [])
+        : Promise.resolve<SymbolHit[]>([]);
     if (!this.hasFiles()) {
+      const found = await servers;
+      if (run !== this.counter) return;
+      if (found.length > 0) {
+        this.update({ results: mergeSymbolHits(found, [], this.state.kind, SYMBOL_RESULT_LIMIT), status: "done" });
+        return;
+      }
       this.update({
         results: [],
         status: "error",
@@ -110,14 +143,13 @@ export class SymbolSearchService {
       });
       return;
     }
-    this.update({ status: "searching", error: null });
     try {
-      const results = await this.ipc.searchSymbolsIndexed(
-        this.state.query,
-        this.state.kind,
-        SYMBOL_RESULT_LIMIT,
-      );
+      const [fromServers, fromIndex] = await Promise.all([
+        servers,
+        this.ipc.searchSymbolsIndexed(query, this.state.kind, SYMBOL_RESULT_LIMIT),
+      ]);
       if (run !== this.counter) return;
+      const results = mergeSymbolHits(fromServers, fromIndex, this.state.kind, SYMBOL_RESULT_LIMIT);
       this.update({ results, status: "done", error: null });
     } catch (error) {
       if (run !== this.counter) return;

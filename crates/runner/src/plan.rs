@@ -26,6 +26,10 @@ pub struct RunRequest {
     /// A user-chosen command template; `None` means the file type's default.
     #[serde(default)]
     pub template: Option<String>,
+    /// Command-line arguments for the program, as typed (`a "b c"` is two arguments). Split like a shell would split,
+    /// never run through one; they go after everything else (after the file for an interpreter).
+    #[serde(default)]
+    pub arguments: Option<String>,
 }
 
 /// Everything needed to start a process, fully resolved and validated — and
@@ -60,6 +64,45 @@ const BINARY_SNIFF_BYTES: usize = 8000;
 /// tool, system PATH. Fails with a plain-language reason the UI can show.
 /// `build_dir` is where a compiled language's output goes (nothing is created here).
 pub fn plan(
+    request: &RunRequest,
+    environment: &RunEnvironment,
+    app_root: &Path,
+    system_path: Option<OsString>,
+    build_dir: &Path,
+) -> Result<RunPlan, RunError> {
+    let arguments = program_arguments(request.arguments.as_deref())?;
+    let mut plan = plan_command(request, environment, app_root, system_path, build_dir)?;
+    if !arguments.is_empty() {
+        plan.display = format!("{} {}", plan.display, command_line(&arguments));
+        plan.argv.extend(arguments);
+    }
+    Ok(plan)
+}
+
+/// Longest argument text Run Code accepts.
+const MAX_ARGUMENTS: usize = 8 * 1024;
+
+/// The program's own arguments from what the user typed: quote-aware splitting only (no variables, no shell); empty
+/// text is no arguments. A line break is refused (it can't be typed into a terminal line safely).
+pub fn program_arguments(text: Option<&str>) -> Result<Vec<String>, RunError> {
+    let Some(text) = text.filter(|text| !text.trim().is_empty()) else {
+        return Ok(Vec::new());
+    };
+    if text.len() > MAX_ARGUMENTS {
+        return Err(RunError::BadCommand("the arguments are too long".into()));
+    }
+    if text.contains(['\n', '\r', '\0']) {
+        return Err(RunError::BadCommand(
+            "the arguments can't contain a line break".into(),
+        ));
+    }
+    tokenize(text).map_err(|err| match err {
+        RunError::BadCommand(reason) => RunError::BadCommand(format!("in the arguments: {reason}")),
+        other => other,
+    })
+}
+
+fn plan_command(
     request: &RunRequest,
     environment: &RunEnvironment,
     app_root: &Path,
@@ -316,6 +359,19 @@ pub(crate) fn child_path(
 mod tests {
     use super::*;
 
+    #[test]
+    fn program_arguments_are_split_like_a_shell_but_never_run_through_one() {
+        assert!(program_arguments(None).expect("none").is_empty());
+        assert!(program_arguments(Some("   ")).expect("blank").is_empty());
+        assert_eq!(
+            program_arguments(Some(r#"3 "two words" 'a&b|c' $HOME"#)).expect("args"),
+            ["3", "two words", "a&b|c", "$HOME"]
+        );
+        assert!(program_arguments(Some("a \"open")).is_err());
+        assert!(program_arguments(Some("a\nb")).is_err());
+        assert!(program_arguments(Some(&"x".repeat(9000))).is_err());
+    }
+
     struct Fixture {
         dir: tempfile::TempDir,
         env: RunEnvironment,
@@ -362,6 +418,7 @@ mod tests {
     fn request(file: PathBuf, workspace: Option<PathBuf>) -> RunRequest {
         RunRequest {
             file,
+            arguments: None,
             workspace,
             template: None,
         }
@@ -620,6 +677,7 @@ mod tests {
             file: file.clone(),
             workspace: None,
             template: Some(template.into()),
+            arguments: None,
         };
 
         let ok = make(&fx, &with("python -u \"${file}\" --flag")).expect("plan");
@@ -649,6 +707,7 @@ mod tests {
         let file = script(fx.dir.path(), "a.py", "1");
         let req = RunRequest {
             file,
+            arguments: None,
             workspace: None,
             template: Some("pypy \"${file}\"".into()),
         };

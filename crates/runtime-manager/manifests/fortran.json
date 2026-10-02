@@ -10,8 +10,120 @@
     ],
     "outputPrefix": ""
   },
-  "binDirs": [
-    "bin"
+  "binDirs": [],
+  "shims": [
+    {
+      "name": "gfortran",
+      "target": "bin/gfortran.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "gcc",
+      "target": "bin/gcc.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "g++",
+      "target": "bin/g++.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "cpp",
+      "target": "bin/cpp.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "gdb",
+      "target": "bin/gdb.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "make",
+      "target": "bin/make.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "mingw32-make",
+      "target": "bin/mingw32-make.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "ar",
+      "target": "bin/ar.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "as",
+      "target": "bin/as.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "ld",
+      "target": "bin/ld.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "nm",
+      "target": "bin/nm.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "objdump",
+      "target": "bin/objdump.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "strip",
+      "target": "bin/strip.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "ranlib",
+      "target": "bin/ranlib.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "windres",
+      "target": "bin/windres.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "gcov",
+      "target": "bin/gcov.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    }
   ],
   "verifyFiles": [
     "bin/gfortran.exe",
@@ -44,7 +156,7 @@
     "url": "https://github.com/skeeto/w64devkit",
     "acceptanceRequired": false
   },
-  "notes": "w64devkit fortran ZIP: portable MinGW-w64 GCC 13.1.0 with gfortran, gcc, binutils, GDB and GNU Make. Use it to compile .f/.f90 files, create native Windows executables, run Makefile builds and debug with gdb from OpenMind terminals. OpenMind Studio adds this install's bin folder to launched processes only; the system PATH is not changed.",
+  "notes": "w64devkit fortran ZIP: portable MinGW-w64 GCC 13.1.0 with gfortran, gcc, g++, binutils, GDB and GNU Make. Use it to compile .f/.f90 files, create native Windows executables, run Makefile builds and debug with gdb from OpenMind terminals. Only these toolchain commands are added to OpenMind terminals (as small launchers); the other programs w64devkit ships (find, sort, tar, bash ...) are not, so Windows' own commands keep working. Its gcc/g++ also build C and C++ when the LLVM-MinGW toolchain isn't installed; Run Code labels them as coming from this runtime. The system PATH is not changed.",
   "versions": [
     {
       "version": "13.1.0",

@@ -4,6 +4,7 @@ import type { AppEvents } from "./events";
 import type { IpcClient, LspLogEvent, LspServerInfo, LspSnapshot, LspSyncOutcome } from "./ipc";
 import {
   actionAvailability,
+  removeBlocked,
   restartAvailability,
   type Availability,
   type FileLspStatus,
@@ -47,7 +48,9 @@ export class LspService {
   private readonly sent = new Map<string, string>();
   private readonly watchers = new Map<string, () => void>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private confirmRemove: (server: LspServerInfo) => Promise<boolean> = () => Promise.resolve(false);
   private readonly reported = new Set<string>();
+  private readonly removing = new Set<string>();
   private previouslyRunning = new Set<string>();
   private offs: (() => void)[] = [];
 
@@ -406,6 +409,36 @@ export class LspService {
     this.reported.delete(serverId);
     await this.refresh();
     await this.resyncAll(server.languages);
+    return true;
+  }
+
+  /** Asks the user before a server is removed (`true` = go ahead); without it nothing is removed. */
+  setRemoveConfirmation(confirm: (server: LspServerInfo) => Promise<boolean>): void {
+    this.confirmRemove = confirm;
+  }
+
+  /**
+   * Removes a downloaded language server (npm or pip) after the user confirms: its processes stop and its folder in
+   * `language-servers/` is deleted. Files of its languages simply have no server afterwards.
+   */
+  async uninstall(serverId: string): Promise<boolean> {
+    const server = this.servers().find((entry) => entry.id === serverId);
+    // A second click while the question is open (or the removal runs) asks nothing more.
+    if (server === undefined || removeBlocked(server) !== null || this.removing.has(serverId)) return false;
+    this.removing.add(serverId);
+    try {
+      if (!(await this.confirmRemove(server))) return false;
+      await this.ipc.lspUninstall(serverId);
+    } catch (error) {
+      this.events.emit("appError", { message: `Removing ${server.name} failed: ${String(error)}` });
+      await this.refresh();
+      return false;
+    } finally {
+      this.removing.delete(serverId);
+    }
+    this.events.emit("appNotice", { message: `${server.name} removed.` });
+    this.reported.delete(serverId);
+    await this.refresh();
     return true;
   }
 

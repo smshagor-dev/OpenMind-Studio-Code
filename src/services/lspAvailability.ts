@@ -133,3 +133,21 @@ export function statusBarText(file: FileLspStatus): { text: string; ok: boolean 
   if (problem === null) return { text: file.server?.name ?? "Language server", ok: true };
   return { text: problem, ok: false };
 }
+
+/**
+ * Why a language server can't be removed from Language Tools (`null` = it can): only one that was downloaded (npm or
+ * pip) is removed; one unpacked from the offline bundle comes back on its own, so there is nothing to remove.
+ */
+export function removeBlocked(server: {
+  name: string;
+  installed: boolean;
+  installSource: "bundle" | "download" | null;
+  state: string;
+}): string | null {
+  if (!server.installed) return `${server.name} is not installed.`;
+  if (server.state === "installing") return `${server.name} is installing. Wait for it to finish.`;
+  if (server.installSource === "bundle") {
+    return `${server.name} comes from OpenMind Studio's offline bundle; there is nothing to remove.`;
+  }
+  return null;
+}

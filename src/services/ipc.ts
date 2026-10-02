@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import type { SymbolHit } from "./searchIpc";
 
 import { type ExtensionsIpc, tauriExtensionsIpc } from "./extensionsIpc";
 import { type PreviewIpc, tauriPreviewIpc } from "./previewIpc";
@@ -171,6 +172,8 @@ export interface LspCapabilities {
   formatting: boolean;
   rangeFormatting: boolean;
   documentSymbol: boolean;
+  /** `workspace/symbol` (Ctrl+T); absent from older status snapshots. */
+  workspaceSymbol?: boolean;
 }
 
 export type LspServerState = "stopped" | "installing" | "starting" | "running" | "error";
@@ -189,6 +192,10 @@ export interface LspServerInfo {
   bundled: boolean;
   /** Where the installed files came from (null while not installed). */
   installSource: "bundle" | "download" | null;
+  /** A Python-package server's Python ("OpenMind portable Python 3.14.7", "System Python at C:\..."). */
+  python?: string | null;
+  /** That Python is the computer's own (OpenMind's portable Python isn't installed). */
+  pythonIsSystem?: boolean;
   state: LspServerState;
   /** The reason, when `state` is "error". */
   message?: string;
@@ -692,6 +699,10 @@ export interface IpcClient
   // Language servers. The backend picks the server by file type and only serves files inside the open workspace.
   lspStatus: () => Promise<LspSnapshot>;
   lspInstall: (server: string) => Promise<void>;
+  /** Removes a downloaded language server (its processes stop first). */
+  lspUninstall: (server: string) => Promise<void>;
+  /** Workspace symbols from the running servers that offer them (none are started for this). */
+  lspWorkspaceSymbols: (query: string, limit: number) => Promise<SymbolHit[]>;
   lspSyncDocument: (path: string, text: string) => Promise<LspSyncOutcome>;
   lspSaveDocument: (path: string) => Promise<void>;
   lspCloseDocument: (path: string) => Promise<void>;
@@ -792,6 +803,8 @@ export interface RunRequestArgs {
   workspace: string | null;
   /** A user-chosen command template, or `null` for the file type's default. */
   template: string | null;
+  /** The program's command-line arguments as typed (split by the backend, never by a shell), `null` for none. */
+  arguments?: string | null;
 }
 
 export type RunnableKind = "python" | "node" | "php" | "typeScript" | "c" | "cpp" | "java" | "rust";
@@ -1294,6 +1307,8 @@ export const tauriIpcClient: IpcClient = {
     }),
   lspStatus: () => invoke<LspSnapshot>("lsp_status"),
   lspInstall: (server) => invoke("lsp_install", { server }),
+  lspUninstall: (server) => invoke("lsp_uninstall", { server }),
+  lspWorkspaceSymbols: (query, limit) => invoke<SymbolHit[]>("lsp_workspace_symbols", { query, limit }),
   lspSyncDocument: (path, text) => invoke<LspSyncOutcome>("lsp_sync_document", { path, text }),
   lspSaveDocument: (path) => invoke("lsp_save_document", { path }),
   lspCloseDocument: (path) => invoke("lsp_close_document", { path }),

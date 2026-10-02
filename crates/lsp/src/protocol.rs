@@ -25,6 +25,7 @@ pub const ALLOWED_REQUESTS: &[&str] = &[
     "textDocument/formatting",
     "textDocument/rangeFormatting",
     "textDocument/documentSymbol",
+    "workspace/symbol",
 ];
 
 pub fn is_allowed_request(method: &str) -> bool {
@@ -59,7 +60,7 @@ pub fn initialize_params(
 pub fn client_capabilities() -> Value {
     json!({
         "general": { "positionEncodings": ["utf-16"] },
-        "workspace": { "workspaceFolders": true, "configuration": true },
+        "workspace": { "workspaceFolders": true, "configuration": true, "symbol": { "dynamicRegistration": false } },
         "textDocument": {
             "synchronization": { "didSave": true, "dynamicRegistration": false },
             "publishDiagnostics": { "relatedInformation": false, "tagSupport": { "valueSet": [1, 2] } },
@@ -110,6 +111,8 @@ pub struct Capabilities {
     pub formatting: bool,
     pub range_formatting: bool,
     pub document_symbol: bool,
+    /// `workspace/symbol`: symbols of the whole folder by name (Ctrl+T).
+    pub workspace_symbol: bool,
 }
 
 /// A provider is supported when it is `true` or an options object.
@@ -161,6 +164,7 @@ pub fn parse_capabilities(initialize_result: &Value) -> Capabilities {
         formatting: supported(caps.get("documentFormattingProvider")),
         range_formatting: supported(caps.get("documentRangeFormattingProvider")),
         document_symbol: supported(caps.get("documentSymbolProvider")),
+        workspace_symbol: supported(caps.get("workspaceSymbolProvider")),
     }
 }
 
