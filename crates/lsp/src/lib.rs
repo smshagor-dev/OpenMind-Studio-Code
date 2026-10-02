@@ -11,6 +11,7 @@ pub mod install;
 pub mod jsonrpc;
 pub mod language;
 pub mod manager;
+pub mod native;
 pub mod node;
 pub mod pack;
 pub mod process;
@@ -26,6 +27,7 @@ pub use language::language_id;
 pub use manager::{
     LogLevel, LspEvents, LspManager, PythonExecutable, RuntimeStatus, ServerState, StartContext,
 };
+pub use native::{native_download, NativeDownload};
 pub use node::{resolve_lsp_node, resolve_node, NodeExecutable, NodeSource};
 pub use protocol::{Capabilities, Diagnostic, PublishedDiagnostics};
 pub use registry::{

@@ -185,7 +185,7 @@ impl LspManager {
         }
     }
 
-    fn set_state(&self, server_id: &str, state: ServerState) {
+    pub(crate) fn set_state(&self, server_id: &str, state: ServerState) {
         if let Some(slot) = lock(&self.inner.slots).get_mut(server_id) {
             slot.state = state;
         }
@@ -198,7 +198,7 @@ impl LspManager {
             .and_then(|slot| slot.running.clone())
     }
 
-    fn log(&self, server_id: &str, level: LogLevel, text: &str) {
+    pub(crate) fn log(&self, server_id: &str, level: LogLevel, text: &str) {
         self.inner.events.log(server_id, level, text);
     }
 

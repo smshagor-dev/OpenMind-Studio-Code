@@ -41,7 +41,36 @@ pub fn is_installed(app_root: &Path, server: &ServerDef, package: &Package) -> b
 }
 
 fn staging_dir(app_root: &Path, package: &Package) -> PathBuf {
-    packages_root(app_root).join(package.id).join(".installing")
+    staging_dir_of(app_root, package.id)
+}
+
+/// Where a package is put together before it is renamed into place.
+pub(crate) fn staging_dir_of(app_root: &Path, package_id: &str) -> PathBuf {
+    packages_root(app_root).join(package_id).join(".installing")
+}
+
+/// A forward-slash path inside a package (no drive, no backslash, no `.` or `..` part).
+pub(crate) fn is_plain_relative(name: &str) -> bool {
+    !name.is_empty()
+        && !name.contains(['\\', ':'])
+        && name
+            .split('/')
+            .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
+/// Renames a finished `staging` folder to the package's revision folder and drops older revisions.
+pub(crate) fn move_into_place(
+    app_root: &Path,
+    package: &Package,
+    staging: &Path,
+) -> Result<(), LspError> {
+    let final_dir = package_dir(app_root, package);
+    if final_dir.exists() {
+        std::fs::remove_dir_all(&final_dir).map_err(io_err)?;
+    }
+    std::fs::rename(staging, &final_dir).map_err(io_err)?;
+    remove_other_revisions(app_root, package);
+    Ok(())
 }
 
 /// The `npm ci` arguments: exact lockfile, no scripts, no telemetry or update checks.
