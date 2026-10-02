@@ -12,10 +12,23 @@ import {
 } from "../../services/toolchains/toolchainView";
 import "../../styles/toolchains.css";
 import { Chip } from "./Chip";
+import { LanguageServersSection } from "./LanguageServersSection";
 import { ToolDetailsDialog } from "./ToolDetailsDialog";
 
-/** Runtime Manager > Language Tools: the bundled, app-local tools grouped by what they do. */
+/**
+ * Runtime Manager > Language Tools: the language servers (installable here, one by one or all at once), then the
+ * bundled, app-local tools grouped by what they do.
+ */
 export function ToolsPanel() {
+  return (
+    <div className="tc-panel">
+      <LanguageServersSection />
+      <BundledTools />
+    </div>
+  );
+}
+
+function BundledTools() {
   const state = useSyncExternalStore(
     (listener) => container.toolchains.subscribe(listener),
     () => container.toolchains.getState(),
@@ -36,7 +49,7 @@ export function ToolsPanel() {
   const sections = sectionsOf(packs.tools);
   const active = packs.tools.filter((tool) => tool.status === "active").length;
   return (
-    <div className="tc-panel">
+    <div className="tc-bundled">
       <header className="tc-summary">
         <div>
           <strong>{active === 0 ? "No tools bundled" : `${String(active)} bundled`}</strong>

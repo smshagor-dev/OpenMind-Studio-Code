@@ -11,6 +11,12 @@
   background-color: var(--scrim-bg);
 }
 
+/* Confirmations, pickers and input boxes answer something just clicked, often inside another dialog (Remove in the
+   Runtime Manager): they always sit on top of it. */
+.modal-overlay--prompt {
+  z-index: 2100;
+}
+
 .modal {
   width: min(460px, 90vw);
   padding: 20px;

@@ -2155,5 +2155,20 @@
   "runtimes.database": "База данных:",
   "runtimes.databaseReady": "Готова (root / root, только 127.0.0.1)",
   "runtimes.databaseNotSetUp": "База данных: не создана",
-  "runtimes.databaseOnStart": "Она будет создана при запуске MySQL."
+  "runtimes.databaseOnStart": "Она будет создана при запуске MySQL.",
+  "langServers.title": "Языковые серверы",
+  "langServers.note": "Автодополнение, ошибки, переход к определению и форматирование для каждого языка. «Установить» загружает в собственную папку OpenMind Studio (или распаковывает автономный набор); больше на компьютере ничего не меняется.",
+  "langServers.installAll": "Установить все недостающие ({count})",
+  "langServers.installingAll": "Установка…",
+  "langServers.nothingMissing": "Все языковые серверы, которые можно установить сейчас, установлены.",
+  "langServers.loading": "Чтение языковых серверов…",
+  "langServers.install": "Установить",
+  "langServers.remove": "Удалить",
+  "langServers.includedHint": "Входит в OpenMind Studio: распаковывается при первом использовании, без загрузки.",
+  "langServers.state.missing": "Отсутствует",
+  "langServers.state.unavailable": "Отсутствует",
+  "langServers.state.installing": "Установка",
+  "langServers.state.included": "Входит в комплект",
+  "langServers.state.ready": "Готов",
+  "langServers.state.running": "Работает"
 }

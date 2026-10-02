@@ -50,7 +50,7 @@ function QuickPick({ prompt }: { prompt: QuickPickPrompt }) {
   const [picked, setPicked] = useState<number[]>([]);
   return (
     <div
-      className="modal-overlay"
+      className="modal-overlay modal-overlay--prompt"
       onClick={() => {
         prompts.dismiss(prompt.id);
       }}
@@ -128,7 +128,7 @@ function InputBox({ prompt }: { prompt: InputPrompt }) {
   }, []);
   return (
     <div
-      className="modal-overlay"
+      className="modal-overlay modal-overlay--prompt"
       onClick={() => {
         prompts.dismiss(prompt.id);
       }}
@@ -186,7 +186,7 @@ function ConfirmBox({ prompt }: { prompt: ConfirmPrompt }) {
     cancel.current?.focus();
   }, []);
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay modal-overlay--prompt">
       <div
         className="modal ext-confirm"
         role="alertdialog"

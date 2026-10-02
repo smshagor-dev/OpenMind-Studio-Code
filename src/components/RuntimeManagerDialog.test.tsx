@@ -59,10 +59,19 @@ describe("RuntimeManagerDialog", () => {
       servers: () => servers,
       isInstalling: () => false,
       install: vi.fn().mockResolvedValue(true),
+      uninstall: vi.fn().mockResolvedValue(true),
+      refresh: vi.fn().mockResolvedValue(undefined),
+    };
+    const toolchainState = { loaded: false };
+    const toolchains = {
+      subscribe: () => () => undefined,
+      getState: () => toolchainState,
+      refresh: vi.fn().mockResolvedValue(undefined),
     };
     harness.current = {
       runtime: service,
       lsp,
+      toolchains,
       workloads: { takeRequestedTab: () => null, peekRequestedTab: () => null },
     };
     const onClose = vi.fn();
@@ -75,7 +84,7 @@ describe("RuntimeManagerDialog", () => {
     harness.current = null;
   });
 
-  it("shows a runtime's missing language tools on its card with a one-click install", async () => {
+  it("offers language servers on the Language Tools tab, not on the runtime cards", async () => {
     const fortls = {
       id: "fortran",
       name: "fortls",
@@ -105,13 +114,18 @@ describe("RuntimeManagerDialog", () => {
       [fortls],
     );
     const fortran = screen.getByRole("region", { name: "Fortran" });
-    expect(within(fortran).getByText("Language Tools: Missing")).toBeTruthy();
-    fireEvent.click(within(fortran).getByRole("button", { name: "Install Language Tools" }));
+    expect(within(fortran).queryByText(/Language Tools/)).toBeNull();
+    expect(within(fortran).queryByRole("button", { name: /Install Language Tools/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Language Tools" }));
+    const section = screen.getByRole("region", { name: "Language servers" });
+    const card = within(section).getByRole("article", { name: "fortls" });
+    expect(card).toHaveTextContent("Fortran");
+    expect(card).toHaveTextContent("Missing");
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
     const lsp = (harness.current as { lsp: { install: ReturnType<typeof vi.fn> } }).lsp;
     expect(lsp.install).toHaveBeenCalledWith("fortran");
-    // Pascal has no registered language tool: its card says nothing about one.
-    const pascal = screen.getByRole("region", { name: "Free Pascal" });
-    expect(within(pascal).queryByText(/Language Tools/)).toBeNull();
+    expect(within(section).getByRole("button", { name: "Install all missing (1)" })).toBeTruthy();
   });
 
   it("lists each runtime with its installed / not installed status", async () => {

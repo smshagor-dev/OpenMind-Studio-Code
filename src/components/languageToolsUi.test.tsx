@@ -13,7 +13,7 @@ vi.mock("../services/container", () => ({
 }));
 
 import { LanguageToolsPromptCard } from "./LanguageToolsPromptCard";
-import { RuntimeLanguageTools } from "./RuntimeLanguageTools";
+import { LanguageServersSection } from "./toolchains/LanguageServersSection";
 
 function fortls(patch: Partial<LspServerInfo> = {}): LspServerInfo {
   return {
@@ -41,8 +41,8 @@ function fortls(patch: Partial<LspServerInfo> = {}): LspServerInfo {
 }
 
 /** A stand-in for the language server service: its list, its install, and a way to change both. */
-function fakeLsp(initial: LspServerInfo) {
-  let list = [initial];
+function fakeLsp(initial: LspServerInfo, ...more: LspServerInfo[]) {
+  let list = [initial, ...more];
   let state = { snapshot: null };
   const installing = new Set<string>();
   const listeners = new Set<() => void>();
@@ -58,6 +58,8 @@ function fakeLsp(initial: LspServerInfo) {
     },
     getState: () => state,
     servers: () => list,
+    refresh: vi.fn().mockResolvedValue(undefined),
+    uninstall: vi.fn().mockResolvedValue(true),
     isInstalling: (id: string) => installing.has(id),
     activeFileStatus: (): FileLspStatus => ({
       path: "C:/w/a.f90",
@@ -71,7 +73,7 @@ function fakeLsp(initial: LspServerInfo) {
       return new Promise<boolean>((resolve) => {
         finish = () => {
           installing.delete(id);
-          list = list.map((s) => (s.id === id ? { ...s, installed: true } : s));
+          list = list.map((s) => (s.id === id ? { ...s, installed: true, installSource: "download" } : s));
           notify();
           resolve(true);
         };
@@ -98,58 +100,85 @@ afterEach(() => {
   harness.current = null;
 });
 
-describe("Runtime Manager card: language tools", () => {
-  it("shows Missing with an Install Language Tools button, and installs with one click", async () => {
+const intelephense = (patch: Partial<LspServerInfo> = {}) =>
+  fortls({ id: "php", name: "Intelephense", languages: ["php"], contents: "intelephense 1.14", runtime: "node", ...patch });
+
+describe("Runtime Manager > Language Tools tab: language servers", () => {
+  it("lists every language server by language with its status", () => {
+    const lsp = fakeLsp(
+      fortls(),
+      intelephense({ installed: true, state: "running", installSource: "download" }),
+      fortls({ id: "python", name: "Pyright", contents: "pyright 1.1.414", bundled: true }),
+      fortls({ id: "clangd", name: "clangd", contents: "clangd 22", canInstall: false, installBlocked: "Only in the offline bundle." }),
+    );
+    harness.current = { lsp };
+    render(<LanguageServersSection />);
+    const card = (name: string) => screen.getByRole("article", { name });
+    expect(card("fortls")).toHaveTextContent("Fortran");
+    expect(card("fortls")).toHaveTextContent("Missing");
+    expect(card("Intelephense")).toHaveTextContent("Running");
+    expect(card("Pyright")).toHaveTextContent("Included");
+    expect(card("clangd")).toHaveTextContent("Only in the offline bundle.");
+    expect(lsp.refresh).toHaveBeenCalled();
+  });
+
+  it("Install installs one server and the card updates by itself; a second click starts nothing", async () => {
     const lsp = fakeLsp(fortls());
     harness.current = { lsp };
-    render(<RuntimeLanguageTools runtimeId="fortran" />);
-    expect(screen.getByText("Language Tools: Missing")).toBeTruthy();
-    const button = screen.getByRole("button", { name: "Install Language Tools" });
-    expect((button as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(button);
+    render(<LanguageServersSection />);
+    fireEvent.click(screen.getByRole("button", { name: "Install" }));
     expect(lsp.install).toHaveBeenCalledWith("fortran");
-    // Installing: the button can't start a second install.
     const busy = screen.getByRole("button", { name: "Installing…" });
-    expect((busy as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Language Tools: installing fortls…")).toBeTruthy();
+    expect(busy).toHaveProperty("disabled", true);
     fireEvent.click(busy);
     expect(lsp.install).toHaveBeenCalledTimes(1);
-    // Done: the line updates by itself (no restart, no reopening).
     await act(async () => {
       lsp.finish();
       await Promise.resolve();
     });
-    expect(screen.getByText("Language Tools: fortls 3.2.2")).toBeTruthy();
-    expect(screen.getByText("Status: Ready")).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("article", { name: "fortls" })).toHaveTextContent("Ready");
+    // A downloaded server can be removed again.
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(lsp.uninstall).toHaveBeenCalledWith("fortran");
   });
 
-  it("shows installed, running and bundled tools without a button", () => {
-    const lsp = fakeLsp(fortls({ installed: true, state: "running" }));
+  it("Install all missing installs every installable missing server, one after another", async () => {
+    const lsp = fakeLsp(
+      fortls(),
+      intelephense(),
+      fortls({ id: "python", name: "Pyright", installed: true, installSource: "download" }),
+      fortls({ id: "clangd", name: "clangd", canInstall: false, installBlocked: "Only in the offline bundle." }),
+    );
     harness.current = { lsp };
-    render(<RuntimeLanguageTools runtimeId="fortran" />);
-    expect(screen.getByText("Status: Running")).toBeTruthy();
-    act(() => {
-      lsp.set(fortls({ bundled: true }));
+    render(<LanguageServersSection />);
+    const all = screen.getByRole("button", { name: "Install all missing (2)" });
+    fireEvent.click(all);
+    expect(lsp.install).toHaveBeenCalledWith("fortran");
+    // The section button and the card being installed both say so.
+    expect(screen.getAllByRole("button", { name: "Installing…" })).toHaveLength(2);
+    await act(async () => {
+      lsp.finish();
+      await Promise.resolve();
+      await Promise.resolve();
     });
-    expect(screen.getByText("Language Tools: fortls 3.2.2")).toBeTruthy();
-    expect(screen.getByText(/Status: Included/)).toBeTruthy();
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(lsp.install).toHaveBeenLastCalledWith("php");
+    await act(async () => {
+      lsp.finish();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(lsp.install).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Install all missing (0)" })).toHaveProperty("disabled", true);
   });
 
-  it("says why a missing tool can't be installed now, with the button disabled", () => {
+  it("a server that can't be installed now has a disabled Install with the reason", () => {
     const reason = "Python runtime is not installed yet.";
     harness.current = { lsp: fakeLsp(fortls({ canInstall: false, installBlocked: reason })) };
-    render(<RuntimeLanguageTools runtimeId="fortran" />);
-    expect(screen.getByText("Language Tools: Missing")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Install Language Tools" })).toHaveProperty("disabled", true);
+    render(<LanguageServersSection />);
+    const install = screen.getByRole("button", { name: "Install" });
+    expect(install).toHaveProperty("disabled", true);
+    expect(install).toHaveAttribute("title", reason);
     expect(screen.getByText(reason)).toBeTruthy();
-  });
-
-  it("shows nothing on a runtime without a registered language tool (Pascal)", () => {
-    harness.current = { lsp: fakeLsp(fortls()) };
-    const { container } = render(<RuntimeLanguageTools runtimeId="pascal" />);
-    expect(container.innerHTML).toBe("");
   });
 });
 

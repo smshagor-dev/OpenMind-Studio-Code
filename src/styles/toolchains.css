@@ -238,6 +238,19 @@ ul.tc-banner {
   gap: 10px;
 }
 
+/* The Language Tools tab: language servers first, then the bundled tools. */
+.tc-bundled {
+  display: contents;
+}
+
+.tc-section__action {
+  margin-left: auto;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 400;
+  text-transform: none;
+}
+
 .tc-card {
   display: flex;
   flex-direction: column;

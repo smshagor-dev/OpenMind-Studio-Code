@@ -1,17 +1,5 @@
 import type { LspServerInfo } from "../ipc";
 
-/**
- * Which language servers belong to a Runtime Manager card: the language tools a runtime's files use. A runtime with no
- * server registered (Pascal, Go, Java ...) has no entry and shows nothing.
- */
-export const RUNTIME_LANGUAGE_SERVERS: Readonly<Record<string, readonly string[]>> = {
-  python: ["python"],
-  node: ["typescript"],
-  php: ["php"],
-  fortran: ["fortran"],
-  "llvm-mingw": ["clangd"],
-};
-
 /** The language a server gives features to, as the editor notification names it. */
 const SERVER_LANGUAGE: Readonly<Record<string, string>> = {
   typescript: "TypeScript/JavaScript",
@@ -48,8 +36,25 @@ export function toolState(server: LspServerInfo, installing: boolean): ToolState
   return server.canInstall ? "missing" : "unavailable";
 }
 
-/** The servers of a runtime card, in the order the backend lists them (only those the backend knows). */
-export function runtimeServers(runtimeId: string, servers: readonly LspServerInfo[]): LspServerInfo[] {
-  const ids = RUNTIME_LANGUAGE_SERVERS[runtimeId] ?? [];
-  return servers.filter((server) => ids.includes(server.id));
+/** The servers "Install all missing" would install: missing and installable now, in the backend's order. */
+export function installableServers(servers: readonly LspServerInfo[], isInstalling: (id: string) => boolean): LspServerInfo[] {
+  return servers.filter((server) => toolState(server, isInstalling(server.id)) === "missing");
+}
+
+/**
+ * Installs every missing language server, one after another, through the Language Tools installer (offline bundle,
+ * else npm / pip into the app's own folder). One failing doesn't stop the rest; the result names what worked.
+ */
+export async function installAllMissing(lsp: {
+  servers: () => readonly LspServerInfo[];
+  isInstalling: (id: string) => boolean;
+  install: (id: string) => Promise<boolean>;
+}): Promise<{ installed: string[]; failed: string[] }> {
+  const installed: string[] = [];
+  const failed: string[] = [];
+  for (const server of installableServers(lsp.servers(), lsp.isInstalling)) {
+    if (await lsp.install(server.id)) installed.push(server.name);
+    else failed.push(server.name);
+  }
+  return { installed, failed };
 }

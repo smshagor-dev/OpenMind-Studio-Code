@@ -18,6 +18,19 @@ import { ToolsPanel } from "./ToolsPanel";
 const PYTHON_LONG =
   "debugpy is the debug adapter behind Run and Debug for Python. It runs on the active Python. Several versions can be kept; the active one is used when you start debugging.";
 
+
+/** The Language Tools tab also lists language servers; these tests are about the bundled tools. */
+const NO_SERVERS = {
+  subscribe: () => () => undefined,
+  getState: () => NO_SERVERS_STATE,
+  servers: () => [],
+  isInstalling: () => false,
+  install: () => Promise.resolve(false),
+  uninstall: () => Promise.resolve(false),
+  refresh: () => Promise.resolve(),
+};
+const NO_SERVERS_STATE = { snapshot: null };
+
 function tools() {
   return [
     gitWithVersions(),
@@ -65,7 +78,7 @@ async function mount(list = tools(), overrides: Parameters<typeof createFakeIpc>
     ...overrides,
   });
   const toolchains = new ToolchainService(ipc);
-  harness.current = { toolchains };
+  harness.current = { toolchains, lsp: NO_SERVERS };
   render(<ToolsPanel />);
   await screen.findByRole("region", { name: "Version Control" });
   return { ipc, toolchains };
@@ -197,7 +210,7 @@ describe("ToolsPanel", () => {
         }),
       ),
     });
-    harness.current = { toolchains: new ToolchainService(ipc) };
+    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS };
     render(<ToolsPanel />);
     expect(
       await screen.findByText(
@@ -213,7 +226,7 @@ describe("ToolsPanel", () => {
       toolEntry({ id: "flutter-sdk", name: "Flutter SDK", category: "sdk", status: "external" }),
     ];
     const ipc = createFakeIpc({ toolchainsList: vi.fn().mockResolvedValue(packs(list)) });
-    harness.current = { toolchains: new ToolchainService(ipc) };
+    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS };
     render(<ToolsPanel />);
     expect(await screen.findByText("No tools bundled")).toBeInTheDocument();
     expect(

@@ -2125,5 +2125,20 @@
   "runtimes.database": "ডাটাবেস:",
   "runtimes.databaseReady": "প্রস্তুত (root / root, শুধু 127.0.0.1)",
   "runtimes.databaseNotSetUp": "ডাটাবেস: তৈরি হয়নি",
-  "runtimes.databaseOnStart": "MySQL চালু হলে এটি তৈরি হবে।"
+  "runtimes.databaseOnStart": "MySQL চালু হলে এটি তৈরি হবে।",
+  "langServers.title": "ভাষা সার্ভার",
+  "langServers.note": "প্রতিটি ভাষার জন্য কমপ্লিশন, ত্রুটি, ডেফিনিশনে যাওয়া ও ফরম্যাটিং। Install OpenMind Studio-র নিজস্ব ফোল্ডারে ডাউনলোড করে (বা অফলাইন বান্ডেল থেকে খোলে); কম্পিউটারের আর কিছু বদলায় না।",
+  "langServers.installAll": "সব অনুপস্থিত ইনস্টল করুন ({count})",
+  "langServers.installingAll": "ইনস্টল হচ্ছে…",
+  "langServers.nothingMissing": "এখন ইনস্টলযোগ্য সব ভাষা সার্ভার ইনস্টল করা আছে।",
+  "langServers.loading": "ভাষা সার্ভার পড়া হচ্ছে…",
+  "langServers.install": "ইনস্টল করুন",
+  "langServers.remove": "সরান",
+  "langServers.includedHint": "OpenMind Studio-র সাথে আসে: প্রথমবার দরকার হলে খোলা হয়, ডাউনলোড লাগে না।",
+  "langServers.state.missing": "নেই",
+  "langServers.state.unavailable": "নেই",
+  "langServers.state.installing": "ইনস্টল হচ্ছে",
+  "langServers.state.included": "সঙ্গে আছে",
+  "langServers.state.ready": "প্রস্তুত",
+  "langServers.state.running": "চলছে"
 }

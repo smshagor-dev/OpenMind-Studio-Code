@@ -2125,5 +2125,20 @@
   "runtimes.database": "Database:",
   "runtimes.databaseReady": "Ready (root / root, 127.0.0.1 only)",
   "runtimes.databaseNotSetUp": "Database: Not set up",
-  "runtimes.databaseOnStart": "It is created when MySQL starts."
+  "runtimes.databaseOnStart": "It is created when MySQL starts.",
+  "langServers.title": "Language servers",
+  "langServers.note": "Completion, errors, go to definition and formatting for each language. Install downloads into OpenMind Studio's own folder (or unpacks the offline bundle); nothing else on this computer changes.",
+  "langServers.installAll": "Install all missing ({count})",
+  "langServers.installingAll": "Installing…",
+  "langServers.nothingMissing": "Every language server that can be installed now is installed.",
+  "langServers.loading": "Reading the language servers…",
+  "langServers.install": "Install",
+  "langServers.remove": "Remove",
+  "langServers.includedHint": "Comes with OpenMind Studio: it is unpacked the first time a file needs it, with no download.",
+  "langServers.state.missing": "Missing",
+  "langServers.state.unavailable": "Missing",
+  "langServers.state.installing": "Installing",
+  "langServers.state.included": "Included",
+  "langServers.state.ready": "Ready",
+  "langServers.state.running": "Running"
 }

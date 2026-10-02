@@ -7,7 +7,7 @@ import { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
 import type { LspServerInfo, LspSnapshot, LspSyncOutcome, RuntimeStatus } from "../ipc";
 import { LspService } from "../lspService";
-import { runtimeServers, serverLanguage, toolState } from "./languageToolsModel";
+import { installAllMissing, installableServers, serverLanguage, toolState } from "./languageToolsModel";
 import { LanguageToolsPromptService } from "./languageToolsPrompt";
 import { refreshAfterInstalls, runtimeInstallFingerprint } from "./languageToolsWiring";
 
@@ -132,13 +132,41 @@ describe("language tool status", () => {
     expect(toolState(server({ installed: true, state: "running" }), false)).toBe("running");
   });
 
-  it("puts each server on its runtime's card, and nothing on a card without one (Pascal)", () => {
-    const all = [server(), intelephense(), server({ id: "python", name: "Pyright" })];
-    expect(runtimeServers("fortran", all).map((s) => s.name)).toEqual(["fortls"]);
-    expect(runtimeServers("php", all).map((s) => s.name)).toEqual(["Intelephense"]);
-    expect(runtimeServers("pascal", all)).toEqual([]);
-    expect(runtimeServers("go", all)).toEqual([]);
+  it("names each server's language", () => {
     expect(serverLanguage(server())).toBe("Fortran");
+    expect(serverLanguage(intelephense())).toBe("PHP");
+    expect(serverLanguage(server({ id: "clangd", name: "clangd" }))).toBe("C/C++");
+  });
+});
+
+describe("Install all missing", () => {
+  const all = [
+    server(),
+    intelephense(),
+    server({ id: "python", name: "Pyright", installed: true }),
+    server({ id: "rust", name: "rust-analyzer", bundled: true }),
+    server({ id: "clangd", name: "clangd", canInstall: false, installBlocked: "needs the bundle" }),
+  ];
+
+  it("takes only what is missing and can be installed now", () => {
+    expect(installableServers(all, () => false).map((s) => s.name)).toEqual(["fortls", "Intelephense"]);
+    expect(installableServers(all, (id) => id === "php").map((s) => s.name)).toEqual(["fortls"]);
+  });
+
+  it("installs them one after another, and one failure doesn't stop the rest", async () => {
+    const order: string[] = [];
+    let running = 0;
+    const install = vi.fn(async (id: string) => {
+      running += 1;
+      expect(running).toBe(1);
+      order.push(id);
+      await Promise.resolve();
+      running -= 1;
+      return id !== "fortran";
+    });
+    const result = await installAllMissing({ servers: () => all, isInstalling: () => false, install });
+    expect(order).toEqual(["fortran", "php"]);
+    expect(result).toEqual({ installed: ["Intelephense"], failed: ["fortls"] });
   });
 });
 
