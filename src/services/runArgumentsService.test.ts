@@ -7,7 +7,8 @@ import type { PanelService } from "./panelService";
 import type { TerminalService } from "./terminalService";
 import type { WorkspaceService } from "./workspaceService";
 import { RUN_ARGUMENTS_KEY, RunArgumentsService } from "./runArgumentsService";
-import { registerRunCommands } from "./runCommands";
+import { hasArguments, registerRunCommands } from "./runCommands";
+import { buildRunMenu } from "./runMenu";
 import { RunCodeService } from "./runCodeService";
 import type { RunConfigurationService } from "./runConfigurationService";
 import { EventBus } from "./eventBus";
@@ -127,5 +128,46 @@ describe("Run Code with Arguments...", () => {
     const r = await rig(null);
     expect(r.store.get("C:/p/args.f90")).toBe("old");
     expect(r.runCode.run).not.toHaveBeenCalled();
+  });
+});
+
+describe("arguments that make Run refuse", () => {
+  it("can still be changed: the command and the Run dropdown row stay enabled", async () => {
+    const commands = new CommandRegistry();
+    const store = new RunArgumentsService(memoryStore());
+    await store.set("C:/p/args.f90", 'a "open');
+    const runCode = {
+      canRun: () => false,
+      canStop: () => false,
+      activeEditor: () => ({ path: "C:/p/args.f90" }),
+      refresh: vi.fn(() => Promise.resolve()),
+      run: vi.fn(() => Promise.resolve(true)),
+      buttonView: () => ({ enabled: false, canStop: false, tooltip: "The program arguments aren't valid: a quote is never closed." }),
+      getState: () => ({ availability: null }),
+      isRunning: () => false,
+    };
+    registerRunCommands({
+      commands,
+      events: new EventBus<AppEvents>(),
+      runCode: runCode as unknown as RunCodeService,
+      configs: { supports: () => true } as unknown as RunConfigurationService,
+      arguments: { store, ask: () => Promise.resolve("7") },
+    });
+    expect(commands.isEnabled("run.codeWithArguments")).toBe(true);
+    expect(commands.isEnabled("run.code")).toBe(false);
+
+    const rows = buildRunMenu({
+      runCode: runCode as unknown as RunCodeService,
+      configs: { supports: () => true, templateFor: () => null } as unknown as RunConfigurationService,
+      hasArguments: () => hasArguments(runCode, store),
+      run: vi.fn(),
+    });
+    const row = (label: string) => rows.find((r) => r.kind === "item" && r.label === label);
+    expect(row("Run Code with Arguments...")).toMatchObject({ enabled: true });
+    expect(row("Run Code")).toMatchObject({ enabled: false });
+
+    // Without remembered arguments a file that can't run offers nothing to fix.
+    await store.set("C:/p/args.f90", "");
+    expect(commands.isEnabled("run.codeWithArguments")).toBe(false);
   });
 });

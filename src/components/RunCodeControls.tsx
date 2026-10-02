@@ -1,6 +1,7 @@
 import { useCallback, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
+import { hasArguments } from "../services/runCommands";
 import { buildRunMenu } from "../services/runMenu";
 import { ChevronDownSmallIcon, PlayIcon, StopIcon } from "./icons";
 import { MenuPopup } from "./MenuPopup";
@@ -72,6 +73,7 @@ export function RunCodeDropdown() {
           items={buildRunMenu({
             runCode: container.runCode,
             configs: container.runConfigs,
+            hasArguments: () => hasArguments(container.runCode, container.runArguments),
             run: container.run,
           })}
           x={Math.max(0, anchor.right - 250)}

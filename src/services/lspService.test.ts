@@ -232,6 +232,42 @@ describe("LspService: keeping servers told about documents", () => {
     expect(r.ipc.lspCloseDocument).toHaveBeenCalledWith(PY);
   });
 
+  it("a clean file reloaded from disk is announced as saved, so save-only servers check it again", async () => {
+    const id = await r.documents.openFromPath(PY);
+    await vi.waitFor(() => {
+      expect(r.ipc.lspSyncDocument).toHaveBeenCalledTimes(1);
+    });
+    vi.mocked(r.ipc.documentRead).mockResolvedValue({
+      state: "file",
+      content: "x = 9\n",
+      encoding: "utf8",
+      lineEnding: "lf",
+    });
+    expect(await r.documents.checkDisk(id)).toBe("reloaded");
+    await vi.waitFor(() => {
+      expect(r.ipc.lspSaveDocument).toHaveBeenCalledWith(PY);
+    });
+    expect(r.ipc.lspSyncDocument).toHaveBeenLastCalledWith(PY, "x = 9\n");
+  });
+
+  it("unsaved edits that conflict with the disk are never announced as saved", async () => {
+    const id = await r.documents.openFromPath(PY);
+    await vi.waitFor(() => {
+      expect(r.ipc.lspSyncDocument).toHaveBeenCalledTimes(1);
+    });
+    r.buffers.setValue(id, "x = 2  # mine\n");
+    vi.mocked(r.ipc.documentRead).mockResolvedValue({
+      state: "file",
+      content: "x = 9\n",
+      encoding: "utf8",
+      lineEnding: "lf",
+    });
+    expect(await r.documents.checkDisk(id)).toBe("conflict");
+    await r.lsp.flush(id);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(r.ipc.lspSaveDocument).not.toHaveBeenCalled();
+  });
+
   it("a file deleted on disk is closed in the server, and reopened when it is back", async () => {
     const id = await r.documents.openFromPath(PY);
     await vi.waitFor(() => {

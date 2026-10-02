@@ -67,6 +67,7 @@ function setup(options: Setup) {
       isRunning: () => options.running ?? false,
     },
     runConfigs: { supports: () => options.configurable ?? true },
+    runArguments: { get: () => "" },
     workspace: { subscribe: () => () => undefined, getState: () => WORKSPACE_STATE },
   };
   return { run };

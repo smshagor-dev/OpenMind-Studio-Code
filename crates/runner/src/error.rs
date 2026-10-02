@@ -47,6 +47,11 @@ pub enum RunError {
     #[error("The run command isn't valid: {0}")]
     BadCommand(String),
 
+    #[error(
+        "The program arguments aren't valid: {0}. Change them with Run Code with Arguments..."
+    )]
+    BadArguments(String),
+
     #[error("\"{0}\" is already running. Stop it first.")]
     AlreadyRunning(String),
 

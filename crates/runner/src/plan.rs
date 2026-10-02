@@ -89,15 +89,13 @@ pub fn program_arguments(text: Option<&str>) -> Result<Vec<String>, RunError> {
         return Ok(Vec::new());
     };
     if text.len() > MAX_ARGUMENTS {
-        return Err(RunError::BadCommand("the arguments are too long".into()));
+        return Err(RunError::BadArguments("they are longer than 8 KB".into()));
     }
     if text.contains(['\n', '\r', '\0']) {
-        return Err(RunError::BadCommand(
-            "the arguments can't contain a line break".into(),
-        ));
+        return Err(RunError::BadArguments("they contain a line break".into()));
     }
     tokenize(text).map_err(|err| match err {
-        RunError::BadCommand(reason) => RunError::BadCommand(format!("in the arguments: {reason}")),
+        RunError::BadCommand(reason) => RunError::BadArguments(reason),
         other => other,
     })
 }
@@ -367,7 +365,11 @@ mod tests {
             program_arguments(Some(r#"3 "two words" 'a&b|c' $HOME"#)).expect("args"),
             ["3", "two words", "a&b|c", "$HOME"]
         );
-        assert!(program_arguments(Some("a \"open")).is_err());
+        let unclosed = program_arguments(Some("a \"open")).expect_err("unclosed quote");
+        assert_eq!(
+            unclosed.to_string(),
+            "The program arguments aren't valid: a quote is never closed. Change them with Run Code with Arguments..."
+        );
         assert!(program_arguments(Some("a\nb")).is_err());
         assert!(program_arguments(Some(&"x".repeat(9000))).is_err());
     }

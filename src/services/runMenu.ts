@@ -6,6 +6,8 @@ import type { RunCodeService } from "./runCodeService";
 export interface RunMenuContext {
   runCode: RunCodeService;
   configs: RunConfigurationService;
+  /** Whether the active file has remembered arguments: "Run Code with Arguments..." stays usable to fix them. */
+  hasArguments?: () => boolean;
   /** Runs a command by id (the same path menus and shortcuts take). */
   run: (id: string, ...args: unknown[]) => void;
 }
@@ -41,6 +43,11 @@ export function buildRunMenu(ctx: RunMenuContext): HeaderMenuRow[] {
     start("Run Code and Show Output", "run.codeShowOutput"),
     start("Run Code with Arguments...", "run.codeWithArguments"),
   ];
+  const withArguments = rows[rows.length - 1];
+  if (withArguments?.kind === "item" && !withArguments.enabled && !running && ctx.hasArguments?.() === true) {
+    withArguments.enabled = true;
+    withArguments.reason = undefined;
+  }
 
   if (availability?.previewable === true) {
     rows.push(

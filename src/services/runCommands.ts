@@ -87,11 +87,21 @@ export function registerRunCommands(deps: RunCommandDeps): void {
         await runCode.refresh();
         await runCode.run();
       },
-      { enabled: canRun },
+      // Also when the file's saved arguments are what make Run refuse: this is where they are fixed.
+      { enabled: () => canRun() || (!runCode.canStop() && hasArguments(runCode, args.store)) },
     );
   }
   // Which runtime a run uses is chosen where runtimes are managed: the active version there wins.
   commands.register("run.selectRuntime", () => {
     events.emit("showRuntimeManager", undefined);
   });
+}
+
+/** Whether the active file has remembered arguments (they can be edited even while they make Run refuse). */
+export function hasArguments(
+  runCode: { activeEditor: () => { path: string | null } | null },
+  store: Pick<RunArgumentsService, "get">,
+): boolean {
+  const path = runCode.activeEditor()?.path;
+  return path != null && store.get(path) !== "";
 }

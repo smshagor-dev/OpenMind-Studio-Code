@@ -314,8 +314,23 @@ export class LspService {
     }
     if (this.isCandidate(id) !== null) {
       if (!this.watchers.has(id)) this.track(id);
-      else void this.syncNow(id);
+      else
+        void this.syncNow(id).then((outcome) => {
+          this.savedOnDisk(id, outcome);
+        });
     }
+  }
+
+  /**
+   * A clean buffer that was reloaded from disk is the saved file: say so, as after a save. Servers that report problems
+   * only for saved files (fortls re-reads the file on save) would otherwise keep showing problems of the old text. Never
+   * for a buffer with unsaved edits or a conflict with the disk.
+   */
+  private savedOnDisk(id: string, outcome: LspSyncOutcome | null): void {
+    if (outcome?.state !== "ready" || !this.documents.has(id)) return;
+    if (this.documents.isDirty(id) || this.documents.externalState(id) !== "none") return;
+    const path = this.sent.get(id);
+    if (path !== undefined) void this.ipc.lspSaveDocument(path).catch(() => undefined);
   }
 
   private async workspaceChanged(): Promise<void> {
