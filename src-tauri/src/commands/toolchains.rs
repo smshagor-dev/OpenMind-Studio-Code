@@ -27,18 +27,24 @@ async fn chosen(state: &AppState) -> HashMap<String, String> {
 
 /// The packs as they are on disk right now (cheap: one manifest read and a file check per listed version).
 pub(crate) async fn packs(state: &AppState) -> Packs {
+    packs_checked(state).await.unwrap_or_else(|err| {
+        tracing::warn!(%err, "reading the toolchain packs stopped unexpectedly");
+        load(
+            std::path::Path::new(""),
+            current_platform(),
+            &HashMap::new(),
+        )
+    })
+}
+
+/// [`packs`], or why they couldn't be read now. The canonical state uses this one: a read that stopped
+/// unexpectedly must keep the last known tools, never report every tool as missing.
+pub(crate) async fn packs_checked(state: &AppState) -> Result<Packs, String> {
     let chosen = chosen(state).await;
     let root = state.app_root.clone();
     tokio::task::spawn_blocking(move || load(&root, current_platform(), &chosen))
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!(%err, "reading the toolchain packs stopped unexpectedly");
-            load(
-                std::path::Path::new(""),
-                current_platform(),
-                &HashMap::new(),
-            )
-        })
+        .map_err(|err| err.to_string())
 }
 
 /// The folders of the active bundled programs, for the PATH of a process OpenMind starts. A debugger's files are

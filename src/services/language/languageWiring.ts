@@ -152,3 +152,35 @@ export function wireLanguage(deps: LanguageWiringDeps) {
   });
   return { support, projects, ui, reasonFor, activeText };
 }
+
+/** What the editor's language choice for a file asks, in order: an enabled extension, then OpenMind's registry. */
+export interface EditorLanguageSources {
+  documents: Pick<DocumentService, "refreshLanguages" | "setLanguageResolver">;
+  /** Languages enabled extensions contribute (they win). */
+  extensions: {
+    languageForPath: (path: string) => string | null;
+    subscribe: (listener: () => void) => () => void;
+  };
+  support: Pick<LanguageSupportService, "initialize" | "refresh" | "editorLanguageFor">;
+}
+
+/**
+ * The editor's language for a file: extensions' languages win; then the registry's grammar for languages the editor's
+ * own table doesn't know (Go, Rust ...). Returns the start-up step: load the language table (static data) and look at
+ * the open folder (file names and manifests only).
+ */
+export function connectEditorLanguages(sources: EditorLanguageSources): () => Promise<void> {
+  const { documents, extensions, support } = sources;
+  // A language an extension adds (installed, enabled) colours the open files that were Plain Text at once.
+  extensions.subscribe(() => {
+    documents.refreshLanguages();
+  });
+  documents.setLanguageResolver(
+    (path) => extensions.languageForPath(path) ?? support.editorLanguageFor(path),
+  );
+  return async () => {
+    await support.initialize();
+    documents.refreshLanguages();
+    await support.refresh();
+  };
+}

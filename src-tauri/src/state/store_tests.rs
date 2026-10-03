@@ -205,3 +205,25 @@ fn the_domains_not_read_yet_are_reported_as_missing() {
         vec![Domain::Tools, Domain::Extensions]
     );
 }
+
+#[test]
+fn a_read_from_before_a_close_cannot_bring_old_state_into_the_reopened_folder() {
+    let store = StateStore::new(None);
+    let a = key("C:/ProjectA");
+    store.open_scope(&a);
+    let before_close = store.ticket_in(Domain::Git, &a);
+    store.close_scope(&a);
+    store.open_scope(&a);
+    let after_reopen = store.ticket_in(Domain::Git, &a);
+    // The old read finishes late, after the folder was opened again: dropped.
+    assert_eq!(
+        store.apply(before_close, json!({ "branch": "old" })),
+        Applied::Stale
+    );
+    assert_eq!(
+        store.apply(after_reopen, json!({ "branch": "new" })),
+        Applied::Changed(1)
+    );
+    let snapshot = store.snapshot_for(Some(&a));
+    assert_eq!(snapshot.domains[0].data, json!({ "branch": "new" }));
+}

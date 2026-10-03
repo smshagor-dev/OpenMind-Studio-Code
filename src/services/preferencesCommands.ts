@@ -73,6 +73,9 @@ export function registerPreferencesCommands(deps: PreferencesCommandDeps): void 
   commands.register("preferences.colorTheme", () => {
     page.open("settings", { scope: "user", query: "color theme" });
   });
+  commands.register("preferences.fileIconTheme", () => {
+    page.open("settings", { query: "Icon Theme" });
+  });
   for (const [id, mode] of THEME_COMMANDS) {
     commands.register(
       id,

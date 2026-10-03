@@ -278,6 +278,26 @@ describe("CanonicalStateService", () => {
     expect(r.ipc.snapshot).toHaveBeenCalledTimes(2);
   });
 
+  it("two quick folder switches attach one after the other, so the window ends on the newest folder", async () => {
+    const r = rig();
+    r.openFolder("c:/a");
+    await r.service.start();
+    // The backend answers the first attach slowly; the window switches again meanwhile.
+    let answerFirst: (key: string) => void = () => undefined;
+    r.ipc.attach.mockImplementationOnce(() => new Promise<string | null>((resolve) => (answerFirst = resolve)));
+    r.ipc.attach.mockImplementationOnce(() => Promise.resolve("c:/c"));
+    r.nextSnapshot(() => Promise.resolve({ revision: 0, workspace: "c:/b", domains: [] }));
+    r.nextSnapshot(() => Promise.resolve({ revision: 0, workspace: "c:/c", domains: [] }));
+    const first = r.service.attachWorkspace();
+    const second = r.service.attachWorkspace();
+    await Promise.resolve();
+    expect(r.ipc.attach).toHaveBeenCalledTimes(2); // start-up + the first switch; the second waits its turn
+    answerFirst("c:/b");
+    await Promise.all([first, second]);
+    expect(r.ipc.attach).toHaveBeenCalledTimes(3);
+    expect(r.service.currentWorkspace()).toBe("c:/c");
+  });
+
   it("a gap among scoped deltas is recovered from the snapshot like any other", async () => {
     const r = rig();
     r.openFolder("c:/a");

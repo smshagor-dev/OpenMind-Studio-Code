@@ -20,9 +20,14 @@ mod servers;
 mod store;
 mod workspace;
 
+#[cfg(test)]
+mod stress_tests;
+
+use std::collections::HashMap;
 use std::sync::mpsc::channel;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -31,14 +36,33 @@ pub use domain::{domains_for, workspace_domains_for, Domain, StateDelta, StateSn
 pub use store::StateStore;
 pub use workspace::{attach, detach, schedule_all, schedule_root};
 
+use gate::RefreshGate;
+
 /// The event that carries one [`StateDelta`] to a window.
 pub const DELTA_EVENT: &str = "state:delta";
+
+/// How long a global domain waits after a request before reading, so a burst of requests (ten language servers
+/// changing state, an extension folder copied in file by file) is one read.
+const GLOBAL_DEBOUNCE: Duration = Duration::from_millis(100);
+
+/// The longest [`refresh`] waits for a read it asked for (a slow runtime listing); the read itself goes on.
+const GLOBAL_WAIT_LIMIT: Duration = Duration::from_secs(60);
 
 /// Managed by the app: the store, who has which folder open, and the thread that publishes the deltas.
 pub struct CanonicalState {
     store: StateStore,
     workspaces: Arc<workspace::Workspaces>,
+    /// One read at a time per global domain, every request meanwhile merged into at most one more (as for folders).
+    global: Arc<RefreshGate<Domain>>,
+    /// How many times each global domain was read (diagnostics: `state_reads`).
+    global_reads: Mutex<HashMap<Domain, u64>>,
     publisher: Mutex<Option<JoinHandle<()>>>,
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Who gets what: a global delta goes to every window as it is; a per-workspace delta goes with its data to the
@@ -90,17 +114,22 @@ impl CanonicalState {
         Self {
             store: StateStore::new(Some(out)),
             workspaces,
+            global: Arc::new(RefreshGate::default()),
+            global_reads: Mutex::new(HashMap::new()),
             publisher: Mutex::new(Some(publisher)),
         }
     }
 }
 
-/// Reads global `domains` again and applies what changed. Each read happens outside the store's lock; a read that a
-/// newer one overtook is dropped. (Per-workspace domains are read by `workspace::schedule`.)
+/// Reads global `domains` again and applies what changed, and returns once a read that started after this request
+/// has been applied. Requests for one domain are merged: at most one read runs and at most one more follows it,
+/// however many callers ask meanwhile. Each read happens outside the store's lock; a read that a newer one overtook is
+/// dropped. (Per-workspace domains are read by `workspace::schedule`.)
 pub async fn refresh(app: &AppHandle, domains: &[Domain]) {
     let Some(canonical) = app.try_state::<CanonicalState>() else {
         return;
     };
+    let mut waits = Vec::new();
     for domain in domains
         .iter()
         .copied()
@@ -110,11 +139,51 @@ pub async fn refresh(app: &AppHandle, domains: &[Domain]) {
             canonical.store.bump_packages();
             continue;
         }
-        let ticket = canonical.store.ticket(domain);
-        if let Some(value) = read::read(app, domain).await {
-            let applied = canonical.store.apply(ticket, value);
-            tracing::debug!(?domain, ?applied, "canonical state refreshed");
+        let request = canonical.global.request(&domain);
+        if request.start {
+            spawn_global_driver(app, domain);
         }
+        waits.push((domain, request.number, request.done));
+    }
+    for (domain, number, mut done) in waits {
+        let reached =
+            tokio::time::timeout(GLOBAL_WAIT_LIMIT, done.wait_for(|value| *value >= number)).await;
+        if reached.is_err() {
+            tracing::warn!(
+                ?domain,
+                "a canonical refresh is taking long; not waiting for it"
+            );
+        }
+    }
+}
+
+fn spawn_global_driver(app: &AppHandle, domain: Domain) {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(gate) = handle
+            .try_state::<CanonicalState>()
+            .map(|canonical| canonical.global.clone())
+        else {
+            return;
+        };
+        gate::run_until_idle(&gate, &domain, GLOBAL_DEBOUNCE, || {
+            let handle = handle.clone();
+            async move { read_and_apply(&handle, domain).await }
+        })
+        .await;
+    });
+}
+
+/// One read of a global domain, applied to the store (outside every lock until the short compare-and-replace).
+async fn read_and_apply(app: &AppHandle, domain: Domain) {
+    let Some(canonical) = app.try_state::<CanonicalState>() else {
+        return;
+    };
+    let ticket = canonical.store.ticket(domain);
+    if let Some(value) = read::read(app, domain).await {
+        let applied = canonical.store.apply(ticket, value);
+        *lock(&canonical.global_reads).entry(domain).or_insert(0) += 1;
+        tracing::debug!(?domain, ?applied, "canonical state refreshed");
     }
 }
 
@@ -186,11 +255,7 @@ pub fn stop(app: &AppHandle) {
         return;
     };
     canonical.store.close();
-    let publisher = canonical
-        .publisher
-        .lock()
-        .ok()
-        .and_then(|mut slot| slot.take());
+    let publisher = lock(&canonical.publisher).take();
     if let Some(thread) = publisher {
         let _ = thread.join();
     }
@@ -255,13 +320,26 @@ pub struct ReadCount {
     windows: Vec<String>,
 }
 
-/// How often each open folder's domains were read, and which windows show it (diagnostics: shared work is visible).
+/// The workspace name of a global domain's read count.
+const GLOBAL_SCOPE: &str = "(global)";
+
+/// How often each global domain and each open folder's domains were read, and which windows show the folder
+/// (diagnostics and stress tests: shared work is visible). Not used by the app's own pages.
 #[tauri::command]
 pub fn state_reads(app: AppHandle) -> Vec<ReadCount> {
     let Some(canonical) = app.try_state::<CanonicalState>() else {
         return Vec::new();
     };
-    canonical
+    let global = lock(&canonical.global_reads)
+        .iter()
+        .map(|(domain, reads)| ReadCount {
+            workspace: GLOBAL_SCOPE.to_string(),
+            domain: *domain,
+            reads: *reads,
+            windows: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+    let scoped = canonical
         .workspaces
         .reads()
         .into_iter()
@@ -270,8 +348,8 @@ pub fn state_reads(app: AppHandle) -> Vec<ReadCount> {
             workspace,
             domain,
             reads,
-        })
-        .collect()
+        });
+    global.into_iter().chain(scoped).collect()
 }
 
 #[cfg(test)]

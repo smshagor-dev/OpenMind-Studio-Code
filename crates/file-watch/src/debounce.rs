@@ -23,6 +23,9 @@ pub struct Debouncer {
     quiet: Duration,
     max_paths: usize,
     pending: Vec<Raw>,
+    /// The watcher reported an error or asked for a rescan: events may have been lost, so the next batch says
+    /// "re-check everything" (an overflow) instead of listing what happened to arrive.
+    lost: bool,
     last: Option<Instant>,
 }
 
@@ -34,8 +37,15 @@ impl Debouncer {
             quiet,
             max_paths,
             pending: Vec::new(),
+            lost: false,
             last: None,
         }
+    }
+
+    /// Events may have been lost (a watcher error, a rescan request): the next batch is an overflow.
+    pub fn mark_lost(&mut self, now: Instant) {
+        self.lost = true;
+        self.last = Some(now);
     }
 
     pub fn push(&mut self, raw: Raw, now: Instant) {
@@ -44,13 +54,13 @@ impl Debouncer {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.pending.is_empty()
+        self.pending.is_empty() && !self.lost
     }
 
     /// Whether the quiet period has passed and something is waiting.
     pub fn ready(&self, now: Instant) -> bool {
         match self.last {
-            Some(last) => !self.pending.is_empty() && now.duration_since(last) >= self.quiet,
+            Some(last) => !self.is_empty() && now.duration_since(last) >= self.quiet,
             None => false,
         }
     }
@@ -58,7 +68,14 @@ impl Debouncer {
     /// Takes everything waiting and merges it.
     pub fn drain(&mut self) -> ChangeBatch {
         self.last = None;
-        merge(std::mem::take(&mut self.pending), self.max_paths)
+        let raws = std::mem::take(&mut self.pending);
+        if std::mem::take(&mut self.lost) {
+            return ChangeBatch {
+                changes: Vec::new(),
+                overflow: true,
+            };
+        }
+        merge(raws, self.max_paths)
     }
 }
 
@@ -166,6 +183,8 @@ fn upsert(changes: &mut Vec<FileChange>, path: String, kind: ChangeKind, from: O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const QUIET: Duration = Duration::from_millis(200);
 
     fn p(name: &str) -> PathBuf {
         PathBuf::from(format!("C:/My Site/{name}"))
@@ -290,6 +309,34 @@ mod tests {
         assert_eq!(batch.changes.len(), 1);
         assert_eq!(batch.changes[0].kind, ChangeKind::Renamed);
         assert_eq!(batch.changes[0].from.as_deref(), Some("C:/My Site/a"));
+    }
+
+    #[test]
+    fn lost_events_make_the_next_batch_an_overflow_once() {
+        let start = Instant::now();
+        let mut debouncer = Debouncer::new(QUIET, 500);
+        debouncer.push(Raw::Modified(PathBuf::from("C:/w/a.txt")), start);
+        debouncer.mark_lost(start);
+        assert!(!debouncer.ready(start));
+        let later = start + QUIET;
+        assert!(debouncer.ready(later));
+        let batch = debouncer.drain();
+        assert!(batch.overflow && batch.changes.is_empty());
+        // Only once: the next quiet period is ordinary again.
+        debouncer.push(Raw::Modified(PathBuf::from("C:/w/b.txt")), later);
+        let batch = debouncer.drain();
+        assert!(!batch.overflow && batch.changes.len() == 1);
+    }
+
+    #[test]
+    fn a_lost_marker_alone_is_released_as_an_overflow() {
+        let start = Instant::now();
+        let mut debouncer = Debouncer::new(QUIET, 500);
+        assert!(debouncer.is_empty());
+        debouncer.mark_lost(start);
+        assert!(!debouncer.is_empty());
+        assert!(debouncer.ready(start + QUIET));
+        assert!(debouncer.drain().overflow);
     }
 
     #[test]

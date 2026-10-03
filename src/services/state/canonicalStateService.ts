@@ -73,6 +73,8 @@ export class CanonicalStateService {
   private disposed = false;
   /** The start-up bootstrap (listen, attach, first snapshot); `ready` waits for it. */
   private starting: Promise<void> = Promise.resolve();
+  /** The folder attach in progress (calls are serialized). */
+  private attaching: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly ipc: CanonicalIpc,
@@ -96,8 +98,17 @@ export class CanonicalStateService {
     await this.resync();
   }
 
-  /** The window opened another folder, closed it, or got its first one: its per-workspace state follows. */
-  async attachWorkspace(): Promise<void> {
+  /**
+   * The window opened another folder, closed it, or got its first one: its per-workspace state follows. Calls run one
+   * after another, so two quick folder switches can't finish in the wrong order and leave the window on the older one.
+   */
+  attachWorkspace(): Promise<void> {
+    const next = this.attaching.then(() => this.attachNow());
+    this.attaching = next.catch(() => undefined);
+    return next;
+  }
+
+  private async attachNow(): Promise<void> {
     if (this.disposed || this.unlisten === null) return;
     const key = await this.ipc.attach().catch(() => this.workspace);
     if (key === this.workspace) return;

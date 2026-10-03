@@ -15,7 +15,7 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::coalesce::TopicCoalescer;
 use crate::normalize::{normalize_event_path, without_verbatim};
-use crate::topics::{classify_app, is_folder_timestamp, APP_FOLDERS};
+use crate::topics::{classify_app, is_folder_timestamp, SyncTopic, APP_FOLDERS};
 use crate::watcher::{TopicSink, WatchError, TOPIC_MAX_WAIT, TOPIC_QUIET};
 
 const TICK: std::time::Duration = std::time::Duration::from_millis(50);
@@ -156,6 +156,30 @@ fn counts_for_folder_itself(kind: &EventKind) -> bool {
     !matches!(kind, EventKind::Modify(modify) if !matches!(modify, ModifyKind::Name(_)))
 }
 
+/// The topics to read again after a watcher error or rescan request: those of the managed folders the paths lie in,
+/// or — when the paths name none of them — every managed folder (conservative: one coalesced read each).
+fn lost_topics(root: &Path, paths: &[PathBuf]) -> Vec<SyncTopic> {
+    let mut named: Vec<SyncTopic> = paths
+        .iter()
+        .filter_map(|raw| normalize_event_path(root, raw))
+        .filter_map(|path| {
+            let relative = path.strip_prefix(root).ok()?;
+            let first = relative.components().next()?.as_os_str().to_string_lossy();
+            APP_FOLDERS
+                .iter()
+                .find(|(folder, _)| first.eq_ignore_ascii_case(folder))
+                .map(|(_, topic)| *topic)
+        })
+        .collect();
+    named.sort();
+    named.dedup();
+    if named.is_empty() {
+        APP_FOLDERS.iter().map(|(_, topic)| *topic).collect()
+    } else {
+        named
+    }
+}
+
 fn run(
     mut folders: Folders,
     incoming: &Receiver<notify::Result<Event>>,
@@ -170,6 +194,12 @@ fn run(
         match incoming.recv_timeout(TICK) {
             Ok(Ok(event)) if !matches!(event.kind, EventKind::Access(_)) => {
                 let now = Instant::now();
+                if event.need_rescan() {
+                    tracing::warn!("the app folder watcher asked for a rescan");
+                    for topic in lost_topics(&folders.root, &event.paths) {
+                        topics.push(topic, now);
+                    }
+                }
                 for raw in &event.paths {
                     let Some(path) = normalize_event_path(&folders.root, raw) else {
                         continue;
@@ -190,7 +220,19 @@ fn run(
                 }
             }
             Ok(Ok(_)) => {}
-            Ok(Err(err)) => tracing::warn!(?err, "app folder watcher error"),
+            Ok(Err(err)) => {
+                // Events may be missing: what the error names (or every managed folder) is read again once.
+                let affected = lost_topics(&folders.root, &err.paths);
+                tracing::warn!(
+                    ?err,
+                    ?affected,
+                    "app folder watcher error; reading the affected state again"
+                );
+                let now = Instant::now();
+                for topic in affected {
+                    topics.push(topic, now);
+                }
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -227,6 +269,32 @@ mod tests {
         assert_eq!(
             managed_name(root, Path::new("C:/OpenMind Studio/data")),
             None
+        );
+    }
+
+    #[test]
+    fn a_watcher_error_reads_what_it_names_again_or_every_managed_folder() {
+        let root = Path::new("C:/OpenMind Studio");
+        assert_eq!(
+            lost_topics(
+                root,
+                &[PathBuf::from("C:/OpenMind Studio/tools/ruff/x.exe")]
+            ),
+            vec![SyncTopic::Tools]
+        );
+        assert_eq!(
+            lost_topics(root, &[]),
+            vec![
+                SyncTopic::Runtimes,
+                SyncTopic::Tools,
+                SyncTopic::LanguageServers,
+                SyncTopic::Extensions
+            ]
+        );
+        // A path outside the managed folders names nothing: everything is read again.
+        assert_eq!(
+            lost_topics(root, &[PathBuf::from("C:/OpenMind Studio/data/x")]).len(),
+            4
         );
     }
 

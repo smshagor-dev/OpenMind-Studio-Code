@@ -250,7 +250,7 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   green, MariaDB starting yellow / error red — the status text is the cell's tooltip).
   **MySQL service (after Milestone 23.1)**: the table lists **PHP** and **MySQL** only. MySQL = MariaDB (the MySQL-compatible
   engine, named as such in every detail) + phpMyAdmin, one lifecycle in `src-tauri/src/commands/mysql.rs`
-  (`mysql_status|start|stop|restart`, `mysql:changed`; `AppState.mysql`): Start = runtimes present → database created when
+  (`mysql_start|stop|restart`; its state is the canonical `servers` domain; `AppState.mysql`): Start = runtimes present → database created when
   `data/mariadb` has none → MariaDB → a ping answers → phpMyAdmin → its page loads without a database error; only then
   Running (`derive_state`: half a stack is `error` with the reason). Stop = phpMyAdmin, then MariaDB's own `shutdown`
   (the tree is killed only after 10 s). Installing MariaDB runs `mysql::after_install` (initialize + test start/ping/
@@ -362,18 +362,30 @@ except through well-defined public APIs; no circular crate dependencies (enforce
     servers (`state::servers_changed`). `SyncTopic` (`topics.rs`) classifies paths; noise: `__pycache__`, `.pyc`,
     `.part`, install staging (`*.installing`, `.unpacking`), dev-server caches, `extensions/{storage,logs,cache}`, a
     folder's own timestamp. `TopicCoalescer`: one burst per topic after 1 s of quiet (≤ 15 s). `own_topics`/
-    `is_own_change`: a watched burst OpenMind's own operation caused is reconciled, not counted again.
+    `is_own_change`: a watched burst OpenMind's own operation caused is reconciled, not counted again. A watcher
+    error or rescan request reads the affected state once more: the app folder's the managed folders it names (all four
+    when it names none), a project's an `overflow` batch (Git + Project + Dependencies). notify 8.2 on Windows drops an
+    overflowed buffer silently; that is harmless as long as one event of the burst arrives, because a burst refreshes
+    whole domains, never single files. No polling.
   - **Store** (`store.rs`): one `u64` revision; slots = (domain, scope); a refresh reads outside the lock, then
     `apply(ticket, value)` (an older read never overwrites a newer one; identical state = no revision, no delta;
-    compared as `serde_json::Value`); a change = revision + 1 and one `StateDelta` queued under the lock; a closed
-    folder drops reads still in flight.
+    compared as `serde_json::Value`); a change = revision + 1 and one `StateDelta` queued under the lock; closing a
+    folder drops every read issued for it so far, even if the folder is reopened before the read ends. Global domains
+    are read through the same gate as folder domains (`RefreshGate<Domain>`: one read + one pending, 100 ms debounce);
+    `state::refresh` waits until a read that started after its request was applied. A reader that can't tell right now
+    returns `None`/an error and the last state stays (`read::kept`) — a transient failure (a folder being replaced, a
+    panicked blocking read) must never publish "nothing installed" (`toolchains::packs_checked`,
+    `ExtensionStore::try_list`, `language::tool_env_checked`).
   - **Domains**: global `runtimes`, `tools`, `languageServers`, `extensions`, `packages` (a counter for package changes
     in runtimes), `servers` (PHP + MySQL state with ports — app-wide, like XAMPP); per workspace `git`,
     `dependencies`, `project`, `debug` (readers in `read.rs` are the same functions the commands used).
   - **Workspaces** (`workspace.rs`, `scope.rs`, `gate.rs`): `WorkspaceKey` = canonical path, `\?\` stripped, `/`,
     lower-case on Windows; the first window on a folder opens its scope and reads all its domains, the last one
-    closes it (removal deltas); one read per folder domain at a time + one pending, after a debounce, shared by every
-    window on that folder (`state_refresh` waits for it; `state_reads` counts them).
+    closes it (removal deltas); `Workspaces::transition` changes the folder's path, the store's scope and who has it
+    open under one lifecycle lock (no other window's close can land between the steps); one read per folder domain at
+    a time + one pending, after a debounce, shared by every window on that folder (`state_refresh` waits for it;
+    `state_reads` counts global and folder reads — diagnostics and stress tests only). `stress_tests.rs` drives three
+    windows on two folders, closes/reopens and request floods from many threads.
   - **Delivery**: the publisher `emit_to`s every delta to every window — data for windows on that folder, a
     revision-only `tick` for the others; a page listens to its own window only. `state_snapshot` = global + the
     window's folder. `state::fill` reads the global domains at start-up (retrying a missing one), `state::stop` in
@@ -381,7 +393,9 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   - **Frontend**: `CanonicalStateService` (one per window): listens first, attaches its folder, reads the snapshot,
     applies held deltas above it; a stale revision is dropped; a gap reads a fresh snapshot (3 failures in a row →
     one `appError`, never a fallback; deltas aren't kept meanwhile and the next `catchUp`/`refresh` tries again); a delta
-    held from *before* a snapshot that claims a newer revision than it can't come from the backend and is dropped. Stores take their domain through `feed`/`workspaceFeed` (`state/canonicalWiring.ts`):
+    held from *before* a snapshot that claims a newer revision than it can't come from the backend and is dropped;
+    `attachWorkspace` calls are serialized (two quick folder switches can't finish out of order). Stores take their
+    domain through `feed`/`workspaceFeed` (`state/canonicalWiring.ts`):
     Runtime, Toolchain, Lsp, ExtensionRegistry, PHP server, MySQL, MariaDB (live state; config details on demand),
     phpMyAdmin, Ports (`serverPorts.ts`), Source Control, Dependencies, LanguageSupport, Debug. Their `refresh()` asks
     the backend (folder domains) or catches up (global); none reads raw state. `sync/liveSyncWiring.ts`: what reacts
@@ -394,6 +408,12 @@ except through well-defined public APIs; no circular crate dependencies (enforce
     `ext:host-*`, `fs:changed`.
   - Tests: `src/testUtils/canonicalFeeds.ts` (`ipcFeed`, `ipcWorkspaceFeed`, `backendFeeds`, `connectBackend`) feeds
     stores from `FakeBackendReads` (`fakeIpcClient.ts`) — test-only stand-ins for the backend's canonical data.
+  - **Rules for future work**: the canonical state is the only source of system state a window shows — add a domain or
+    a reader, never a "something changed" event, a store that reads backend state itself, a focus/timer re-read or
+    polling; the removed `system:changed`, `runtime:changed`, `lsp:changed`, `ext:changed`, `php:changed`,
+    `mysql:changed`, `pma:changed` events and `refreshAuto` must not come back. A per-file or on-demand question (the
+    queries above) stays a query; don't turn it into persistent state without a concrete reason. File watchers feed
+    canonical refreshes. Expensive reads stay shared across windows (gates) — never per window.
 - `openmind-lsp` (Milestone 7) — the Language Server Protocol client, Tauri-agnostic (`LspEvents` sink supplied by the app).
   `registry` lists the servers as data (TypeScript/JavaScript = typescript-language-server + typescript, Python = Pyright,
   PHP = Intelephense, JSON/CSS/HTML = vscode-langservers-extracted) with the **pinned `package.json` + `package-lock.json`**
@@ -409,9 +429,10 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   capability parsing, diagnostics, the fixed list of requests the UI may send — anything else is refused), `docs`
   (`DocumentSync`: didOpen once, then full-text didChange with rising versions, save, close), `uri`, `language`, and
   `LspManager` (one server per id, started lazily for a file inside the open workspace, gate per server, crash -> Error state
-  + log, `stop_all` = `shutdown`/`exit` then tree kill). `commands::lsp` (`lsp_status/install/sync_document/save_document/
-  close_document/request/stop/stop_all/set_verbose`) picks the server by extension, refuses files outside the workspace,
-  pushes `lsp:diagnostics`/`lsp:log`/`lsp:changed` and writes `logs/lsp/<server>.log` (rotated at 2 MB). Ignored real-network
+  + log, `stop_all` = `shutdown`/`exit` then tree kill). `commands::lsp` (a folder: `events` (sink + log files), `folder`, `resolve`, `status` (the canonical
+  language-server domain), `install`; commands `lsp_install/sync_document/save_document/close_document/request/stop/stop_all/
+  set_verbose`) picks the server by extension, refuses files outside the workspace, pushes `lsp:diagnostics`/`lsp:log`, refreshes
+  the canonical state on a life-cycle change and writes `logs/lsp/<server>.log` (rotated at 2 MB). Ignored real-network
   tests (`crates/lsp/tests/real_server.rs`) install and drive the real TypeScript, Pyright and Intelephense servers.
   **Offline LSP bundle (Milestone 17)** — see `docs/lsp-bundle.md`. `registry::Package` gained `source` (`Npm` with the embedded
   lockfile, or `Native`: a program only the bundle carries) and `redistributable`; `ServerDef` gained `runtime` (`Node` | `Native`),
@@ -432,7 +453,7 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   refused with "remote schemas are not downloaded (OpenMind Studio's language servers work offline)", rust-analyzer
   `CARGO_NET_OFFLINE=true`, clangd `--background-index=false`. `commands::lsp`: `lsp_sync_document` unpacks from the bundle when
   needed (offline), `lsp_install` unpacks when the bundle carries the server and otherwise uses npm with a Node that has npm,
-  `lsp_status` adds `runtime`, `bundled`, `installSource` and `bundle` (present/problem/nodeVersion/packs). **Intelephense is not in
+  the language-server status adds `runtime`, `bundled`, `installSource` and `bundle` (present/problem/nodeVersion/packs). **Intelephense is not in
   the bundle** — its licence forbids redistribution; it stays an npm install on request. `tests/bundled_servers.rs` (ignored,
   `OPENMIND_LSP_BUNDLE=<repo>/lsp-bundle`) unpacks and runs all ten bundled servers with a PATH of only System32.
 - **Editor windows (File > New Window, Ctrl+Shift+N)** — `src-tauri/src/windows.rs`. One process, several editor
@@ -472,8 +493,8 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   debuggee live in a Job Object (`openmind_lsp::process::spawn`), so stop / app close leave no python/node/conhost. Nothing
   starts unless the user starts debugging. Breakpoints persist in the existing `breakpoints` table
   (`openmind_db::BreakpointsRepository::{list, replace_all}`). Ignored real-adapter tests: `crates/dap/tests/real_debug.rs`
-  (`OPENMIND_DEBUGPY_DIR` / `OPENMIND_JSDEBUG_DIR`). `commands::debug` (`debug_status/start/control/request/
-  set_breakpoints/stop`, `breakpoints_load/save`) pushes `debug:event`/`debug:state`/`debug:log`; `window_events` stops it on close.
+  (`OPENMIND_DEBUGPY_DIR` / `OPENMIND_JSDEBUG_DIR`). `commands::debug` (`debug_run/start/control/request/
+  set_breakpoints/stop`, `breakpoints_load/save`; readiness is the canonical per-workspace `debug` domain) pushes `debug:event`/`debug:state`/`debug:log`; `window_events` stops it on close.
 - `src-tauri` (binary/package name `openmind-studio`) — the Tauri application: composition root
   (`AppState` in `app_state.rs`), Tauri commands under `commands/` namespaced by domain
   (`commands::document::*`, `commands::workspace::*`, `commands::filesystem::*`,
@@ -540,7 +561,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   Dockerfile, rust-analyzer and clangd are OpenMind's own and those languages have the `lsp` level). `service` assembles
   `WorkspaceStatus` (projects with tool status, per-command availability and a one-sentence summary such as "Detected Tauri + React. Found: Node.js, pnpm, Cargo. Dev: pnpm tauri dev.")
   and `FileStatus`; `shell::typed_line` renders an argument list for PowerShell/cmd/Git Bash (plain words stay plain, anything else is quoted, a line that can't be quoted safely
-  is refused). `src-tauri/src/commands/language.rs`: `language_registry`, `language_workspace_status` (the asking window's folder, portable runtimes from the Runtime Manager first),
+  is refused). `src-tauri/src/commands/language.rs`: `language_registry`, `status_at` (the canonical per-workspace `project` domain; portable runtimes from the Runtime Manager first),
   `language_file_status` (path guarded with `ensure_within_root`), `language_terminal_line`.
   **Built-in policy (no extra download)**: *OpenMind Studio ships language/project support metadata in the app bundle. It does not download language support at runtime.* The
   registry, detection rules, command templates, formatter/linter recipes and language-server candidate list are Rust data compiled into the app; the crate has no network or process
@@ -556,7 +577,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   5 kept** — `maxBundledVersions` can only lower it, extra oldest ones are ignored with a warning), each `Active | Bundled | Broken` (Broken = listed but the program is missing) and the tool `Active | Missing |
   Broken | External`. **Active version** = the user's choice (`editor_settings` `toolchains.active`, only if that version is present) > the manifest's `activeVersion` > the newest *stable* present version; a
   missing program is never Active. `injection()` = the folders of active programs (debuggers excluded: their files are not commands) for the PATH of processes OpenMind starts. `commands::toolchains`
-  (`toolchains_list|set_active|verify`) plus `run::environment` (put the bundled folders **in front of** the Runtime Manager's — used by terminals, Git, runs, LSP, extensions), `language::tool_env`
+  (`toolchains_set_active|verify`; the list is the canonical `tools` domain) plus `run::environment` (put the bundled folders **in front of** the Runtime Manager's — used by terminals, Git, runs, LSP, extensions), `language::tool_env`
   (`ToolEnv.bundled_dirs`, so lookup order is **project-local > bundled > portable runtime > system**, `Source::Bundled`), `debug` (the active bundled debugpy — path
   `<v>/debugpy/adapter/__main__.py` — is the adapter folder before the Runtime Manager's) and `composer_run` (an active bundled `composer.phar` before the Runtime Manager's Composer). Git needs no change:
   its resolver takes the first folder that has `git.exe`. **What is physically bundled in this build: nothing** — the system, manifest, detection, selection, Verify, UI and packaging check are built and tested
@@ -989,11 +1010,9 @@ internals.
   native window labelled `php-server` (`capabilities/default.json` lists it) loading the same page;
   `main.tsx` picks `PhpServerWindow` instead of `App` by the window label. Each window has its **own**
   frontend container, so the backend is the single truth: `AppState.php_server_info` (URL, port, PHP version)
-  is read via `php_server_status`, `php:changed` (server started/ended) makes every window's
-  `PhpServerService.syncServer()` re-read it (the main window then registers the port in its Ports panel),
-  `php:event` output reaches both windows' Output, and `runtime:changed` (after any runtime
-  install/repair/switch/delete) makes every `RuntimeService` reload — so installing PHP in the PHP window
-  enables Run Code for `.php` in the main window. "Use Open Folder" asks the backend
+  is part of the canonical `servers` domain, which every window follows (the Ports panel too), `php:event` output
+  reaches both windows' Output, and a runtime install/repair/switch/delete updates the canonical `runtimes` domain
+  in every window — so installing PHP in the PHP window enables Run Code for `.php` in the main window. "Use Open Folder" asks the backend
   (`workspaceActiveFolder`) for the main window's folder.
 - `PhpRuntimeService` (`phpRuntimeService.ts`) + `PhpRuntimeCards` (5.7.1) — the PHP and Composer version
   manager inside the PHP Server window: the PHP card lists installed versions (active first) and the
@@ -1148,12 +1167,13 @@ internals.
   `src/testUtils/fakeIpcClient.ts` holds the one shared fully-stubbed fake every test file
   overrides from, instead of each redeclaring all ~30 methods.
 
-- **Extensions (Milestone 10).** `commands::extensions`/`extension_manage`/`extension_host` (`ext_list`, `ext_inspect_vsix`, `ext_install`,
+- **Extensions (Milestone 10).** `commands::extensions`/`extension_manage`/`extension_host` (`ext_inspect_vsix`, `ext_install`,
   `ext_set_enabled`, `ext_uninstall`, `ext_read_file`, `ext_host_log`, `ext_host_start|stop`, the allow-listed `ext_host_request|notify`, `ext_host_respond`,
-  `ext_activate_for`; events `ext:changed`, `ext:host-state`, `ext:host-request`, `ext:host-notification` go to the main window only) with
+  `ext_activate_for`; the installed list is the canonical `extensions` domain; events `ext:host-state`, `ext:host-request`,
+  `ext:host-notification` go to the main window only) with
   `ExtensionsRuntime` in `AppState` (store, host handle, per-extension activity/last error, a generation counter so a late exit report of an old
   host is ignored); the host stops in `window_events::shutdown`; the backend refuses to activate a disabled extension. Frontend services (all
-  UI-free, wired in `extensionsWiring.ts`): `ExtensionRegistryService` (the installed list + search-installed, follows `ext:changed`),
+  UI-free, wired in `extensionsWiring.ts`): `ExtensionRegistryService` (the installed list + search-installed, follows the canonical `extensions` domain),
   `ExtensionService` (choose a `.vsix` → read it → **trust dialog** → install; enable/disable; uninstall behind a confirm; details, logs, reload host,
   "Use System Node.js"; every button has an `*Availability` reason), `ExtensionHostService` (starts the host lazily — never at launch —, `activateFor`,
   `executeCommand`, answers the host through `HostBridge`, keeps it told about settings/folders/open files via `HostDocumentSync`),

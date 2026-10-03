@@ -66,6 +66,7 @@ function rig(activeKind: "text" | "filePreview" = "text") {
   };
   const events = new EventBus<AppEvents>();
   events.on("appNotice", ({ message }) => notices.push(message));
+  const setFormatActions = vi.fn();
   let lspEnabled = false;
   let rangeFormatting = true;
   const deps = {
@@ -77,7 +78,7 @@ function rig(activeKind: "text" | "filePreview" = "text") {
       subscribe: () => () => undefined,
     },
     documents,
-    editor: { hasEditor: () => true, run: vi.fn(), selectionsFor: () => null },
+    editor: { hasEditor: () => true, run: vi.fn(), selectionsFor: () => null, setFormatActions },
     lsp: {
       available: () => ({ enabled: lspEnabled, reason: "No language server." }),
       activeAvailable: () => ({ enabled: lspEnabled, reason: "No language server." }),
@@ -94,6 +95,7 @@ function rig(activeKind: "text" | "filePreview" = "text") {
   } as unknown as FormattingWiringDeps;
   const { service } = wireFormatting(deps);
   return {
+    setFormatActions,
     commands,
     service,
     ipc,
@@ -113,6 +115,14 @@ function rig(activeKind: "text" | "filePreview" = "text") {
 }
 
 describe("formatting commands", () => {
+  it("puts Format Document and Format Document With... in the palette and the right-click menu", () => {
+    const r = rig();
+    expect(r.setFormatActions).toHaveBeenCalledWith([
+      { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
+      { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: true },
+    ]);
+  });
+
   it("Format Document formats the package.json in front through the real handler", async () => {
     const r = rig();
     expect(r.commands.isEnabled("edit.formatDocument")).toBe(true);

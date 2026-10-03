@@ -10,4 +10,4 @@ authors.workspace = true
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
-openmind-runtime-manager = { version = "1.0.0", path = "../runtime-manager" }
+openmind-runtime-manager = { version = "1.0.1", path = "../runtime-manager" }

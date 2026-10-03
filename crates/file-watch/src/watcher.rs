@@ -86,6 +86,11 @@ impl FileWatcher {
                 match incoming.recv_timeout(TICK) {
                     Ok(Ok(event)) => {
                         let now = Instant::now();
+                        if event.need_rescan() {
+                            // The platform says events were dropped: one "re-check everything" batch.
+                            tracing::warn!(root = %watched.display(), "the file watcher asked for a rescan");
+                            debouncer.mark_lost(now);
+                        }
                         for raw in raws_of(&event, &watched) {
                             debouncer.push(raw, now);
                         }
@@ -95,7 +100,11 @@ impl FileWatcher {
                             }
                         }
                     }
-                    Ok(Err(err)) => tracing::warn!(?err, "file watcher error"),
+                    Ok(Err(err)) => {
+                        // Events may be missing: the folder is re-checked once (an overflow batch), not ignored.
+                        tracing::warn!(?err, root = %watched.display(), "file watcher error; re-checking the folder");
+                        debouncer.mark_lost(Instant::now());
+                    }
                     Err(RecvTimeoutError::Timeout) => {}
                     Err(RecvTimeoutError::Disconnected) => break,
                 }

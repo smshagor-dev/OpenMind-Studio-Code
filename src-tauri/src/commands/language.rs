@@ -22,18 +22,29 @@ async fn workspace_root(state: &AppState, window: &tauri::Window) -> Result<Path
 
 /// The lookup environment: bundled app-local tools, OpenMind's portable runtimes, then the machine's PATH (read, never written).
 pub(crate) async fn tool_env(state: &AppState) -> ToolEnv {
-    let bundled = crate::commands::toolchains::bundled_dirs(state).await;
-    let portable = match state.runtime.environment().await {
-        Ok(environment) => environment.path_prepend,
+    match tool_env_checked(state).await {
+        Ok(env) => env,
         Err(err) => {
-            tracing::warn!(
-                ?err,
-                "could not read the runtime environment for tool lookup"
-            );
-            Vec::new()
+            tracing::warn!(%err, "could not read the runtime environment for tool lookup");
+            ToolEnv::with_bundled(
+                crate::commands::toolchains::bundled_dirs(state).await,
+                Vec::new(),
+            )
         }
-    };
-    ToolEnv::with_bundled(bundled, portable)
+    }
+}
+
+/// [`tool_env`], or why the portable runtimes can't be read right now. The canonical project state uses this one: a
+/// runtime folder being rewritten must not make every portable tool look missing for a moment.
+async fn tool_env_checked(state: &AppState) -> Result<ToolEnv, String> {
+    let bundled = crate::commands::toolchains::bundled_dirs(state).await;
+    let portable = state
+        .runtime
+        .environment()
+        .await
+        .map_err(|err| err.to_string())?
+        .path_prepend;
+    Ok(ToolEnv::with_bundled(bundled, portable))
 }
 
 /// Every language OpenMind knows (static data).
@@ -44,7 +55,7 @@ pub fn language_registry() -> Vec<&'static LanguageDef> {
 
 /// The projects, tools and commands of the folder `root` (also the canonical state's per-workspace project domain).
 pub(crate) async fn status_at(state: &AppState, root: PathBuf) -> Result<WorkspaceStatus, String> {
-    let env = tool_env(state).await;
+    let env = tool_env_checked(state).await?;
     tokio::task::spawn_blocking(move || workspace_status(&root, &env))
         .await
         .map_err(|err| format!("the scan stopped unexpectedly: {err}"))

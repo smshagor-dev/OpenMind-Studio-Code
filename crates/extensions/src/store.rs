@@ -186,9 +186,13 @@ impl ExtensionStore {
         &self.paths
     }
 
-    fn scan(&self, dir: &Path, enabled: bool, into: &mut Listing) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
+    /// Adds the extensions in `dir`. A folder that doesn't exist holds none; one that exists but can't be listed is
+    /// an error, so a caller that must not mistake "can't tell" for "nothing installed" can tell them apart.
+    fn scan(&self, dir: &Path, enabled: bool, into: &mut Listing) -> Result<(), String> {
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(err) => return Err(format!("{} can't be listed: {err}", dir.display())),
         };
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
@@ -213,14 +217,30 @@ impl ExtensionStore {
                 }),
             }
         }
+        Ok(())
     }
 
     /// Everything installed, enabled first-class: sorted by display name. Missing dependencies are
     /// added to each extension's warnings.
     pub fn list(&self) -> Listing {
+        self.collect(false).unwrap_or_default()
+    }
+
+    /// [`ExtensionStore::list`], or why the extension folders can't be listed right now (instead of listing nothing).
+    pub fn try_list(&self) -> Result<Listing, String> {
+        self.collect(true)
+    }
+
+    fn collect(&self, strict: bool) -> Result<Listing, String> {
         let mut listing = Listing::default();
-        self.scan(&self.paths.installed, true, &mut listing);
-        self.scan(&self.paths.disabled, false, &mut listing);
+        for (dir, enabled) in [(&self.paths.installed, true), (&self.paths.disabled, false)] {
+            if let Err(err) = self.scan(dir, enabled, &mut listing) {
+                if strict {
+                    return Err(err);
+                }
+                tracing::warn!(%err, "an extension folder couldn't be listed");
+            }
+        }
         let ids: Vec<String> = listing.extensions.iter().map(|e| e.id.clone()).collect();
         for extension in &mut listing.extensions {
             for dependency in &extension.manifest.extension_dependencies {
@@ -259,7 +279,7 @@ impl ExtensionStore {
             }
         }
         listing.broken.sort_by(|a, b| a.folder.cmp(&b.folder));
-        listing
+        Ok(listing)
     }
 
     pub fn find(&self, id: &str) -> Result<InstalledExtension, ExtensionError> {

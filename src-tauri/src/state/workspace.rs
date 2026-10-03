@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager};
 use super::domain::{Domain, WORKSPACE_DOMAINS};
 use super::gate::RefreshGate;
 use super::scope::{workspace_key, WorkspaceKey};
+use super::store::StateStore;
 use super::CanonicalState;
 use crate::app_state::AppState;
 
@@ -33,6 +34,9 @@ const WAIT_LIMIT: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
 pub struct Workspaces {
+    /// Held for one whole open/close transition (the folder's path, the store's scope and who has it open change
+    /// together), so a window leaving a folder can't close its scope between another window's steps of opening it.
+    lifecycle: Mutex<()>,
     /// Window label -> the folder it has open.
     interest: Mutex<HashMap<String, WorkspaceKey>>,
     /// Folder -> its path as the window opened it (reads use it).
@@ -106,6 +110,46 @@ fn canonical(app: &AppHandle) -> Option<tauri::State<'_, CanonicalState>> {
     app.try_state::<CanonicalState>()
 }
 
+impl Workspaces {
+    /// The window `label` now has `folder` open (or none): the folder's path, the store's scope and who has it open
+    /// change together, under one lock. Returns the folder's key and whether it was opened by its first window (its
+    /// domains must be read). The folder the window left is closed when no window has it open any more: its state is
+    /// removed, reads still in flight for it are dropped and its refresh requests are released.
+    pub fn transition(
+        &self,
+        store: &StateStore,
+        label: &str,
+        folder: Option<&Path>,
+    ) -> (Option<WorkspaceKey>, bool) {
+        let key = folder.map(workspace_key);
+        let _transition = lock(&self.lifecycle);
+        if let (Some(key), Some(folder)) = (&key, folder) {
+            lock(&self.roots)
+                .entry(key.clone())
+                .or_insert_with(|| folder.to_path_buf());
+            store.open_scope(key);
+        }
+        let (left, first) = self.set_interest(label, key.as_ref());
+        if let Some(left) = left {
+            self.close(store, &left);
+        }
+        (key, first)
+    }
+
+    fn close(&self, store: &StateStore, key: &WorkspaceKey) {
+        let removed = store.close_scope(key);
+        lock(&self.roots).remove(key);
+        for domain in WORKSPACE_DOMAINS {
+            self.gate.forget(&(key.clone(), domain));
+        }
+        tracing::debug!(
+            workspace = key.as_str(),
+            removed,
+            "a folder's canonical state was closed"
+        );
+    }
+}
+
 /// The window `label` has (re)opened its folder, or has none: the scopes follow, and the folder's key is returned.
 /// A folder opened by its first window has its domains read in the background (the window resyncs its snapshot and
 /// receives them as deltas).
@@ -116,18 +160,10 @@ pub async fn attach(app: &AppHandle, label: &str) -> Option<WorkspaceKey> {
         .ok()
         .flatten()
         .map(|info| PathBuf::from(info.path));
-    let key = folder.as_deref().map(workspace_key);
     let canonical = canonical(app)?;
-    if let (Some(key), Some(folder)) = (&key, &folder) {
-        lock(&canonical.workspaces.roots)
-            .entry(key.clone())
-            .or_insert_with(|| folder.clone());
-        canonical.store.open_scope(key);
-    }
-    let (left, first) = canonical.workspaces.set_interest(label, key.as_ref());
-    if let Some(left) = left {
-        close(app, &left);
-    }
+    let (key, first) = canonical
+        .workspaces
+        .transition(&canonical.store, label, folder.as_deref());
     if let (Some(key), true) = (&key, first) {
         schedule(app, key, &WORKSPACE_DOMAINS);
     }
@@ -136,29 +172,11 @@ pub async fn attach(app: &AppHandle, label: &str) -> Option<WorkspaceKey> {
 
 /// The window `label` is gone: if it was the last one on its folder, the folder's scope is closed.
 pub fn detach(app: &AppHandle, label: &str) {
-    let Some(canonical) = canonical(app) else {
-        return;
-    };
-    let (left, _) = canonical.workspaces.set_interest(label, None);
-    if let Some(left) = left {
-        close(app, &left);
+    if let Some(canonical) = canonical(app) {
+        canonical
+            .workspaces
+            .transition(&canonical.store, label, None);
     }
-}
-
-fn close(app: &AppHandle, key: &WorkspaceKey) {
-    let Some(canonical) = canonical(app) else {
-        return;
-    };
-    let removed = canonical.store.close_scope(key);
-    lock(&canonical.workspaces.roots).remove(key);
-    for domain in WORKSPACE_DOMAINS {
-        canonical.workspaces.gate.forget(&(key.clone(), domain));
-    }
-    tracing::debug!(
-        workspace = key.as_str(),
-        removed,
-        "a folder's canonical state was closed"
-    );
 }
 
 /// Asks for `domains` of `key` to be read (merged with every other request until the read starts).

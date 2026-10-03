@@ -18,17 +18,10 @@ import { MarkerService } from "./markerService";
 import { OpenEditorsService } from "./openEditorsService";
 import { OutputService, stamped } from "./outputService";
 import { PanelService } from "./panelService";
-import { PhpServerService } from "./phpServerService";
 import { registerPhpCommands } from "./phpCommands";
 import { PortsService } from "./portsService";
 import { registerPreviewCommands } from "./previewCommands";
 import { PreviewEditorService } from "./previewEditorService";
-import { RunConfigurationService } from "./runConfigurationService";
-import { RunCodeService } from "./runCodeService";
-import type { RuntimeStatus } from "./ipc";
-import { RunArgumentsService } from "./runArgumentsService";
-import { describeRuntimeChange, runtimeFingerprint, TerminalRefreshService } from "./terminalRefreshService";
-import { registerRunCommands } from "./runCommands";
 import { RuntimeService } from "./runtimeService";
 import { SearchService } from "./searchService";
 import { SettingsService } from "./settingsService";
@@ -37,55 +30,28 @@ import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
-import { DiagnosticsService } from "./diagnosticsService";
 import { registerLspCommands } from "./lspCommands";
-import { BreakpointService } from "./breakpointService";
-import { CallStackService } from "./callStackService";
-import { DebugConfigurationService } from "./debugConfigurationService";
-import { DebugConsoleService } from "./debugConsoleService";
 import { registerDebugCommands } from "./debugCommands";
-import { launchJsonOpener, watchLaunchFiles, wireNotebooks } from "./workflowWiring";
-import { registerDebugEditorBinding } from "./debugEditorBinding";
-import { parseEvaluate } from "./debugModel";
-import { DebugService } from "./debugService";
-import { VariablesService } from "./variablesService";
-import { WatchService } from "./watchService";
+import { launchJsonOpener, wireNotebooks } from "./workflowWiring";
 import { disableBuiltinLanguageServices, freeReferencesShortcut } from "./monacoBuiltins";
-import { registerIndexSymbolProvider } from "../editor/indexSymbolProvider";
 import { indexSettingsFrom, WorkspaceIndexService } from "./workspaceIndexService";
 import { wireSearch } from "./searchWiring";
 import { wireAi } from "./ai/aiWiring";
 import { followIconTheme } from "../components/iconThemes";
-import { AutoSaveService } from "./autoSaveService";
-import { ProfileService } from "./profiles/profileService";
+import { createWorkbenchAutoSave } from "./autoSaveService";
+import { wireProfiles } from "./profiles/profilesWiring";
 import { wireFormatting } from "./formatting/formattingWiring";
 import { registerMenuFillCommands } from "./menuFillCommands";
-import { wireLanguage } from "./language/languageWiring";
+import { connectEditorLanguages, wireLanguage } from "./language/languageWiring";
 import { registerHelpCommands } from "./helpCommands";
 import { registerShellIntegrationCommands } from "./shellIntegrationCommands";
 import { registerPythonPackagesCommands } from "./pythonPackagesCommands";
 import { offerEnglish } from "./languageOffer";
-import { ToolchainService } from "./toolchains/toolchainService";
-import { ToolInstallService } from "./toolchains/toolInstallService";
 import { CanonicalStateService } from "./state/canonicalStateService";
 import { tauriCanonicalIpc } from "./state/canonicalIpc";
 import { wireLiveSync } from "./sync/liveSyncWiring";
-import { LspService } from "./lspService";
-import { registerLspProviders } from "./lspProviders";
-import { ComposerService } from "./composerService";
 import { FileSyncService } from "./fileSyncService";
-import { GitBlameService } from "./gitBlameService";
-import { GitCloneService } from "./gitCloneService";
 import { registerGitCommands } from "./gitCommands";
-import { GitHistoryService } from "./gitHistoryService";
-import { GitService } from "./gitService";
-import { GitStashService } from "./gitStashService";
-import { SourceControlService } from "./sourceControlService";
-import { ControlPanelService } from "./controlPanelService";
-import { MariaDbService } from "./mariaDbService";
-import { MySqlService } from "./mySqlService";
-import { PhpMyAdminService } from "./phpMyAdminService";
-import { PhpRuntimeService } from "./phpRuntimeService";
 import { registerTerminalCommands } from "./terminalCommands";
 import { registerViewCommands } from "./viewCommands";
 import { registerWorkbenchCommands } from "./workbenchCommands";
@@ -108,6 +74,16 @@ import { wireWorkloads } from "./workloads/workloadsWiring";
 import { wireLanguageTools } from "./languageTools/languageToolsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
 import { wireDeps } from "./deps/depsWiring";
+import { pythonGuiHost } from "./deps/pythonGuiHost";
+import { wireDebug } from "./debugWiring";
+import { wireLsp } from "./lspWiring";
+import { connectWorkbench, registerWindowCommands } from "./workbenchGlue";
+import { registerFileCommands } from "./fileCommands";
+import { wireGit } from "./gitWiring";
+import { wirePhpStack } from "./phpStackWiring";
+import { wireRunCode } from "./runWiring";
+import { wireTerminalRefresh } from "./terminalRefreshWiring";
+import { wireToolchains } from "./toolchains/toolchainsWiring";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
 disableBuiltinLanguageServices();
@@ -176,398 +152,103 @@ const search = new SearchService(
   workspaceIndex,
 );
 
-const php = new PhpServerService(tauriIpcClient, events, output, runtime, panel, () =>
-  settings.number("php.server.defaultPort", 8000),
-);
-const mariaDb = new MariaDbService(tauriIpcClient, events, output, runtime, panel);
-const phpMyAdmin = new PhpMyAdminService(
-  tauriIpcClient,
+const phpStack = wirePhpStack({
+  ipc: tauriIpcClient,
   events,
   output,
   runtime,
   panel,
-  php,
-  mariaDb,
-);
-const composer = new ComposerService(tauriIpcClient, events, output, runtime, panel);
-const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
-/** MySQL: MariaDB + phpMyAdmin as one service in the PHP Server window. */
-const mySql = new MySqlService(tauriIpcClient, events, output);
-const controlPanel = new ControlPanelService(
-  tauriIpcClient,
-  events,
+  defaultPort: () => settings.number("php.server.defaultPort", 8000),
+  closeWindow: () => windowService.close(),
+});
+const git = wireGit({
+  ipc: tauriIpcClient,
   output,
-  php,
-  mySql,
-  () => windowService.close(),
-);
-const gitService = new GitService(tauriIpcClient, output);
-const sourceControl = new SourceControlService(
-  gitService,
   events,
-  (path) => workspace.openPath(path),
-  () => {
-    events.emit("showRuntimeManager", undefined);
-  },
-  (): Promise<unknown> => fileSync.afterGitOperation(),
-);
+  workspace,
+  editorGroups,
+  afterGitOperation: (): Promise<unknown> => fileSync.afterGitOperation(),
+});
 const fileSync = new FileSyncService(tauriIpcClient, events, documents, explorer, {
   workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
   loadedFolders: () => explorer.loadedFolders(),
 });
-// What the Explorer's own operations mean for the rest of the app, applied as soon as the backend answers.
-explorer.setHost({
-  openFile: (path) => workspace.openPath(path),
-  pathMoved: (from, to) => {
-    documents.retargetPath(from, to);
-    void tauriIpcClient.recentFilesRename(from, to).catch(() => undefined);
-  },
-  pathDeleted: (path) => fileSync.deletedByUser(path),
-});
-const gitClone = new GitCloneService(
-  gitService,
-  events,
-  (path) => workspace.openFolder(path),
-  () => sourceControl.runtime(),
-);
-const gitHistory = new GitHistoryService(gitService, events, (hash, file) =>
-  sourceControl.openCommitDiff(hash, file),
-);
-const gitStash = new GitStashService(
-  gitService,
-  events,
-  async (): Promise<void> => {
-    await sourceControl.refresh();
-    await fileSync.afterGitOperation();
-  },
-  () => {
-    const changes = sourceControl.status()?.changes ?? [];
-    const untracked = changes.filter((change) => change.worktree === "untracked").length;
-    return { tracked: changes.length - untracked, untracked };
-  },
-);
-const gitBlame = new GitBlameService(
-  gitService,
-  () => {
-    const tab = editorGroups.activeTab();
-    return tab ? workspace.docPath(tab.docId) : null;
-  },
-  () => sourceControl.repository(),
-);
-events.on("workspaceFolderChanged", () => {
-  gitHistory.reset();
-  gitStash.reset();
-  gitBlame.close();
-});
-const runConfigs = new RunConfigurationService(tauriIpcClient);
 const secondarySideBar = new SecondarySideBarService(tauriIpcClient);
-const runCode = new RunCodeService(
-  tauriIpcClient,
+const {
+  runCode,
+  configs: runConfigs,
+  runArguments,
+} = wireRunCode({
+  ipc: tauriIpcClient,
   events,
+  commands,
   output,
   workspace,
-  runConfigs,
+  documents,
   terminal,
   panel,
-  (channel) => void secondarySideBar.showOutput(channel),
-  {
-    saveBeforeRun: () => settings.bool("run.saveBeforeRun", true),
-    clearOutputBeforeRun: () => settings.bool("run.clearOutputBeforeRun", true),
-  },
+  settings,
   markers,
-);
-// A shell keeps the PATH it started with: when the active runtimes change (Node.js installed, a version switched or
-// removed), idle terminals are started again in their folder so `node`/`npm`/`npx` work at once; busy ones wait.
-const terminalRefresh = new TerminalRefreshService({
+  showBeside: (channel) => void secondarySideBar.showOutput(channel),
+  confirm: (request) => extensions.prompts.confirm(request),
+  inputBox: (request) => extensions.prompts.inputBox(request),
+});
+const terminalRefresh = wireTerminalRefresh({
+  ipc: tauriIpcClient,
+  events,
   terminal,
-  isBusy: (id) => tauriIpcClient.terminalBusy(id),
-  note: (change, folder) => t("terminal.refresh.note", { change, folder }),
-  waiting: (titles) => {
-    events.emit("appNotice", { message: t("terminal.refresh.waiting", { titles: titles.join(", ") }) });
+  runtime,
+  runtimesChanged: (fingerprint) => {
+    runCode.noteRuntimesChanged(fingerprint);
   },
-});
-let refreshedRuntimes: RuntimeStatus[] | null = null;
-runtime.subscribe(() => {
-  const { loaded, runtimes } = runtime.getState();
-  if (!loaded) return;
-  if (refreshedRuntimes === null) {
-    terminalRefresh.start(runtimeFingerprint(runtimes));
-  } else if (runtimeFingerprint(runtimes) !== runtimeFingerprint(refreshedRuntimes)) {
-    const change = describeRuntimeChange(refreshedRuntimes, runtimes, (name) =>
-      t("terminal.refresh.removed", { name }),
-    );
-    void terminalRefresh.runtimesChanged(runtimeFingerprint(runtimes), change);
-  }
-  refreshedRuntimes = runtimes;
-});
-// An interpreter appearing or going (install / delete / switch) changes what can run.
-runtime.subscribe(() => {
-  runCode.noteRuntimesChanged(
-    runtime
-      .getState()
-      .runtimes.map(
-        (r) =>
-          `${r.id}:${r.activeVersion ?? "-"}:${String(r.installed.filter((v) => v.healthy).length)}`,
-      )
-      .join(","),
-  );
 });
 
-const lsp = new LspService(tauriIpcClient, events, documents, {
+const { lsp, start: startLanguageTools } = wireLsp({
+  ipc: tauriIpcClient,
+  events,
+  documents,
+  workspace,
+  settings,
   log: log("LSP"),
-  activeDocId: () => {
-    const id = workspace.getState().activeId;
-    return id !== null && documents.has(id) ? id : null;
-  },
-  enabled: () => settings.bool("lsp.enabled", true),
+  confirm: (request) => extensions.prompts.confirm(request),
 });
-const diagnostics = new DiagnosticsService(events, documents);
 const welcome = new WelcomeService(tauriIpcClient, settings);
 
-// Debugging: breakpoints, the paused program's stack/variables/watches, the console and the session.
-const activeFile = (): { path: string; docId: string } | null => {
-  const id = workspace.getState().activeId;
-  if (id === null || !documents.has(id)) return null;
-  const path = documents.snapshot(id).path;
-  return path === null ? null : { path, docId: id };
-};
-const breakpoints = new BreakpointService(tauriIpcClient, (): boolean => debug.isDebugging());
-const debugConfigs = new DebugConfigurationService(tauriIpcClient);
-watchLaunchFiles(events, debugConfigs, () => activeFile()?.path ?? null);
-const callStack = new CallStackService(tauriIpcClient, events, (path, line, column) => {
-  void workspace.openPathAt(path, { line, column, length: 0 });
-});
-const variables = new VariablesService(tauriIpcClient, events);
-const watches = new WatchService(tauriIpcClient, events);
-const debugConsole: DebugConsoleService = new DebugConsoleService(
-  async (expression) =>
-    parseEvaluate(await debug.evaluate(expression, callStack.selected()?.id ?? null)),
-  (): string | null => debug.evaluateUnavailable(),
-);
-const debug: DebugService = new DebugService(
-  tauriIpcClient,
+const debugging = wireDebug({
+  ipc: tauriIpcClient,
   events,
-  breakpoints,
-  debugConfigs,
-  debugConsole,
-  {
-    activeFile,
-    saveIfDirty: async (id) => {
-      if (!documents.isDirty(id)) return true;
-      try {
-        await documents.save(id);
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
-    showConsole: () => {
-      void layout.showView("debug");
-      if (settings.bool("debug.openConsoleOnStart", false)) void panel.show("debugConsole");
-    },
-    stopOnEntry: () => settings.bool("debug.stopOnEntry", false),
-    log: log("Debug"),
-    saveAll: () => workspace.saveAll(),
-  },
-);
-
-/** Starts debugging support once the app is up: saved breakpoints, editor gutter, live state. Nothing runs by itself. */
-async function startDebugTools(): Promise<void> {
-  callStack.initialize();
-  variables.initialize();
-  registerDebugEditorBinding({ documents, breakpoints, callStack });
-  await Promise.all([
-    breakpoints.initialize(),
-    watches.initialize(),
-    debug.initialize(),
-    debugConfigs.refresh(activeFile()?.path ?? null),
-  ]);
-}
-
-/**
- * Starts language support once the app is up: diagnostics become editor markers and
- * the providers (hover, completion, definition, ...) ask the language servers.
- */
-async function startLanguageTools(): Promise<void> {
-  diagnostics.initialize();
-  registerLspProviders({ ipc: tauriIpcClient, documents, workspace, lsp });
-  registerIndexSymbolProvider({
-    textSymbols: (language, text) => tauriIpcClient.searchSymbolsOfText(language, text),
-    languageServerHandles: (uri) => {
-      const id = documents.idForModelUri(uri);
-      return id !== undefined && lsp.available("documentSymbol", id).enabled;
-    },
-  });
-  await lsp.initialize();
-}
-
-// Problems are labelled with the document each marker belongs to; search results reveal in the editor.
-markers.setResourceResolver((uri) => {
-  const id = documents.idForModelUri(uri);
-  if (id === undefined) return null;
-  const snapshot = documents.snapshot(id);
-  return { title: snapshot.title, path: snapshot.path };
-});
-workspace.setRevealer((uri, target) => {
-  editor.reveal({ uri, ...target });
+  workspace,
+  documents,
+  layout,
+  panel,
+  settings,
+  log: log("Debug"),
 });
 
-// The app's own log: caught errors and workspace changes.
-const appLog = log("OpenMind Studio");
-appLog("OpenMind Studio started.");
-events.on("appError", ({ message }) => {
-  appLog(`Error: ${message}`);
-});
-events.on("workspaceFolderChanged", ({ workspace: opened }) => {
-  appLog(opened ? `Opened folder ${opened.path}` : "Closed the folder.");
-});
-
-// Keep the explorer tree in sync with whichever folder is currently open.
-workspace.subscribeWorkspace(() => {
-  const info = workspace.getActiveWorkspace();
-  if (info) {
-    void explorer.setRoot(info.path, info.name);
-  } else {
-    explorer.clear();
-  }
+connectWorkbench({
+  ipc: tauriIpcClient,
+  events,
+  workspace,
+  documents,
+  explorer,
+  fileSync,
+  editor,
+  markers,
+  appLog: log("OpenMind Studio"),
 });
 
-const hasActiveTab = () => workspace.getState().activeId !== null;
-
-/** A file preview is read-only: Save and Save As only apply to a text tab (they never pretend to save a preview). */
-const activeTabIsText = () => {
-  const state = workspace.getState();
-  const tab = state.tabs.find((candidate) => candidate.id === state.activeId);
-  return tab !== undefined && tab.kind !== "filePreview";
-};
-const notTextReason = () =>
-  hasActiveTab() && !activeTabIsText()
-    ? t("editor.previewNothingToSave")
-    : undefined;
-
-commands.register("file.new", () => {
-  workspace.createUntitled();
-});
-
-commands.register("file.open", async () => {
-  const path = await tauriIpcClient.openDocumentDialog();
-  if (path) {
-    await workspace.openPath(path);
-  }
-});
-
-commands.register("file.openFolder", async () => {
-  const path = await tauriIpcClient.openFolderDialog();
-  if (path) {
-    await workspace.openFolder(path);
-  }
-});
-
-commands.register(
-  "file.closeFolder",
-  async () => {
-    await workspace.closeFolder();
-  },
-  { enabled: () => workspace.getActiveWorkspace() !== null },
-);
-
-commands.register(
-  "file.save",
-  async () => {
-    const { activeId } = workspace.getState();
-    if (activeId) {
-      await workspace.save(activeId);
-    }
-  },
-  { enabled: activeTabIsText, disabledReason: notTextReason },
-);
-
-commands.register(
-  "file.saveAs",
-  async () => {
-    const { activeId } = workspace.getState();
-    if (activeId) {
-      await workspace.saveAs(activeId);
-    }
-  },
-  { enabled: activeTabIsText, disabledReason: notTextReason },
-);
-
-commands.register(
-  "file.closeActiveTab",
-  async () => {
-    const { activeId } = workspace.getState();
-    if (activeId) {
-      await workspace.close(activeId);
-    }
-  },
-  { enabled: hasActiveTab },
-);
-
-commands.register("view.toggleTheme", async () => {
-  // Toggles between the dark and light themes (from High Contrast it goes to dark).
-  await theme.setMode(theme.getTheme() === "dark" ? "light" : "dark");
-});
-
-// As in VS Code: the Explorer asks for the name in the tree; nothing is created until one is given.
-commands.register("explorer.newFile", async () => {
-  if (!explorer.getSnapshot().rootPath) return;
-  await layout.showView("explorer");
-  await explorer.beginCreate("file");
-});
-
-commands.register("explorer.newFolder", async () => {
-  if (!explorer.getSnapshot().rootPath) return;
-  await layout.showView("explorer");
-  await explorer.beginCreate("folder");
-});
-
-commands.register("explorer.refresh", async () => {
-  await explorer.refresh();
-});
-
-commands.register("explorer.collapseAll", async () => {
-  await explorer.collapseAll();
-});
-
-commands.register("explorer.revealActiveFile", async () => {
-  const { activeId } = workspace.getState();
-  if (!activeId) {
-    return;
-  }
-  const path = documents.snapshot(activeId).path;
-  if (path) {
-    await explorer.revealPath(path);
-  }
+registerFileCommands({
+  commands,
+  ipc: tauriIpcClient,
+  workspace,
+  documents,
+  explorer,
+  layout,
+  theme,
 });
 
 registerTerminalCommands(commands, terminal);
 registerViewCommands({ commands, events, layout, panel, output, search });
-// Command-line arguments per file, remembered across restarts; every run of that file (Output or terminal) gets them.
-const runArguments = new RunArgumentsService(tauriIpcClient);
-runCode.setArgumentsSource((path) => runArguments.get(path));
-runArguments.subscribe(() => {
-  void runCode.refresh();
-});
-registerRunCommands({
-  commands,
-  events,
-  runCode,
-  configs: runConfigs,
-  arguments: {
-    store: runArguments,
-    ask: (file, current) =>
-      extensions.prompts.inputBox({
-        extension: t("run.interactive.source"),
-        title: t("run.arguments.title"),
-        prompt: t("run.arguments.prompt", { file: file.split(/[/\\]/).pop() ?? file }),
-        placeHolder: t("run.arguments.placeholder"),
-        value: current,
-        password: false,
-      }),
-  },
-});
 registerEditorCommands({
   commands,
   workspace,
@@ -601,11 +282,11 @@ registerRuntimeCommands(commands, events);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerDebugCommands({
   commands,
-  debug,
-  breakpoints,
+  debug: debugging.debug,
+  breakpoints: debugging.breakpoints,
   editor,
   events,
-  activeFile,
+  activeFile: debugging.activeFile,
   showDebugView: () => {
     void layout.showView("debug");
   },
@@ -617,30 +298,22 @@ registerDebugCommands({
     events,
   }),
 });
-registerPhpCommands(commands, php, tauriIpcClient);
-registerGitCommands(commands, layout, gitClone, gitBlame);
-commands.register("help.welcome", () => {
-  welcome.open();
-});
+registerPhpCommands(commands, phpStack.php, tauriIpcClient);
+registerGitCommands(commands, layout, git.gitClone, git.gitBlame);
 registerHelpCommands({
   commands,
   events,
   ipc: tauriIpcClient,
   openFile: (path) => workspace.openPath(path),
 });
-commands.register("workbench.newWindow", async () => {
-  await tauriIpcClient.windowNew();
-});
 const editorWindows = new EditorWindowService(tauriIpcClient, workspace, events);
-commands.register(
-  "workbench.moveEditorToNewWindow",
-  async () => {
-    await editorWindows.moveActiveToNewWindow();
-  },
-  { enabled: hasActiveTab },
-);
-commands.register("view.toggleSecondarySidebar", () => secondarySideBar.toggle(), {
-  checked: () => secondarySideBar.getState().visible,
+registerWindowCommands({
+  commands,
+  ipc: tauriIpcClient,
+  workspace,
+  welcome,
+  editorWindows,
+  secondarySideBar,
 });
 
 registerWorkbenchCommands({
@@ -672,7 +345,7 @@ const {
   editor,
   search,
   lsp,
-  php,
+  php: phpStack.php,
   openFile: (path) => workspace.openPath(path),
   extraKeybindings: () => contributionsRef?.keybindings() ?? [],
   extraCommands: () => contributionsRef?.commandInfos() ?? [],
@@ -752,24 +425,7 @@ const depsWiring = wireDeps({
   },
   activeFilePath: () => runCode.activeEditor()?.path ?? null,
   workspaceRoot: () => workspace.getActiveWorkspace()?.path ?? null,
-  pythonGui: {
-    addable: () => {
-      const found = runtime.addableAddon("python", "tcltk");
-      return found === null
-        ? null
-        : {
-            version: found.version,
-            label: found.status.label,
-            downloadBytes: found.status.downloadBytes,
-            license: found.status.license?.name ?? null,
-          };
-    },
-    add: async (version) =>
-      (await runtime.installAddon("python", version, "tcltk"))
-        ? null
-        : (runtime.getState().errors.python ?? t("runtimes.addon.busy", { name: "Python" })),
-    refresh: () => runtime.refresh(),
-  },
+  pythonGui: pythonGuiHost(runtime),
 });
 const deps = depsWiring.helper;
 // The Dependencies view (Milestone 22.6): same runner as the missing-package card.
@@ -778,40 +434,6 @@ const dependencies = new DependenciesService({
   events,
   settingsGet: (key) => tauriIpcClient.settingsGet(key),
   settingsSet: (key, value) => tauriIpcClient.settingsSet(key, value),
-});
-// Run Code's Output can't type into a program: a file that reads the keyboard is offered the terminal.
-runCode.setInteractiveHost({
-  text: (docId) => {
-    try {
-      return documents.contentOf(docId);
-    } catch {
-      return null;
-    }
-  },
-  choose: async (file) => {
-    const terminalLabel = t("run.interactive.terminal");
-    const answer = await extensions.prompts.confirm({
-      extension: t("run.interactive.source"),
-      title: t("run.interactive.title"),
-      details: [{ label: t("run.interactive.file"), value: file }],
-      notes: [t("run.interactive.note")],
-      buttons: [terminalLabel, t("run.interactive.anyway")],
-    });
-    if (answer === null) return null;
-    return answer === terminalLabel ? "terminal" : "output";
-  },
-});
-// Removing a downloaded language server always asks first, naming what is deleted.
-lsp.setRemoveConfirmation(async (server) => {
-  const button = t("lsp.removeConfirm.button");
-  const answer = await extensions.prompts.confirm({
-    extension: t("runtimes.tab.tools"),
-    title: t("lsp.removeConfirm.title", { name: server.name }),
-    details: [{ label: t("lsp.removeConfirm.removes"), value: server.contents }],
-    notes: [t("lsp.removeConfirm.note")],
-    buttons: [button],
-  });
-  return answer === button;
 });
 const ai = wireAi({
   ipc: tauriIpcClient,
@@ -883,47 +505,16 @@ const workspaceTasks = wireTasks({
   prompts: extensions.prompts,
   markers,
   extensionTasks: extensionApis.tasks,
-  activeFile: () => activeFile()?.path ?? null,
+  activeFile: () => debugging.activeFile()?.path ?? null,
   workspaceFolder: () => workspace.getActiveWorkspace()?.path ?? null,
   openPath: (path) => workspace.openPath(path),
   log: log("Tasks"),
 });
-editor.setFormatActions([
-  { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
-  { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: true },
-]);
 /** The Explorer's icons follow `workbench.iconTheme` (built-in, or an enabled extension's icon theme). */
 followIconTheme(settings);
-commands.register("preferences.fileIconTheme", () => {
-  preferencesPage.open("settings", { query: "Icon Theme" });
-});
-/** Profiles: named sets of settings, kept in settings/profiles next to the app. */
-const profiles = new ProfileService(tauriIpcClient, events, () => settings.reload());
-commands.register("profiles.manage", () => profiles.openWindow());
-commands.register("profiles.export", async () => {
-  await profiles.exportProfile();
-});
-commands.register("profiles.import", async () => {
-  await profiles.importProfile();
-});
+const profiles = wireProfiles({ ipc: tauriIpcClient, events, commands, settings });
 /** Files > Auto Save (afterDelay / onFocusChange / onWindowChange). Only files that already have a path are saved. */
-const autoSave = new AutoSaveService({
-  events,
-  settings,
-  documents,
-  save: (id, format) => workspace.save(id, { format }),
-  activeDocId: () => {
-    const id = workspace.getState().activeId;
-    return id !== null && documents.has(id) ? id : null;
-  },
-  onActiveChanged: (handler) => workspace.subscribe(handler),
-  onWindowBlur: (handler) => {
-    window.addEventListener("blur", handler);
-    return () => {
-      window.removeEventListener("blur", handler);
-    };
-  },
-});
+const autoSave = createWorkbenchAutoSave({ events, settings, documents, workspace });
 registerMenuFillCommands({
   commands,
   events,
@@ -939,34 +530,16 @@ registerMenuFillCommands({
     run(id);
   },
 });
-/** The bundled app-local tools: choosing another active version makes the language support look again. */
-const toolchains = new ToolchainService(tauriIpcClient);
-/** Language Tools > Install: runtimes through the Runtime Manager, servers through Language Tools, tool packages into tools/. */
-const toolInstall = new ToolInstallService({
+/** Language Tools: the bundled app-local tools and their install routes. */
+const { toolchains, toolInstall } = wireToolchains({
+  ipc: tauriIpcClient,
   events,
   runtime,
   lsp,
-  installPackage: async (id) => {
-    await tauriIpcClient.toolchainsInstall(id);
-  },
-  removePackage: async (id) => {
-    await tauriIpcClient.toolchainsRemove(id);
-  },
-  refreshTools: async () => {
-    await toolchains.refresh();
+  refreshLanguage: () => {
     void language.support.refresh();
   },
-  acceptLicence: async ({ tool, name, url }) =>
-    (await extensions.prompts.confirm({
-      extension: "Language Tools",
-      title: `Accept the ${name} to install ${tool}?`,
-      details: [
-        { label: "Licence", value: name },
-        { label: "Terms", value: url },
-      ],
-      notes: [`${tool} is installed only after you accept its vendor's licence. Read the terms at the address above.`],
-      buttons: ["Accept and Install"],
-    })) === "Accept and Install",
+  confirm: (request) => extensions.prompts.confirm(request),
 });
 wireLiveSync({
   canonical,
@@ -974,15 +547,15 @@ wireLiveSync({
   toolchains,
   lsp,
   extensions: extensions.registry,
-  php,
-  mySql,
-  mariaDb,
-  phpMyAdmin,
+  php: phpStack.php,
+  mySql: phpStack.mySql,
+  mariaDb: phpStack.mariaDb,
+  phpMyAdmin: phpStack.phpMyAdmin,
   ports,
-  sourceControl,
+  sourceControl: git.sourceControl,
   dependencies,
   language: language.support,
-  debug,
+  debug: debugging.debug,
   events,
   workloads,
   formatterStatus: () => formatting.refreshStatus(),
@@ -995,22 +568,11 @@ wireLiveSync({
   toolsOnPath: (change) => terminalRefresh.environmentChanged(change),
   removedText: (name) => t("terminal.refresh.removed", { name }),
 });
-// A language an extension adds (installed, enabled) colours the open files that were Plain Text at once.
-extensions.contributions.subscribe(() => {
-  documents.refreshLanguages();
+const startLanguage = connectEditorLanguages({
+  documents,
+  extensions: extensions.contributions,
+  support: language.support,
 });
-// Extensions' languages win; then the registry's grammar for languages the editor's own table doesn't know (Go, Rust ...).
-documents.setLanguageResolver(
-  (path) =>
-    extensions.contributions.languageForPath(path) ?? language.support.editorLanguageFor(path),
-);
-
-/** Loads the language table (static data) and looks at the open folder: file names and manifests only. */
-async function startLanguage(): Promise<void> {
-  await language.support.initialize();
-  documents.refreshLanguages();
-  await language.support.refresh();
-}
 
 /** Writes the start-up timings (phase names and milliseconds only) to the app log; a failure is not worth a message. */
 function reportStartup(phases: [string, number][], usableMs: number): void {
@@ -1071,33 +633,15 @@ export const container = {
   runArguments,
   runConfigs,
   ports,
-  php,
-  phpRuntime,
-  mariaDb,
-  phpMyAdmin,
-  mySql,
-  composer,
-  controlPanel,
-  git: gitService,
-  sourceControl,
+  ...phpStack,
+  ...git,
   fileSync,
   lsp,
   welcome,
   secondarySideBar,
   editorWindows,
   startLanguageTools,
-  breakpoints,
-  debug,
-  debugConfigs,
-  debugConsole,
-  callStack,
-  variables,
-  watches,
-  startDebugTools,
-  gitClone,
-  gitHistory,
-  gitStash,
-  gitBlame,
+  ...debugging,
   search,
   editorGroups,
   openEditors,

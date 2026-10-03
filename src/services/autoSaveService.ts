@@ -135,3 +135,34 @@ export class AutoSaveService {
     }
   }
 }
+
+/** The workbench's Auto Save: the documents of `workspace`'s tabs, the browser window's blur. */
+export function createWorkbenchAutoSave(deps: {
+  events: EventBus<AppEvents>;
+  settings: AutoSaveDeps["settings"];
+  documents: AutoSaveDeps["documents"] & { has: (id: string) => boolean };
+  workspace: {
+    getState: () => { activeId: string | null };
+    save: (id: string, options: { format: boolean }) => Promise<void>;
+    subscribe: (handler: () => void) => () => void;
+  };
+}): AutoSaveService {
+  const { documents, workspace } = deps;
+  return new AutoSaveService({
+    events: deps.events,
+    settings: deps.settings,
+    documents,
+    save: (id, format) => workspace.save(id, { format }),
+    activeDocId: () => {
+      const id = workspace.getState().activeId;
+      return id !== null && documents.has(id) ? id : null;
+    },
+    onActiveChanged: (handler) => workspace.subscribe(handler),
+    onWindowBlur: (handler) => {
+      window.addEventListener("blur", handler);
+      return () => {
+        window.removeEventListener("blur", handler);
+      };
+    },
+  });
+}

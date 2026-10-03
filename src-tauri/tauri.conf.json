@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "OpenMind Studio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "identifier": "com.openmindstudio.app",
   "mainBinaryName": "OpenMindStudio",
   "build": {
@@ -84,7 +84,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzQTA2REZDQThCQzAzQUQKUldTdEE3eW8vRzJnODVobVlsallSb0Z5ek5xVzJ1cllpMFZoM0JLRG41OHVXYkhZSm5QYVo0K0QK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdBNTkwQzRFNzE0MkYyQ0YKUldUUDhrSnhUZ3haZXNDZ09MU2dHVGlwTTI5U2dyZEFNSFdKUnpaKyt0Z1ZTZWVOampCZFhpOXQK",
       "endpoints": [
         "https://github.com/smshagor-dev/OpenMind-Studio/releases/latest/download/latest.json"
       ],

@@ -38,9 +38,21 @@ pub async fn read(app: &AppHandle, domain: Domain) -> Option<Value> {
             )?;
             value(domain, &runtimes)
         }
-        Domain::Tools => value(domain, &crate::commands::toolchains::packs(&state).await),
+        Domain::Tools => {
+            let packs = kept(
+                domain,
+                crate::commands::toolchains::packs_checked(&state).await,
+            )?;
+            value(domain, &packs)
+        }
         Domain::LanguageServers => value(domain, &crate::commands::lsp::snapshot(&state).await),
-        Domain::Extensions => value(domain, &crate::commands::extensions::snapshot(&state).await),
+        Domain::Extensions => {
+            let extensions = kept(
+                domain,
+                crate::commands::extensions::snapshot_checked(&state).await,
+            )?;
+            value(domain, &extensions)
+        }
         Domain::Servers => value(domain, &super::servers::read(&state).await),
         // A marker, changed by `StateStore::bump_packages`; there is nothing to read.
         Domain::Packages => None,

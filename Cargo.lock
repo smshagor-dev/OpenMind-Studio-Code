@@ -2975,7 +2975,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "openmind-ai"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-network",
  "rusqlite",
@@ -2990,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-broker"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "getrandom 0.3.4",
  "openmind-network",
@@ -3007,7 +3007,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "tempfile",
  "thiserror 2.0.20",
@@ -3017,7 +3017,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-dap"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-lsp",
@@ -3030,7 +3030,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-db"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "sha2 0.11.0",
@@ -3043,7 +3043,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-deps"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-language",
  "openmind-network",
@@ -3056,7 +3056,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-extensions"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-lsp",
  "openmind-settings",
@@ -3070,7 +3070,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-file-watch"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "notify",
  "serde",
@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-format"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-language",
@@ -3094,7 +3094,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-fs"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "dunce",
  "encoding_rs",
@@ -3107,7 +3107,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-git"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-process",
  "serde",
@@ -3118,7 +3118,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-language"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3129,7 +3129,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-lsp"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-process",
@@ -3144,7 +3144,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-network"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3160,7 +3160,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-notebook"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-process",
@@ -3174,7 +3174,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-preview"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-fs",
  "roxmltree",
@@ -3186,7 +3186,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-process"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "filedescriptor",
  "winapi",
@@ -3194,7 +3194,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-runner"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-fs",
@@ -3208,7 +3208,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-runtime-manager"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "cab",
  "flate2",
@@ -3229,7 +3229,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-search"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "globset",
  "ignore",
@@ -3244,7 +3244,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-settings"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-db",
@@ -3257,7 +3257,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-studio"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "base64 0.23.1",
  "getrandom 0.3.4",
@@ -3304,7 +3304,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-tasks"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-core",
  "regex",
@@ -3316,7 +3316,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-terminal"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "openmind-core",
@@ -3331,7 +3331,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-toolchains"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -3342,7 +3342,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-workloads"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-runtime-manager",
  "serde",
@@ -3350,7 +3350,7 @@ dependencies = [
 
 [[package]]
 name = "openmind-workspace"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "openmind-db",
  "serde",

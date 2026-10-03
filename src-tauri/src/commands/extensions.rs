@@ -266,21 +266,23 @@ async fn node_info(state: &AppState) -> NodeInfo {
     }
 }
 
-/// What `ext_list` returns (also the canonical state's extension domain).
-pub(crate) async fn snapshot(state: &AppState) -> ExtensionsSnapshot {
+/// The canonical state's extension domain, or why the extension folders can't be listed right now (the last known
+/// list stays then: a folder that is briefly unreadable must not look like "no extensions installed").
+pub(crate) async fn snapshot_checked(state: &AppState) -> Result<ExtensionsSnapshot, String> {
+    let listing = state.extensions.store.try_list()?;
     let paths = state.extensions.store.paths();
     let node = node_info(state).await;
     let activity = lock(&state.extensions.activity).clone();
     let host = lock(&state.extensions.status).clone();
-    ExtensionsSnapshot {
-        listing: state.extensions.store.list(),
+    Ok(ExtensionsSnapshot {
+        listing,
         activity,
         host,
         node,
         root: paths.root.to_string_lossy().into_owned(),
         logs_dir: paths.logs.to_string_lossy().into_owned(),
         host_log: paths.host_log.to_string_lossy().into_owned(),
-    }
+    })
 }
 
 // ---- install / enable / disable / uninstall ------------------------------------------------------------------------

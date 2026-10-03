@@ -86,13 +86,14 @@ pub fn npm_args(npm_cli: &Path) -> Vec<String> {
     ]
 }
 
-/// OpenMind's own pip settings (the download gateway's index, a proxy, offline wheels) and the option each becomes.
+/// OpenMind's own pip settings (the download gateway's index, offline wheels) and the option each becomes. A proxy is
+/// never one of them: pip reaches the network through the download gateway's index, and a proxy (with its password)
+/// must never appear on a command line other processes can read (`crates/network/tests/policy.rs`).
 const PIP_SETTINGS: &[(&str, &str)] = &[
     ("PIP_INDEX_URL", "--index-url"),
     ("PIP_EXTRA_INDEX_URL", "--extra-index-url"),
     ("PIP_TRUSTED_HOST", "--trusted-host"),
     ("PIP_FIND_LINKS", "--find-links"),
-    ("PIP_PROXY", "--proxy"),
     ("PIP_CERT", "--cert"),
 ];
 

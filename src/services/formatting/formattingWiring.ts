@@ -186,6 +186,11 @@ export function wireFormatting(deps: FormattingWiringDeps): { service: Formattin
     refresh,
   );
   deps.documents.setBeforeSave((id) => service.beforeSave(id));
+  // Format Document and Format Document With... in the F1 palette and the editor's right-click menu.
+  deps.editor.setFormatActions([
+    { command: "edit.formatDocument", label: "Format Document", inContextMenu: true },
+    { command: "edit.formatDocumentWith", label: "Format Document With...", inContextMenu: true },
+  ]);
   return { service };
 }
 

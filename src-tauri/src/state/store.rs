@@ -151,6 +151,15 @@ impl StateStore {
     pub fn close_scope(&self, scope: &WorkspaceKey) -> usize {
         let mut inner = self.lock();
         inner.closed.insert(scope.clone());
+        // Every read issued so far for this folder is now stale, even if the folder is opened again before it ends:
+        // a read from before the close must not bring the old state back into the reopened scope.
+        let issued: Vec<(Slot, u64)> = inner
+            .issued
+            .iter()
+            .filter(|(slot, _)| slot.scope.as_ref() == Some(scope))
+            .map(|(slot, seq)| (slot.clone(), *seq + 1))
+            .collect();
+        inner.applied.extend(issued);
         let gone: Vec<Slot> = inner
             .slots
             .keys()
