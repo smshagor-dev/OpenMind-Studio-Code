@@ -13,6 +13,8 @@ export interface AppEvents extends Record<string, unknown> {
   documentSaved: { id: string; path: string };
   /** A document now exists (its text is loaded and it can be edited). */
   documentOpened: { id: string };
+  /** An open document's file now lives at `to` (Save As, or a rename/move from the Explorer or on disk). */
+  documentPathChanged: { id: string; from: string | null; to: string };
   /** A document is about to go away; `path` is where its file was, if it had one. */
   documentClosed: { id: string; path: string | null };
   /** A language server published diagnostics for a file. */
@@ -50,8 +52,6 @@ export interface AppEvents extends Record<string, unknown> {
   appError: { message: string };
   /** UI-only requests raised by commands (menus/keybindings) that a component must fulfil. */
   showAbout: undefined;
-  /** New File / New Folder from a menu or the palette: the Explorer shows a name box in the tree. */
-  explorerCreate: { kind: "file" | "folder" };
   focusExplorer: undefined;
   /** Focus the Search view's input (Find in Files). */
   focusSearch: undefined;

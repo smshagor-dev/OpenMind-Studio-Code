@@ -2,13 +2,14 @@
 
 use openmind_extensions::{HostLog, InstalledExtension};
 use serde_json::json;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use crate::app_state::AppState;
 use crate::commands::extensions::{lock, register_with_host, ACTIVATE_TIMEOUT};
 
+/// The extension list changed: the canonical extensions domain is read again (every window follows it).
 fn changed(app: &AppHandle) {
-    let _ = app.emit("ext:changed", serde_json::Value::Null);
+    crate::state::refresh_soon(app, &[crate::state::Domain::Extensions]);
 }
 
 /// Asks the host to deactivate an extension (best effort: a host that is gone has nothing to deactivate).
@@ -47,6 +48,7 @@ pub async fn ext_set_enabled(
         register_with_host(&state, &extension).await;
     }
     changed(&app);
+    crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
     Ok(extension)
 }
 
@@ -88,6 +90,7 @@ pub async fn ext_uninstall(
         tracing::warn!(%err, "couldn't remove an uninstalled extension's secrets");
     }
     changed(&app);
+    crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
     Ok(())
 }
 

@@ -1,3 +1,5 @@
+import type { ServersState } from "./state/canonicalIpc";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, RunEvent, ServiceInfo } from "./ipc";
@@ -5,7 +7,6 @@ import type { OutputService } from "./outputService";
 import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
 import { validatePort } from "./phpServerService";
-import type { PortsService } from "./portsService";
 import { connectionString, envBlock } from "./phpConfigModel";
 import type { Availability, RuntimeService } from "./runtimeService";
 
@@ -90,9 +91,9 @@ export function startDatabaseAvailability(input: DatabaseInput): Availability {
 /**
  * The Database section's brain: portable MariaDB as a normal child process
  * (no Windows service) on 127.0.0.1 — initialize, start, stop, restart, the
- * generated root password (shown or copied only on request) and its log. The
- * backend owns the truth (both windows read it and re-read on `mariadb:changed`),
- * and nothing ever starts on launch.
+ * generated root password (shown or copied only on request) and its log. Whether
+ * it runs comes from the canonical servers state (the same in every window); its
+ * configuration details are read on demand. Nothing ever starts on launch.
  */
 export class MariaDbService {
   private state: MariaDbState = INITIAL;
@@ -104,7 +105,6 @@ export class MariaDbService {
     private readonly events: EventBus<AppEvents>,
     private readonly output: OutputService,
     private readonly runtime: RuntimeService,
-    private readonly ports: PortsService,
     private readonly panel: PanelService,
   ) {}
 
@@ -127,14 +127,11 @@ export class MariaDbService {
         await this.ipc.onMariadbEvent((event) => {
           this.handleEvent(event);
         }),
-        await this.ipc.onMariadbChanged(() => {
-          void this.refresh();
-        }),
       );
     } catch (error) {
       this.events.emit("appError", { message: `MariaDB output unavailable: ${String(error)}` });
     }
-    await this.refresh();
+    // The details are read when the canonical servers state first arrives (`useCanonical`).
   }
 
   dispose(): void {
@@ -242,30 +239,39 @@ export class MariaDbService {
     if (port === this.state.port) this.update({ portFree: free });
   }
 
-  /** Adopts the backend's view: initialized?, running?, paths. */
+  /**
+   * Follows the canonical servers state: whether MariaDB runs (PID, port, ready) is the same in every window. The
+   * configuration details (data, log and config paths, the password) are asked for again only when its life cycle
+   * changed — initialized, started, ready, stopped.
+   */
+  useCanonical(feed: CanonicalFeed<ServersState>): () => void {
+    let lifecycle: string | null = null;
+    const apply = (servers: ServersState | undefined) => {
+      if (servers === undefined) return;
+      const running = servers.mysql.mariadb;
+      this.update({ server: running, initialized: servers.mysql.initialized });
+      const next = `${String(servers.mysql.initialized)}|${running?.run.runId ?? "-"}|${String(running?.ready ?? false)}`;
+      if (next === lifecycle) return;
+      lifecycle = next;
+      void this.refresh();
+    };
+    const off = feed.subscribe(apply);
+    apply(feed.current());
+    return off;
+  }
+
+  /** The configuration details (an on-demand query): initialized?, password?, paths. */
   async refresh(): Promise<void> {
     const status = await this.ipc.mariadbStatus().catch(() => null);
     if (!status) return;
-    const previous = this.state.server;
     this.update({
       initialized: status.initialized,
       hasPassword: status.hasPassword,
       dataDir: status.dataDir,
       logDir: status.logDir,
       configFile: status.configFile,
-      server: status.running,
     });
-    if (status.running !== null) {
-      this.ports.register({
-        port: status.running.port,
-        label: status.running.ready ? "MariaDB" : "MariaDB (starting)",
-        url: null,
-        source: MARIADB_PORT_SOURCE,
-      });
-    } else if (previous !== null) {
-      this.ports.unregisterSource(MARIADB_PORT_SOURCE);
-    }
-    if (status.running === null) await this.refreshPort();
+    if (this.state.server === null) await this.refreshPort();
   }
 
   async initializeDatabase(): Promise<boolean> {
@@ -293,12 +299,6 @@ export class MariaDbService {
     try {
       const info = await this.ipc.mariadbStart(this.state.port);
       this.update({ server: info, portFree: null });
-      this.ports.register({
-        port: info.port,
-        label: "MariaDB (starting)",
-        url: null,
-        source: MARIADB_PORT_SOURCE,
-      });
       return true;
     } catch (error) {
       this.log(`[MariaDB] ${String(error)}`);

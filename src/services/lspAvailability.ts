@@ -76,6 +76,8 @@ export function fileProblem(file: FileLspStatus): string | null {
       return "Open a folder to use language servers.";
     case "outsideWorkspace":
       return "This file is outside the open folder.";
+    case "otherWindowFolder":
+      return "Language servers serve the main window's folder; this window's folder doesn't get them yet.";
     case "nodeMissing":
       return "Node.js runtime is not installed yet.";
     case "notInstalled":

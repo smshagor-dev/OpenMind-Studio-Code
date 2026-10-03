@@ -1,3 +1,5 @@
+import type { ServersState } from "./state/canonicalIpc";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, RunEvent, ServiceInfo } from "./ipc";
@@ -7,7 +9,6 @@ import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
 import type { PhpServerService } from "./phpServerService";
 import { validatePort } from "./phpServerService";
-import type { PortsService } from "./portsService";
 import type { Availability, RuntimeService } from "./runtimeService";
 
 export const PMA_CHANNEL = "phpMyAdmin";
@@ -73,13 +74,14 @@ export class PhpMyAdminService {
   private state: PhpMyAdminState = INITIAL;
   private readonly listeners = new Set<() => void>();
   private offs: (() => void)[] = [];
+  /** The canonical servers state (`src/services/state`). */
+  private canonical: CanonicalFeed<ServersState> | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
     private readonly events: EventBus<AppEvents>,
     private readonly output: OutputService,
     private readonly runtime: RuntimeService,
-    private readonly ports: PortsService,
     private readonly panel: PanelService,
     private readonly php: PhpServerService,
     private readonly database: MariaDbService,
@@ -103,9 +105,6 @@ export class PhpMyAdminService {
       this.offs.push(
         await this.ipc.onPmaEvent((event) => {
           this.handleEvent(event);
-        }),
-        await this.ipc.onPmaChanged(() => {
-          void this.refresh();
         }),
       );
     } catch (error) {
@@ -214,21 +213,28 @@ export class PhpMyAdminService {
     if (port === this.state.port) this.update({ portFree: free });
   }
 
+  /** Follows the canonical servers state: whether phpMyAdmin runs (PID, port, address), the same in every window. */
+  useCanonical(feed: CanonicalFeed<ServersState>): () => void {
+    this.canonical = feed;
+    const apply = (servers: ServersState | undefined) => {
+      if (servers === undefined) return;
+      const running = servers.mysql.phpmyadmin;
+      const stopped = this.state.server !== null && running === null;
+      this.update({ server: running });
+      if (stopped) void this.refreshPort();
+    };
+    const off = feed.subscribe(apply);
+    apply(feed.current());
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Waits until this window has every server change the backend made so far. */
   async refresh(): Promise<void> {
-    const info = (await this.ipc.pmaStatus().catch(() => null)) ?? null;
-    const previous = this.state.server;
-    this.update({ server: info });
-    if (info !== null) {
-      this.ports.register({
-        port: info.port,
-        label: "phpMyAdmin",
-        url: info.url,
-        source: PMA_PORT_SOURCE,
-      });
-    } else if (previous !== null) {
-      this.ports.unregisterSource(PMA_PORT_SOURCE);
-    }
-    if (info === null) await this.refreshPort();
+    await this.canonical?.catchUp();
+    if (this.state.server === null) await this.refreshPort();
   }
 
   async start(): Promise<boolean> {
@@ -238,12 +244,6 @@ export class PhpMyAdminService {
     try {
       const info = await this.ipc.pmaStart(this.state.port, this.database.getState().port);
       this.update({ server: info, portFree: null });
-      this.ports.register({
-        port: info.port,
-        label: "phpMyAdmin",
-        url: info.url,
-        source: PMA_PORT_SOURCE,
-      });
       return true;
     } catch (error) {
       this.output.append(PMA_CHANNEL, stamped(`[phpMyAdmin] ${String(error)}`));

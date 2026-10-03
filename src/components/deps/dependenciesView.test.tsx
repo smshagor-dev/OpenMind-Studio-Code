@@ -1,3 +1,4 @@
+import { ipcWorkspaceFeed } from "../../testUtils/canonicalFeeds";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -79,13 +80,15 @@ function setup(snapshot: DepsSnapshot) {
   const events = new EventBus<AppEvents>();
   const perform = vi.fn().mockResolvedValue({ status: "cancelled" });
   const dependencies = new DependenciesService({
-    ipc: { depsScan: vi.fn().mockResolvedValue(snapshot) },
     actions: { perform },
     events,
-    onChanged: () => () => undefined,
     settingsGet: vi.fn().mockResolvedValue(null),
     settingsSet: vi.fn().mockResolvedValue(undefined),
   });
+  // The folder's dependencies as the canonical state delivers them.
+  const feed = ipcWorkspaceFeed(() => Promise.resolve(snapshot));
+  feed.push(snapshot);
+  dependencies.useCanonical(feed);
   const deps = new DependencyService({
     ipc: { depsProjectInfo: vi.fn() },
     events,

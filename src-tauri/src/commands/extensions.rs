@@ -196,7 +196,7 @@ impl HostEvents for Sink {
                     .extensions
                     .record_unsupported(extension, api);
                 if new {
-                    self.emit("ext:changed", Value::Null);
+                    crate::state::refresh_soon(&self.app, &[crate::state::Domain::Extensions]);
                 }
             }
         }
@@ -225,7 +225,7 @@ impl HostEvents for Sink {
         };
         runtime.set_status(status.clone());
         self.emit("ext:host-state", json!(status));
-        self.emit("ext:changed", Value::Null);
+        crate::state::refresh_soon(&self.app, &[crate::state::Domain::Extensions]);
     }
 }
 
@@ -266,7 +266,8 @@ async fn node_info(state: &AppState) -> NodeInfo {
     }
 }
 
-async fn snapshot(state: &AppState) -> ExtensionsSnapshot {
+/// What `ext_list` returns (also the canonical state's extension domain).
+pub(crate) async fn snapshot(state: &AppState) -> ExtensionsSnapshot {
     let paths = state.extensions.store.paths();
     let node = node_info(state).await;
     let activity = lock(&state.extensions.activity).clone();
@@ -280,11 +281,6 @@ async fn snapshot(state: &AppState) -> ExtensionsSnapshot {
         logs_dir: paths.logs.to_string_lossy().into_owned(),
         host_log: paths.host_log.to_string_lossy().into_owned(),
     }
-}
-
-#[tauri::command]
-pub async fn ext_list(state: State<'_, AppState>) -> Result<ExtensionsSnapshot, String> {
-    Ok(snapshot(&state).await)
 }
 
 // ---- install / enable / disable / uninstall ------------------------------------------------------------------------
@@ -310,8 +306,9 @@ pub async fn ext_inspect_vsix(
     Ok(extension)
 }
 
+/// The extension list changed: the canonical extensions domain is read again (every window follows it).
 fn changed(app: &AppHandle) {
-    let _ = app.emit("ext:changed", Value::Null);
+    crate::state::refresh_soon(app, &[crate::state::Domain::Extensions]);
 }
 
 #[tauri::command]
@@ -338,6 +335,7 @@ pub async fn ext_install(
     lock(&state.extensions.activity).remove(&extension.id);
     register_with_host(&state, &extension).await;
     changed(&app);
+    crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
     Ok(extension)
 }
 

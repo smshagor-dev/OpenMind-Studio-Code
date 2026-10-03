@@ -145,3 +145,20 @@ describe("refreshing terminals when the runtimes change", () => {
     expect(written.join("")).toContain("runtimes changed (Node.js 24.21.1) in C:/w");
   });
 });
+
+describe("refreshing terminals when a tool on PATH changes", () => {
+  it("restarts idle terminals opened before a Language Tools tool changed, once, and leaves later ones alone", async () => {
+    const r = await rig();
+    const before = await r.terminal.createTerminal();
+
+    await r.refresh.environmentChanged("Prettier 3.6.2");
+
+    const after = r.terminal.getState().sessions;
+    expect(after).toHaveLength(1);
+    expect(after[0]?.id).not.toBe(before);
+    expect(r.ipc.terminalClose).toHaveBeenCalledWith(before);
+    vi.mocked(r.ipc.terminalClose).mockClear();
+    await r.refresh.refreshStale();
+    expect(r.ipc.terminalClose).not.toHaveBeenCalled();
+  });
+});

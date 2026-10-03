@@ -46,6 +46,14 @@ impl RecentFilesService {
             .collect())
     }
 
+    /// Keeps the list pointing at a file or folder the user renamed or moved.
+    pub async fn rename(&self, from: &str, to: &str) -> Result<(), WorkspaceError> {
+        RecentFilesRepository::new(self.db.pool())
+            .rename_path(from, to)
+            .await?;
+        Ok(())
+    }
+
     pub async fn clear(&self) -> Result<(), WorkspaceError> {
         RecentFilesRepository::new(self.db.pool()).clear().await?;
         Ok(())
@@ -65,6 +73,39 @@ mod tests {
         let service = RecentFilesService::new(db);
 
         assert_eq!(service.list().await.expect("list"), vec![]);
+    }
+
+    #[tokio::test]
+    async fn rename_follows_a_file_and_the_files_inside_a_renamed_folder() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = Db::connect(&dir.path().join("test.db"))
+            .await
+            .expect("connect");
+        let service = RecentFilesService::new(db);
+        service.touch(r"C:\p\src\a.py").await.expect("a");
+        service.touch(r"C:\p\srcx\b.py").await.expect("b");
+        service.touch(r"C:\p\one.py").await.expect("one");
+
+        service
+            .rename(r"C:\p\src", r"C:\p\lib")
+            .await
+            .expect("folder");
+        service
+            .rename(r"C:\p\one.py", r"C:\p\two.py")
+            .await
+            .expect("file");
+
+        let paths: Vec<String> = service
+            .list()
+            .await
+            .expect("list")
+            .into_iter()
+            .map(|e| e.path)
+            .collect();
+        assert_eq!(
+            paths,
+            vec![r"C:\p\two.py", r"C:\p\srcx\b.py", r"C:\p\lib\a.py"]
+        );
     }
 
     #[tokio::test]

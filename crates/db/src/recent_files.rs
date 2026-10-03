@@ -64,6 +64,28 @@ impl<'a> RecentFilesRepository<'a> {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
+    /// A file or folder was renamed or moved: entries for `from`, and for files inside it when it is a folder, now
+    /// name the new place. Their order is kept; an entry already recorded under the new name gives way.
+    pub async fn rename_path(&self, from: &str, to: &str) -> Result<(), DbError> {
+        sqlx::query(
+            "DELETE FROM recent_files WHERE project_id IS NULL AND path = ?2              AND EXISTS (SELECT 1 FROM recent_files WHERE project_id IS NULL AND path = ?1)",
+        )
+        .bind(from)
+        .bind(to)
+        .execute(self.pool)
+        .await
+        .map_err(DbError::Query)?;
+        sqlx::query(
+            "UPDATE recent_files SET path = ?2 || substr(path, length(?1) + 1)              WHERE project_id IS NULL AND (path = ?1              OR substr(path, 1, length(?1) + 1) IN (?1 || '/', ?1 || char(92)))",
+        )
+        .bind(from)
+        .bind(to)
+        .execute(self.pool)
+        .await
+        .map_err(DbError::Query)?;
+        Ok(())
+    }
+
     pub async fn clear(&self) -> Result<(), DbError> {
         sqlx::query("DELETE FROM recent_files WHERE project_id IS NULL")
             .execute(self.pool)

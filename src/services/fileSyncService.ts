@@ -44,8 +44,6 @@ export interface FileSyncState {
 export interface FileSyncDeps {
   /** The open workspace folder, or `null`. */
   workspacePath: () => string | null;
-  /** Something in the working tree changed (Source Control re-reads its status). */
-  workingTreeChanged: () => Promise<unknown>;
   /** Every folder the Explorer has loaded (for a big burst of changes). */
   loadedFolders: () => string[];
 }
@@ -149,7 +147,6 @@ export class FileSyncService {
     if (batch.overflow) {
       const result = await this.syncAll();
       await this.explorer.refreshLoaded(this.deps.loadedFolders());
-      await this.deps.workingTreeChanged();
       return result;
     }
     if (batch.changes.length === 0) return NOTHING;
@@ -161,7 +158,6 @@ export class FileSyncService {
     const outcome = await this.check([...ids]);
     this.announce(outcome, false);
     if (folders.size > 0) await this.explorer.refreshLoaded([...folders]);
-    await this.deps.workingTreeChanged();
     return counts(outcome);
   }
 
@@ -186,6 +182,17 @@ export class FileSyncService {
       });
     }
     return result;
+  }
+
+  /**
+   * The user deleted `path` (a file or folder) from the Explorer: open tabs for it show the deleted state at once (their
+   * text is kept), without the "deleted on disk" notice meant for changes made by something else.
+   */
+  async deletedByUser(path: string): Promise<void> {
+    for (const id of this.documents.idsAtOrUnder(path)) {
+      this.announcedDeleted.add(id);
+      await this.documents.checkDisk(id);
+    }
   }
 
   // --- Conflict actions (the banner's buttons) ---

@@ -8,9 +8,7 @@ import { DEFAULT_LAYOUT, type LayoutState } from "./layoutService";
 import { registerMenuFillCommands, type MenuFillDeps } from "./menuFillCommands";
 import { unbuiltReason } from "./menus";
 
-function rig(
-  options: { exists?: boolean; picked?: string | null; selection?: string | null } = {},
-) {
+function rig(options: { folder?: boolean; selection?: string | null } = {}) {
   const commands = new CommandRegistry();
   const events = new EventBus<AppEvents>();
   const notices: string[] = [];
@@ -32,19 +30,10 @@ function rig(
       return Promise.resolve();
     }),
   };
-  const ipc = {
-    saveDocumentDialog: vi
-      .fn()
-      .mockResolvedValue(options.picked === undefined ? "D:/Any Place/new.txt" : options.picked),
-    fsMetadata: vi
-      .fn()
-      .mockImplementation(() =>
-        options.exists ? Promise.resolve({}) : Promise.reject(new Error("missing")),
-      ),
-    documentSave: vi.fn().mockResolvedValue(undefined),
-  };
   const workspace = {
     openPath: vi.fn().mockResolvedValue(undefined),
+    createUntitled: vi.fn().mockReturnValue("untitled-1"),
+    getActiveWorkspace: () => (options.folder ? { path: "C:/Projects/Demo", name: "Demo" } : null),
     setActiveGroup: (id: string) => {
       groups.setActiveGroup(id);
     },
@@ -70,7 +59,6 @@ function rig(
   registerMenuFillCommands({
     commands,
     events,
-    ipc,
     workspace,
     groups,
     editor,
@@ -81,29 +69,23 @@ function rig(
     autoSave: { toggle: vi.fn(), enabled: () => false },
     run,
   } as unknown as MenuFillDeps);
-  return { commands, ipc, workspace, groups, layout, win, terminal, panel, run, notices };
+  return { commands, workspace, groups, layout, win, terminal, panel, run, notices };
 }
 
-describe("New File...", () => {
-  it("creates an empty file wherever the Save dialog points and opens it", async () => {
+describe("New File... (nothing is written to disk until there is a name)", () => {
+  it("K: with no folder open it makes an untitled editor (no file, nothing for the Explorer)", async () => {
     const r = rig();
     await r.commands.execute("file.newFilePicker");
-    expect(r.ipc.documentSave).toHaveBeenCalledWith("D:/Any Place/new.txt", "", "utf8");
-    expect(r.workspace.openPath).toHaveBeenCalledWith("D:/Any Place/new.txt");
-  });
-
-  it("never empties a file that is already there", async () => {
-    const r = rig({ exists: true });
-    await r.commands.execute("file.newFilePicker");
-    expect(r.ipc.documentSave).not.toHaveBeenCalled();
-    expect(r.workspace.openPath).toHaveBeenCalled();
-  });
-
-  it("cancelling the dialog does nothing", async () => {
-    const r = rig({ picked: null });
-    await r.commands.execute("file.newFilePicker");
-    expect(r.ipc.documentSave).not.toHaveBeenCalled();
+    expect(r.workspace.createUntitled).toHaveBeenCalledTimes(1);
     expect(r.workspace.openPath).not.toHaveBeenCalled();
+    expect(r.run).not.toHaveBeenCalled();
+  });
+
+  it("with a folder open it asks for the name in the Explorer", async () => {
+    const r = rig({ folder: true });
+    await r.commands.execute("file.newFilePicker");
+    expect(r.run).toHaveBeenCalledWith("explorer.newFile");
+    expect(r.workspace.createUntitled).not.toHaveBeenCalled();
   });
 });
 

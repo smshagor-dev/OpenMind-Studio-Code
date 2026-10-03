@@ -97,24 +97,6 @@ describe("LanguageSupportService", () => {
     expect(none.support.summary()).toBeNull();
   });
 
-  it("drops the answer of a scan that a newer scan replaced", async () => {
-    const rig = languageRig();
-    await rig.support.initialize();
-    let releaseFirst: (status: ReturnType<typeof workspaceStatus>) => void = () => undefined;
-    vi.mocked(rig.ipc.languageWorkspaceStatus)
-      .mockImplementationOnce(
-        () =>
-          new Promise((resolve) => {
-            releaseFirst = resolve;
-          }),
-      )
-      .mockResolvedValueOnce(workspaceStatus([projectStatus({ title: "Newer" })]));
-    const first = rig.support.refresh();
-    await rig.support.refresh();
-    releaseFirst(workspaceStatus([projectStatus({ title: "Older" })]));
-    await first;
-    expect(rig.support.summary()).toBe("Newer");
-  });
 
   it("shows the error of a failed scan and does not keep a stale state", async () => {
     const rig = languageRig();
@@ -124,33 +106,17 @@ describe("LanguageSupportService", () => {
     expect(rig.support.getState()).toMatchObject({ scanning: false, scanError: "the scan failed" });
   });
 
-  it("rescans when the folder changes and, after a pause, when a manifest is saved — not for other files", async () => {
+  it("never scans by itself: the folder and saved manifests are followed by the backend; Refresh asks it", async () => {
     const rig = languageRig();
     await rig.support.initialize();
     rig.events.emit("workspaceFolderChanged", {
       workspace: { id: 1, path: "C:/My Project", name: "My Project" },
     });
-    await vi.advanceTimersByTimeAsync(0);
+    rig.events.emit("documentSaved", { id: "d2", path: "C:/My Project/package.json" });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(rig.ipc.languageWorkspaceStatus).not.toHaveBeenCalled();
+    await rig.support.refresh();
     expect(rig.ipc.languageWorkspaceStatus).toHaveBeenCalledTimes(1);
-
-    rig.events.emit("documentSaved", { id: "d1", path: "C:\\My Project\\src\\a.ts" });
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(rig.ipc.languageWorkspaceStatus).toHaveBeenCalledTimes(1);
-
-    for (const path of [
-      "C:/My Project/package.json",
-      "C:/My Project/package.json",
-      "C:/My Project/Cargo.toml",
-    ]) {
-      rig.events.emit("documentSaved", { id: "d2", path });
-    }
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(rig.ipc.languageWorkspaceStatus).toHaveBeenCalledTimes(2);
-
-    rig.events.emit("documentSaved", { id: "d3", path: "C:/My Project/App.csproj" });
-    rig.events.emit("documentSaved", { id: "d4", path: "C:/My Project/Dockerfile" });
-    await vi.advanceTimersByTimeAsync(1000);
-    expect(rig.ipc.languageWorkspaceStatus).toHaveBeenCalledTimes(3);
   });
 
   it("finds the project a file belongs to: the deepest root wins", async () => {

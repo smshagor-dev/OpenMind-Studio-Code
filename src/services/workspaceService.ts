@@ -124,6 +124,12 @@ export class WorkspaceService {
       this.events.on("documentExternalChanged", ({ id }) => {
         if (this.groups.tabsForDoc(id).length > 0) this.recompute();
       }),
+      // Save As or a rename/move: the tab title, breadcrumbs and the saved session follow the new path.
+      this.events.on("documentPathChanged", ({ id }) => {
+        if (this.groups.tabsForDoc(id).length === 0) return;
+        this.recompute();
+        void this.persistSession();
+      }),
       this.events.on("documentDirtyChanged", ({ id, dirty }) => {
         // Editing a provisional tab keeps it.
         if (dirty) this.groups.pinDoc(id);

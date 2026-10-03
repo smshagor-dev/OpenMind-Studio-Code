@@ -1,4 +1,5 @@
 import type { EventBus } from "./eventBus";
+import type { WorkspaceFeed } from "./state/canonicalStateService";
 import type { AppEvents } from "./events";
 import type { GitService } from "./gitService";
 import type {
@@ -93,6 +94,8 @@ export class SourceControlService {
   private state: SourceControlState = INITIAL;
   private readonly listeners = new Set<() => void>();
   private refreshSeq = 0;
+  /** The canonical Git state of this window's folder (`src/services/state`): read once per folder by the backend. */
+  private canonical: WorkspaceFeed<GitSnapshot> | null = null;
   private offs: (() => void)[] = [];
 
   constructor(
@@ -101,12 +104,8 @@ export class SourceControlService {
     /** Opens a file in the editor (`WorkspaceService.openPath`). */
     private readonly openFile: (path: string) => Promise<unknown>,
     private readonly showRuntimeManager: () => void,
-    /** Subscribes to runtime changes (`RuntimeService.subscribe`): installing Git makes the view usable at once. */
-    private readonly onRuntimeChange: (listener: () => void) => () => void = () => () => undefined,
     /** Called after an operation that can change files on disk (discard, switch, pull, delete): open editors and the Explorer catch up. */
     private readonly filesChanged: () => Promise<unknown> = () => Promise.resolve(),
-    /** The `git.autoRefresh` setting: look again on window focus and after a save. */
-    private readonly autoRefresh: () => boolean = () => true,
   ) {}
 
   getState(): SourceControlState {
@@ -120,34 +119,17 @@ export class SourceControlService {
     };
   }
 
-  /** Loads the first snapshot and re-reads on workspace change and file save. Runs no Git command that changes anything. */
+  /** The folder's Git state arrives through the canonical state (`useCanonical`). Runs no Git command that changes anything. */
   async initialize(): Promise<void> {
     this.dispose();
     this.offs.push(
+      // The folder's Git state follows through the canonical state; what this window shows of the old one goes.
       this.events.on("workspaceFolderChanged", () => {
         this.update({ diff: null, message: "", notice: null, error: null });
-        void this.refresh();
-      }),
-      this.events.on("documentSaved", () => {
-        if (this.autoRefresh()) void this.refresh();
-      }),
-      this.onRuntimeChange(() => {
-        if (this.runtime()?.ready === false) void this.refresh();
       }),
     );
-    // Files change outside the app (a terminal, another tool): look again when the window gets focus back.
-    if (typeof window !== "undefined") {
-      const onFocus = () => {
-        if (this.state.busy === null && this.autoRefresh()) void this.refresh();
-      };
-      window.addEventListener("focus", onFocus);
-      this.offs.push(() => {
-        window.removeEventListener("focus", onFocus);
-      });
-    }
     const allowSystem = await this.git.ipc.gitAllowSystem().catch(() => false);
     this.update({ allowSystem });
-    await this.refresh();
   }
 
   dispose(): void {
@@ -265,21 +247,54 @@ export class SourceControlService {
 
   // --- Reading ---
 
+  /**
+   * Follows the backend's canonical Git state of this window's folder: one `git status` per folder and burst of
+   * changes (a save, a terminal `git checkout`, another window's commit), shared by every window on that folder.
+   */
+  useCanonical(feed: WorkspaceFeed<GitSnapshot>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((snapshot) => {
+      // `undefined`: this window opened another folder; its Git state follows as soon as the backend has read it.
+      if (snapshot === undefined) this.update({ snapshot: null, loading: true, identity: null, branches: [] });
+      else void this.applySnapshot(snapshot, ++this.refreshSeq);
+    });
+    const current = feed.current();
+    if (current !== undefined) void this.applySnapshot(current, ++this.refreshSeq);
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /**
+   * Refresh (after an operation, or the button): the backend reads the folder's Git state once for every window on it
+   * and this waits until the result is here.
+   */
   async refresh(): Promise<void> {
     const seq = ++this.refreshSeq;
     this.update({ loading: true });
     try {
-      const snapshot = await this.git.ipc.gitSnapshot();
-      if (seq !== this.refreshSeq) return;
-      this.update({ snapshot, loading: false });
-      this.refreshOpenDiff();
-      if (snapshot.state === "repository") await this.loadIdentity(seq);
-      else this.update({ identity: null, branches: [] });
+      await this.canonical?.refresh();
+      if (seq === this.refreshSeq) this.update({ loading: false });
     } catch (error) {
       if (seq !== this.refreshSeq) return;
       this.update({ loading: false, error: String(error) });
       this.git.log(`Source Control: ${String(error)}`);
     }
+  }
+
+  private async applySnapshot(snapshot: GitSnapshot, seq: number): Promise<void> {
+    if (seq !== this.refreshSeq) return;
+    const before = this.state.snapshot;
+    this.update({ snapshot, loading: false });
+    this.refreshOpenDiff();
+    if (snapshot.state !== "repository") {
+      this.update({ identity: null, branches: [] });
+      return;
+    }
+    // The identity is the repository's config: read it again only for another repository (or the first time).
+    const sameRepo = before?.state === "repository" && before.root === snapshot.root;
+    if (!sameRepo || this.state.identity === null) await this.loadIdentity(seq);
   }
 
   private async loadIdentity(seq: number): Promise<void> {
@@ -338,10 +353,13 @@ export class SourceControlService {
   }
 
   async saveIdentity(name: string, email: string): Promise<boolean> {
-    return this.act("Saving your name and email", async () => {
+    const saved = await this.act("Saving your name and email", async () => {
       await this.git.ipc.gitSetIdentity(name, email);
       return "Saved your name and email for commits in this repository.";
     });
+    // The identity isn't part of `git status`: read it again explicitly.
+    if (saved) await this.loadIdentity(this.refreshSeq);
+    return saved;
   }
 
   async fetch(): Promise<boolean> {

@@ -1,4 +1,5 @@
 import type { IpcClient } from "../ipc";
+import type { CanonicalFeed } from "../state/canonicalStateService";
 import type { ToolEntry, ToolchainPacks, VerifyResult } from "./toolchainIpc";
 
 /**
@@ -27,14 +28,14 @@ export class ToolchainService {
     detailsId: null,
   };
   private readonly listeners = new Set<() => void>();
+  /** The canonical tool list (`src/services/state`), once the backend has it. */
+  private canonical: CanonicalFeed<ToolchainPacks> | null = null;
 
   constructor(
     private readonly ipc: Pick<
       IpcClient,
-      "toolchainsList" | "toolchainsSetActive" | "toolchainsVerify"
+      "toolchainsSetActive" | "toolchainsVerify"
     >,
-    /** Called after the active version of a tool changed (the language status is looked up again). */
-    private readonly onChanged: () => void = () => undefined,
     private readonly now: () => number = () => Date.now(),
   ) {}
 
@@ -53,13 +54,23 @@ export class ToolchainService {
     return this.state.packs?.tools.find((tool) => tool.id === id);
   }
 
-  async refresh(): Promise<void> {
-    try {
-      const packs = await this.ipc.toolchainsList();
+  /** Follows the backend's canonical tool list (every window, once per change). Returns the way to stop. */
+  useCanonical(feed: CanonicalFeed<ToolchainPacks>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((packs) => {
       this.set({ packs, loaded: true, error: null });
-    } catch (err) {
-      this.set({ loaded: true, error: message(err) });
-    }
+    });
+    const current = feed.current();
+    if (current !== undefined) this.set({ packs: current, loaded: true, error: null });
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Waits until this window has every tool change the backend made so far (after an install or a switch). */
+  async refresh(): Promise<void> {
+    await this.canonical?.catchUp();
   }
 
   /** Why a version can't be chosen right now (null = it can). */
@@ -75,9 +86,10 @@ export class ToolchainService {
   async setActive(id: string, version: string): Promise<void> {
     if (this.selectBlocker(id, version) !== null) return;
     try {
-      const packs = await this.ipc.toolchainsSetActive(id, version);
-      this.set({ packs, error: null });
-      this.onChanged();
+      // The backend updates the canonical tool list (and every open folder's project status) before it answers.
+      await this.ipc.toolchainsSetActive(id, version);
+      this.set({ error: null });
+      await this.refresh();
     } catch (err) {
       this.set({ error: message(err) });
     }

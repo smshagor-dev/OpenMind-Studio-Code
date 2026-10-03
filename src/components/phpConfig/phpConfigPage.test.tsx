@@ -1,3 +1,4 @@
+import { connectBackend } from "../../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -79,27 +80,31 @@ async function setup(
   const output = new OutputService();
   const ports = new PortsService(ipc, events);
   const runtime = new RuntimeService(ipc, events, () => undefined);
+  const feeds = connectBackend(ipc, { runtime, ports });
   await runtime.refresh();
   const panel = new PanelService(ipc);
-  const php = new PhpServerService(ipc, events, output, runtime, ports, panel);
+  const php = new PhpServerService(ipc, events, output, runtime, panel);
+  php.useCanonical(feeds.servers);
   await php.initialize();
-  const mariaDb = new MariaDbService(ipc, events, output, runtime, ports, panel);
+  const mariaDb = new MariaDbService(ipc, events, output, runtime, panel);
+  mariaDb.useCanonical(feeds.servers);
   await mariaDb.initialize();
   const phpMyAdmin = new PhpMyAdminService(
     ipc,
     events,
     output,
     runtime,
-    ports,
     panel,
     php,
     mariaDb,
   );
+  phpMyAdmin.useCanonical(feeds.servers);
   await phpMyAdmin.initialize();
   const composer = new ComposerService(ipc, events, output, runtime, panel);
   await composer.initialize();
   const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
-  const mySql = new MySqlService(ipc, events, output, runtime);
+  const mySql = new MySqlService(ipc, events, output);
+  mySql.useCanonical(feeds.servers);
   await mySql.initialize();
   harness.current = { php, mariaDb, phpMyAdmin, composer, mySql, runtime, output, ipc, phpRuntime };
   return { ipc, php, mariaDb, phpMyAdmin, composer, output };

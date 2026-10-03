@@ -1,7 +1,8 @@
 import * as monaco from "monaco-editor";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { ipcFeed } from "../testUtils/canonicalFeeds";
+import { createFakeIpc, type FakeIpc } from "../testUtils/fakeIpcClient";
 import { BufferManager } from "./bufferManager";
 import { CommandRegistry } from "./commandRegistry";
 import { DiagnosticsService } from "./diagnosticsService";
@@ -9,7 +10,6 @@ import { DocumentService } from "./documentService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type {
-  IpcClient,
   LspCapabilities,
   LspDiagnosticsEvent,
   LspLogEvent,
@@ -81,7 +81,7 @@ function snapshot(servers: LspServerInfo[]): LspSnapshot {
 }
 
 interface Rig {
-  ipc: IpcClient;
+  ipc: FakeIpc;
   events: EventBus<AppEvents>;
   documents: DocumentService;
   buffers: BufferManager;
@@ -91,7 +91,6 @@ interface Rig {
   handlers: {
     log?: (event: LspLogEvent) => void;
     diagnostics?: (event: LspDiagnosticsEvent) => void;
-    changed?: () => void;
   };
   outcome: { current: LspSyncOutcome };
   active: { current: string | null };
@@ -122,10 +121,6 @@ async function rig(servers: LspServerInfo[] = [server()]): Promise<Rig> {
         handlers.diagnostics = handler;
         return Promise.resolve(() => undefined);
       }),
-    onLspChanged: vi.fn().mockImplementation((handler: () => void) => {
-      handlers.changed = handler;
-      return Promise.resolve(() => undefined);
-    }),
   });
   const events = new EventBus<AppEvents>();
   const buffers = new BufferManager();
@@ -137,6 +132,10 @@ async function rig(servers: LspServerInfo[] = [server()]): Promise<Rig> {
     activeDocId: () => active.current,
     enabled: () => enabled.current,
   });
+  // The canonical language-server state, as the backend delivers it (read from `status` when it changes).
+  const feed = ipcFeed(() => ipc.lspStatus());
+  lsp.useCanonical(feed);
+  await feed.catchUp();
   await lsp.initialize();
   return { ipc, events, documents, buffers, lsp, log, status, handlers, outcome, active, enabled };
 }
@@ -203,6 +202,35 @@ describe("LspService: keeping servers told about documents", () => {
     await r.documents.openFromPath(TXT);
     expect(r.ipc.lspSyncDocument).toHaveBeenCalledTimes(1);
     expect(r.ipc.lspSyncDocument).toHaveBeenCalledWith(PY, "x = 1\n");
+  });
+
+  it("closing the folder re-asks for every open file and hands views a new snapshot, so the status bar redraws", async () => {
+    const id = await r.documents.openFromPath(PY);
+    r.active.current = id;
+    await vi.waitFor(() => {
+      expect(r.lsp.activeFileStatus().outcome?.state).toBe("ready");
+    });
+    const before = r.lsp.getState();
+    r.outcome.current = { state: "noWorkspace" };
+    r.events.emit("workspaceFolderChanged", { workspace: null });
+    await vi.waitFor(() => {
+      expect(fileProblem(r.lsp.activeFileStatus())).toBe("Open a folder to use language servers.");
+    });
+    // A file with no folder is never "outside the open folder".
+    expect(fileProblem(r.lsp.activeFileStatus())).not.toContain("outside");
+    expect(r.lsp.getState()).not.toBe(before);
+  });
+
+  it("a file's new outcome alone (no status re-read) still gives views a new snapshot", async () => {
+    r.outcome.current = { state: "noWorkspace" };
+    const before = r.lsp.getState();
+    const reads = vi.mocked(r.ipc.lspStatus).mock.calls.length;
+    const id = await r.documents.openFromPath(PY);
+    await vi.waitFor(() => {
+      expect(r.lsp.fileStatus(id).outcome?.state).toBe("noWorkspace");
+    });
+    expect(r.ipc.lspStatus).toHaveBeenCalledTimes(reads); // the status isn't read again
+    expect(r.lsp.getState()).not.toBe(before);
   });
 
   it("edits are sent after a short delay, one message for a burst; flush sends at once", async () => {
@@ -453,6 +481,9 @@ describe("availability: every disabled action says why", () => {
     );
     expect(fileProblem(file({ outcome: { state: "noWorkspace" } }))).toBe(
       "Open a folder to use language servers.",
+    );
+    expect(fileProblem(file({ outcome: { state: "otherWindowFolder" } }))).toContain(
+      "main window's folder",
     );
     expect(fileProblem(file({ path: null }))).toBe("Save the file to use language features.");
     expect(fileProblem(file({ path: TXT, server: null }))).toBe(
@@ -721,5 +752,37 @@ describe("Removing a language server", () => {
     r.lsp.setRemoveConfirmation(() => Promise.resolve(true));
     expect(await r.lsp.uninstall("fortran")).toBe(false);
     expect(r.ipc.lspUninstall).not.toHaveBeenCalled();
+  });
+});
+
+describe("LspService: the canonical language-server state", () => {
+  it("follows a server's life cycle from the canonical state and only catches up instead of reading it again", async () => {
+    const r = await rig([server({ state: "stopped" })]);
+    const calls = vi.mocked(r.ipc.lspStatus).mock.calls.length;
+    let listener: (data: LspSnapshot) => void = () => undefined;
+    const catchUp = vi.fn(() => Promise.resolve());
+    let current: LspSnapshot | undefined = snapshot([server({ state: "running" })]);
+    r.lsp.useCanonical({
+      current: () => current,
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+      catchUp,
+      ready: () => Promise.resolve(),
+    });
+    expect(r.lsp.servers()[0]?.state).toBe("running");
+
+    const stopped: string[] = [];
+    r.events.on("lspServerStopped", ({ server: id }) => stopped.push(id));
+    current = snapshot([server({ state: "error" })]);
+    listener(current);
+    expect(r.lsp.servers()[0]?.state).toBe("error");
+    expect(stopped.length).toBe(1);
+
+    await r.lsp.refresh();
+    expect(catchUp).toHaveBeenCalled();
+    expect(r.ipc.lspStatus).toHaveBeenCalledTimes(calls);
+    r.lsp.dispose();
   });
 });

@@ -1,9 +1,11 @@
+import type { ServersState } from "./state/canonicalIpc";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, MySqlState, MySqlStatus } from "./ipc";
 import type { OutputService } from "./outputService";
 import { stamped } from "./outputService";
-import type { Availability, RuntimeService } from "./runtimeService";
+import type { Availability } from "./runtimeService";
 
 export const MYSQL_CHANNEL = "MySQL";
 
@@ -55,6 +57,8 @@ export function mySqlHasProcesses(status: MySqlStatus | null): boolean {
  */
 export class MySqlService {
   private state: MySqlServiceState = { status: null, busy: null };
+  /** The canonical servers state (`src/services/state`), once the backend has it. */
+  private canonical: CanonicalFeed<ServersState> | null = null;
   private readonly listeners = new Set<() => void>();
   private offs: (() => void)[] = [];
 
@@ -62,7 +66,6 @@ export class MySqlService {
     private readonly ipc: IpcClient,
     private readonly events: EventBus<AppEvents>,
     private readonly output: OutputService,
-    private readonly runtime: RuntimeService,
   ) {}
 
   getState = (): MySqlServiceState => this.state;
@@ -74,21 +77,8 @@ export class MySqlService {
     };
   };
 
+  /** The MySQL row follows the canonical servers state (`useCanonical`), which also lists what isn't installed. */
   async initialize(): Promise<void> {
-    const refresh = () => {
-      void this.refresh();
-    };
-    try {
-      this.offs.push(
-        await this.ipc.onMysqlChanged(refresh),
-        await this.ipc.onMariadbChanged(refresh),
-        await this.ipc.onPmaChanged(refresh),
-      );
-    } catch (error) {
-      this.events.emit("appError", { message: `MySQL status unavailable: ${String(error)}` });
-    }
-    // Installing or removing MariaDB, phpMyAdmin or PHP changes what is missing.
-    this.offs.push(this.runtime.subscribe(refresh));
     await this.refresh();
   }
 
@@ -96,9 +86,23 @@ export class MySqlService {
     for (const off of this.offs.splice(0)) off();
   }
 
+  /** Follows the backend's canonical servers state (MariaDB + phpMyAdmin), the same in every window. */
+  useCanonical(feed: CanonicalFeed<ServersState>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((servers) => {
+      this.update({ status: servers.mysql });
+    });
+    const current = feed.current();
+    if (current !== undefined) this.update({ status: current.mysql });
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Waits until this window has every server change the backend made so far (after Start / Stop). */
   async refresh(): Promise<void> {
-    const status = await this.ipc.mysqlStatus().catch(() => null);
-    if (status !== null) this.update({ status });
+    await this.canonical?.catchUp();
   }
 
   // --- What the row shows ---

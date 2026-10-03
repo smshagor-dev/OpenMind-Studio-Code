@@ -41,6 +41,28 @@ describe("DocumentService", () => {
     expect(resolver).toHaveBeenCalledTimes(1);
   });
 
+  it("colours an open Plain Text file once a language for its name appears, never replacing a chosen one", async () => {
+    let known = false;
+    const ipc = createFakeIpc({
+      documentOpen: vi.fn().mockImplementation((path: string) => Promise.resolve({ ...OPENED, path, content: "x" })),
+    });
+    const service = new DocumentService(ipc, buffers, events);
+    service.setLanguageResolver((path) => (known && path.endsWith(".omsample") ? "markdown" : null));
+    const sample = await service.openFromPath("C:/My Site/a.omsample");
+    const chosen = await service.openFromPath("C:/My Site/b.omsample");
+    const notes = await service.openFromPath("C:/My Site/notes.txt");
+    service.setLanguage(chosen, "rust");
+    expect(service.languageOf(sample)).toBe("plaintext");
+    expect(service.refreshLanguages()).toBe(0);
+
+    known = true; // an extension that contributes the language was installed
+    expect(service.refreshLanguages()).toBe(1);
+    expect(service.languageOf(sample)).toBe("markdown");
+    expect(service.languageOf(chosen)).toBe("rust");
+    expect(service.languageOf(notes)).toBe("plaintext");
+    expect(service.refreshLanguages()).toBe(0);
+  });
+
   it("createUntitled starts a clean, unnamed document", () => {
     const service = new DocumentService(createFakeIpc(), buffers, events);
 
@@ -48,7 +70,7 @@ describe("DocumentService", () => {
     const snapshot = service.snapshot(id);
 
     expect(snapshot.path).toBeNull();
-    expect(snapshot.title).toBe("Untitled");
+    expect(snapshot.title).toBe("Untitled-1");
     expect(snapshot.dirty).toBe(false);
   });
 

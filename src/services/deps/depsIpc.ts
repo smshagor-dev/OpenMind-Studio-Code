@@ -154,7 +154,6 @@ export interface ProjectInfo {
 }
 
 export interface DepsIpc {
-  depsScan: () => Promise<DepsSnapshot>;
   depsPlan: (request: DepsRequest) => Promise<DepsPlan>;
   /** Starts the confirmed operation as a new terminal's own program (planned again by the backend). */
   depsRun: (request: DepsRequest, cols: number, rows: number) => Promise<TerminalSessionInfo>;
@@ -162,7 +161,6 @@ export interface DepsIpc {
 }
 
 export const tauriDepsIpc: DepsIpc = {
-  depsScan: () => invoke<DepsSnapshot>("deps_scan"),
   depsPlan: (request) => invoke<DepsPlan>("deps_plan", { request }),
   depsRun: (request, cols, rows) => invoke<TerminalSessionInfo>("deps_run", { request, cols, rows }),
   depsProjectInfo: (base) => invoke<ProjectInfo>("deps_project_info", { base }),

@@ -109,7 +109,7 @@ impl LspEvents for Sink {
     }
 
     fn status_changed(&self) {
-        let _ = self.app.emit("lsp:changed", ());
+        crate::state::refresh_soon(&self.app, &[crate::state::Domain::LanguageServers]);
     }
 }
 
@@ -122,6 +122,40 @@ pub(crate) async fn workspace_path(state: &AppState) -> Option<PathBuf> {
         .ok()
         .flatten()
         .map(|workspace| PathBuf::from(workspace.path))
+}
+
+/// The folder a server works in for a file opened in the window `label`, or why there is none. It is decided by the
+/// *asking window's* folder, never another window's: a window with no folder never hears "outside the open folder".
+/// Servers run for one folder at a time, so an extra window gets them only while the main window has no other folder
+/// (the main window keeps priority, which keeps the choice deterministic instead of restarting servers per window).
+async fn server_root(state: &AppState, label: &str, path: &Path) -> Result<PathBuf, SyncOutcome> {
+    let folder = crate::windows::window_workspace(state, label)
+        .await
+        .ok()
+        .flatten()
+        .map(|info| PathBuf::from(info.path))
+        .ok_or(SyncOutcome::NoWorkspace)?;
+    if openmind_fs::ensure_within_root(&folder, path).is_err() {
+        return Err(SyncOutcome::OutsideWorkspace);
+    }
+    if !crate::windows::is_main(label) {
+        if let Some(main) = workspace_path(state).await {
+            if !same_folder(&main, &folder) {
+                return Err(SyncOutcome::OtherWindowFolder);
+            }
+        }
+    }
+    Ok(folder)
+}
+
+fn same_folder(a: &Path, b: &Path) -> bool {
+    match (
+        openmind_fs::normalize_path(a),
+        openmind_fs::normalize_path(b),
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 struct Resolved {
@@ -362,9 +396,10 @@ pub(crate) async fn server_facts(state: &AppState) -> Vec<(&'static str, bool, b
         .collect()
 }
 
-#[tauri::command]
-pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, String> {
-    let resolved = resolve(&state).await;
+/// What `lsp_status` returns: every server with its install state and live state (also the canonical state's
+/// language-server domain).
+pub(crate) async fn snapshot(state: &AppState) -> LspSnapshot {
+    let resolved = resolve(state).await;
     let (node_label, node_problem) = match &resolved.node {
         Ok(node) => (Some(node.label()), None),
         Err(err) => (None, Some(err.to_string())),
@@ -390,7 +425,7 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
             let installed = install::is_installed(&state.app_root, def, package);
             let live = state.lsp.status(def.id);
             let blocked = install_blocked(&resolved, def, &live.state);
-            let path = log_path(&state, def.id);
+            let path = log_path(state, def.id);
             Some(ServerInfo {
                 id: summary.id,
                 name: summary.name,
@@ -416,8 +451,8 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
             })
         })
         .collect();
-    Ok(LspSnapshot {
-        workspace: workspace_path(&state)
+    LspSnapshot {
+        workspace: workspace_path(state)
             .await
             .map(|path| path.display().to_string()),
         node: node_label,
@@ -425,15 +460,25 @@ pub async fn lsp_status(state: State<'_, AppState>) -> Result<LspSnapshot, Strin
         bundle: bundle_info(&resolved),
         verbose: state.lsp.verbose(),
         servers,
-    })
+    }
 }
 
 /// Makes the server ready: from the offline bundle when it carries it (no network), otherwise
 /// from npm with its pinned lockfile. Only ever runs on the user's request.
 #[tauri::command]
-pub async fn lsp_install(server: String, state: State<'_, AppState>) -> Result<(), String> {
-    let def = server_by_id(&server).ok_or("Unknown language server.")?;
-    let resolved = resolve(&state).await;
+pub async fn lsp_install(
+    server: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let outcome = install_server(&server, &state).await;
+    crate::sync::announce_now(&app, crate::sync::Topic::LanguageServers).await;
+    outcome
+}
+
+async fn install_server(server: &str, state: &AppState) -> Result<(), String> {
+    let def = server_by_id(server).ok_or("Unknown language server.")?;
+    let resolved = resolve(state).await;
     let manager: LspManager = state.lsp.clone();
     let root = state.app_root.clone();
     let carried = bundled(&resolved, def);
@@ -445,7 +490,7 @@ pub async fn lsp_install(server: String, state: State<'_, AppState>) -> Result<(
             .map_err(|err| err.to_string());
     }
     // npm downloads through the proxy the user configured (nothing when there is none).
-    let proxy = crate::commands::network::process_env(&state).await;
+    let proxy = crate::commands::network::process_env(state).await;
     match package_by_id(def.package).map(|package| package.source) {
         Some(openmind_lsp::Source::Native) => {
             let cache = root.join("cache").join("downloads");
@@ -532,6 +577,8 @@ pub enum SyncOutcome {
     Unsupported,
     NoWorkspace,
     OutsideWorkspace,
+    /// This extra window's folder isn't the main window's, and servers serve the main window's folder.
+    OtherWindowFolder,
     NotInstalled {
         server: &'static str,
     },
@@ -572,17 +619,16 @@ async fn prepare_from_bundle(
 pub async fn lsp_sync_document(
     path: String,
     text: String,
+    window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<SyncOutcome, String> {
     let Some(def) = server_for_path(&path) else {
         return Ok(SyncOutcome::Unsupported);
     };
-    let Some(workspace) = workspace_path(&state).await else {
-        return Ok(SyncOutcome::NoWorkspace);
+    let workspace = match server_root(&state, window.label(), Path::new(&path)).await {
+        Ok(root) => root,
+        Err(outcome) => return Ok(outcome),
     };
-    if openmind_fs::ensure_within_root(&workspace, Path::new(&path)).is_err() {
-        return Ok(SyncOutcome::OutsideWorkspace);
-    }
     let package = package_by_id(def.package).ok_or("Unknown language server package.")?;
     let resolved = resolve(&state).await;
     if state.lsp.status(def.id).pid.is_none() {

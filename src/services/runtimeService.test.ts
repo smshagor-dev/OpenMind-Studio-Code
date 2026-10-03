@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { ipcFeed } from "../testUtils/canonicalFeeds";
+import { createFakeIpc, type FakeIpc } from "../testUtils/fakeIpcClient";
 import { CommandRegistry } from "./commandRegistry";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
+import type { InstalledVersion, InstallProgress, RuntimeStatus } from "./ipc";
 import { registerRuntimeCommands } from "./runtimeCommands";
 import { describeProgress, injectionStatus, RuntimeService } from "./runtimeService";
 
@@ -99,10 +100,10 @@ describe("injectionStatus", () => {
 
 describe("RuntimeService", () => {
   let events: EventBus<AppEvents>;
-  let ipc: IpcClient;
+  let ipc: FakeIpc;
   let pushProgress: (p: InstallProgress) => void;
 
-  function make(overrides: Partial<IpcClient> = {}) {
+  function make(overrides: Partial<FakeIpc> = {}) {
     ipc = createFakeIpc({
       runtimeList: vi.fn().mockResolvedValue([status()]),
       onRuntimeProgress: vi.fn((handler: typeof pushProgress) => {
@@ -111,7 +112,11 @@ describe("RuntimeService", () => {
       }),
       ...overrides,
     });
-    return new RuntimeService(ipc, events);
+    const service = new RuntimeService(ipc, events);
+    // The canonical runtime list, as the backend delivers it.
+    const fakeBackend = ipc;
+    service.useCanonical(ipcFeed(() => fakeBackend.runtimeList()));
+    return service;
   }
 
   beforeEach(() => {
@@ -130,15 +135,14 @@ describe("RuntimeService", () => {
     expect(listener).toHaveBeenCalled();
   });
 
-  it("a failed load surfaces as appError instead of throwing", async () => {
-    const service = make({ runtimeList: vi.fn().mockRejectedValue(new Error("db locked")) });
-    const errors: string[] = [];
-    events.on("appError", ({ message }) => errors.push(message));
-
+  it("a list the backend can't read leaves the last one shown, without throwing", async () => {
+    const service = make({
+      runtimeList: vi.fn().mockResolvedValueOnce([status()]).mockRejectedValue(new Error("db locked")),
+    });
     await service.refresh();
-
-    expect(errors).toHaveLength(1);
+    await service.refresh();
     expect(service.getState().loaded).toBe(true);
+    expect(service.getState().runtimes.map((r) => r.id)).toEqual(["node"]);
   });
 
   it("install passes the chosen version, tracks the working state, shows progress and refreshes after", async () => {

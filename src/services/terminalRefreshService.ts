@@ -84,6 +84,18 @@ export class TerminalRefreshService {
     await this.refreshStale();
   }
 
+  /**
+   * Something else on new processes' PATH changed (a Language Tools tool installed, removed or switched): terminals
+   * started before it are refreshed the same way as for a runtime change.
+   */
+  async environmentChanged(change: string): Promise<void> {
+    if (this.current === null) return;
+    this.current = `${this.current}+`;
+    this.change = change;
+    this.waitingTold = false;
+    await this.refreshStale();
+  }
+
   /** Terminals that still have an older runtime environment. */
   stale(): string[] {
     return this.deps.terminal

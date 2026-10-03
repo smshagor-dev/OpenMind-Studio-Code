@@ -1,3 +1,4 @@
+import { ipcWorkspaceFeed } from "../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -76,6 +77,9 @@ async function setup(snapshot: GitSnapshot, overrides: Parameters<typeof createF
   const git = new GitService(ipc, output);
   const events = new EventBus<AppEvents>();
   const sourceControl = new SourceControlService(git, events, vi.fn(), vi.fn());
+  const gitFeed = ipcWorkspaceFeed(() => ipc.gitSnapshot());
+  sourceControl.useCanonical(gitFeed);
+  await gitFeed.refresh(); // the backend's first read of the folder
   await sourceControl.initialize();
   const run = vi.fn();
   const gitClone = new GitCloneService(git, events, vi.fn(), () => sourceControl.runtime());

@@ -1,10 +1,11 @@
+import type { ServersState } from "./state/canonicalIpc";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { InstallProgress, IpcClient, RunEvent, RuntimeStatus } from "./ipc";
+import type { InstallProgress, IpcClient, PhpServerInfo, RunEvent, RuntimeStatus } from "./ipc";
 import type { OutputService } from "./outputService";
 import { stamped } from "./outputService";
 import type { PanelService } from "./panelService";
-import type { PortsService } from "./portsService";
 import type { Availability, RuntimeService } from "./runtimeService";
 import { describeProgress } from "./runtimeService";
 
@@ -143,9 +144,10 @@ function componentView(
  */
 export class PhpServerService {
   private state: PhpServerState = INITIAL;
+  /** The canonical servers state (`src/services/state`), once the backend has it. */
+  private canonical: CanonicalFeed<ServersState> | null = null;
   private readonly listeners = new Set<() => void>();
   private off: (() => void) | null = null;
-  private offChanged: (() => void) | null = null;
   /** Runs that already exited, so a late `start` result can't resurrect them. */
   private readonly exited = new Set<string>();
 
@@ -154,7 +156,6 @@ export class PhpServerService {
     private readonly events: EventBus<AppEvents>,
     private readonly output: OutputService,
     private readonly runtime: RuntimeService,
-    private readonly ports: PortsService,
     private readonly panel: PanelService,
     /** The port used until the user picks one in the control panel (the `php.server.defaultPort` setting). */
     private readonly defaultPort: () => number = () => DEFAULT_PHP_PORT,
@@ -185,9 +186,6 @@ export class PhpServerService {
       this.off = await this.ipc.onPhpEvent((event) => {
         this.handleEvent(event);
       });
-      this.offChanged = await this.ipc.onPhpChanged(() => {
-        void this.syncServer();
-      });
     } catch (error) {
       this.events.emit("appError", { message: `PHP server output unavailable: ${String(error)}` });
     }
@@ -200,7 +198,27 @@ export class PhpServerService {
    * the main window each have their own frontend state): adopt what it reports.
    */
   async syncServer(): Promise<void> {
-    const info = (await this.ipc.phpServerStatus().catch(() => null)) ?? null;
+    await this.canonical?.catchUp(); // the canonical servers state arrives through `useCanonical`
+  }
+
+  /**
+   * Follows the backend's canonical servers state: the PHP server started or stopped in any window (or the PHP control
+   * panel) shows up here at once, in every window, without asking the backend again.
+   */
+  useCanonical(feed: CanonicalFeed<ServersState>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((servers) => {
+      this.adoptServer(servers.php);
+    });
+    const current = feed.current();
+    if (current !== undefined) this.adoptServer(current.php);
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  private adoptServer(info: PhpServerInfo | null): void {
     const current = this.state.server;
     if (info === null) {
       if (current !== null) this.serverGone();
@@ -218,16 +236,9 @@ export class PhpServerService {
         root: this.state.root ?? "",
       },
     });
-    this.ports.register({
-      port: info.port,
-      label: "PHP Server",
-      url: info.url,
-      source: PHP_PORT_SOURCE,
-    });
   }
 
   private serverGone(): void {
-    this.ports.unregisterSource(PHP_PORT_SOURCE);
     this.update({ server: null });
     void this.refreshPort();
   }
@@ -235,8 +246,6 @@ export class PhpServerService {
   dispose(): void {
     this.off?.();
     this.off = null;
-    this.offChanged?.();
-    this.offChanged = null;
   }
 
   // --- What the panel shows ---
@@ -392,12 +401,6 @@ export class PhpServerService {
             root,
           },
         });
-        this.ports.register({
-          port: info.port,
-          label: "PHP Server",
-          url: info.url,
-          source: PHP_PORT_SOURCE,
-        });
       }
       return true;
     } catch (error) {
@@ -479,7 +482,6 @@ export class PhpServerService {
       : `Server exited with code ${event.code === null ? "unknown" : String(event.code)}.`;
     this.output.append(PHP_CHANNEL, stamped(`[PHP Server] ${summary}`));
     if (this.state.server?.runId === event.runId) {
-      this.ports.unregisterSource(PHP_PORT_SOURCE);
       this.update({ server: null });
       void this.refreshPort();
     } else {

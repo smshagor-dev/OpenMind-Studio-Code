@@ -17,7 +17,7 @@ use openmind_runner::{
     MARIADB_DEFAULT_PORTS, PHPMYADMIN_DEFAULT_PORTS,
 };
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::app_state::AppState;
 use crate::commands::database::{
@@ -174,7 +174,7 @@ impl StackRuntimes {
     }
 }
 
-async fn status_of(state: &AppState) -> MySqlStatus {
+pub(crate) async fn status_of(state: &AppState) -> MySqlStatus {
     let (phase, error) = state.mysql.snapshot();
     let runtimes = StackRuntimes::read(state).await;
     let missing = runtimes.missing();
@@ -201,7 +201,7 @@ async fn status_of(state: &AppState) -> MySqlStatus {
 }
 
 fn changed(app: &AppHandle) {
-    let _ = app.emit("mysql:changed", ());
+    crate::state::servers_changed(app);
 }
 
 // --- Ports ---
@@ -454,7 +454,7 @@ async fn start_stack(app: &AppHandle, state: &AppState) -> Result<(), String> {
         return Err(problem);
     }
     mark_ready(state);
-    let _ = app.emit("mariadb:changed", ());
+    crate::state::servers_changed(app);
     // phpMyAdmin is (re)started so its config points at this MariaDB.
     state.pma.stop_all();
     let pma_port = choose_port(
@@ -482,8 +482,8 @@ async fn stop_stack(app: &AppHandle, state: &AppState) -> Result<(), String> {
     changed(app);
     state.pma.stop_all();
     blocking(app, stop_mariadb_blocking).await?;
-    let _ = app.emit("pma:changed", ());
-    let _ = app.emit("mariadb:changed", ());
+    crate::state::servers_changed(app);
+    crate::state::servers_changed(app);
     Ok(())
 }
 
@@ -499,11 +499,6 @@ async fn finish(
     }
     result?;
     Ok(status_of(state).await)
-}
-
-#[tauri::command]
-pub async fn mysql_status(state: State<'_, AppState>) -> Result<MySqlStatus, String> {
-    Ok(status_of(&state).await)
 }
 
 /// MySQL > Start: the whole stack, Running only when MariaDB accepts connections and phpMyAdmin works.
@@ -550,7 +545,7 @@ pub async fn after_install(app: &AppHandle, state: &AppState) -> Result<(), Stri
     let result = initialize_and_verify(app, state).await;
     state.mysql.set(Phase::Idle, result.as_ref().err().cloned());
     changed(app);
-    let _ = app.emit("mariadb:changed", ());
+    crate::state::servers_changed(app);
     result
 }
 

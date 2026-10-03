@@ -1,3 +1,4 @@
+import { ipcFeed } from "../testUtils/canonicalFeeds";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,6 +53,8 @@ describe("RuntimeManagerDialog", () => {
       }),
     });
     service = new RuntimeService(ipc, new EventBus<AppEvents>());
+    const backend = ipc;
+    service.useCanonical(ipcFeed(() => backend.runtimeList()));
     const lspState = { snapshot: null };
     const lsp = {
       subscribe: () => () => undefined,

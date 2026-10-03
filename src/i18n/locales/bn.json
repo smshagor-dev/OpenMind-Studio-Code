@@ -9,7 +9,7 @@
   "menu.help": "সাহায্য",
   "command.file.reopenClosed": "বন্ধ করা এডিটর আবার খুলুন",
   "command.file.clearRecent": "সম্প্রতি খোলা তালিকা মুছুন",
-  "command.file.new": "নতুন ফাইল",
+  "command.file.new": "নতুন টেক্সট ফাইল",
   "command.file.newFilePicker": "নতুন ফাইল...",
   "command.workbench.newWindow": "নতুন উইন্ডো",
   "command.file.open": "ফাইল খুলুন...",

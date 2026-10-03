@@ -175,7 +175,7 @@ const EXTRA_TITLES: Record<string, [string, string]> = {
   "debug.stepInto": ["Step Into", "Run"],
   "debug.stepOut": ["Step Out", "Run"],
   "terminal.toggle": ["Toggle Terminal", "Terminal"],
-  "file.new": ["New File", "File"],
+  "file.new": ["New Text File", "File"],
   "file.closeActiveTab": ["Close Editor", "File"],
   "editor.closeAll": ["Close All Editors", "File"],
   "edit.formatDocument": ["Format Document", "Edit"],

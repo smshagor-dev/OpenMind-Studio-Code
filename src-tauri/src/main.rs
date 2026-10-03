@@ -8,6 +8,8 @@ mod locale;
 mod secret;
 mod startup;
 mod startup_error;
+mod state;
+mod sync;
 mod tray;
 mod updates;
 mod window_events;
@@ -50,8 +52,14 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(launch::LaunchState::new(launch_request))
         .manage(updates::UpdateState::default())
+        .manage(sync::SyncState::default())
         .invoke_handler(tauri::generate_handler![
             launch::launch_take,
+            state::state_snapshot,
+            state::state_revision,
+            state::state_workspace_attach,
+            state::state_refresh,
+            state::state_reads,
             updates::update_check,
             updates::update_status,
             updates::update_download,
@@ -65,6 +73,7 @@ fn main() {
             commands::document::document_save,
             commands::workspace::recent_files_list,
             commands::workspace::recent_files_clear,
+            commands::workspace::recent_files_rename,
             commands::workspace::session_load,
             commands::workspace::session_save,
             commands::workspace::workspace_open_folder,
@@ -103,7 +112,6 @@ fn main() {
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,
-            commands::runtime::runtime_list,
             commands::runtime::runtime_install,
             commands::runtime::runtime_addon_install,
             commands::runtime::runtime_addon_remove,
@@ -112,7 +120,6 @@ fn main() {
             commands::runtime::runtime_delete,
             commands::php::php_server_start,
             commands::php::php_server_stop,
-            commands::php::php_server_status,
             commands::php::php_window_open,
             commands::php::php_web_root,
             windows::window_new,
@@ -124,8 +131,6 @@ fn main() {
             commands::database::mariadb_stop,
             commands::database::pma_start,
             commands::database::pma_stop,
-            commands::database::pma_status,
-            commands::mysql::mysql_status,
             commands::mysql::mysql_start,
             commands::mysql::mysql_stop,
             commands::mysql::mysql_restart,
@@ -137,7 +142,7 @@ fn main() {
             commands::document::document_read,
             commands::watch::watch_start,
             commands::watch::watch_stop,
-            commands::debug::debug_status,
+            commands::debug::debug_run,
             commands::debug::debug_start,
             commands::debug::debug_stop,
             commands::debug::debug_control,
@@ -157,7 +162,6 @@ fn main() {
             commands::notebook::notebook_kernel_start,
             commands::notebook::notebook_kernel_stop,
             commands::notebook::notebook_execute,
-            commands::lsp::lsp_status,
             commands::lsp::lsp_install,
             commands::lsp::lsp_sync_document,
             commands::lsp::lsp_save_document,
@@ -168,7 +172,6 @@ fn main() {
             commands::lsp::lsp_stop,
             commands::lsp::lsp_stop_all,
             commands::lsp::lsp_set_verbose,
-            commands::extensions::ext_list,
             commands::extensions::ext_inspect_vsix,
             commands::extensions::ext_install,
             commands::extension_manage::ext_read_icon,
@@ -190,7 +193,6 @@ fn main() {
             commands::extension_host::ext_host_notify,
             commands::extension_host::ext_host_respond,
             commands::extension_host::ext_activate_for,
-            commands::git::git_snapshot,
             commands::git::git_init,
             commands::git::git_stage,
             commands::git::git_stage_all,
@@ -249,7 +251,6 @@ fn main() {
             commands::ai::ai_conversation_delete,
             commands::ai::ai_conversations_clear,
             commands::language::language_registry,
-            commands::language::language_workspace_status,
             commands::language::language_file_status,
             commands::language::language_terminal_line,
             startup::startup_report,
@@ -295,11 +296,9 @@ fn main() {
             commands::network_offline::network_offline_import_wheels,
             commands::network_offline::network_wheelhouse,
             commands::network_offline::network_wheelhouse_command,
-            commands::deps::deps_scan,
             commands::deps::deps_plan,
             commands::deps::deps_run,
             commands::deps::deps_project_info,
-            commands::toolchains::toolchains_list,
             commands::toolchains::toolchains_set_active,
             commands::tool_packages::toolchains_install,
             commands::tool_packages::toolchains_remove,
@@ -380,6 +379,8 @@ fn main() {
                 &network_config.go_proxy,
             );
 
+            // The canonical state (and its publisher thread) exists before anything can change it.
+            app.manage(state::CanonicalState::start(app.handle()));
             app.manage(AppState {
                 broker,
                 runtime,
@@ -418,6 +419,10 @@ fn main() {
                 explorer_state: ExplorerStateService::new(db.clone()),
                 db,
             });
+            // Live sync of changes made outside the app to what it installed (runtimes, tools, servers, extensions).
+            sync::start_watching(app.handle(), &app_paths.root_dir);
+            // The canonical state's first read of every domain, in the background.
+            state::fill(app.handle());
             // The proxy for OpenMind's own requests, from the settings (local reads; no request is made).
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

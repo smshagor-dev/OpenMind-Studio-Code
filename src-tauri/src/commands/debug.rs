@@ -85,15 +85,28 @@ async fn workspace_path(state: &AppState) -> Option<PathBuf> {
         .map(|workspace| PathBuf::from(workspace.path))
 }
 
-/// The three targets' readiness, the workspace and the run in progress.
+/// Which debuggers can start for one folder (the canonical state's per-workspace debug domain): the interpreters
+/// (the project's `.venv` first), the adapters and the reason when one is missing. The running session is not part
+/// of it (it arrives as `debug:state`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DebugStatus {
+pub struct DebugReadiness {
     workspace: Option<String>,
-    run: Option<RunSnapshot>,
     python: Readiness,
     node: Readiness,
     php: Readiness,
+}
+
+/// The debug readiness of the folder `workspace`.
+pub(crate) async fn readiness_at(state: &AppState, workspace: Option<&Path>) -> DebugReadiness {
+    let environment = environment(state).await;
+    let prepend = &environment.path_prepend;
+    DebugReadiness {
+        workspace: workspace.map(|path| path.display().to_string()),
+        python: target_readiness(state, Target::Python, prepend, workspace).await,
+        node: target_readiness(state, Target::Node, prepend, workspace).await,
+        php: target_readiness(state, Target::Php, prepend, workspace).await,
+    }
 }
 
 /// Where the adapter's files are: the active *bundled* debugpy (`<app>/tools`) first, then the Runtime Manager's install.
@@ -130,19 +143,10 @@ async fn target_readiness(
     readiness(target, interpreter.as_ref(), dir.as_deref())
 }
 
+/// The debug session running now, if any (a window opened mid-session); its changes arrive as `debug:state`.
 #[tauri::command]
-pub async fn debug_status(state: State<'_, AppState>) -> Result<DebugStatus, String> {
-    let environment = environment(&state).await;
-    let workspace = workspace_path(&state).await;
-    let folder = workspace.as_deref();
-    let prepend = &environment.path_prepend;
-    Ok(DebugStatus {
-        workspace: workspace.as_ref().map(|path| path.display().to_string()),
-        run: state.dap.snapshot(),
-        python: target_readiness(&state, Target::Python, prepend, folder).await,
-        node: target_readiness(&state, Target::Node, prepend, folder).await,
-        php: target_readiness(&state, Target::Php, prepend, folder).await,
-    })
+pub fn debug_run(state: State<'_, AppState>) -> Option<RunSnapshot> {
+    state.dap.snapshot()
 }
 
 /// Starts debugging `config` with the given breakpoints (enabled ones are sent to the adapter).

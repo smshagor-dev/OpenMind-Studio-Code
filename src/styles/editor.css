@@ -20,12 +20,21 @@
 }
 
 .tab-bar {
+  /* The positioning parent of its tabs, so a tab's offsetLeft is measured inside the scrolling row. */
+  position: relative;
   flex: 0 0 35px;
   display: flex;
   overflow-x: auto;
   overflow-y: hidden;
+  /* Scrolling the row never scrolls (or bounces) anything around it. */
+  overscroll-behavior: contain;
   background-color: var(--tabs-bg);
+  /* Scrolls with the wheel and trackpad; no scrollbar, so the header keeps its height. */
   scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .tab-bar__filler {

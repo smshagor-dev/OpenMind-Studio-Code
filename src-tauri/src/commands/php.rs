@@ -12,7 +12,6 @@ use crate::commands::run::environment;
 
 const PHP_EVENT: &str = "php:event";
 /// Sent when the server starts or ends, so every window re-reads `php_server_status`.
-const PHP_CHANGED_EVENT: &str = "php:changed";
 /// The label of the separate PHP Server window (the frontend picks its screen by it).
 pub const PHP_WINDOW_LABEL: &str = "php-server";
 
@@ -52,7 +51,7 @@ pub async fn php_server_start(
             let state = sink_app.state::<AppState>();
             let cleared = state.php_server_info.lock().map(|mut info| info.take());
             drop(cleared);
-            let _ = sink_app.emit(PHP_CHANGED_EVENT, ());
+            crate::state::servers_changed(&sink_app);
         }
         if let Err(err) = sink_app.emit(PHP_EVENT, event) {
             tracing::error!(?err, "failed to emit a PHP server event");
@@ -71,7 +70,7 @@ pub async fn php_server_start(
     if let Ok(mut current) = state.php_server_info.lock() {
         *current = Some(info.clone());
     }
-    let _ = app.emit(PHP_CHANGED_EVENT, ());
+    crate::state::servers_changed(&app);
     Ok(info)
 }
 
@@ -89,16 +88,6 @@ pub fn php_in_use_reason(state: &AppState, kind: &str, version: &str) -> Option<
     let info = state.php_server_info.lock().ok()?.clone()?;
     (info.php_version.as_deref() == Some(version))
         .then(|| format!("The PHP server is running on PHP {version}. Stop the server first."))
-}
-
-/// The running server, if any. Each window asks on start-up and whenever the
-/// server starts or exits, so both always agree with the backend.
-#[tauri::command]
-pub fn php_server_status(state: State<'_, AppState>) -> Option<PhpServerInfo> {
-    if state.php_server.active().is_empty() {
-        return None;
-    }
-    state.php_server_info.lock().ok()?.clone()
 }
 
 /// Whether nothing on this machine is using `port` on 127.0.0.1 right now.

@@ -21,6 +21,10 @@ export interface FileTreeProps {
   creating?: { parentDir: string; kind: "file" | "folder" } | null;
   onCommitCreate?: (name: string) => void;
   onCancelCreate?: () => void;
+  /** Why a new entry's typed name can't be used, or `null`. */
+  createProblem?: (name: string) => string | null;
+  /** Why `path` can't be renamed to `name`, or `null`. */
+  renameProblem?: (path: string, name: string) => string | null;
   /** Bumped by the parent to move keyboard focus into the tree (e.g. Ctrl+Shift+E). */
   focusToken: number;
   onToggleExpand: (path: string) => void;
@@ -144,6 +148,7 @@ function DraftRow(props: FileTreeProps & { depth: number; kind: "file" | "folder
         onCancel={() => {
           props.onCancelCreate?.();
         }}
+        validate={props.createProblem}
       />
     </div>
   );
@@ -316,6 +321,7 @@ function TreeRowLabel(props: TreeRowProps & { node: ExplorerNode }) {
           props.onCommitEdit(node, value);
         }}
         onCancel={props.onCancelEdit}
+        validate={(value) => props.renameProblem?.(node.path, value) ?? null}
       />
     );
   }

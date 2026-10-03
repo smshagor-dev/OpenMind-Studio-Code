@@ -1,3 +1,5 @@
+import type { DebugReadinessState } from "./state/canonicalIpc";
+import type { WorkspaceFeed } from "./state/canonicalStateService";
 import type { BreakpointService } from "./breakpointService";
 import type { DebugConfigurationService } from "./debugConfigurationService";
 import type { DebugConsoleService } from "./debugConsoleService";
@@ -48,6 +50,8 @@ function samePath(a: string, b: string): boolean {
  */
 export class DebugService {
   private state: DebugState = { status: null, run: null };
+  /** The canonical debug readiness of this window's folder (`src/services/state`). */
+  private canonical: WorkspaceFeed<DebugReadinessState> | null = null;
   private readonly listeners = new Set<() => void>();
   private offs: (() => void)[] = [];
   private lastConfig: LaunchConfig | null = null;
@@ -88,29 +92,41 @@ export class DebugService {
           const tag = event.level === "info" ? "" : `${event.level}: `;
           this.deps.log(`${tag}${event.text}`);
         }),
-        await this.ipc.onRuntimeChanged(() => {
-          void this.refreshStatus();
-        }),
       );
     } catch (error) {
       this.events.emit("appError", { message: `Debugging unavailable: ${String(error)}` });
     }
-    await this.refreshStatus();
+    // The session running now (a window opened mid-session); later changes arrive as `debug:state`.
+    const run: unknown = await this.ipc.debugRun().catch(() => null);
+    if (typeof run === "object" && run !== null && this.state.run === null) this.onRun(run as DebugRun);
   }
 
   dispose(): void {
     for (const off of this.offs.splice(0)) off();
   }
 
-  /** Re-reads which debuggers and runtimes are installed (after an install, a runtime change, ...). */
-  async refreshStatus(): Promise<void> {
-    try {
-      const status = await this.ipc.debugStatus();
-      this.state = { status, run: this.state.run ?? status.run };
+  /**
+   * Follows the backend's canonical debug readiness of this window's folder (interpreters, adapters, the reason one is
+   * missing) — which also makes an extra window see its own folder's readiness, not the main window's.
+   */
+  useCanonical(feed: WorkspaceFeed<DebugReadinessState>): () => void {
+    this.canonical = feed;
+    const apply = (readiness: DebugReadinessState | undefined) => {
+      if (readiness === undefined) return;
+      this.state = { status: { ...readiness, run: this.state.run }, run: this.state.run };
       this.notify();
-    } catch (error) {
-      this.deps.log(`Couldn't read the debugger status: ${String(error)}`);
-    }
+    };
+    const off = feed.subscribe(apply);
+    apply(feed.current());
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Refresh (after a debugger install): the backend reads the folder's debug readiness and this waits for it. */
+  async refreshStatus(): Promise<void> {
+    await this.canonical?.refresh();
   }
 
   isDebugging(): boolean {

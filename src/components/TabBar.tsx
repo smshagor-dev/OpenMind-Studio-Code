@@ -1,8 +1,11 @@
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+
 import { droppedOutside } from "../services/editorWindowService";
 import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseIcon } from "./icons";
 import { t } from "../i18n";
+import { overflows, revealScrollLeft, wheelDistance } from "./tabScroll";
 
 interface TabBarProps {
   tabs: EditorTabView[];
@@ -29,21 +32,68 @@ function tabTitle(tab: EditorTabView): string {
  * VS Code editor tabs: file-type icon, name, and a close button that shows
  * on the active/hovered tab — or a dot while the file is dirty, turning back
  * into × on hover. A provisional ("preview") tab is italic until it is edited
- * or double-clicked. Middle-click closes; the wheel scrolls horizontally.
+ * or double-clicked. Middle-click closes.
+ *
+ * When the tabs don't fit, the row scrolls sideways (the editor actions beside it stay put): the wheel — vertical,
+ * Shift+wheel or a trackpad's sideways swipe — moves it without scrolling anything else, and the active tab is always
+ * brought fully into view (selected, newly opened, restored, or after the window or the group was resized).
  */
 export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach }: TabBarProps) {
-  if (tabs.length === 0) {
-    return <div className="tab-bar" />;
+  const row = useRef<HTMLDivElement | null>(null);
+  const tabElements = useRef(new Map<string, HTMLDivElement>());
+  const hasTabs = tabs.length > 0;
+
+  /** Scrolls the row just enough to show the active tab whole (no-op when it is already visible). */
+  const revealActive = useCallback(() => {
+    const element = row.current;
+    const tab = activeId === null ? undefined : tabElements.current.get(activeId);
+    if (!element || !tab) return;
+    const next = revealScrollLeft(element.scrollLeft, element.clientWidth, tab.offsetLeft, tab.offsetWidth);
+    if (next !== null) element.scrollLeft = next;
+  }, [activeId]);
+
+  // Selecting, opening or closing a tab (and the first render of a restored session) reveals the active one.
+  useLayoutEffect(() => {
+    revealActive();
+  }, [revealActive, tabs.length]);
+
+  // A narrower window or editor group must not leave the active tab cut off.
+  useEffect(() => {
+    const element = row.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      revealActive();
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [revealActive, hasTabs]);
+
+  // A real (non-passive) listener, scoped to the row: only it can stop the wheel from also scrolling the page, and
+  // from scrolling twice (the browser's own sideways scroll plus ours) on Shift+wheel or a trackpad swipe.
+  useEffect(() => {
+    const element = row.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || !overflows(element.scrollWidth, element.clientWidth)) return;
+      const distance = wheelDistance(event, element.clientWidth);
+      if (distance === 0) return;
+      event.preventDefault();
+      element.scrollLeft += distance;
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      element.removeEventListener("wheel", onWheel);
+    };
+  }, [hasTabs]);
+
+  if (!hasTabs) {
+    return <div className="tab-bar" ref={row} />;
   }
 
   return (
-    <div
-      className="tab-bar"
-      role="tablist"
-      onWheel={(event) => {
-        if (event.deltaY !== 0) event.currentTarget.scrollLeft += event.deltaY;
-      }}
-    >
+    <div className="tab-bar" role="tablist" ref={row}>
       {tabs.map((tab) => {
         const active = tab.id === activeId;
         const className = [
@@ -59,6 +109,10 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach
         return (
           <div
             key={tab.id}
+            ref={(element) => {
+              if (element) tabElements.current.set(tab.id, element);
+              else tabElements.current.delete(tab.id);
+            }}
             role="tab"
             aria-selected={active}
             className={className}

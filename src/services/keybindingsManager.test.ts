@@ -143,7 +143,7 @@ describe("the command list", () => {
       "file.save": "Save",
       "file.open": "Open File",
       "file.openFolder": "Open Folder",
-      "file.new": "New File",
+      "file.new": "New Text File",
       "file.closeActiveTab": "Close Editor",
       "run.code": "Run Code",
       "run.stop": "Stop Running Code",

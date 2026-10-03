@@ -1,3 +1,4 @@
+import { backendFeeds } from "../testUtils/canonicalFeeds";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
@@ -13,7 +14,6 @@ import type { DebugStatus } from "./ipc";
 import { OutputService } from "./outputService";
 import { PanelService } from "./panelService";
 import { PhpServerService } from "./phpServerService";
-import { PortsService } from "./portsService";
 import { RuntimeService } from "./runtimeService";
 import { SearchService } from "./searchService";
 import { SettingsService } from "./settingsService";
@@ -221,7 +221,6 @@ describe("PHP server default port", () => {
       events,
       output,
       new RuntimeService(ipc, events, () => undefined),
-      new PortsService(ipc, events),
       new PanelService(ipc),
       () => settings.number("php.server.defaultPort", 8000),
     );
@@ -314,6 +313,7 @@ describe("debugger settings", () => {
         stopOnEntry: () => stop.current,
       },
     );
+    debug.useCanonical(backendFeeds(ipc).debug);
     await debug.refreshStatus();
 
     await debug.start();

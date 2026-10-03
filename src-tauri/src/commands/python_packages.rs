@@ -196,7 +196,8 @@ pub async fn python_packages_install(
             )?,
     };
     let message = install_into(&state, &version, progress_sink(app.clone())).await?;
-    crate::commands::runtime::notify_changed(&app);
+    crate::commands::runtime::notify_changed(&app).await;
+    crate::sync::announce_now(&app, crate::sync::Topic::Packages).await;
     message.ok_or_else(|| {
         format!("OpenMind Studio's Python bundle is for another Python line, or this copy has none (Python {version}).")
     })

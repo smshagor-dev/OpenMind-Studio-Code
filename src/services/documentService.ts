@@ -25,6 +25,8 @@ export type DiskCheck = "same" | "reloaded" | "conflict" | "deleted" | "unavaila
 
 interface DocumentRecord {
   path: string | null;
+  /** An untitled document's number (VS Code: Untitled-1, Untitled-2 ...); `null` once it has a file. */
+  untitled: number | null;
   encoding: TextEncoding;
   lineEnding: LineEnding;
   savedContent: string;
@@ -63,6 +65,7 @@ export class DocumentService {
     const id = `untitled-${++this.nextId}`;
     this.documents.set(id, {
       path: null,
+      untitled: this.freeUntitledNumber(),
       encoding: "utf8",
       lineEnding: "lf",
       savedContent: "",
@@ -74,19 +77,52 @@ export class DocumentService {
     return id;
   }
 
-  /** Opens `path`, reusing the existing document id if already open (or still opening). */
+  /** The lowest Untitled-N number no open document uses (VS Code reuses freed numbers). */
+  private freeUntitledNumber(): number {
+    const used = new Set([...this.documents.values()].map((doc) => doc.untitled));
+    let number = 1;
+    while (used.has(number)) number++;
+    return number;
+  }
+
+  /**
+   * Opens `path`, reusing the existing document id if already open (or still opening). Paths are compared the way the
+   * file system does (either slash style; drive paths ignore case), so one file never becomes two documents.
+   */
   async openFromPath(path: string): Promise<string> {
-    const existing = [...this.documents.entries()].find(([, doc]) => doc.path === path);
-    if (existing) {
-      return existing[0];
-    }
-    const pending = this.opening.get(path);
+    const existing = this.idForPath(path);
+    if (existing !== null) return existing;
+    const key = pathKey(path);
+    const pending = this.opening.get(key);
     if (pending) return pending;
     const opening = this.load(path).finally(() => {
-      this.opening.delete(path);
+      this.opening.delete(key);
     });
-    this.opening.set(path, opening);
+    this.opening.set(key, opening);
     return opening;
+  }
+
+  /** The editor language for a file: the built-in table first, then the extensions' and language registry's. */
+  private languageFor(path: string): string {
+    const builtIn = languageIdForPath(path);
+    return builtIn === "plaintext" ? (this.languageResolver?.(path) ?? builtIn) : builtIn;
+  }
+
+  /**
+   * The document's file is now `newPath`. Its language follows the new name unless the user picked one by hand (a
+   * language that differs from what the old name gave), and everything that shows a path is told.
+   */
+  private movePath(id: string, doc: DocumentRecord, newPath: string): void {
+    const from = doc.path;
+    if (from !== null && from === newPath) return;
+    const automatic = from === null ? "plaintext" : this.languageFor(from);
+    doc.path = newPath;
+    doc.untitled = null;
+    if (this.buffers.getLanguage(id) === automatic) {
+      const language = this.languageFor(newPath);
+      if (language !== automatic) this.buffers.setLanguage(id, language);
+    }
+    this.events.emit("documentPathChanged", { id, from, to: newPath });
   }
 
   private async load(path: string): Promise<string> {
@@ -94,16 +130,14 @@ export class DocumentService {
     const id = `doc-${++this.nextId}`;
     this.documents.set(id, {
       path: opened.path,
+      untitled: null,
       encoding: opened.encoding,
       lineEnding: opened.lineEnding,
       savedContent: opened.content,
       external: "none",
       diskContent: null,
     });
-    const builtIn = languageIdForPath(opened.path);
-    const language =
-      builtIn === "plaintext" ? (this.languageResolver?.(opened.path) ?? builtIn) : builtIn;
-    const model = this.buffers.create(id, opened.content, language);
+    const model = this.buffers.create(id, opened.content, this.languageFor(opened.path));
     // Monaco holds one line ending per model, so a mixed (or lone-CR) file reads back
     // slightly different from the file. The baseline is what the model holds right
     // after loading; otherwise such a file would look edited the moment it opens.
@@ -163,6 +197,23 @@ export class DocumentService {
   setLanguage(id: string, languageId: string): void {
     this.requireDocument(id);
     this.buffers.setLanguage(id, languageId);
+  }
+
+  /**
+   * The languages the editor knows changed (an extension added one, the language registry loaded): an open file still
+   * shown as Plain Text gets the language its name now has, so it is coloured at once instead of after a restart. A
+   * language the user chose by hand is never replaced. Returns how many documents changed.
+   */
+  refreshLanguages(): number {
+    let changed = 0;
+    for (const [id, doc] of this.documents) {
+      if (doc.path === null || this.buffers.getLanguage(id) !== "plaintext") continue;
+      const language = this.languageFor(doc.path);
+      if (language === "plaintext") continue;
+      this.buffers.setLanguage(id, language);
+      changed++;
+    }
+    return changed;
   }
 
   /** The current text of an open document (the Markdown preview renders this live). */
@@ -226,7 +277,7 @@ export class DocumentService {
     return {
       id,
       path: doc.path,
-      title: doc.path ? basename(doc.path) : "Untitled",
+      title: doc.path ? basename(doc.path) : `Untitled-${String(doc.untitled ?? 1)}`,
       dirty: this.isDirty(id),
       encoding: doc.encoding,
       lineEnding: doc.lineEnding,
@@ -313,11 +364,37 @@ export class DocumentService {
     this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
   }
 
-  /** The file was renamed/moved: the open document follows it (text and edits untouched). */
+  /** The file was renamed/moved: the open document follows it (text, edits, cursor and undo history untouched). */
   retarget(id: string, newPath: string): void {
     const doc = this.requireDocument(id);
-    doc.path = newPath;
+    this.movePath(id, doc, newPath);
     this.setExternal(id, "none", null);
+  }
+
+  /**
+   * `from` (a file or a folder) is now `to`: every open document at or inside it follows. Returns how many did.
+   * Used right after a rename/move done from the Explorer, before any watcher event arrives.
+   */
+  retargetPath(from: string, to: string): number {
+    let moved = 0;
+    for (const id of this.idsAtOrUnder(from)) {
+      const path = this.requireDocument(id).path ?? "";
+      this.retarget(id, to + path.slice(from.length));
+      moved++;
+    }
+    return moved;
+  }
+
+  /** Open documents whose file is `path` or inside the folder `path`. */
+  idsAtOrUnder(path: string): string[] {
+    const key = pathKey(path).replace(/\/+$/, "");
+    return [...this.documents.entries()]
+      .filter(([, doc]) => {
+        if (doc.path === null) return false;
+        const docKey = pathKey(doc.path);
+        return docKey === key || docKey.startsWith(`${key}/`);
+      })
+      .map(([id]) => id);
   }
 
   private applyDisk(
@@ -366,7 +443,7 @@ export class DocumentService {
     // (a mixed-line-ending file must not be rewritten just because Save was pressed).
     const untouched = content === doc.savedContent && doc.external === "none" && doc.path === path;
     if (!untouched) await this.ipc.documentSave(path, content, doc.encoding);
-    doc.path = path;
+    this.movePath(id, doc, path);
     doc.savedContent = content;
     doc.external = "none";
     doc.diskContent = null;

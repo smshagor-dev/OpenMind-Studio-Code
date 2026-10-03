@@ -125,3 +125,31 @@
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* The name box and, under it, why the typed name can't be used (VS Code's validation message). */
+.inline-name {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.inline-name-input--invalid {
+  border-color: var(--error-border);
+}
+
+.inline-name__problem {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 3px 5px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  color: var(--fg);
+  background-color: var(--input-bg);
+  border: 1px solid var(--error-border);
+  border-top: none;
+}

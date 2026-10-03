@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
@@ -39,17 +39,14 @@ const snapshot: ExplorerSnapshot = {
 
 function setup() {
   const explorer = {
-    prepareCreate: vi.fn().mockResolvedValue(undefined),
-    createNamed: vi.fn((dir: string, name: string) => Promise.resolve(`${dir}/${name}`)),
-    createFile: vi.fn(),
-    createFolder: vi.fn(),
-    revealPath: vi.fn().mockResolvedValue(undefined),
+    beginCreate: vi.fn().mockResolvedValue(undefined),
+    commitCreate: vi.fn().mockResolvedValue(null),
+    cancelCreate: vi.fn(),
     rename: vi.fn().mockResolvedValue(null),
   };
-  const workspace = { openPath: vi.fn().mockResolvedValue("doc-1") };
-  harness.current = { explorer, workspace };
+  harness.current = { explorer };
   const hook = renderHook(() => useExplorerInteractions(snapshot));
-  return { explorer, workspace, hook };
+  return { explorer, hook };
 }
 
 afterEach(() => {
@@ -57,79 +54,30 @@ afterEach(() => {
 });
 
 describe("Explorer: New File asks for the name first (VS Code)", () => {
-  it("creates nothing until the name is given, then creates that name and opens it", async () => {
-    const { explorer, workspace, hook } = setup();
-    await act(async () => {
-      await hook.result.current.startCreate("file", null);
-    });
-    expect(hook.result.current.pendingCreate).toEqual({ parentDir: ROOT, kind: "file" });
-    expect(explorer.prepareCreate).toHaveBeenCalledWith(ROOT);
-    // No "Untitled" file is made on disk.
-    expect(explorer.createFile).not.toHaveBeenCalled();
-    expect(explorer.createNamed).not.toHaveBeenCalled();
-    act(() => {
-      hook.result.current.commitCreate("main.f90");
-    });
-    expect(hook.result.current.pendingCreate).toBeNull();
-    await waitFor(() => {
-      expect(workspace.openPath).toHaveBeenCalledWith(`${ROOT}/main.f90`);
-    });
-    expect(explorer.createNamed).toHaveBeenCalledWith(ROOT, "main.f90", "file");
-    expect(explorer.revealPath).toHaveBeenCalledWith(`${ROOT}/main.f90`);
-  });
-
-  it("Escape or an empty name creates nothing", async () => {
+  it("the name box, its commit and its cancel all belong to the Explorer service (one source of truth)", async () => {
     const { explorer, hook } = setup();
-    await act(async () => {
-      await hook.result.current.startCreate("file", null);
-    });
-    act(() => {
-      hook.result.current.cancelCreate();
-    });
-    expect(hook.result.current.pendingCreate).toBeNull();
-    await act(async () => {
-      await hook.result.current.startCreate("file", null);
-    });
-    act(() => {
-      hook.result.current.commitCreate("");
-    });
-    // A late commit after the box closed does nothing either.
-    act(() => {
-      hook.result.current.commitCreate("late.txt");
-    });
-    expect(explorer.createNamed).not.toHaveBeenCalled();
-  });
-
-  it("creates inside the chosen folder, and a new folder is not opened as a file", async () => {
-    const { explorer, workspace, hook } = setup();
     await act(async () => {
       await hook.result.current.startCreate("folder", node(SRC, "src", true));
     });
-    expect(hook.result.current.pendingCreate).toEqual({ parentDir: SRC, kind: "folder" });
+    expect(explorer.beginCreate).toHaveBeenCalledWith("folder", node(SRC, "src", true));
     act(() => {
       hook.result.current.commitCreate("lib");
     });
-    await waitFor(() => {
-      expect(explorer.revealPath).toHaveBeenCalledWith(`${SRC}/lib`);
+    expect(explorer.commitCreate).toHaveBeenCalledWith("lib");
+    act(() => {
+      hook.result.current.cancelCreate();
     });
-    expect(explorer.createNamed).toHaveBeenCalledWith(SRC, "lib", "folder");
-    expect(workspace.openPath).not.toHaveBeenCalled();
+    expect(explorer.cancelCreate).toHaveBeenCalledTimes(1);
   });
 
-  it("doesn't open anything when the name was refused", async () => {
-    const { explorer, workspace, hook } = setup();
-    explorer.createNamed.mockResolvedValueOnce(null as unknown as string);
-    await act(async () => {
-      await hook.result.current.startCreate("file", null);
-    });
-    act(() => {
-      hook.result.current.commitCreate("README.md");
-    });
-    await waitFor(() => {
-      expect(explorer.createNamed).toHaveBeenCalledTimes(1);
-    });
-    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-    expect(workspace.openPath).not.toHaveBeenCalled();
+  it("shows the box the service holds", () => {
+    harness.current = { explorer: {} };
+    const pending = renderHook(() =>
+      useExplorerInteractions({ ...snapshot, pendingCreate: { parentDir: ROOT, kind: "file" } }),
+    );
+    expect(pending.result.current.pendingCreate).toEqual({ parentDir: ROOT, kind: "file" });
+    const none = renderHook(() => useExplorerInteractions(snapshot));
+    expect(none.result.current.pendingCreate).toBeNull();
   });
 });
 
@@ -182,5 +130,25 @@ describe("the name box in the tree", () => {
     expect(commit).toHaveBeenCalledWith("util.ts");
     fireEvent.keyDown(box, { key: "Escape" });
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("says why a name can't be used, keeps the box open on Enter, and cancels when left", () => {
+    const commit = vi.fn();
+    const cancel = vi.fn();
+    tree({
+      creating: { parentDir: ROOT, kind: "file" },
+      onCommitCreate: commit,
+      onCancelCreate: cancel,
+      createProblem: (name) => (name.includes("?") ? 'The name "a?.py" contains "?".' : null),
+    });
+    const box = screen.getByRole("treeitem", { name: "New file name" }).querySelector("input") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "a?.py" } });
+    expect(screen.getByRole("alert").textContent).toContain('contains "?"');
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(commit).not.toHaveBeenCalled();
+    fireEvent.blur(box);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(commit).not.toHaveBeenCalled();
   });
 });

@@ -110,18 +110,19 @@ where
     .map_err(|err| err.to_string())
 }
 
-#[tauri::command]
-pub async fn git_snapshot(
-    window: tauri::Window,
-    app: AppHandle,
-    state: State<'_, AppState>,
+/// What Source Control shows for the folder `workspace` (also the canonical state's per-workspace Git domain). An
+/// error (Git failing on this folder) is returned as such, so a caller keeps what it showed before.
+pub(crate) async fn snapshot_at(
+    app: &AppHandle,
+    state: &AppState,
+    workspace: Option<PathBuf>,
 ) -> Result<GitSnapshot, String> {
-    let Ok(workspace) = workspace_path(&state, window.label()).await else {
+    let Some(workspace) = workspace else {
         return Ok(GitSnapshot::NoWorkspace {
-            runtime: runtime_info(&app, &state).await,
+            runtime: runtime_info(app, state).await,
         });
     };
-    let client = match build_client(&app, &state).await {
+    let client = match build_client(app, state).await {
         Ok(client) => client,
         Err(err) => {
             let system_git: Option<OsString> = std::env::var_os("PATH");

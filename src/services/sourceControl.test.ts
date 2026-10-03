@@ -1,3 +1,4 @@
+import { ipcWorkspaceFeed } from "../testUtils/canonicalFeeds";
 import { describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "./eventBus";
@@ -61,6 +62,9 @@ async function setup(snapshot: GitSnapshot, overrides: Parameters<typeof createF
   const openFile = vi.fn().mockResolvedValue(null);
   const installGit = vi.fn();
   const sc = new SourceControlService(git, events, openFile, installGit);
+  const gitFeed = ipcWorkspaceFeed(() => ipc.gitSnapshot());
+  sc.useCanonical(gitFeed);
+  await gitFeed.refresh(); // the backend's first read of the folder
   await sc.initialize();
   return { sc, ipc, output, git, events, openFile, installGit };
 }

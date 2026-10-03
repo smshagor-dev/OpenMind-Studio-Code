@@ -47,7 +47,7 @@ getrandom = "0.3"
 tauri-plugin-clipboard-manager = "2.3.3"
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-updater = "2"
-tokio = { version = "1.53.1", features = ["time", "rt"] }
+tokio = { version = "1.53.1", features = ["time", "rt", "sync"] }
 tracing.workspace = true
 thiserror.workspace = true
 

@@ -6,7 +6,7 @@ import type {
   ExtensionsSnapshot,
   InstalledExtension,
 } from "./extensionsIpc";
-import type { IpcClient } from "./ipc";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 
 export interface ExtensionRegistryState {
   /** `null` until the first answer from the backend. */
@@ -26,17 +26,16 @@ const NO_ACTIVITY: ExtensionActivity = {
 /**
  * What is installed: the backend's list of extensions (the folders under `extensions/`), with what each
  * has done in the host, and the search box over it. UI-free; `ExtensionService` changes things, this only
- * reads and follows `ext:changed`.
+ * follows the canonical `extensions` state.
  */
 export class ExtensionRegistryService {
   private state: ExtensionRegistryState = { snapshot: null, query: "", error: null };
   private readonly listeners = new Set<() => void>();
   private offs: (() => void)[] = [];
+  /** The canonical extension list (`src/services/state`), once the backend has it. */
+  private canonical: CanonicalFeed<ExtensionsSnapshot> | null = null;
 
-  constructor(
-    private readonly ipc: IpcClient,
-    private readonly events: EventBus<AppEvents>,
-  ) {}
+  constructor(private readonly events: EventBus<AppEvents>) {}
 
   getState(): ExtensionRegistryState {
     return this.state;
@@ -49,37 +48,46 @@ export class ExtensionRegistryService {
     };
   }
 
+  /** The list arrives from the canonical state (`useCanonical`); this waits until the backend has read it once. */
   async initialize(): Promise<void> {
-    this.dispose();
-    try {
-      this.offs.push(
-        await this.ipc.onExtChanged(() => {
-          void this.refresh();
-        }),
-      );
-    } catch (error) {
-      this.events.emit("appError", { message: `Extensions unavailable: ${String(error)}` });
-    }
-    await this.refresh();
+    await this.ensureLoaded();
   }
 
   dispose(): void {
     for (const off of this.offs.splice(0)) off();
   }
 
+  /**
+   * Follows the backend's canonical extension list (installs, enable/disable, removal — also folders copied in or
+   * deleted by hand — and host activity): every window gets the same list once per change. Returns the way to stop.
+   */
+  useCanonical(feed: CanonicalFeed<ExtensionsSnapshot>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((snapshot) => {
+      this.applySnapshot(snapshot);
+    });
+    const current = feed.current();
+    if (current !== undefined) this.applySnapshot(current);
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Waits until this window has every extension change the backend made so far. */
   async refresh(): Promise<void> {
-    try {
-      this.state = { ...this.state, snapshot: await this.ipc.extList(), error: null };
-    } catch (error) {
-      this.state = { ...this.state, error: `Couldn't read the extensions: ${String(error)}` };
-    }
+    await this.canonical?.catchUp();
+  }
+
+  private applySnapshot(snapshot: ExtensionsSnapshot): void {
+    this.state = { ...this.state, snapshot, error: null };
     this.notify();
     this.events.emit("extensionsChanged", undefined);
   }
 
-  /** Reads the list once (a second call returns at once). */
+  /** Waits for the first list (start-up: the backend reads it in the background); returns at once afterwards. */
   async ensureLoaded(): Promise<void> {
-    if (this.state.snapshot === null) await this.refresh();
+    if (this.state.snapshot === null) await this.canonical?.ready();
   }
 
   setQuery(query: string): void {

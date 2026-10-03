@@ -129,14 +129,12 @@ export type TerminalShellStyle = "powerShell" | "cmd" | "bash";
 
 export interface LanguageIpc {
   languageRegistry: () => Promise<LanguageDef[]>;
-  languageWorkspaceStatus: () => Promise<WorkspaceStatus>;
   languageFileStatus: (path: string) => Promise<FileLanguageStatus>;
   languageTerminalLine: (argv: string[], style: TerminalShellStyle) => Promise<string>;
 }
 
 export const tauriLanguageIpc: LanguageIpc = {
   languageRegistry: () => invoke<LanguageDef[]>("language_registry"),
-  languageWorkspaceStatus: () => invoke<WorkspaceStatus>("language_workspace_status"),
   languageFileStatus: (path) => invoke<FileLanguageStatus>("language_file_status", { path }),
   languageTerminalLine: (argv, style) => invoke<string>("language_terminal_line", { argv, style }),
 };

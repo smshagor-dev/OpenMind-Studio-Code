@@ -1,3 +1,4 @@
+import type { WorkspaceFeed } from "../state/canonicalStateService";
 import type { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
 import type {
@@ -19,10 +20,6 @@ export interface LanguageSupportState {
   fileError: string | null;
 }
 
-/** Files whose change can change what a folder is (a manifest or a config), so the folder is looked at again. */
-const MARKER =
-  /(^|\/)(package\.json|cargo\.toml|go\.mod|pubspec\.yaml|composer\.json|pom\.xml|build\.gradle(\.kts)?|settings\.gradle(\.kts)?|tauri\.conf\.json|requirements\.txt|pyproject\.toml|gemfile|dockerfile|docker-compose\.ya?ml|cmakelists\.txt|manage\.py|artisan|[^/]+\.(csproj|sln))$/i;
-
 /**
  * Languages and projects: which language a file is (the registry comes from the backend), which projects the open
  * folder holds with their commands and tools, and what is known about the tools of one file. Looking is all it does —
@@ -40,7 +37,8 @@ export class LanguageSupportService {
   };
   private readonly listeners = new Set<() => void>();
   private scanSeq = 0;
-  private timer: ReturnType<typeof setTimeout> | null = null;
+  /** The canonical project state of this window's folder (`src/services/state`). */
+  private canonical: WorkspaceFeed<WorkspaceStatus> | null = null;
 
   constructor(
     private readonly ipc: LanguageIpc,
@@ -71,18 +69,13 @@ export class LanguageSupportService {
     } catch (error) {
       this.events.emit("appError", { message: `Language support unavailable: ${String(error)}` });
     }
+    // The folder's projects follow through the canonical state (a saved manifest is seen by the backend's watcher).
     this.events.on("workspaceFolderChanged", () => {
-      this.set({ workspace: null, file: null });
-      void this.refresh();
-    });
-    this.events.on("documentSaved", ({ path }) => {
-      if (MARKER.test(path.replace(/\\/g, "/"))) this.refreshSoon();
+      this.set({ file: null });
     });
   }
 
   dispose(): void {
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = null;
   }
 
   // --- Languages ------------------------------------------------------------------------------------------
@@ -105,6 +98,24 @@ export class LanguageSupportService {
 
   // --- Projects -------------------------------------------------------------------------------------------
 
+  /**
+   * Follows the backend's canonical project state of this window's folder (projects, tools, commands): one scan per
+   * folder and change (a saved manifest, an install, a runtime or tool change), shared by every window on the folder.
+   */
+  useCanonical(feed: WorkspaceFeed<WorkspaceStatus>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((workspace) => {
+      this.scanSeq++;
+      this.set({ workspace: workspace ?? null, scanning: false, scanError: null });
+    });
+    const current = feed.current();
+    if (current !== undefined) this.set({ workspace: current, scanning: false, scanError: null });
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
   /** Looks at the open folder again. */
   async refresh(): Promise<void> {
     if (!this.hasWorkspace()) {
@@ -114,21 +125,13 @@ export class LanguageSupportService {
     const seq = ++this.scanSeq;
     this.set({ scanning: true, scanError: null });
     try {
-      const workspace = await this.ipc.languageWorkspaceStatus();
-      if (seq === this.scanSeq) this.set({ workspace, scanning: false });
+      await this.canonical?.refresh();
+      if (seq === this.scanSeq) this.set({ scanning: false });
     } catch (error) {
       if (seq === this.scanSeq) this.set({ scanning: false, scanError: String(error) });
     }
   }
 
-  /** A saved manifest: look again shortly (several saves in a row are one scan). */
-  private refreshSoon(): void {
-    if (this.timer !== null) clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      void this.refresh();
-    }, 600);
-  }
 
   projects(): readonly ProjectStatus[] {
     return this.state.workspace?.projects ?? [];

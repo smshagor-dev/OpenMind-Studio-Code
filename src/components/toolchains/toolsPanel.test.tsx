@@ -1,9 +1,9 @@
+import { toolchainsFrom } from "../../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeIpc } from "../../testUtils/fakeIpcClient";
 import { gitWithVersions, packs, toolEntry } from "../../testUtils/toolchainFixtures";
-import { ToolchainService } from "../../services/toolchains/toolchainService";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
 
@@ -89,7 +89,7 @@ async function mount(list = tools(), overrides: Parameters<typeof createFakeIpc>
     toolchainsList: vi.fn().mockResolvedValue(packs(list)),
     ...overrides,
   });
-  const toolchains = new ToolchainService(ipc);
+  const toolchains = toolchainsFrom(ipc);
   harness.current = { toolchains, lsp: NO_SERVERS, ...INSTALL_STUBS };
   render(<ToolsPanel />);
   await screen.findByRole("region", { name: "Version Control" });
@@ -224,7 +224,7 @@ describe("ToolsPanel", () => {
         }),
       ),
     });
-    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS, ...INSTALL_STUBS };
+    harness.current = { toolchains: toolchainsFrom(ipc), lsp: NO_SERVERS, ...INSTALL_STUBS };
     render(<ToolsPanel />);
     expect(
       await screen.findByText(
@@ -240,7 +240,7 @@ describe("ToolsPanel", () => {
       toolEntry({ id: "flutter-sdk", name: "Flutter SDK", category: "sdk", status: "external" }),
     ];
     const ipc = createFakeIpc({ toolchainsList: vi.fn().mockResolvedValue(packs(list)) });
-    harness.current = { toolchains: new ToolchainService(ipc), lsp: NO_SERVERS, ...INSTALL_STUBS };
+    harness.current = { toolchains: toolchainsFrom(ipc), lsp: NO_SERVERS, ...INSTALL_STUBS };
     render(<ToolsPanel />);
     expect(await screen.findByText("No tools bundled")).toBeInTheDocument();
     expect(

@@ -71,16 +71,12 @@ pub(crate) async fn composer_phar(state: &AppState) -> Option<PathBuf> {
     (program.extension().is_some_and(|e| e == "phar")).then_some(program)
 }
 
-#[tauri::command]
-pub async fn toolchains_list(state: State<'_, AppState>) -> Result<Packs, String> {
-    Ok(packs(&state).await)
-}
-
 /// Makes `version` the active one for `id`. Only a version that is listed and really present can be chosen.
 #[tauri::command]
 pub async fn toolchains_set_active(
     id: String,
     version: String,
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Packs, String> {
     let current = packs(&state).await;
@@ -100,6 +96,7 @@ pub async fn toolchains_set_active(
         .set(ACTIVE_KEY, &text)
         .await
         .map_err(|err| err.to_string())?;
+    crate::sync::announce_now(&app, crate::sync::Topic::Tools).await;
     Ok(packs(&state).await)
 }
 

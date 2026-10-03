@@ -1,3 +1,4 @@
+import { ipcWorkspaceFeed } from "../../testUtils/canonicalFeeds";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -85,6 +86,8 @@ async function setup(options: Options = {}) {
     terminal,
     showTerminal: vi.fn().mockResolvedValue(undefined),
   });
+  // The folder's project status, as the canonical state delivers it.
+  wiring.support.useCanonical(ipcWorkspaceFeed(() => ipc.languageWorkspaceStatus()));
   await wiring.support.initialize();
   const notices: string[] = [];
   events.on("appNotice", ({ message }) => {

@@ -67,6 +67,9 @@ import { registerPythonPackagesCommands } from "./pythonPackagesCommands";
 import { offerEnglish } from "./languageOffer";
 import { ToolchainService } from "./toolchains/toolchainService";
 import { ToolInstallService } from "./toolchains/toolInstallService";
+import { CanonicalStateService } from "./state/canonicalStateService";
+import { tauriCanonicalIpc } from "./state/canonicalIpc";
+import { wireLiveSync } from "./sync/liveSyncWiring";
 import { LspService } from "./lspService";
 import { registerLspProviders } from "./lspProviders";
 import { ComposerService } from "./composerService";
@@ -102,9 +105,8 @@ import { i18n, t } from "../i18n";
 import { tauriBrokerIpc } from "./network/brokerIpc";
 import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
-import { refreshAfterInstalls, wireLanguageTools } from "./languageTools/languageToolsWiring";
+import { wireLanguageTools } from "./languageTools/languageToolsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
-import { tauriDepsIpc } from "./deps/depsIpc";
 import { wireDeps } from "./deps/depsWiring";
 
 // Monaco's own language services must be off before the first model exists (see monacoBuiltins.ts).
@@ -142,7 +144,16 @@ const layout = new LayoutService(tauriIpcClient);
 const windowService = new WindowService(tauriWindowApi, tauriIpcClient);
 const keybindings = new KeybindingService(commands);
 const markers = new MarkerService();
+/**
+ * The window's copy of the canonical, versioned system state (live sync, step 2): runtimes, tools, language servers,
+ * extensions and the packages marker, the same in every window. Stores follow their domain through a feed.
+ */
+const canonical = new CanonicalStateService(tauriCanonicalIpc, log("OpenMind Studio"), (reason) => {
+  events.emit("appError", { message: reason });
+});
+void canonical.start().catch(() => undefined);
 const runtime = new RuntimeService(tauriIpcClient, events, log("Runtime Manager"));
+runtime.useCanonical(canonical.feed("runtimes"));
 const terminal = new TerminalService(
   tauriIpcClient,
   events,
@@ -165,16 +176,15 @@ const search = new SearchService(
   workspaceIndex,
 );
 
-const php = new PhpServerService(tauriIpcClient, events, output, runtime, ports, panel, () =>
+const php = new PhpServerService(tauriIpcClient, events, output, runtime, panel, () =>
   settings.number("php.server.defaultPort", 8000),
 );
-const mariaDb = new MariaDbService(tauriIpcClient, events, output, runtime, ports, panel);
+const mariaDb = new MariaDbService(tauriIpcClient, events, output, runtime, panel);
 const phpMyAdmin = new PhpMyAdminService(
   tauriIpcClient,
   events,
   output,
   runtime,
-  ports,
   panel,
   php,
   mariaDb,
@@ -182,7 +192,7 @@ const phpMyAdmin = new PhpMyAdminService(
 const composer = new ComposerService(tauriIpcClient, events, output, runtime, panel);
 const phpRuntime = new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin });
 /** MySQL: MariaDB + phpMyAdmin as one service in the PHP Server window. */
-const mySql = new MySqlService(tauriIpcClient, events, output, runtime);
+const mySql = new MySqlService(tauriIpcClient, events, output);
 const controlPanel = new ControlPanelService(
   tauriIpcClient,
   events,
@@ -199,15 +209,20 @@ const sourceControl = new SourceControlService(
   () => {
     events.emit("showRuntimeManager", undefined);
   },
-  (listener) => runtime.subscribe(listener),
   (): Promise<unknown> => fileSync.afterGitOperation(),
-  () => settings.bool("git.autoRefresh", true),
 );
 const fileSync = new FileSyncService(tauriIpcClient, events, documents, explorer, {
   workspacePath: () => workspace.getActiveWorkspace()?.path ?? null,
-  workingTreeChanged: (): Promise<void> =>
-    settings.bool("git.autoRefresh", true) ? sourceControl.refresh() : Promise.resolve(),
   loadedFolders: () => explorer.loadedFolders(),
+});
+// What the Explorer's own operations mean for the rest of the app, applied as soon as the backend answers.
+explorer.setHost({
+  openFile: (path) => workspace.openPath(path),
+  pathMoved: (from, to) => {
+    documents.retargetPath(from, to);
+    void tauriIpcClient.recentFilesRename(from, to).catch(() => undefined);
+  },
+  pathDeleted: (path) => fileSync.deletedByUser(path),
 });
 const gitClone = new GitCloneService(
   gitService,
@@ -499,13 +514,13 @@ commands.register("view.toggleTheme", async () => {
 commands.register("explorer.newFile", async () => {
   if (!explorer.getSnapshot().rootPath) return;
   await layout.showView("explorer");
-  events.emit("explorerCreate", { kind: "file" });
+  await explorer.beginCreate("file");
 });
 
 commands.register("explorer.newFolder", async () => {
   if (!explorer.getSnapshot().rootPath) return;
   await layout.showView("explorer");
-  events.emit("explorerCreate", { kind: "folder" });
+  await explorer.beginCreate("folder");
 });
 
 commands.register("explorer.refresh", async () => {
@@ -759,10 +774,8 @@ const depsWiring = wireDeps({
 const deps = depsWiring.helper;
 // The Dependencies view (Milestone 22.6): same runner as the missing-package card.
 const dependencies = new DependenciesService({
-  ipc: tauriDepsIpc,
   actions: depsWiring.actions,
   events,
-  onChanged: depsWiring.onChanged,
   settingsGet: (key) => tauriIpcClient.settingsGet(key),
   settingsSet: (key, value) => tauriIpcClient.settingsSet(key, value),
 });
@@ -837,16 +850,6 @@ const formatting = wireFormatting({
   settings,
   log: log("Formatting"),
 }).service;
-/** A runtime installed, removed or switched takes effect everywhere at once — no restart. */
-refreshAfterInstalls(runtime, [
-  () => lsp.retryUnready(),
-  () => language.support.refresh(),
-  () => dependencies.refresh(),
-  () => formatting.refreshStatus(),
-  () => {
-    extensions.retryAfterInstall();
-  },
-]);
 /** Extension API v2: terminals, tasks, documents, custom schemes, webview views, file events (Milestone 18). */
 const extensionApis = wireExtensionApis({
   extensions,
@@ -924,7 +927,6 @@ const autoSave = new AutoSaveService({
 registerMenuFillCommands({
   commands,
   events,
-  ipc: tauriIpcClient,
   workspace,
   groups: editorGroups,
   editor,
@@ -938,9 +940,7 @@ registerMenuFillCommands({
   },
 });
 /** The bundled app-local tools: choosing another active version makes the language support look again. */
-const toolchains = new ToolchainService(tauriIpcClient, () => {
-  void language.support.refresh();
-});
+const toolchains = new ToolchainService(tauriIpcClient);
 /** Language Tools > Install: runtimes through the Runtime Manager, servers through Language Tools, tool packages into tools/. */
 const toolInstall = new ToolInstallService({
   events,
@@ -968,6 +968,37 @@ const toolInstall = new ToolInstallService({
       buttons: ["Accept and Install"],
     })) === "Accept and Install",
 });
+wireLiveSync({
+  canonical,
+  runtime,
+  toolchains,
+  lsp,
+  extensions: extensions.registry,
+  php,
+  mySql,
+  mariaDb,
+  phpMyAdmin,
+  ports,
+  sourceControl,
+  dependencies,
+  language: language.support,
+  debug,
+  events,
+  workloads,
+  formatterStatus: () => formatting.refreshStatus(),
+  runCodeStatus: () => runCode.refresh(),
+  retryLanguageServers: () => lsp.retryUnready(),
+  retryExtensions: () => {
+    extensions.retryAfterInstall();
+  },
+  onPackageOperation: (listener) => depsWiring.onChanged(listener),
+  toolsOnPath: (change) => terminalRefresh.environmentChanged(change),
+  removedText: (name) => t("terminal.refresh.removed", { name }),
+});
+// A language an extension adds (installed, enabled) colours the open files that were Plain Text at once.
+extensions.contributions.subscribe(() => {
+  documents.refreshLanguages();
+});
 // Extensions' languages win; then the registry's grammar for languages the editor's own table doesn't know (Go, Rust ...).
 documents.setLanguageResolver(
   (path) =>
@@ -977,6 +1008,7 @@ documents.setLanguageResolver(
 /** Loads the language table (static data) and looks at the open folder: file names and manifests only. */
 async function startLanguage(): Promise<void> {
   await language.support.initialize();
+  documents.refreshLanguages();
   await language.support.refresh();
 }
 

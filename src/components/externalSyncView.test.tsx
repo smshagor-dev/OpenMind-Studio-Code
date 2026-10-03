@@ -1,3 +1,4 @@
+import { ipcWorkspaceFeed } from "../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -205,9 +206,11 @@ describe("Source Control and stale content", () => {
       events,
       vi.fn(),
       vi.fn(),
-      undefined,
       filesChanged,
     );
+    const gitFeed = ipcWorkspaceFeed(() => ipc.gitSnapshot());
+    sc.useCanonical(gitFeed);
+    await gitFeed.refresh(); // the backend's first read of the folder
     await sc.initialize();
     return { sc, ipc, notices, filesChanged };
   }

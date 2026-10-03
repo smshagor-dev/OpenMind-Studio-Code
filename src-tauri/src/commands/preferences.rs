@@ -266,6 +266,17 @@ pub fn user_bool(state: &AppState, id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// A boolean setting's value for the folder `root`: its workspace value, else the user's, else the default.
+pub fn folder_bool(state: &AppState, root: &Path, id: &str) -> bool {
+    let user = store::read_layer(&state.settings_file);
+    let workspace = store::read_layer(&workspace_settings_path(root));
+    store::effective(&user, Some(&workspace), &Extras::default())
+        .into_iter()
+        .find(|entry| entry.id == id)
+        .and_then(|entry| entry.value.as_bool())
+        .unwrap_or(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

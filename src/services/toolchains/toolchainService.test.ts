@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFakeIpc } from "../../testUtils/fakeIpcClient";
+import { ipcFeed } from "../../testUtils/canonicalFeeds";
+import { createFakeIpc, type FakeIpc } from "../../testUtils/fakeIpcClient";
 import { gitWithVersions, packs, toolEntry } from "../../testUtils/toolchainFixtures";
 import { ToolchainService } from "./toolchainService";
 import {
@@ -12,11 +13,18 @@ import {
   versionCount,
 } from "./toolchainView";
 
-async function loaded(tools = [gitWithVersions()], onChanged = vi.fn()) {
+/** A ToolchainService following the canonical tool list (read from the fake backend's `toolchainsList`). */
+function following(ipc: FakeIpc, now?: () => number): ToolchainService {
+  const service = new ToolchainService(ipc, now);
+  service.useCanonical(ipcFeed(() => ipc.toolchainsList()));
+  return service;
+}
+
+async function loaded(tools = [gitWithVersions()]) {
   const ipc = createFakeIpc({ toolchainsList: vi.fn().mockResolvedValue(packs(tools)) });
-  const service = new ToolchainService(ipc, onChanged, () => 1234);
+  const service = following(ipc, () => 1234);
   await service.refresh();
-  return { ipc, service, onChanged };
+  return { ipc, service };
 }
 
 describe("ToolchainService", () => {
@@ -27,12 +35,11 @@ describe("ToolchainService", () => {
     expect(service.tool("nope")).toBeUndefined();
   });
 
-  it("keeps working, with the reason, when the list can't be read", async () => {
+  it("shows nothing loaded, without throwing, until the backend has read the tools", async () => {
     const ipc = createFakeIpc({ toolchainsList: vi.fn().mockRejectedValue("disk error") });
-    const service = new ToolchainService(ipc);
+    const service = following(ipc);
     await service.refresh();
-    expect(service.getState().loaded).toBe(true);
-    expect(service.getState().error).toBe("disk error");
+    expect(service.getState().loaded).toBe(false);
     expect(service.getState().packs).toBeNull();
   });
 
@@ -48,25 +55,23 @@ describe("ToolchainService", () => {
   it("chooses a version through the backend and tells the language support to look again", async () => {
     const chosen = gitWithVersions();
     const after = { ...chosen, activeVersion: "2.46.2" };
+    // The backend updates the canonical tool list before it answers; the window then catches up.
     const ipc = createFakeIpc({
-      toolchainsList: vi.fn().mockResolvedValue(packs([chosen])),
+      toolchainsList: vi.fn().mockResolvedValueOnce(packs([chosen])).mockResolvedValue(packs([after])),
       toolchainsSetActive: vi.fn().mockResolvedValue(packs([after])),
     });
-    const onChanged = vi.fn();
-    const service = new ToolchainService(ipc, onChanged);
+    const service = following(ipc);
     await service.refresh();
     await service.setActive("git", "2.46.2");
     expect(ipc.toolchainsSetActive).toHaveBeenCalledWith("git", "2.46.2");
     expect(service.tool("git")?.activeVersion).toBe("2.46.2");
-    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
   it("does not call the backend for a version that can't be chosen", async () => {
-    const { ipc, service, onChanged } = await loaded();
+    const { ipc, service } = await loaded();
     await service.setActive("git", "2.45.0");
     await service.setActive("git", "2.47.1");
     expect(ipc.toolchainsSetActive).not.toHaveBeenCalled();
-    expect(onChanged).not.toHaveBeenCalled();
   });
 
   it("shows a refused choice as an error", async () => {
@@ -74,7 +79,7 @@ describe("ToolchainService", () => {
       toolchainsList: vi.fn().mockResolvedValue(packs([gitWithVersions()])),
       toolchainsSetActive: vi.fn().mockRejectedValue("Git 2.46.2 is not available"),
     });
-    const service = new ToolchainService(ipc);
+    const service = following(ipc);
     await service.refresh();
     await service.setActive("git", "2.46.2");
     expect(service.getState().error).toMatch(/not available/);
@@ -92,7 +97,7 @@ describe("ToolchainService", () => {
           output: "git version 2.47.1",
         }),
     });
-    const service = new ToolchainService(ipc, undefined, () => 99);
+    const service = following(ipc, () => 99);
     await service.refresh();
     expect(ipc.toolchainsVerify).not.toHaveBeenCalled();
     await service.verify("git");
@@ -103,7 +108,7 @@ describe("ToolchainService", () => {
 
   it("turns a failing verify into a readable failed result", async () => {
     const ipc = createFakeIpc({ toolchainsVerify: vi.fn().mockRejectedValue("boom") });
-    const service = new ToolchainService(ipc);
+    const service = following(ipc);
     await service.verify("git", "2.46.2");
     expect(service.getState().verified.git?.result).toMatchObject({ ok: false, message: "boom" });
   });

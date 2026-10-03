@@ -71,7 +71,6 @@ export interface VerifyResult {
 }
 
 export interface ToolchainIpc {
-  toolchainsList: () => Promise<ToolchainPacks>;
   toolchainsSetActive: (id: string, version: string) => Promise<ToolchainPacks>;
   toolchainsVerify: (id: string, version: string | null) => Promise<VerifyResult>;
   /** Downloads and installs a tool package into `tools/` (Language Tools > Install). */
@@ -81,7 +80,6 @@ export interface ToolchainIpc {
 }
 
 export const tauriToolchainIpc: ToolchainIpc = {
-  toolchainsList: () => invoke<ToolchainPacks>("toolchains_list"),
   toolchainsSetActive: (id, version) =>
     invoke<ToolchainPacks>("toolchains_set_active", { id, version }),
   toolchainsVerify: (id, version) => invoke<VerifyResult>("toolchains_verify", { id, version }),

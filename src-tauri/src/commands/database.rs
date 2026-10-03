@@ -145,7 +145,8 @@ pub(crate) fn app_paths(state: &AppState) -> MariaDbPaths {
 fn service_sink(
     app: &AppHandle,
     event_name: &'static str,
-    changed_name: &'static str,
+    // `Some`: the process-lifecycle event to send when it ends (Composer); `None`: a managed server (canonical state).
+    changed_name: Option<&'static str>,
     log: Option<PathBuf>,
     clear: fn(&AppState),
 ) -> EventSink {
@@ -169,7 +170,12 @@ fn service_sink(
         }
         if matches!(event.event, RunEventKind::Exited { .. }) {
             clear(&app.state::<AppState>());
-            let _ = app.emit(changed_name, ());
+            match changed_name {
+                Some(name) => {
+                    let _ = app.emit(name, ());
+                }
+                None => crate::state::servers_changed(&app),
+            }
         }
         if let Err(err) = app.emit(event_name, event) {
             tracing::error!(?err, "failed to emit a service event");
@@ -296,7 +302,7 @@ pub async fn mariadb_initialize(app: AppHandle, state: State<'_, AppState>) -> R
         return Err("The database is already initialized.".into());
     }
     initialize_database(&state).await?;
-    let _ = app.emit("mariadb:changed", ());
+    crate::state::servers_changed(&app);
     Ok(())
 }
 
@@ -337,7 +343,7 @@ pub(crate) async fn spawn_mariadb(
     let sink = service_sink(
         app,
         "mariadb:event",
-        "mariadb:changed",
+        None,
         Some(paths.log_file.clone()),
         clear_db,
     );
@@ -356,7 +362,7 @@ pub(crate) async fn spawn_mariadb(
     if let Ok(mut slot) = state.db_info.lock() {
         *slot = Some(info.clone());
     }
-    let _ = app.emit("mariadb:changed", ());
+    crate::state::servers_changed(app);
     Ok(info)
 }
 
@@ -406,7 +412,7 @@ fn spawn_ready_watch(
             }
             if run_to_completion(&ping, Duration::from_secs(5)).is_ok_and(|done| done.success()) {
                 mark_ready(&state);
-                let _ = app.emit("mariadb:changed", ());
+                crate::state::servers_changed(&app);
                 return;
             }
             std::thread::sleep(Duration::from_millis(500));
@@ -527,7 +533,7 @@ pub(crate) async fn spawn_pma(
     }
     write_pma_config(state, &dir, mariadb_port).await?;
     let log = pma_log_file(state);
-    let sink = service_sink(app, "pma:event", "pma:changed", Some(log), clear_pma);
+    let sink = service_sink(app, "pma:event", None, Some(log), clear_pma);
     let run = state
         .pma
         .start(&plan, sink)
@@ -543,7 +549,7 @@ pub(crate) async fn spawn_pma(
     if let Ok(mut slot) = state.pma_info.lock() {
         *slot = Some(info.clone());
     }
-    let _ = app.emit("pma:changed", ());
+    crate::state::servers_changed(app);
     Ok(info)
 }
 
@@ -568,11 +574,6 @@ pub async fn pma_start(
 #[tauri::command]
 pub fn pma_stop(state: State<'_, AppState>) {
     state.pma.stop_all();
-}
-
-#[tauri::command]
-pub fn pma_status(state: State<'_, AppState>) -> Option<ServiceInfo> {
-    running_info(&state.pma, &state.pma_info)
 }
 
 // --- Composer ---
@@ -614,7 +615,13 @@ pub async fn composer_run(
     .map_err(|err| err.to_string())?;
     let _ = std::fs::create_dir_all(state.app_root.join("data").join("composer"));
     let _ = std::fs::create_dir_all(state.app_root.join("cache").join("composer"));
-    let sink = service_sink(&app, "composer:event", "composer:changed", None, |_| {});
+    let sink = service_sink(
+        &app,
+        "composer:event",
+        Some("composer:changed"),
+        None,
+        |_| {},
+    );
     let run = state
         .composer
         .start(&plan, sink)

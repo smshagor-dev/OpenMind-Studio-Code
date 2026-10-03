@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { container } from "../services/container";
-import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
+import { type ExplorerNode, type ExplorerSnapshot, targetDirFor } from "../services/explorerService";
 import { isSameOrDescendant } from "../services/explorerTree";
 import type { ExplorerMenuActions } from "./explorerContextMenu";
 
@@ -9,12 +9,6 @@ export interface PendingEdit {
   path: string;
   parentDir: string;
   initialValue: string;
-}
-
-/** A new file or folder being named in the tree: nothing exists on disk until the name is confirmed (VS Code). */
-export interface PendingCreate {
-  parentDir: string;
-  kind: "file" | "folder";
 }
 
 export type PendingConfirm =
@@ -27,42 +21,18 @@ export interface ContextMenuState {
   node: ExplorerNode | null;
 }
 
-/** Where "New File/Folder" and "Paste" land: the given/selected folder, else that file's folder, else the root. */
-export function targetDirFor(snapshot: ExplorerSnapshot, node: ExplorerNode | null): string {
-  const selected =
-    node ?? (snapshot.selectedPath ? snapshot.nodesByPath.get(snapshot.selectedPath) : undefined);
-  if (!selected) return snapshot.rootPath ?? "";
-  return selected.isDir ? selected.path : selected.parentPath;
-}
-
 /**
- * The explorer's transient, UI-only interaction state (which context menu,
- * inline rename or confirmation is open) plus the actions that open them.
- * The actual file operations are all `ExplorerService` calls.
+ * The explorer's transient, UI-only interaction state (which context menu, inline rename or confirmation is open) plus
+ * the actions that open them. The tree, the name box of a new entry and every file operation are `ExplorerService`'s.
  */
 export function useExplorerInteractions(snapshot: ExplorerSnapshot) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
   const [pendingEdit, setPendingEdit] = useState<PendingEdit | null>(null);
-  const [pendingCreate, setPendingCreate] = useState<PendingCreate | null>(null);
 
   async function startCreate(kind: "file" | "folder", node: ExplorerNode | null) {
-    const parentDir = targetDirFor(snapshot, node);
     setPendingEdit(null);
-    await container.explorer.prepareCreate(parentDir);
-    setPendingCreate({ parentDir, kind });
-  }
-
-  /** The typed name: an empty one (Escape, or leaving the box empty) creates nothing. A new file opens in the editor. */
-  function commitCreate(name: string) {
-    const create = pendingCreate;
-    setPendingCreate(null);
-    if (!create || name === "") return;
-    void container.explorer.createNamed(create.parentDir, name, create.kind).then(async (created) => {
-      if (created === null) return;
-      if (create.kind === "file") await container.workspace.openPath(created);
-      await container.explorer.revealPath(created);
-    });
+    await container.explorer.beginCreate(kind, node);
   }
 
   function requestMove(source: string, destDir: string) {
@@ -117,10 +87,12 @@ export function useExplorerInteractions(snapshot: ExplorerSnapshot) {
       setPendingEdit(null);
     },
     commitEdit,
-    pendingCreate,
-    commitCreate,
+    pendingCreate: snapshot.pendingCreate ?? null,
+    commitCreate: (name: string) => {
+      void container.explorer.commitCreate(name);
+    },
     cancelCreate: () => {
-      setPendingCreate(null);
+      container.explorer.cancelCreate();
     },
     startCreate,
     requestMove,

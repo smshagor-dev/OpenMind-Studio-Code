@@ -149,6 +149,8 @@ pub async fn stop_everything(app: &AppHandle) {
         Duration::from_secs(25),
         tokio::task::spawn_blocking(move || {
             crate::commands::watch::stop_on_exit(&stopper);
+            crate::sync::stop_watching(&stopper);
+            crate::state::stop(&stopper);
             crate::commands::debug::stop_debug(&stopper);
             stopper.state::<AppState>().notebooks.stop_all();
             crate::commands::lsp::stop_lsp(&stopper);

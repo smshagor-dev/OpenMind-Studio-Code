@@ -47,6 +47,10 @@ pub enum FsError {
         source: std::io::Error,
     },
 
+    /// A name the user typed that can't be used; the message is the reason, for the user.
+    #[error("{reason}")]
+    InvalidName { name: String, reason: String },
+
     #[error("{path} already exists")]
     AlreadyExists { path: PathBuf },
 

@@ -1,3 +1,4 @@
+import { connectBackend } from "../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -57,13 +58,16 @@ async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
   const output = new OutputService();
   const ports = new PortsService(ipc, events);
   const runtime = new RuntimeService(ipc, events, () => undefined);
+  const feeds = connectBackend(ipc, { runtime, ports });
   await runtime.refresh();
   const panel = new PanelService(ipc);
-  const php = new PhpServerService(ipc, events, output, runtime, ports, panel);
+  const php = new PhpServerService(ipc, events, output, runtime, panel);
+  php.useCanonical(feeds.servers);
   await php.initialize();
-  const mariaDb = new MariaDbService(ipc, events, output, runtime, ports, panel);
-  const pma = new PhpMyAdminService(ipc, events, output, runtime, ports, panel, php, mariaDb);
-  const mySql = new MySqlService(ipc, events, output, runtime);
+  const mariaDb = new MariaDbService(ipc, events, output, runtime, panel);
+  const pma = new PhpMyAdminService(ipc, events, output, runtime, panel, php, mariaDb);
+  const mySql = new MySqlService(ipc, events, output);
+  mySql.useCanonical(feeds.servers);
   await mySql.initialize();
   const controlPanel = new ControlPanelService(ipc, events, output, php, mySql, () =>
     Promise.resolve(),

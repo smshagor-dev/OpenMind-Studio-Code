@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 /// Drops the `\\?\` prefix Windows APIs sometimes add, so a reported path can
 /// be compared with the root the user opened.
-fn without_verbatim(path: &Path) -> PathBuf {
+pub(crate) fn without_verbatim(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     match text.strip_prefix(r"\\?\") {
         Some(rest) if !rest.starts_with("UNC\\") => PathBuf::from(rest),

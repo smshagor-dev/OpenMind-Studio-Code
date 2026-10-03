@@ -85,7 +85,12 @@ export function emptyExtensionsSnapshot(
   };
 }
 
-export function createFakeExtensionsIpc(): ExtensionsIpc {
+/** The backend's canonical extension list, as test data (see `FakeBackendReads`). */
+export interface FakeExtensionReads {
+  extList: () => Promise<ExtensionsSnapshot>;
+}
+
+export function createFakeExtensionsIpc(): ExtensionsIpc & FakeExtensionReads {
   return {
     extList: vi.fn().mockResolvedValue(emptyExtensionsSnapshot()),
     extInspectVsix: vi.fn().mockResolvedValue(testExtension()),
@@ -108,7 +113,6 @@ export function createFakeExtensionsIpc(): ExtensionsIpc {
     extHostRespond: vi.fn().mockResolvedValue(undefined),
     extActivateFor: vi.fn().mockResolvedValue([]),
     extPickVsix: vi.fn().mockResolvedValue(null),
-    onExtChanged: vi.fn().mockResolvedValue(() => undefined),
     onExtHostRequest: vi.fn().mockResolvedValue(() => undefined),
     onExtHostNotification: vi.fn().mockResolvedValue(() => undefined),
     onExtHostState: vi.fn().mockResolvedValue(() => undefined),

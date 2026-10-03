@@ -1,3 +1,4 @@
+import { connectBackend } from "../testUtils/canonicalFeeds";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFakeIpc, STOPPED_MYSQL } from "../testUtils/fakeIpcClient";
@@ -20,22 +21,20 @@ const RUNNING: MySqlStatus = {
 };
 
 async function setup(overrides: Parameters<typeof createFakeIpc>[0] = {}) {
-  const handlers: (() => void)[] = [];
-  const ipc = createFakeIpc({
-    onMysqlChanged: vi.fn((handler: () => void) => {
-      handlers.push(handler);
-      return Promise.resolve(() => undefined);
-    }),
-    ...overrides,
-  });
+  const ipc = createFakeIpc(overrides);
   const events = new EventBus<AppEvents>();
   const output = new OutputService();
   const runtime = new RuntimeService(ipc, events, () => undefined);
-  const mysql = new MySqlService(ipc, events, output, runtime);
+  const feeds = connectBackend(ipc, { runtime });
+  const mysql = new MySqlService(ipc, events, output);
+  mysql.useCanonical(feeds.servers);
   await mysql.initialize();
   const errors: string[] = [];
   events.on("appError", ({ message }) => errors.push(message));
-  return { mysql, ipc, output, errors, changed: () => { handlers.forEach((h) => { h(); }); } };
+  // A change elsewhere (another window, the backend): the canonical servers state arrives again.
+  return { mysql, ipc, output, errors, changed: () => {
+      void feeds.servers.catchUp();
+    } };
 }
 
 describe("MySQL availability", () => {

@@ -1,3 +1,4 @@
+import { connectBackend } from "../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -64,8 +65,10 @@ async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
   const output = new OutputService();
   const ports = new PortsService(ipc, events);
   const runtime = new RuntimeService(ipc, events, () => undefined);
+  const feeds = connectBackend(ipc, { runtime, ports });
   await runtime.refresh();
-  const php = new PhpServerService(ipc, events, output, runtime, ports, new PanelService(ipc));
+  const php = new PhpServerService(ipc, events, output, runtime, new PanelService(ipc));
+  php.useCanonical(feeds.servers);
   await php.initialize();
   const commands = new CommandRegistry();
   registerPhpCommands(commands, php, ipc);
@@ -73,13 +76,12 @@ async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
     void commands.execute(id);
   });
   const panel = new PanelService(ipc);
-  const mariaDb = new MariaDbService(ipc, events, output, runtime, ports, panel);
+  const mariaDb = new MariaDbService(ipc, events, output, runtime, panel);
   const phpMyAdmin = new PhpMyAdminService(
     ipc,
     events,
     output,
     runtime,
-    ports,
     panel,
     php,
     mariaDb,
@@ -89,7 +91,7 @@ async function setup(runtimes: RuntimeStatus[], hasFolder = true) {
     php,
     mariaDb,
     phpMyAdmin,
-    mySql: new MySqlService(ipc, events, output, runtime),
+    mySql: new MySqlService(ipc, events, output),
     composer,
     ipc,
     phpRuntime: new PhpRuntimeService(runtime, php, { mariadb: mariaDb, pma: phpMyAdmin }),

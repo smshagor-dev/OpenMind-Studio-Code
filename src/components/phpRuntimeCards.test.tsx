@@ -1,3 +1,4 @@
+import { connectBackend } from "../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +9,6 @@ import { OutputService } from "../services/outputService";
 import { PanelService } from "../services/panelService";
 import { PhpRuntimeService } from "../services/phpRuntimeService";
 import { PhpServerService } from "../services/phpServerService";
-import { PortsService } from "../services/portsService";
 import { RuntimeService } from "../services/runtimeService";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
@@ -70,15 +70,16 @@ async function setup(runtimes: RuntimeStatus[]) {
   });
   const events = new EventBus<AppEvents>();
   const runtime = new RuntimeService(ipc, events, () => undefined);
+  const feeds = connectBackend(ipc, { runtime });
   await runtime.refresh();
   const php = new PhpServerService(
     ipc,
     events,
     new OutputService(),
     runtime,
-    new PortsService(ipc, events),
     new PanelService(ipc),
   );
+  php.useCanonical(feeds.servers);
   await php.initialize();
   harness.current = { runtime, php, phpRuntime: new PhpRuntimeService(runtime, php) };
   return { runtime, php, ipc };

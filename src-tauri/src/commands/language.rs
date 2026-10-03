@@ -42,13 +42,9 @@ pub fn language_registry() -> Vec<&'static LanguageDef> {
     LANGUAGES.iter().collect()
 }
 
-#[tauri::command]
-pub async fn language_workspace_status(
-    window: tauri::Window,
-    state: State<'_, AppState>,
-) -> Result<WorkspaceStatus, String> {
-    let root = workspace_root(&state, &window).await?;
-    let env = tool_env(&state).await;
+/// The projects, tools and commands of the folder `root` (also the canonical state's per-workspace project domain).
+pub(crate) async fn status_at(state: &AppState, root: PathBuf) -> Result<WorkspaceStatus, String> {
+    let env = tool_env(state).await;
     tokio::task::spawn_blocking(move || workspace_status(&root, &env))
         .await
         .map_err(|err| format!("the scan stopped unexpectedly: {err}"))

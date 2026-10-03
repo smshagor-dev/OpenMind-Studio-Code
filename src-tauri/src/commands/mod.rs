@@ -43,5 +43,6 @@ pub mod terminal;
 pub mod tool_packages;
 pub mod toolchains;
 pub mod watch;
+pub mod watch_state;
 pub mod workloads;
 pub mod workspace;

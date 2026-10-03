@@ -1,3 +1,4 @@
+import { connectBackend } from "../testUtils/canonicalFeeds";
 import { describe, expect, it, vi } from "vitest";
 
 import { EventBus } from "./eventBus";
@@ -7,7 +8,6 @@ import { OutputService } from "./outputService";
 import { PanelService } from "./panelService";
 import { PhpRuntimeService } from "./phpRuntimeService";
 import { PhpServerService } from "./phpServerService";
-import { PortsService } from "./portsService";
 import { RuntimeService } from "./runtimeService";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
@@ -82,15 +82,16 @@ async function rig(runtimes: RuntimeStatus[]): Promise<Rig> {
   });
   const events = new EventBus<AppEvents>();
   const runtime = new RuntimeService(ipc, events, () => undefined);
+  const feeds = connectBackend(ipc, { runtime });
   await runtime.refresh();
   const php = new PhpServerService(
     ipc,
     events,
     new OutputService(),
     runtime,
-    new PortsService(ipc, events),
     new PanelService(ipc),
   );
+  php.useCanonical(feeds.servers);
   await php.initialize();
   return {
     cards: new PhpRuntimeService(runtime, php),

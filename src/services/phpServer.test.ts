@@ -1,9 +1,10 @@
+import { connectBackend } from "../testUtils/canonicalFeeds";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandRegistry } from "./commandRegistry";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { InstalledVersion, IpcClient, RunEvent, RuntimeStatus } from "./ipc";
+import type { InstalledVersion, RunEvent, RuntimeStatus } from "./ipc";
 import { OutputService } from "./outputService";
 import { PanelService } from "./panelService";
 import { registerPhpCommands } from "./phpCommands";
@@ -16,7 +17,7 @@ import {
 } from "./phpServerService";
 import { PortsService } from "./portsService";
 import { RuntimeService } from "./runtimeService";
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { createFakeIpc, type FakeIpc } from "../testUtils/fakeIpcClient";
 
 function version(v: string, over: Partial<InstalledVersion> = {}): InstalledVersion {
   return {
@@ -50,7 +51,7 @@ function status(id: string, installed: InstalledVersion[]): RuntimeStatus {
 
 interface Rig {
   php: PhpServerService;
-  ipc: IpcClient;
+  ipc: FakeIpc;
   runtime: RuntimeService;
   output: OutputService;
   ports: PortsService;
@@ -61,7 +62,7 @@ interface Rig {
 
 async function rig(
   runtimes: RuntimeStatus[] = [],
-  overrides: Partial<IpcClient> = {},
+  overrides: Partial<FakeIpc> = {},
 ): Promise<Rig> {
   let handler: (event: RunEvent) => void = () => undefined;
   const ipc = createFakeIpc({
@@ -79,8 +80,10 @@ async function rig(
   const output = new OutputService();
   const ports = new PortsService(ipc, events);
   const runtime = new RuntimeService(ipc, events, () => undefined);
+  const feeds = connectBackend(ipc, { runtime, ports });
   await runtime.refresh();
-  const php = new PhpServerService(ipc, events, output, runtime, ports, new PanelService(ipc));
+  const php = new PhpServerService(ipc, events, output, runtime, new PanelService(ipc));
+  php.useCanonical(feeds.servers);
   await php.initialize();
   return {
     php,
@@ -258,6 +261,14 @@ describe("PhpServerService", () => {
 
     expect(r.ipc.phpServerStart).toHaveBeenCalledWith({ root: "C:/My Site", port: 8000 });
     expect(r.php.url()).toBe("http://127.0.0.1:8000");
+    // The backend's canonical servers state now has the server; the Ports view follows it.
+    vi.mocked(r.ipc.phpServerStatus).mockResolvedValue({
+      run: { runId: "php-1", file: "", pid: 1 },
+      url: "http://127.0.0.1:8000",
+      port: 8000,
+      phpVersion: "8.4.26",
+    });
+    await r.php.syncServer();
     expect(r.ports.list()).toEqual([
       expect.objectContaining({
         port: 8000,

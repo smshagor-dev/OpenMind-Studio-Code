@@ -2,6 +2,7 @@ import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { AddonStatus, InstalledVersion, InstallProgress, IpcClient, RuntimeStatus } from "./ipc";
 import { t } from "../i18n";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 
 export type RuntimeOperation = "install" | "repair" | "delete" | "activate";
 
@@ -89,8 +90,9 @@ export class RuntimeService {
   private state: RuntimeState = EMPTY;
   private readonly listeners = new Set<() => void>();
   private unsubscribe: (() => void) | null = null;
-  private unsubscribeChanged: (() => void) | null = null;
   private failureListener: ((message: string, retry: () => void) => void) | null = null;
+  /** The canonical runtime list (`src/services/state`), once the backend has it. */
+  private canonical: CanonicalFeed<RuntimeStatus[]> | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
@@ -131,31 +133,33 @@ export class RuntimeService {
     } catch (error) {
       this.events.emit("appError", { message: `Runtime progress unavailable: ${String(error)}` });
     }
-    try {
-      // A change made in another window (the PHP Server window) reloads this window's list too.
-      this.unsubscribeChanged = await this.ipc.onRuntimeChanged(() => {
-        void this.refresh();
-      });
-    } catch (error) {
-      this.events.emit("appError", { message: `Runtime changes unavailable: ${String(error)}` });
-    }
   }
 
   dispose(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;
-    this.unsubscribeChanged?.();
-    this.unsubscribeChanged = null;
   }
 
-  async refresh(): Promise<void> {
-    try {
-      const runtimes = await this.ipc.runtimeList();
+  /**
+   * The runtime list comes from the backend's canonical state: every window gets the same list, once per change (an
+   * install here or in another window, a folder copied in by hand). Returns the way to stop.
+   */
+  useCanonical(feed: CanonicalFeed<RuntimeStatus[]>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((runtimes) => {
       this.update({ loaded: true, runtimes });
-    } catch (error) {
-      this.update({ loaded: true });
-      this.events.emit("appError", { message: `Couldn't load runtimes: ${String(error)}` });
-    }
+    });
+    const current = feed.current();
+    if (current !== undefined) this.update({ loaded: true, runtimes: current });
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Waits until this window has every runtime change the backend made so far (after an operation). */
+  async refresh(): Promise<void> {
+    await this.canonical?.catchUp();
   }
 
   /** `acceptLicense`: the user accepted the vendor licence the runtime requires (the backend refuses without it). */

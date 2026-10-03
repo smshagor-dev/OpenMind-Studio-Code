@@ -125,6 +125,8 @@ pub fn release_window(app: &AppHandle, label: &str) {
         }
     }
     crate::commands::watch::stop_watching_window(&state, label);
+    // Its folder's canonical state goes too when no other window has that folder open.
+    crate::state::detach(app, label);
 }
 
 /// The folder open in the window `label`: the saved one for `main`, the

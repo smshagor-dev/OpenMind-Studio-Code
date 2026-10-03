@@ -14,7 +14,7 @@ use openmind_lsp::process::{run_to_end, SpawnSpec};
 use openmind_toolchains::manifest::{self, Manifest, ManifestTool, ManifestVersion};
 use openmind_toolchains::recipes::{launcher, program_env, program_path, tool_dir};
 use openmind_toolchains::{current_platform, known, recipe, Packs, Recipe, RecipeKind};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::app_state::AppState;
 use crate::commands::run::environment;
@@ -356,7 +356,11 @@ fn install_blocking(ctx: &Context, recipe: &Recipe, command: &str) -> Result<(),
 
 /// Installs a downloadable tool of Language Tools, on the user's click.
 #[tauri::command]
-pub async fn toolchains_install(id: String, state: State<'_, AppState>) -> Result<Packs, String> {
+pub async fn toolchains_install(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Packs, String> {
     let recipe = recipe(&id).ok_or_else(|| format!("{id} can't be downloaded."))?;
     let command = known(&id).map(|k| k.command).ok_or("Unknown tool.")?;
     let _guard = lock().lock().await;
@@ -373,12 +377,17 @@ pub async fn toolchains_install(id: String, state: State<'_, AppState>) -> Resul
     tokio::task::spawn_blocking(move || install_blocking(&ctx, recipe, command))
         .await
         .map_err(|err| format!("The installer stopped unexpectedly: {err}"))??;
+    crate::sync::announce_now(&app, crate::sync::Topic::Tools).await;
     Ok(crate::commands::toolchains::packs(&state).await)
 }
 
 /// Removes a tool installed from Language Tools: its folder and its record. A shipped (bundled) tool isn't touched.
 #[tauri::command]
-pub async fn toolchains_remove(id: String, state: State<'_, AppState>) -> Result<Packs, String> {
+pub async fn toolchains_remove(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Packs, String> {
     let recipe =
         recipe(&id).ok_or_else(|| format!("{id} wasn't installed from Language Tools."))?;
     let _guard = lock().lock().await;
@@ -403,6 +412,7 @@ pub async fn toolchains_remove(id: String, state: State<'_, AppState>) -> Result
     .map_err(|err| err.to_string())??;
     installed.tools.retain(|tool| tool.id != recipe.tool);
     write_installed(&root, &installed)?;
+    crate::sync::announce_now(&app, crate::sync::Topic::Tools).await;
     Ok(crate::commands::toolchains::packs(&state).await)
 }
 

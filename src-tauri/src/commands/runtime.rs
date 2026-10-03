@@ -1,26 +1,20 @@
-use openmind_runtime_manager::{InstallProgress, InstalledVersion, RuntimeStatus};
+use openmind_runtime_manager::{InstallProgress, InstalledVersion};
 use tauri::{AppHandle, Emitter, State};
+
+use crate::sync::{announce_now, Topic};
 
 use crate::app_state::AppState;
 use crate::commands::php::php_in_use_reason;
 
 const PROGRESS_EVENT: &str = "runtime:progress";
-/// Sent after any install/repair/switch/delete, so every window reloads its list.
-const CHANGED_EVENT: &str = "runtime:changed";
-
-pub(crate) fn notify_changed(app: &AppHandle) {
-    if let Err(err) = app.emit(CHANGED_EVENT, ()) {
-        tracing::error!(?err, "failed to emit runtime:changed");
-    }
+/// After any install/repair/switch/delete the canonical state holds the new list before the command returns, and
+/// every window follows it (`crate::state`, `crate::sync`).
+pub(crate) async fn notify_changed(app: &AppHandle) {
+    announce_now(app, Topic::Runtimes).await;
 }
 
 // Every error is returned as `user_message()`: what went wrong plus what to
 // do about it, so the UI never has to invent recovery advice.
-
-#[tauri::command]
-pub async fn runtime_list(state: State<'_, AppState>) -> Result<Vec<RuntimeStatus>, String> {
-    state.runtime.list().await.map_err(|err| err.user_message())
-}
 
 #[tauri::command]
 pub async fn runtime_install(
@@ -74,7 +68,7 @@ pub async fn runtime_install(
         }
         other => other,
     };
-    notify_changed(&app);
+    notify_changed(&app).await;
     result
 }
 
@@ -96,7 +90,7 @@ pub async fn runtime_addon_install(
             tracing::warn!(%kind, %version, %addon, error = %err, "runtime add-on install failed");
             err.user_message()
         });
-    notify_changed(&app);
+    notify_changed(&app).await;
     result
 }
 
@@ -117,7 +111,7 @@ pub async fn runtime_addon_remove(
             tracing::warn!(%kind, %version, %addon, error = %err, "runtime add-on removal failed");
             err.user_message()
         });
-    notify_changed(&app);
+    notify_changed(&app).await;
     result
 }
 
@@ -136,7 +130,7 @@ pub async fn runtime_repair(
         .repair(&kind, &version, progress_sink(app.clone()))
         .await
         .map_err(|err| err.user_message());
-    notify_changed(&app);
+    notify_changed(&app).await;
     result
 }
 
@@ -152,7 +146,7 @@ pub async fn runtime_set_active(
         .set_active(&kind, &version)
         .await
         .map_err(|err| err.user_message());
-    notify_changed(&app);
+    notify_changed(&app).await;
     result
 }
 
@@ -171,7 +165,7 @@ pub async fn runtime_delete(
         .delete(&kind, &version)
         .await
         .map_err(|err| err.user_message());
-    notify_changed(&app);
+    notify_changed(&app).await;
     result
 }
 

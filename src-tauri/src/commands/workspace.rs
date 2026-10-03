@@ -140,3 +140,17 @@ pub async fn explorer_state_save(
         .await
         .map_err(|err| err.to_string())
 }
+
+/// A file or folder was renamed or moved from the Explorer: the recent-files list follows it.
+#[tauri::command]
+pub async fn recent_files_rename(
+    from: String,
+    to: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    state
+        .recent_files
+        .rename(&from, &to)
+        .await
+        .map_err(|err| err.to_string())
+}

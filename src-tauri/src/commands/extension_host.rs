@@ -55,7 +55,7 @@ fn publish(app: &AppHandle, status: HostStatus) {
     let state = app.state::<AppState>();
     state.extensions.set_status(status.clone());
     let _ = app.emit_to("main", "ext:host-state", json!(status));
-    let _ = app.emit("ext:changed", Value::Null);
+    crate::state::refresh_soon(app, &[crate::state::Domain::Extensions]);
 }
 
 fn failure(app: &AppHandle, state: &'static str, message: &str) {

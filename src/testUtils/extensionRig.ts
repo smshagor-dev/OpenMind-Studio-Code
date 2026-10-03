@@ -13,7 +13,6 @@ import { ExtensionPromptService } from "../services/extensionPromptService";
 import { ExtensionRegistryService } from "../services/extensionRegistryService";
 import { ExtensionService } from "../services/extensionService";
 import type { ExtensionsSnapshot, InstalledExtension } from "../services/extensionsIpc";
-import type { IpcClient } from "../services/ipc";
 import { OutputService } from "../services/outputService";
 import { SettingsService } from "../services/settingsService";
 import {
@@ -21,7 +20,8 @@ import {
   emptyExtensionsSnapshot,
   testExtension,
 } from "./fakeExtensionsIpc";
-import { createFakeIpc } from "./fakeIpcClient";
+import { ipcFeed } from "./canonicalFeeds";
+import { createFakeIpc, type FakeIpc } from "./fakeIpcClient";
 
 export const command = testExtension({
   manifest: {
@@ -40,7 +40,9 @@ export const command = testExtension({
 });
 
 export interface Rig {
-  ipc: IpcClient;
+  ipc: FakeIpc;
+  /** The canonical extension list as the backend delivers it (`catchUp` reads `snapshot` again). */
+  extensionsFeed: ReturnType<typeof ipcFeed<ExtensionsSnapshot>>;
   events: EventBus<AppEvents>;
   registry: ExtensionRegistryService;
   host: ExtensionHostService;
@@ -72,7 +74,9 @@ export function rig(
   const errors: string[] = [];
   const logs: string[] = [];
   events.on("appError", ({ message }) => errors.push(message));
-  const registry = new ExtensionRegistryService(ipc, events);
+  const registry = new ExtensionRegistryService(events);
+  const extensionsFeed = ipcFeed(() => ipc.extList());
+  registry.useCanonical(extensionsFeed);
   const prompts = new ExtensionPromptService();
   const output = new OutputService();
   const commands = new CommandRegistry();
@@ -131,6 +135,7 @@ export function rig(
   });
   return {
     ipc,
+    extensionsFeed,
     events,
     registry,
     host,

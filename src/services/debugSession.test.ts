@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createFakeIpc } from "../testUtils/fakeIpcClient";
+import { backendFeeds } from "../testUtils/canonicalFeeds";
+import { createFakeIpc, type FakeIpc } from "../testUtils/fakeIpcClient";
 import { BreakpointService } from "./breakpointService";
 import { CallStackService } from "./callStackService";
 import { CommandRegistry } from "./commandRegistry";
@@ -11,7 +12,7 @@ import { parseEvaluate } from "./debugModel";
 import { DebugService } from "./debugService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { DebugEventPayload, DebugReadiness, DebugRun, DebugStatus, IpcClient } from "./ipc";
+import type { DebugEventPayload, DebugReadiness, DebugRun, DebugStatus } from "./ipc";
 import { DEFAULT_KEYBINDINGS } from "./keybindings";
 import { VariablesService } from "./variablesService";
 import { WatchService } from "./watchService";
@@ -61,7 +62,7 @@ const stoppedRun = run("stopped", {
 });
 
 interface Rig {
-  ipc: IpcClient;
+  ipc: FakeIpc;
   events: EventBus<AppEvents>;
   debug: DebugService;
   breakpoints: BreakpointService;
@@ -167,6 +168,10 @@ async function rig(): Promise<Rig> {
   callStack.initialize();
   variables.initialize();
   await watches.initialize();
+  // The folder's debug readiness, as the canonical state delivers it.
+  const readiness = backendFeeds(ipc).debug;
+  debug.useCanonical(readiness);
+  await readiness.refresh();
   await debug.initialize();
   const commands = new CommandRegistry();
   registerDebugCommands({
@@ -266,6 +271,7 @@ describe("starting a debug session", () => {
         log: () => undefined,
       },
     );
+    failing.useCanonical(backendFeeds(rejecting.ipc).debug);
     await failing.refreshStatus();
     expect(await failing.start()).toBe(false);
     expect(rejecting.ipc.debugStart).not.toHaveBeenCalled();
@@ -305,6 +311,7 @@ describe("launch.json configurations", () => {
       log: () => undefined,
       saveAll,
     });
+    debug.useCanonical(backendFeeds(r.ipc).debug);
     await debug.refreshStatus();
     await configs.refresh(null);
     configs.choose("C:/w/.vscode/launch.json::C++");
@@ -571,7 +578,7 @@ describe("the controls and the commands", () => {
     expect(opened).toHaveBeenCalled();
   });
 
-  it("the runtime changing re-reads which debuggers are installed", async () => {
+  it("Refresh asks the backend for the folder's debug readiness", async () => {
     const r = await rig();
     const before = vi.mocked(r.ipc.debugStatus).mock.calls.length;
     await r.debug.refreshStatus();

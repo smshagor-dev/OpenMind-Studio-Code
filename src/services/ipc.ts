@@ -234,6 +234,7 @@ export type LspSyncOutcome =
   | { state: "unsupported" }
   | { state: "noWorkspace" }
   | { state: "outsideWorkspace" }
+  | { state: "otherWindowFolder" }
   | { state: "notInstalled"; server: string }
   | { state: "nodeMissing" }
   | { state: "failed"; server: string; message: string };
@@ -529,6 +530,8 @@ export interface IpcClient
   // Session / recent files / theme
   recentFilesList: () => Promise<RecentFileInfo[]>;
   recentFilesClear: () => Promise<void>;
+  /** A file or folder was renamed/moved: recent files under it follow. */
+  recentFilesRename: (from: string, to: string) => Promise<void>;
   sessionLoad: () => Promise<SessionSnapshot>;
   sessionSave: (snapshot: SessionSnapshot) => Promise<void>;
   // Settings (settings/settings.json, <workspace>/.openmind/settings.json) and keybindings (settings/keybindings.json).
@@ -591,8 +594,6 @@ export interface IpcClient
   /** Subscribes to shell-exit notifications; resolves to the unsubscribe function. */
   onTerminalExit: (handler: (id: string, code: number | null) => void) => Promise<() => void>;
 
-  // Portable runtimes (Rust owns installs; progress arrives as pushed events)
-  runtimeList: () => Promise<RuntimeStatus[]>;
   /** `acceptLicense`: the user accepted the runtime's vendor licence (required for some, e.g. the Android SDK). */
   runtimeInstall: (kind: string, version: string | null, acceptLicense?: boolean) => Promise<InstalledVersion>;
   runtimeRepair: (kind: string, version: string) => Promise<boolean>;
@@ -602,8 +603,6 @@ export interface IpcClient
   runtimeSetActive: (kind: string, version: string) => Promise<void>;
   runtimeDelete: (kind: string, version: string) => Promise<void>;
   onRuntimeProgress: (handler: (progress: InstallProgress) => void) => Promise<() => void>;
-  /** After any install/repair/switch/delete in any window: reload the list. */
-  onRuntimeChanged: (handler: () => void) => Promise<() => void>;
 
   // System clipboard (the webview's own clipboard API is unreliable inside Tauri)
   clipboardWriteText: (text: string) => Promise<void>;
@@ -627,8 +626,6 @@ export interface IpcClient
   // PHP built-in server (portable PHP only, bound to 127.0.0.1; events share the run event shape)
   phpServerStart: (request: PhpServerRequest) => Promise<PhpServerInfo>;
   phpServerStop: (runId: string) => Promise<boolean>;
-  /** The running server, or `null` — the backend is the one truth both windows read. */
-  phpServerStatus: () => Promise<PhpServerInfo | null>;
   /** Opens the PHP Server window (or brings it to the front). */
   phpWindowOpen: () => Promise<void>;
   phpPortFree: (port: number) => Promise<boolean>;
@@ -657,8 +654,6 @@ export interface IpcClient
   panelOpenShell: (cwd: string | null) => Promise<void>;
   panelNetstat: () => Promise<ListeningPort[]>;
   onPhpEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
-  /** The server started or ended (in any window): re-read `phpServerStatus`. */
-  onPhpChanged: (handler: () => void) => Promise<() => void>;
 
   // MariaDB (a normal child process on 127.0.0.1), phpMyAdmin and Composer project commands
   mariadbStatus: () => Promise<MariaDbStatus>;
@@ -667,18 +662,12 @@ export interface IpcClient
   mariadbStart: (port: number) => Promise<ServiceInfo>;
   mariadbStop: () => Promise<void>;
   onMariadbEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
-  onMariadbChanged: (handler: () => void) => Promise<() => void>;
   pmaStart: (port: number, mariadbPort: number) => Promise<ServiceInfo>;
   pmaStop: () => Promise<void>;
-  pmaStatus: () => Promise<ServiceInfo | null>;
   onPmaEvent: (handler: (event: RunEvent) => void) => Promise<() => void>;
-  onPmaChanged: (handler: () => void) => Promise<() => void>;
-  /** MySQL: MariaDB + phpMyAdmin started, checked and stopped together. */
-  mysqlStatus: () => Promise<MySqlStatus>;
   mysqlStart: () => Promise<MySqlStatus>;
   mysqlStop: () => Promise<MySqlStatus>;
   mysqlRestart: () => Promise<MySqlStatus>;
-  onMysqlChanged: (handler: () => void) => Promise<() => void>;
   phpProjectInfo: (root: string) => Promise<ProjectInfo>;
   composerRun: (action: ComposerAction, root: string) => Promise<RunInfo>;
   composerStop: () => Promise<void>;
@@ -692,7 +681,7 @@ export interface IpcClient
   onFsChanged: (handler: (batch: FsChangeBatch) => void) => Promise<() => void>;
 
   // Debugging. Only an explicit debugStart ever starts anything; the backend checks the program, finds the interpreter and adapter.
-  debugStatus: () => Promise<DebugStatus>;
+  debugRun: () => Promise<DebugRun | null>;
   debugStart: (config: LaunchConfig, breakpoints: BreakpointRow[]) => Promise<DebugRun>;
   debugStop: () => Promise<void>;
   debugControl: (action: string) => Promise<void>;
@@ -704,8 +693,6 @@ export interface IpcClient
   onDebugState: (handler: (run: DebugRun) => void) => Promise<() => void>;
   onDebugLog: (handler: (event: DebugLogEvent) => void) => Promise<() => void>;
 
-  // Language servers. The backend picks the server by file type and only serves files inside the open workspace.
-  lspStatus: () => Promise<LspSnapshot>;
   lspInstall: (server: string) => Promise<void>;
   /** Removes a downloaded language server (its processes stop first). */
   lspUninstall: (server: string) => Promise<void>;
@@ -720,10 +707,7 @@ export interface IpcClient
   lspSetVerbose: (verbose: boolean) => Promise<void>;
   onLspDiagnostics: (handler: (event: LspDiagnosticsEvent) => void) => Promise<() => void>;
   onLspLog: (handler: (event: LspLogEvent) => void) => Promise<() => void>;
-  onLspChanged: (handler: () => void) => Promise<() => void>;
 
-  // Source Control (Git). The repository is always the open workspace's; only repo-relative file names are sent.
-  gitSnapshot: () => Promise<GitSnapshot>;
   gitInit: () => Promise<void>;
   gitStage: (paths: string[]) => Promise<void>;
   gitStageAll: () => Promise<void>;
@@ -1147,6 +1131,7 @@ export const tauriIpcClient: IpcClient = {
   recentFilesList: () => invoke<RecentFileInfo[]>("recent_files_list"),
 
   recentFilesClear: () => invoke("recent_files_clear"),
+  recentFilesRename: (from, to) => invoke("recent_files_rename", { from, to }),
 
   sessionLoad: () => invoke<SessionSnapshot>("session_load"),
 
@@ -1236,7 +1221,6 @@ export const tauriIpcClient: IpcClient = {
       handler(event.payload.id, event.payload.code);
     }),
 
-  runtimeList: () => invoke<RuntimeStatus[]>("runtime_list"),
 
   runtimeInstall: (kind, version, acceptLicense) =>
     invoke<InstalledVersion>("runtime_install", { kind, version, acceptLicense: acceptLicense ?? false }),
@@ -1256,10 +1240,6 @@ export const tauriIpcClient: IpcClient = {
       handler(event.payload);
     }),
 
-  onRuntimeChanged: (handler) =>
-    listen("runtime:changed", () => {
-      handler();
-    }),
 
   searchRun: (searchId, query) => invoke<SearchOutcome>("search_run", { searchId, query }),
 
@@ -1285,7 +1265,6 @@ export const tauriIpcClient: IpcClient = {
 
   phpServerStart: (request) => invoke<PhpServerInfo>("php_server_start", { request }),
   phpServerStop: (runId) => invoke<boolean>("php_server_stop", { runId }),
-  phpServerStatus: () => invoke<PhpServerInfo | null>("php_server_status"),
   phpWindowOpen: () => invoke("php_window_open"),
   phpPortFree: (port) => invoke<boolean>("php_port_free", { port }),
   phpWebRoot: () => invoke<string>("php_web_root"),
@@ -1312,7 +1291,7 @@ export const tauriIpcClient: IpcClient = {
     listen<FsChangeBatch>("fs:changed", (event) => {
       handler(event.payload);
     }),
-  debugStatus: () => invoke<DebugStatus>("debug_status"),
+  debugRun: () => invoke<DebugRun | null>("debug_run"),
   debugStart: (config, breakpoints) => invoke<DebugRun>("debug_start", { config, breakpoints }),
   debugStop: () => invoke("debug_stop"),
   debugControl: (action) => invoke("debug_control", { action }),
@@ -1332,7 +1311,6 @@ export const tauriIpcClient: IpcClient = {
     listen<DebugLogEvent>("debug:log", (event) => {
       handler(event.payload);
     }),
-  lspStatus: () => invoke<LspSnapshot>("lsp_status"),
   lspInstall: (server) => invoke("lsp_install", { server }),
   lspUninstall: (server) => invoke("lsp_uninstall", { server }),
   lspWorkspaceSymbols: (query, limit) => invoke<SymbolHit[]>("lsp_workspace_symbols", { query, limit }),
@@ -1351,11 +1329,6 @@ export const tauriIpcClient: IpcClient = {
     listen<LspLogEvent>("lsp:log", (event) => {
       handler(event.payload);
     }),
-  onLspChanged: (handler) =>
-    listen("lsp:changed", () => {
-      handler();
-    }),
-  gitSnapshot: () => invoke<GitSnapshot>("git_snapshot"),
   gitInit: () => invoke("git_init"),
   gitStage: (paths) => invoke("git_stage", { paths }),
   gitStageAll: () => invoke("git_stage_all"),
@@ -1396,10 +1369,6 @@ export const tauriIpcClient: IpcClient = {
     listen<RunEvent>("php:event", (event) => {
       handler(event.payload);
     }),
-  onPhpChanged: (handler) =>
-    listen("php:changed", () => {
-      handler();
-    }),
 
   mariadbStatus: () => invoke<MariaDbStatus>("mariadb_status"),
   mariadbCredentials: () => invoke<DbCredentials>("mariadb_credentials"),
@@ -1410,29 +1379,15 @@ export const tauriIpcClient: IpcClient = {
     listen<RunEvent>("mariadb:event", (event) => {
       handler(event.payload);
     }),
-  onMariadbChanged: (handler) =>
-    listen("mariadb:changed", () => {
-      handler();
-    }),
   pmaStart: (port, mariadbPort) => invoke<ServiceInfo>("pma_start", { port, mariadbPort }),
   pmaStop: () => invoke("pma_stop"),
-  pmaStatus: () => invoke<ServiceInfo | null>("pma_status"),
   onPmaEvent: (handler) =>
     listen<RunEvent>("pma:event", (event) => {
       handler(event.payload);
     }),
-  onPmaChanged: (handler) =>
-    listen("pma:changed", () => {
-      handler();
-    }),
-  mysqlStatus: () => invoke<MySqlStatus>("mysql_status"),
   mysqlStart: () => invoke<MySqlStatus>("mysql_start"),
   mysqlStop: () => invoke<MySqlStatus>("mysql_stop"),
   mysqlRestart: () => invoke<MySqlStatus>("mysql_restart"),
-  onMysqlChanged: (handler) =>
-    listen("mysql:changed", () => {
-      handler();
-    }),
   phpProjectInfo: (root) => invoke<ProjectInfo>("php_project_info", { root }),
   composerRun: (action, root) => invoke<RunInfo>("composer_run", { action, root }),
   composerStop: () => invoke("composer_stop"),

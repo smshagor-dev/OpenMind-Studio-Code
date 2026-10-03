@@ -1,3 +1,4 @@
+import { ipcWorkspaceFeed } from "./canonicalFeeds";
 import { vi } from "vitest";
 
 import { EventBus } from "../services/eventBus";
@@ -202,6 +203,7 @@ export function languageRig(
     languageFileStatus: vi.fn().mockResolvedValue(fileStatus()),
   });
   const support = new LanguageSupportService(ipc, events, () => hasWorkspace.value);
+  support.useCanonical(ipcWorkspaceFeed(() => ipc.languageWorkspaceStatus()));
   const terminal = {
     createTerminal: vi.fn().mockResolvedValue("t1"),
     write: vi.fn(),

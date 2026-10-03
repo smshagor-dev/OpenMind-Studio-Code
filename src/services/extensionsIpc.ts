@@ -248,7 +248,6 @@ export interface HostNotification {
 
 /** The extension slice of the IPC client. */
 export interface ExtensionsIpc {
-  extList: () => Promise<ExtensionsSnapshot>;
   extInspectVsix: (path: string) => Promise<InstalledExtension>;
   extInstall: (path: string, replace: boolean) => Promise<InstalledExtension>;
   extSetEnabled: (id: string, enabled: boolean) => Promise<InstalledExtension>;
@@ -272,14 +271,12 @@ export interface ExtensionsIpc {
   extHostRespond: (id: unknown, result: unknown, error: string | null) => Promise<void>;
   extActivateFor: (trigger: ActivationTrigger) => Promise<ActivationResult[]>;
   extPickVsix: () => Promise<string | null>;
-  onExtChanged: (handler: () => void) => Promise<() => void>;
   onExtHostRequest: (handler: (request: HostRequest) => void) => Promise<() => void>;
   onExtHostNotification: (handler: (notification: HostNotification) => void) => Promise<() => void>;
   onExtHostState: (handler: (status: ExtensionHostStatus) => void) => Promise<() => void>;
 }
 
 export const tauriExtensionsIpc: ExtensionsIpc = {
-  extList: () => invoke<ExtensionsSnapshot>("ext_list"),
   extInspectVsix: (path) => invoke<InstalledExtension>("ext_inspect_vsix", { path }),
   extInstall: (path, replace) => invoke<InstalledExtension>("ext_install", { path, replace }),
   extSetEnabled: (id, enabled) => invoke<InstalledExtension>("ext_set_enabled", { id, enabled }),
@@ -307,10 +304,6 @@ export const tauriExtensionsIpc: ExtensionsIpc = {
     });
     return typeof selected === "string" ? selected : null;
   },
-  onExtChanged: (handler) =>
-    listen("ext:changed", () => {
-      handler();
-    }),
   onExtHostRequest: (handler) =>
     listen<HostRequest>("ext:host-request", (event) => {
       handler(event.payload);

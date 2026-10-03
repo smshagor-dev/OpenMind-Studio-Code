@@ -9,7 +9,7 @@
   "menu.help": "Help",
   "command.file.reopenClosed": "Reopen Closed Editor",
   "command.file.clearRecent": "Clear Recently Opened",
-  "command.file.new": "New File",
+  "command.file.new": "New Text File",
   "command.file.newFilePicker": "New File...",
   "command.workbench.newWindow": "New Window",
   "command.file.open": "Open File...",

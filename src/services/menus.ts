@@ -78,7 +78,7 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
     label: "File",
     mnemonic: "F",
     items: [
-      cmd("New File", "file.new"),
+      cmd("New Text File", "file.new"),
       cmd("New File...", "file.newFilePicker"),
       cmd("New Window", "workbench.newWindow"),
       SEPARATOR,

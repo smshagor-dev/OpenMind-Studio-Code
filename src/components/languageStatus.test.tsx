@@ -1,3 +1,4 @@
+import { toolchainsFrom } from "../testUtils/canonicalFeeds";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +15,6 @@ import {
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { gitWithVersions, packs, toolEntry } from "../testUtils/toolchainFixtures";
 import { LanguageUiService } from "../services/language/languageWiring";
-import { ToolchainService } from "../services/toolchains/toolchainService";
 import type { ToolEntry } from "../services/toolchains/toolchainIpc";
 import type { LspServerInfo } from "../services/ipc";
 import type { ProjectStatus } from "../services/language/languageIpc";
@@ -90,7 +90,7 @@ async function mount(
       getState: () => LSP_STATE,
       servers: () => options.servers ?? [],
     },
-    toolchains: new ToolchainService(
+    toolchains: toolchainsFrom(
       createFakeIpc({
         toolchainsList: vi.fn().mockResolvedValue(packs(options.bundled ?? [])),
       }),

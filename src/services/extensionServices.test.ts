@@ -21,20 +21,12 @@ describe("ExtensionRegistryService", () => {
     expect(r.registry.visible()).toEqual([]);
   });
 
-  it("re-reads the list when the backend says it changed", async () => {
+  it("follows the canonical extension list when it changes (another window, a folder removed by hand)", async () => {
     const r = rig([command]);
-    let changed: () => void = () => undefined;
-    vi.mocked(r.ipc.onExtChanged).mockImplementation((handler) => {
-      changed = handler;
-      return Promise.resolve(() => undefined);
-    });
     await r.registry.initialize();
     expect(r.registry.all()).toHaveLength(1);
-    r.snapshot.current = emptyExtensionsSnapshot();
-    changed();
-    await vi.waitFor(() => {
-      expect(r.registry.all()).toHaveLength(0);
-    });
+    r.extensionsFeed.push(emptyExtensionsSnapshot());
+    expect(r.registry.all()).toHaveLength(0);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { DocumentService } from "./documentService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
+import type { CanonicalFeed } from "./state/canonicalStateService";
 import type { IpcClient, LspLogEvent, LspServerInfo, LspSnapshot, LspSyncOutcome } from "./ipc";
 import {
   actionAvailability,
@@ -42,6 +43,8 @@ export const LSP_DISABLED_REASON =
  */
 export class LspService {
   private state: LspState = { snapshot: null };
+  /** The canonical language-server state (`src/services/state`), once the backend has it. */
+  private canonical: CanonicalFeed<LspSnapshot> | null = null;
   private readonly listeners = new Set<() => void>();
   private readonly outcomes = new Map<string, LspSyncOutcome>();
   /** Where each document was last told to its server (so a renamed/saved-as file closes its old path). */
@@ -78,9 +81,6 @@ export class LspService {
     this.dispose();
     try {
       this.offs.push(
-        await this.ipc.onLspChanged(() => {
-          void this.refresh();
-        }),
         await this.ipc.onLspLog((event) => {
           this.log(event);
         }),
@@ -122,13 +122,30 @@ export class LspService {
 
   // --- Status ---
 
+  /**
+   * Follows the backend's canonical language-server state (install and life cycle: starting, running, failed ...):
+   * every window gets the same snapshot once per change, and `refresh` only catches up. Returns the way to stop.
+   */
+  useCanonical(feed: CanonicalFeed<LspSnapshot>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((snapshot) => {
+      this.applySnapshot(snapshot);
+    });
+    const current = feed.current();
+    if (current !== undefined) this.applySnapshot(current);
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Waits until this window has every language-server change the backend made so far. */
   async refresh(): Promise<void> {
-    try {
-      this.state = { snapshot: await this.ipc.lspStatus() };
-    } catch (error) {
-      this.deps.log(`Couldn't read language server status: ${String(error)}`);
-      return;
-    }
+    await this.canonical?.catchUp();
+  }
+
+  private applySnapshot(snapshot: LspSnapshot): void {
+    this.state = { snapshot };
     const running = new Set(this.runningServerIds());
     for (const server of this.previouslyRunning) {
       if (!running.has(server)) this.events.emit("lspServerStopped", { server });
@@ -507,7 +524,14 @@ export class LspService {
     this.deps.log(`[${event.server}] ${tag}${event.text}`);
   }
 
+  /**
+   * Tells views something changed. The snapshot object is replaced every time: views read it with
+   * `useSyncExternalStore`, which skips the render when `getState()` returns the same object — a per-file outcome
+   * (e.g. "Open a folder to use language servers." after closing the folder) would otherwise not show until something
+   * else redrew the view.
+   */
   private notify(): void {
+    this.state = { ...this.state };
     for (const listener of this.listeners) listener();
   }
 }

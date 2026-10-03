@@ -1,13 +1,21 @@
 use std::path::{Path, PathBuf};
 
 use crate::error::FsError;
+use crate::names::{join_segments, relative_segments, validate_name};
 
+/// Creates an empty file named `name` in `parent_dir`. `name` may name sub-folders (`src/app.ts`, as VS Code's New
+/// File allows): the missing ones are created; every segment is checked first, so nothing can land outside
+/// `parent_dir`. An existing file is never touched.
 pub async fn create_file(parent_dir: &Path, name: &str) -> Result<PathBuf, FsError> {
-    let path = parent_dir.join(name);
+    let path = join_segments(parent_dir, &relative_segments(name)?);
     if path.exists() {
         return Err(FsError::AlreadyExists { path });
     }
-    tokio::fs::File::create(&path)
+    create_parents(&path).await?;
+    tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
         .await
         .map_err(|source| FsError::Write {
             path: path.clone(),
@@ -16,11 +24,13 @@ pub async fn create_file(parent_dir: &Path, name: &str) -> Result<PathBuf, FsErr
     Ok(path)
 }
 
+/// Creates the folder `name` (sub-folders allowed, like [`create_file`]) in `parent_dir`.
 pub async fn create_dir(parent_dir: &Path, name: &str) -> Result<PathBuf, FsError> {
-    let path = parent_dir.join(name);
+    let path = join_segments(parent_dir, &relative_segments(name)?);
     if path.exists() {
         return Err(FsError::AlreadyExists { path });
     }
+    create_parents(&path).await?;
     tokio::fs::create_dir(&path)
         .await
         .map_err(|source| FsError::CreateDir {
@@ -30,7 +40,20 @@ pub async fn create_dir(parent_dir: &Path, name: &str) -> Result<PathBuf, FsErro
     Ok(path)
 }
 
+async fn create_parents(path: &Path) -> Result<(), FsError> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    tokio::fs::create_dir_all(parent)
+        .await
+        .map_err(|source| FsError::CreateDir {
+            path: parent.to_path_buf(),
+            source,
+        })
+}
+
 pub async fn rename(path: &Path, new_name: &str) -> Result<PathBuf, FsError> {
+    validate_name(new_name)?;
     if !path.exists() {
         return Err(FsError::NotFound {
             path: path.to_path_buf(),
@@ -42,7 +65,8 @@ pub async fn rename(path: &Path, new_name: &str) -> Result<PathBuf, FsError> {
         });
     };
     let new_path = parent.join(new_name);
-    if new_path.exists() {
+    // Windows: renaming "readme.md" to "README.md" is the same file, not a clash.
+    if new_path.exists() && !same_entry(path, &new_path) {
         return Err(FsError::AlreadyExists { path: new_path });
     }
     tokio::fs::rename(path, &new_path)
@@ -109,12 +133,21 @@ pub async fn copy_path_as(
     dest_dir: &Path,
     new_name: &str,
 ) -> Result<PathBuf, FsError> {
+    validate_name(new_name)?;
     let dest = dest_dir.join(new_name);
     if dest.exists() {
         return Err(FsError::AlreadyExists { path: dest });
     }
     copy_recursive(source, &dest).await?;
     Ok(dest)
+}
+
+/// Whether two paths name one entry (a case-only rename on a case-insensitive file system).
+fn same_entry(a: &Path, b: &Path) -> bool {
+    match (dunce::canonicalize(a), dunce::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 fn target_path(source: &Path, dest_dir: &Path) -> Result<PathBuf, FsError> {
@@ -211,6 +244,66 @@ mod tests {
         let result = create_file(dir.path(), "new.txt").await;
 
         assert!(matches!(result, Err(FsError::AlreadyExists { .. })));
+    }
+
+    #[tokio::test]
+    async fn nested_names_create_the_missing_folders_inside_the_parent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let path = create_file(dir.path(), "src/components/Button.tsx")
+            .await
+            .expect("create");
+
+        assert_eq!(
+            path,
+            dir.path().join("src").join("components").join("Button.tsx")
+        );
+        assert!(path.is_file());
+        let folder = create_dir(dir.path(), "a\\b").await.expect("folder");
+        assert!(folder.is_dir());
+    }
+
+    #[tokio::test]
+    async fn names_that_leave_the_parent_or_windows_cant_store_are_refused() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let parent = root.path().join("inner");
+        std::fs::create_dir(&parent).expect("inner");
+        for name in [
+            "../escape.txt",
+            "..\\escape.txt",
+            "C:/x.txt",
+            "a/../b.txt",
+            "con.txt",
+            "x?.txt",
+        ] {
+            let result = create_file(&parent, name).await;
+            assert!(matches!(result, Err(FsError::InvalidName { .. })), "{name}");
+        }
+        assert!(!root.path().join("escape.txt").exists());
+        let file = create_file(&parent, "a.txt").await.expect("a");
+        assert!(matches!(
+            rename(&file, "..\\b.txt").await,
+            Err(FsError::InvalidName { .. })
+        ));
+        assert!(matches!(
+            rename(&file, "sub/b.txt").await,
+            Err(FsError::InvalidName { .. })
+        ));
+        assert!(file.exists());
+    }
+
+    #[tokio::test]
+    async fn unicode_and_spaces_are_fine_and_a_case_only_rename_works() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = create_file(dir.path(), "привет мир.py")
+            .await
+            .expect("create");
+        assert!(path.is_file());
+
+        let renamed = rename(&path, "ПРИВЕТ мир.py")
+            .await
+            .expect("case-only rename");
+        assert_eq!(renamed.file_name().unwrap(), "ПРИВЕТ мир.py");
     }
 
     #[tokio::test]

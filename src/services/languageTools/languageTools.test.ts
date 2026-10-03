@@ -1,3 +1,4 @@
+import { ipcFeed } from "../../testUtils/canonicalFeeds";
 import { describe, expect, it, vi } from "vitest";
 
 import { createFakeIpc } from "../../testUtils/fakeIpcClient";
@@ -91,6 +92,9 @@ async function session(servers: LspServerInfo[] = [server()], options: { enabled
     activeDocId: () => active.current,
     enabled: () => options.enabled ?? true,
   });
+  const lspFeed = ipcFeed(() => ipc.lspStatus());
+  lsp.useCanonical(lspFeed);
+  await lspFeed.catchUp(); // the backend's first read
   await lsp.initialize();
   const prompt = new LanguageToolsPromptService({
     lsp,

@@ -7,7 +7,7 @@ use openmind_lsp::registry::SERVERS;
 use openmind_lsp::symbols::{parse_workspace_symbols, point_hits_at_names, WorkspaceSymbol};
 use openmind_lsp::{install, package_by_id, server_by_id, unpack, ServerState};
 use serde_json::json;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use crate::app_state::AppState;
 use crate::commands::lsp::workspace_path;
@@ -112,7 +112,7 @@ pub async fn lsp_uninstall(
     })
     .await
     .map_err(|err| err.to_string())?;
-    let _ = app.emit("lsp:changed", ());
+    crate::sync::announce_now(&app, crate::sync::Topic::LanguageServers).await;
     match outcome {
         Ok(()) => {
             tracing::info!(server = def.id, "language server removed");

@@ -9,7 +9,7 @@
   "menu.help": "Справка",
   "command.file.reopenClosed": "Повторно открыть закрытый редактор",
   "command.file.clearRecent": "Очистить недавно открытые",
-  "command.file.new": "Создать файл",
+  "command.file.new": "Новый текстовый файл",
   "command.file.newFilePicker": "Создать файл...",
   "command.workbench.newWindow": "Новое окно",
   "command.file.open": "Открыть файл...",

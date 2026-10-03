@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
@@ -43,19 +43,11 @@ export function ExplorerPanel({
     [expanded, onToggle],
   );
 
-  // File > New File / New Folder and the palette: the same name box as the header buttons (selected folder first).
-  const startCreate = useRef(ui.startCreate);
+  // A name box opened from a menu or the palette is shown even when this section was collapsed.
+  const creating = snapshot.pendingCreate ?? null;
   useEffect(() => {
-    startCreate.current = ui.startCreate;
-  });
-  useEffect(
-    () =>
-      container.events.on("explorerCreate", ({ kind }) => {
-        if (!expanded) onToggle();
-        void startCreate.current(kind, null);
-      }),
-    [expanded, onToggle],
-  );
+    if (creating !== null && !expanded) onToggle();
+  }, [creating, expanded, onToggle]);
 
   if (!snapshot.rootPath) {
     return null;
@@ -89,6 +81,8 @@ export function ExplorerPanel({
           creating={ui.pendingCreate}
           onCommitCreate={ui.commitCreate}
           onCancelCreate={ui.cancelCreate}
+          createProblem={(name) => container.explorer.createNameProblem(name)}
+          renameProblem={(path, name) => container.explorer.renameProblem(path, name)}
           focusToken={focusToken}
           onToggleExpand={(path) => void container.explorer.toggleExpand(path)}
           onSelect={(path) => void container.explorer.select(path)}

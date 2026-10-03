@@ -4,7 +4,6 @@ import type { EditorGroupService } from "./editorGroupService";
 import type { EditorService } from "./editorService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { IpcClient } from "./ipc";
 import type { LayoutService } from "./layoutService";
 import type { PanelService } from "./panelService";
 import type { TerminalService } from "./terminalService";
@@ -14,7 +13,6 @@ import type { WorkspaceService } from "./workspaceService";
 export interface MenuFillDeps {
   commands: CommandRegistry;
   events: EventBus<AppEvents>;
-  ipc: IpcClient;
   workspace: WorkspaceService;
   groups: EditorGroupService;
   editor: EditorService;
@@ -32,22 +30,20 @@ export interface MenuFillDeps {
  * its real job; nothing here is a placeholder.
  */
 export function registerMenuFillCommands(deps: MenuFillDeps): void {
-  const { commands, events, ipc, workspace, groups, editor, terminal, panel, layout } = deps;
+  const { commands, events, workspace, groups, editor, terminal, panel, layout } = deps;
   const notice = (message: string) => {
     events.emit("appNotice", { message });
   };
 
-  // --- New File... : the native Save dialog picks the place (any drive or folder), then the file is created and opened ---
-  commands.register("file.newFilePicker", async () => {
-    const path = await ipc.saveDocumentDialog(undefined);
-    if (path === null) return;
-    const exists = await ipc.fsMetadata(path).then(
-      () => true,
-      () => false,
-    );
-    // A file that is already there is opened as it is: choosing its name never empties it.
-    if (!exists) await ipc.documentSave(path, "", "utf8");
-    await workspace.openPath(path);
+  // --- New File... (VS Code): nothing is written to disk until there is a name and a place ---
+  // With a folder open: the Explorer's name box (in the selected folder). Without one: an untitled editor, which asks
+  // where to go on its first save; it never shows up in an Explorer that has no folder.
+  commands.register("file.newFilePicker", () => {
+    if (workspace.getActiveWorkspace() !== null) {
+      deps.run("explorer.newFile");
+      return;
+    }
+    workspace.createUntitled();
   });
 
   // --- Auto Save ---

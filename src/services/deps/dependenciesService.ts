@@ -1,28 +1,9 @@
+import type { WorkspaceFeed } from "../state/canonicalStateService";
 import { t } from "../../i18n";
 import type { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
 import type { ActionOutcome, DependencyActions } from "./dependencyActions";
-import type { DepsIpc, DepsOp, DepsSnapshot, ProjectDeps, SetupKind } from "./depsIpc";
-
-/** Files whose change can change what the view shows. */
-const MANIFESTS = [
-  "requirements.txt",
-  "pyproject.toml",
-  "setup.py",
-  "setup.cfg",
-  "package.json",
-  "package-lock.json",
-  "pnpm-lock.yaml",
-  "yarn.lock",
-  "composer.json",
-  "composer.lock",
-  "Cargo.toml",
-  "pom.xml",
-  "build.gradle",
-  "build.gradle.kts",
-  "CMakeLists.txt",
-  "CMakePresets.json",
-];
+import type { DepsOp, DepsSnapshot, ProjectDeps, SetupKind } from "./depsIpc";
 
 /** Where dismissed setup hints are remembered (`editor_settings`). */
 export const DISMISSED_KEY = "deps.dismissedHints";
@@ -41,10 +22,8 @@ export interface DependenciesState {
 }
 
 export interface DependenciesHost {
-  ipc: Pick<DepsIpc, "depsScan">;
   actions: Pick<DependencyActions, "perform">;
   events: EventBus<AppEvents>;
-  onChanged: (listener: () => void) => () => void;
   settingsGet: (key: string) => Promise<string | null>;
   settingsSet: (key: string, value: string) => Promise<void>;
 }
@@ -80,6 +59,8 @@ export class DependenciesService {
   };
   private readonly listeners = new Set<() => void>();
   private request = 0;
+  /** The canonical dependency state of this window's folder (`src/services/state`). */
+  private canonical: WorkspaceFeed<DepsSnapshot> | null = null;
 
   constructor(private readonly host: DependenciesHost) {}
 
@@ -106,22 +87,33 @@ export class DependenciesService {
     } catch {
       // A damaged value just means nothing was dismissed.
     }
-    this.host.events.on("workspaceFolderChanged", () => void this.refresh());
-    this.host.events.on("documentSaved", ({ path }) => {
-      const name = path.split(/[\\/]/).pop() ?? "";
-      if (MANIFESTS.some((manifest) => manifest.toLowerCase() === name.toLowerCase())) void this.refresh();
-    });
-    this.host.onChanged(() => void this.refresh());
-    await this.refresh();
   }
 
-  /** Reads the workspace again; a newer answer wins over an older one. */
+  /**
+   * Follows the backend's canonical dependency state of this window's folder: one scan per folder and burst of
+   * changes (an `npm install`, a `pip install` into `.venv`, a saved manifest), shared by every window on the folder.
+   */
+  useCanonical(feed: WorkspaceFeed<DepsSnapshot>): () => void {
+    this.canonical = feed;
+    const off = feed.subscribe((snapshot) => {
+      this.request++;
+      this.set({ snapshot: snapshot ?? null, loading: false, error: null });
+    });
+    const current = feed.current();
+    if (current !== undefined) this.set({ snapshot: current, loading: false, error: null });
+    return () => {
+      off();
+      this.canonical = null;
+    };
+  }
+
+  /** Refresh: the backend scans the folder once for every window on it, and this waits until the result is here. */
   async refresh(): Promise<void> {
     const request = ++this.request;
     this.set({ loading: true });
     try {
-      const snapshot = await this.host.ipc.depsScan();
-      if (request === this.request) this.set({ snapshot, loading: false, error: null });
+      await this.canonical?.refresh();
+      if (request === this.request) this.set({ loading: false });
     } catch (error) {
       if (request === this.request) this.set({ loading: false, error: String(error) });
     }

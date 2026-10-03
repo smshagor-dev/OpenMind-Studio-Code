@@ -183,16 +183,9 @@ async fn make_plan(
     Ok((plan, environment))
 }
 
-/// The workspace's projects and their dependencies (local reads only; nothing runs).
-#[tauri::command]
-pub async fn deps_scan(
-    window: tauri::Window,
-    state: State<'_, AppState>,
-) -> Result<DepsSnapshot, String> {
-    let Some(root) = workspace_root(&state, &window).await? else {
-        return Ok(DepsSnapshot::default());
-    };
-    let python = portable_python(&state)
+/// The projects and dependencies of the folder `root` (also the canonical state's per-workspace dependency domain).
+pub(crate) async fn scan_at(state: &AppState, root: PathBuf) -> Result<DepsSnapshot, String> {
+    let python = portable_python(state)
         .await
         .and_then(|exe| exe.parent().map(Path::to_path_buf));
     tauri::async_runtime::spawn_blocking(move || openmind_deps::inspect(&root, python.as_deref()))

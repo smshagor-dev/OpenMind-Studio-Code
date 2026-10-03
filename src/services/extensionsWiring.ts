@@ -78,7 +78,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
   deps.output.ensureChannel("Extensions");
   deps.output.ensureChannel("Extension Host");
   const prompts = new ExtensionPromptService();
-  const registry = new ExtensionRegistryService(ipc, events);
+  const registry = new ExtensionRegistryService(events);
   // Install from the marketplace = a verified download handed to the same trust dialog as a .vsix.
   const marketplace = new ExtensionMarketplaceService(deps.marketplaceApi ?? tauriMarketplaceApi, {
     install: (path) => service.inspect(path),

@@ -27,7 +27,6 @@ interface Rig {
   sync: FileSyncService;
   notices: string[];
   refreshLoaded: ReturnType<typeof vi.fn>;
-  workingTreeChanged: ReturnType<typeof vi.fn>;
   disk: { current: DiskRead };
   id: string;
 }
@@ -45,10 +44,8 @@ async function rig(text = "one\ntwo\n"): Promise<Rig> {
   const documents = new DocumentService(ipc, buffers, events);
   const id = await documents.openFromPath(PATH);
   const refreshLoaded = vi.fn().mockResolvedValue(0);
-  const workingTreeChanged = vi.fn().mockResolvedValue(undefined);
   const sync = new FileSyncService(ipc, events, documents, { refreshLoaded } as never, {
     workspacePath: () => "C:/My Site",
-    workingTreeChanged,
     loadedFolders: () => ["C:/My Site"],
   });
   const notices: string[] = [];
@@ -61,7 +58,6 @@ async function rig(text = "one\ntwo\n"): Promise<Rig> {
     sync,
     notices,
     refreshLoaded,
-    workingTreeChanged,
     disk,
     id,
   };
@@ -237,12 +233,11 @@ describe("what is not looked at", () => {
   it("an empty batch does nothing at all", async () => {
     const r = await rig();
     await r.sync.handleBatch(batch());
-    expect(r.workingTreeChanged).not.toHaveBeenCalled();
     expect(r.refreshLoaded).not.toHaveBeenCalled();
   });
 });
 
-describe("Explorer and Source Control follow", () => {
+describe("the Explorer follows", () => {
   it("created and removed files refresh their folders (both slash styles); plain edits do not", async () => {
     const r = await rig();
     await r.sync.handleBatch(
@@ -254,12 +249,10 @@ describe("Explorer and Source Control follow", () => {
     );
     const folders = r.refreshLoaded.mock.calls[0]?.[0] as string[];
     expect([...folders].sort()).toEqual(["C:\\My Site", "C:\\My Site\\src"].sort());
-    expect(r.workingTreeChanged).toHaveBeenCalledTimes(1);
 
     r.refreshLoaded.mockClear();
     await r.sync.handleBatch(batch(modified("C:/My Site/edited.txt")));
     expect(r.refreshLoaded).not.toHaveBeenCalled();
-    expect(r.workingTreeChanged).toHaveBeenCalledTimes(2);
   });
 
   it("a renamed file refreshes both its old and new folders", async () => {
@@ -277,7 +270,6 @@ describe("Explorer and Source Control follow", () => {
     await r.sync.handleBatch({ changes: [], overflow: true });
     expect(r.documents.contentOf(r.id)).toBe("changed by a big checkout\n");
     expect(r.refreshLoaded).toHaveBeenCalledWith(["C:/My Site"]);
-    expect(r.workingTreeChanged).toHaveBeenCalled();
   });
 });
 
@@ -346,7 +338,6 @@ describe("the watcher lifecycle", () => {
       { refreshLoaded: vi.fn() } as never,
       {
         workspacePath: () => workspace,
-        workingTreeChanged: () => Promise.resolve(),
         loadedFolders: () => [],
       },
     );

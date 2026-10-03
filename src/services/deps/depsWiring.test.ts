@@ -30,7 +30,6 @@ function rig() {
     waitForExit,
   } as unknown as TerminalService;
   const ipc: DepsIpc = {
-    depsScan: vi.fn(),
     depsPlan: vi.fn(),
     depsRun: vi.fn().mockResolvedValue({ id: "t9", shell: "powerShell", cwd: "E:\\p", pid: 1 }),
     depsProjectInfo: vi.fn().mockResolvedValue({ pythonProject: "E:\\p", requirementsTxt: null, pyprojectToml: null, pythonTarget: "openmindPython", nodeProject: "E:\\p", packageJson: null }),

@@ -11,10 +11,12 @@ use notify::event::{ModifyKind, RenameMode};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
+use crate::coalesce::{Burst, TopicCoalescer};
 use crate::debounce::{Debouncer, Raw};
 use crate::event::ChangeBatch;
 use crate::ignore::is_ignored;
 use crate::normalize::normalize_event_path;
+use crate::topics::{classify_project, is_folder_timestamp, EnvironmentCache, SyncTopic};
 
 /// How long the folder must be quiet before a batch is reported.
 const QUIET: Duration = Duration::from_millis(250);
@@ -22,6 +24,13 @@ const QUIET: Duration = Duration::from_millis(250);
 const MAX_PATHS: usize = 500;
 /// How often the worker checks whether a batch is due.
 const TICK: Duration = Duration::from_millis(50);
+/// How long a topic (a package install) must be quiet before it is announced ...
+pub const TOPIC_QUIET: Duration = Duration::from_millis(1000);
+/// ... or how long a burst that never goes quiet waits at most.
+pub const TOPIC_MAX_WAIT: Duration = Duration::from_secs(15);
+
+/// Receives one coalesced live-sync topic per burst (on the watcher's worker thread).
+pub type TopicSink = Arc<dyn Fn(SyncTopic, Burst) + Send + Sync>;
 
 #[derive(Debug, Error)]
 pub enum WatchError {
@@ -43,6 +52,17 @@ impl FileWatcher {
         root: &Path,
         on_batch: Arc<dyn Fn(ChangeBatch) + Send + Sync>,
     ) -> Result<Self, WatchError> {
+        Self::start_with_topics(root, on_batch, None)
+    }
+
+    /// Like [`FileWatcher::start`]; besides, changes to the project's installed packages (`node_modules`, `.venv`,
+    /// `venv`, `vendor`, an `env` with `pyvenv.cfg` — at any depth, including folders created later) go to `on_topic`
+    /// as one coalesced [`SyncTopic::Packages`] per burst. Those folders still never reach `on_batch`.
+    pub fn start_with_topics(
+        root: &Path,
+        on_batch: Arc<dyn Fn(ChangeBatch) + Send + Sync>,
+        on_topic: Option<TopicSink>,
+    ) -> Result<Self, WatchError> {
         let (events, incoming) = channel::<notify::Result<Event>>();
         let mut watcher = notify::recommended_watcher(move |event| {
             let _ = events.send(event);
@@ -54,8 +74,11 @@ impl FileWatcher {
 
         let (stop, stopped) = channel::<()>();
         let watched = root.to_path_buf();
+        let plain_root = crate::normalize::without_verbatim(root);
         let thread = std::thread::spawn(move || {
             let mut debouncer = Debouncer::new(QUIET, MAX_PATHS);
+            let mut topics = TopicCoalescer::new(TOPIC_QUIET, TOPIC_MAX_WAIT);
+            let mut environments = EnvironmentCache::default();
             loop {
                 if stopped.try_recv().is_ok() {
                     break;
@@ -66,6 +89,11 @@ impl FileWatcher {
                         for raw in raws_of(&event, &watched) {
                             debouncer.push(raw, now);
                         }
+                        if on_topic.is_some() {
+                            for topic in topics_of(&event, &plain_root, &mut environments) {
+                                topics.push(topic, now);
+                            }
+                        }
                     }
                     Ok(Err(err)) => tracing::warn!(?err, "file watcher error"),
                     Err(RecvTimeoutError::Timeout) => {}
@@ -73,6 +101,11 @@ impl FileWatcher {
                 }
                 if debouncer.ready(Instant::now()) {
                     on_batch(debouncer.drain());
+                }
+                if let Some(sink) = &on_topic {
+                    for (topic, burst) in topics.due(Instant::now()) {
+                        sink(topic, burst);
+                    }
                 }
             }
         });
@@ -96,6 +129,22 @@ impl Drop for FileWatcher {
             let _ = thread.join();
         }
     }
+}
+
+/// The live-sync topics an event touches (each path once; the coalescer merges the rest).
+fn topics_of(event: &Event, root: &Path, environments: &mut EnvironmentCache) -> Vec<SyncTopic> {
+    if matches!(event.kind, EventKind::Access(_)) {
+        return Vec::new();
+    }
+    event
+        .paths
+        .iter()
+        .filter_map(|path| normalize_event_path(root, path))
+        .filter_map(|path| {
+            let topic = classify_project(root, &path, environments)?;
+            (!is_folder_timestamp(&event.kind, &path)).then_some(topic)
+        })
+        .collect()
 }
 
 /// The events worth keeping: inside the workspace, not in an ignored folder.

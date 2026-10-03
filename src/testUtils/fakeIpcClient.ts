@@ -1,8 +1,18 @@
 import { vi } from "vitest";
 
-import type { IpcClient, MySqlStatus } from "../services/ipc";
+import type {
+  DebugStatus,
+  GitSnapshot,
+  IpcClient,
+  LspSnapshot,
+  MySqlStatus,
+  PhpServerInfo,
+  RuntimeStatus,
+} from "../services/ipc";
+import type { WorkspaceStatus } from "../services/language/languageIpc";
+import type { ToolchainPacks } from "../services/toolchains/toolchainIpc";
 import type { IndexStatus } from "../services/searchIpc";
-import { createFakeExtensionsIpc } from "./fakeExtensionsIpc";
+import { createFakeExtensionsIpc, type FakeExtensionReads } from "./fakeExtensionsIpc";
 import { emptyPreferences } from "./preferencesFixture";
 
 export function idleStatus(overrides: Partial<IndexStatus> = {}): IndexStatus {
@@ -41,7 +51,25 @@ export const STOPPED_MYSQL: MySqlStatus = {
   autoLogin: true,
 };
 
-export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
+/**
+ * What the backend's canonical state holds, as test data: the app never reads these (the backend reads its services
+ * and the windows receive the result as `state:delta`); tests describe the backend's state with them and connect the
+ * stores to feeds that read them (`canonicalFeeds.ts`).
+ */
+export interface FakeBackendReads extends FakeExtensionReads {
+  runtimeList: () => Promise<RuntimeStatus[]>;
+  toolchainsList: () => Promise<ToolchainPacks>;
+  lspStatus: () => Promise<LspSnapshot>;
+  gitSnapshot: () => Promise<GitSnapshot>;
+  languageWorkspaceStatus: () => Promise<WorkspaceStatus>;
+  debugStatus: () => Promise<DebugStatus>;
+  phpServerStatus: () => Promise<PhpServerInfo | null>;
+  mysqlStatus: () => Promise<MySqlStatus>;
+}
+
+export type FakeIpc = IpcClient & FakeBackendReads;
+
+export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
   return {
     ...createFakeExtensionsIpc(),
     indexStart: vi.fn().mockResolvedValue(idleStatus()),
@@ -145,6 +173,7 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     documentSave: vi.fn().mockResolvedValue(undefined),
     recentFilesList: vi.fn().mockResolvedValue([]),
     recentFilesClear: vi.fn().mockResolvedValue(undefined),
+    recentFilesRename: vi.fn().mockResolvedValue(undefined),
     sessionLoad: vi.fn().mockResolvedValue({ openPaths: [], activePath: null }),
     sessionSave: vi.fn().mockResolvedValue(undefined),
     preferencesLoad: vi.fn().mockResolvedValue(emptyPreferences()),
@@ -193,7 +222,6 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     runtimeSetActive: vi.fn().mockResolvedValue(undefined),
     runtimeDelete: vi.fn().mockResolvedValue(undefined),
     onRuntimeProgress: vi.fn().mockResolvedValue(() => undefined),
-    onRuntimeChanged: vi.fn().mockResolvedValue(() => undefined),
     searchRun: vi.fn().mockResolvedValue({
       files: [],
       totalMatches: 0,
@@ -258,6 +286,7 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     fileWatchStart: vi.fn().mockResolvedValue(undefined),
     fileWatchStop: vi.fn().mockResolvedValue(undefined),
     onFsChanged: vi.fn().mockResolvedValue(() => undefined),
+    debugRun: vi.fn().mockResolvedValue(null),
     debugStatus: vi.fn().mockResolvedValue({
       workspace: null,
       run: null,
@@ -325,7 +354,6 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     lspSetVerbose: vi.fn().mockResolvedValue(undefined),
     onLspDiagnostics: vi.fn().mockResolvedValue(() => undefined),
     onLspLog: vi.fn().mockResolvedValue(() => undefined),
-    onLspChanged: vi.fn().mockResolvedValue(() => undefined),
     gitSnapshot: vi.fn().mockResolvedValue({
       state: "noWorkspace",
       runtime: { ready: true, label: "OpenMind portable Git", reason: null, systemGit: null },
@@ -367,7 +395,6 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     gitSetAllowSystem: vi.fn().mockResolvedValue(undefined),
     onGitLog: vi.fn().mockResolvedValue(() => undefined),
     onPhpEvent: vi.fn().mockResolvedValue(() => undefined),
-    onPhpChanged: vi.fn().mockResolvedValue(() => undefined),
     mariadbStatus: vi.fn().mockResolvedValue({
       initialized: false,
       running: null,
@@ -388,7 +415,6 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
     }),
     mariadbStop: vi.fn().mockResolvedValue(undefined),
     onMariadbEvent: vi.fn().mockResolvedValue(() => undefined),
-    onMariadbChanged: vi.fn().mockResolvedValue(() => undefined),
     pmaStart: vi.fn().mockResolvedValue({
       run: { runId: "pma-1", file: "", pid: 2 },
       port: 8081,
@@ -398,14 +424,11 @@ export function createFakeIpc(overrides: Partial<IpcClient> = {}): IpcClient {
       phpVersion: "8.4.26",
     }),
     pmaStop: vi.fn().mockResolvedValue(undefined),
-    pmaStatus: vi.fn().mockResolvedValue(null),
     onPmaEvent: vi.fn().mockResolvedValue(() => undefined),
-    onPmaChanged: vi.fn().mockResolvedValue(() => undefined),
     mysqlStatus: vi.fn().mockResolvedValue(STOPPED_MYSQL),
     mysqlStart: vi.fn().mockResolvedValue(STOPPED_MYSQL),
     mysqlStop: vi.fn().mockResolvedValue(STOPPED_MYSQL),
     mysqlRestart: vi.fn().mockResolvedValue(STOPPED_MYSQL),
-    onMysqlChanged: vi.fn().mockResolvedValue(() => undefined),
     phpProjectInfo: vi.fn().mockResolvedValue({ isDir: true, hasComposerJson: true }),
     composerRun: vi.fn().mockResolvedValue({ runId: "composer-1", file: "", pid: 3 }),
     composerStop: vi.fn().mockResolvedValue(undefined),

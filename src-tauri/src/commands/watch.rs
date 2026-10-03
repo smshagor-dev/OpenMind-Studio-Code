@@ -34,13 +34,22 @@ pub async fn watch_start(
     let target = label.clone();
     let index = state.index.clone();
     let index_root = std::path::PathBuf::from(&workspace.path);
-    let watcher = FileWatcher::start(
+    let announcer = app.clone();
+    let folder = std::path::PathBuf::from(&workspace.path);
+    let topic_folder = folder.clone();
+    let watcher = FileWatcher::start_with_topics(
         Path::new(&workspace.path),
         Arc::new(move |batch: ChangeBatch| {
             // Each window hears only about its own folder.
             crate::commands::index::apply_watch_batch(&index, &index_root, &batch);
+            crate::commands::watch_state::files_changed(&handle, &folder, &batch);
             let _ = handle.emit_to(target.as_str(), "fs:changed", batch);
         }),
+        // The project's installed packages (`npm install`, `pip install` into `.venv` in a terminal ...) and its
+        // repository (`.git`: a commit, checkout or stage — also from a terminal): that folder's canonical state.
+        Some(Arc::new(move |topic, _burst| {
+            crate::commands::watch_state::project_topic(&announcer, &topic_folder, topic);
+        })),
     )
     .map_err(|err| err.to_string())?;
     let mut watchers = state.file_watch.lock().map_err(|err| err.to_string())?;

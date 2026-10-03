@@ -205,7 +205,7 @@ export function aiRig(options: AiRigOptions = {}) {
     pushChunk: (chunk: AiChunk) => {
       for (const listener of chunkListeners) listener(chunk);
     },
-    /** Changes the installed extensions and tells the app, like `ext:changed` does. */
+    /** Changes the installed extensions and tells the app, as a canonical extensions change does. */
     setExtensions: (list: InstalledExtension[]) => {
       extensions.list = list;
       events.emit("extensionsChanged", undefined);

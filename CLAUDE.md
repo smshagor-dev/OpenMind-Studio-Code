@@ -350,6 +350,50 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   `commands::watch` (`watch_start`/`watch_stop`; `watch_start` accepts only the active workspace folder, so a
   compromised webview can't watch elsewhere) pushes `fs:changed` batches; window close stops it. `document_read`
   (`commands::document`) answers missing/file/unreadable without touching recent files.
+  **Live sync (canonical state; Release 1.0.0 → Phase 2.6)**: Rust holds the system state the windows show; every
+  window receives it as `state:delta` (`src-tauri/src/state/`). There is no "something changed" event any more and no
+  store reads backend state on its own.
+  - **Changes come from**: OpenMind's own operations (`sync::announce_now(topic)`, awaited: the command returns after
+    the canonical update), the app-folder watcher (`SystemWatcher`: `runtimes/`, `tools/`, `language-servers/`,
+    `extensions/` → `sync::announce_observed`), each project's watcher (`commands/watch_state.rs`: a file batch → Git,
+    a manifest → Git + Project + Dependencies, `node_modules`/`.venv`/`venv`/`vendor` → Dependencies + Project + Git,
+    `.git` HEAD/index/refs → Git; Git only while `git.autoRefresh` is on, read per folder by
+    `preferences::folder_bool`), language-server life cycle and extension changes (`state::refresh_soon`) and managed
+    servers (`state::servers_changed`). `SyncTopic` (`topics.rs`) classifies paths; noise: `__pycache__`, `.pyc`,
+    `.part`, install staging (`*.installing`, `.unpacking`), dev-server caches, `extensions/{storage,logs,cache}`, a
+    folder's own timestamp. `TopicCoalescer`: one burst per topic after 1 s of quiet (≤ 15 s). `own_topics`/
+    `is_own_change`: a watched burst OpenMind's own operation caused is reconciled, not counted again.
+  - **Store** (`store.rs`): one `u64` revision; slots = (domain, scope); a refresh reads outside the lock, then
+    `apply(ticket, value)` (an older read never overwrites a newer one; identical state = no revision, no delta;
+    compared as `serde_json::Value`); a change = revision + 1 and one `StateDelta` queued under the lock; a closed
+    folder drops reads still in flight.
+  - **Domains**: global `runtimes`, `tools`, `languageServers`, `extensions`, `packages` (a counter for package changes
+    in runtimes), `servers` (PHP + MySQL state with ports — app-wide, like XAMPP); per workspace `git`,
+    `dependencies`, `project`, `debug` (readers in `read.rs` are the same functions the commands used).
+  - **Workspaces** (`workspace.rs`, `scope.rs`, `gate.rs`): `WorkspaceKey` = canonical path, `\?\` stripped, `/`,
+    lower-case on Windows; the first window on a folder opens its scope and reads all its domains, the last one
+    closes it (removal deltas); one read per folder domain at a time + one pending, after a debounce, shared by every
+    window on that folder (`state_refresh` waits for it; `state_reads` counts them).
+  - **Delivery**: the publisher `emit_to`s every delta to every window — data for windows on that folder, a
+    revision-only `tick` for the others; a page listens to its own window only. `state_snapshot` = global + the
+    window's folder. `state::fill` reads the global domains at start-up (retrying a missing one), `state::stop` in
+    `shutdown`.
+  - **Frontend**: `CanonicalStateService` (one per window): listens first, attaches its folder, reads the snapshot,
+    applies held deltas above it; a stale revision is dropped; a gap reads a fresh snapshot (3 failures in a row →
+    one `appError`, never a fallback; deltas aren't kept meanwhile and the next `catchUp`/`refresh` tries again); a delta
+    held from *before* a snapshot that claims a newer revision than it can't come from the backend and is dropped. Stores take their domain through `feed`/`workspaceFeed` (`state/canonicalWiring.ts`):
+    Runtime, Toolchain, Lsp, ExtensionRegistry, PHP server, MySQL, MariaDB (live state; config details on demand),
+    phpMyAdmin, Ports (`serverPorts.ts`), Source Control, Dependencies, LanguageSupport, Debug. Their `refresh()` asks
+    the backend (folder domains) or catches up (global); none reads raw state. `sync/liveSyncWiring.ts`: what reacts
+    to changes — per-file questions (formatter, Run Code, language servers) on tool/server-install/package/folder
+    changes, workloads, terminals following the tools on PATH.
+  - **Queries by design** (not state): Run Code and formatter for a file, Git identity and branch list, MariaDB
+    configuration details (`mariadb_status`), Composer's run (`composer_status` + `composer:changed`, a process
+    life cycle), the running debug session's initial value (`debug_run`; later `debug:state`). Diagnostics stay with
+    Monaco markers. Streams stay events: terminal/run/server output, progress, LSP diagnostics and logs, `debug:*`,
+    `ext:host-*`, `fs:changed`.
+  - Tests: `src/testUtils/canonicalFeeds.ts` (`ipcFeed`, `ipcWorkspaceFeed`, `backendFeeds`, `connectBackend`) feeds
+    stores from `FakeBackendReads` (`fakeIpcClient.ts`) — test-only stand-ins for the backend's canonical data.
 - `openmind-lsp` (Milestone 7) — the Language Server Protocol client, Tauri-agnostic (`LspEvents` sink supplied by the app).
   `registry` lists the servers as data (TypeScript/JavaScript = typescript-language-server + typescript, Python = Pyright,
   PHP = Intelephense, JSON/CSS/HTML = vscode-langservers-extracted) with the **pinned `package.json` + `package-lock.json`**
@@ -2824,6 +2868,23 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   installed the 37 wheels offline; the features pip/venv/tkinter/bundled-packages were all present; in an OpenMind terminal 30/30 modules imported
   (Tk 9.0, numpy 2.5.3, pandas 3.0.6, OpenCV 5.0.0); `pip list` showed pip + the 37 packages; the temporary folder was removed; the reinstall
   command took 4 s; nothing was left running.
+- [x] **Explorer / workspace / editor synchronization (after Release 1.0.0)** — VS Code's file-creation and workspace model. Root causes found:
+  (1) the language-server commands judged every window by the *main* window's folder, so a window with no folder said "This file is outside
+  the open folder" — `commands::lsp::server_root` now uses the asking window's folder (`noWorkspace` without one; an extra window whose folder
+  isn't the main window's gets `otherWindowFolder`, the main window keeps the servers); (2) File > New File... wrote an empty file anywhere on disk,
+  which a folder-less Explorer can't show — it is now the Explorer's name box with a folder open and an untitled editor without one (File > New
+  Text File is always untitled, `Untitled-N`, nothing on disk until Save As); (3) rename/move/delete reached open tabs only through the watcher —
+  `ExplorerService.setHost` (`openFile`, `pathMoved` = `DocumentService.retargetPath` + `recent_files_rename`, `pathDeleted` =
+  `FileSyncService.deletedByUser`) applies them as soon as the backend answers, and the watcher's later report changes nothing; (4) names were never
+  checked in Rust (`..\x` could leave the folder) — `openmind_fs::names` refuses escapes, Windows-reserved names, `<>:"|?*`, a trailing dot/space,
+  and allows `src/components/Button.tsx` (missing folders are created inside the parent) for New File/Folder, a single name for rename; `entryNames.ts`
+  mirrors it so the name box shows the reason while typing; (5) naive path comparisons — documents and reveal compare with `pathKey`; (6) the name box
+  lived in a component hook plus an `explorerCreate` event plus dead "Untitled N" auto-naming — it is now `ExplorerSnapshot.pendingCreate`
+  (`beginCreate`/`commitCreate`/`cancelCreate`). Also: a document's language follows Save As and renames unless it was picked by hand
+  (`documentPathChanged`), re-reading a folder drops vanished sub-trees, and `LspService.notify` replaces its snapshot (the status bar didn't redraw
+  per-file outcomes). Tests: `explorerWorkspace.test.ts` (cases A-S over an in-memory disk), `openmind_fs` names/ops, recent-files rename,
+  `lspService` (folder close, snapshot identity). Verified by hand in a debug build (`C:\omexp`). Not done: the Save As dialog was not driven by
+  hand; language-on-create for `.ts/.js/.json` is covered by the language table, not by a Monaco test (worker hazard, Milestone 3.6).
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
