@@ -15,6 +15,9 @@ vi.mock("../../services/container", () => ({
 }));
 
 import { DependencyCard } from "./DependencyCard";
+import { preloadLanguages } from "../../testUtils/languages";
+
+preloadLanguages("ru", "bn");
 
 const INFO: ProjectInfo = {
   pythonProject: "E:\\work",

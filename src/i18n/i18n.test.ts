@@ -2,18 +2,30 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { applyLanguageSetting, i18n, initLanguage, t, type UiLanguage } from "./index";
+import { applyLanguageSetting, i18n, initLanguage, loadLanguage, t, type UiLanguage } from "./index";
 import { I18n, interpolate, languageForTag, LANGUAGES, resolveLanguage, validateCatalog } from "./i18n";
-import bn from "./locales/bn.json";
+import { canonicalTag, LANGUAGE_INFO } from "./languages";
 import en from "./locales/en.json";
-import ru from "./locales/ru.json";
 import { commandLabel, submenuLabel, topMenuLabel } from "./menuLabels";
 import { categoryLabel, optionLabel, settingDescription, settingTitle } from "./settingsText";
 import { unbuiltReason } from "../services/menus";
 
 const ROOT = process.cwd();
+
+/** Every bundled catalog, read from disk (the app itself loads the non-English ones lazily). */
+const catalogs: Record<string, Record<string, unknown>> = Object.fromEntries(
+  LANGUAGES.map((language) => [
+    language,
+    JSON.parse(readFileSync(join(ROOT, `src/i18n/locales/${language}.json`), "utf8")) as Record<string, unknown>,
+  ]),
+);
+const TRANSLATED = LANGUAGES.filter((language) => language !== "en");
+
+beforeAll(async () => {
+  for (const language of TRANSLATED) expect(await loadLanguage(language), language).toBe(true);
+});
 
 afterEach(() => {
   i18n.setSystemLanguage("en");
@@ -52,15 +64,54 @@ describe("language resolution", () => {
     const rust = readFileSync(join(ROOT, "crates/core/src/locale.rs"), "utf8");
     expect(rust).toContain(`pub const SUPPORTED_LANGUAGES: &[&str] = &[${LANGUAGES.map((l) => `"${l}"`).join(", ")}];`);
   });
+
+  it("the language table matches the backend's (names and direction)", () => {
+    const rust = readFileSync(join(ROOT, "crates/core/src/locale.rs"), "utf8");
+    const table = rust.slice(rust.indexOf("pub const LANGUAGES"), rust.indexOf("pub const SUPPORTED_LANGUAGES"));
+    const rows = [...table.matchAll(/(lang|rtl)\("([^"]+)", "([^"]+)", "([^"]+)"\)/g)].map((m) => ({
+      code: m[2],
+      native: m[3],
+      english: m[4],
+      rtl: m[1] === "rtl",
+    }));
+    expect(rows).toEqual(LANGUAGE_INFO.map((info) => ({ ...info })));
+  });
+
+  it("reduces tags the same way as the backend", () => {
+    for (const [tag, id] of [
+      ["zh-Hant-TW", "zh-tw"],
+      ["zh_HK", "zh-tw"],
+      ["zh-MO", "zh-tw"],
+      ["zh-Hans-CN", "zh-cn"],
+      ["zh-SG", "zh-cn"],
+      ["zh", "zh-cn"],
+      ["pt-PT", "pt-br"],
+      ["pt-BR", "pt-br"],
+      ["tl-PH", "fil"],
+      ["fil-PH", "fil"],
+      ["iw-IL", "he"],
+      ["in-ID", "id"],
+      ["ar-SA", "ar"],
+      ["de_DE.UTF-8", "de"],
+      ["  ", ""],
+    ] as const) {
+      expect(canonicalTag(tag), tag).toBe(id);
+    }
+  });
+
+  it("offers every bundled language in Settings with the backend's label", () => {
+    for (const info of LANGUAGE_INFO) {
+      const label = info.native === info.english ? info.native : `${info.native} (${info.english})`;
+      expect((en as Record<string, unknown>)[`setting.workbench.language.option.${info.code}`], info.code).toBe(label);
+    }
+  });
 });
 
 describe("the catalogs", () => {
-  const catalogs = { en, ru, bn } as Record<string, Record<string, unknown>>;
-
-  it("Russian and Bangla translate every English key (no silent fallback)", () => {
+  it("every bundled language translates every English key (no silent fallback)", () => {
     const keys = Object.keys(en);
     expect(keys.length).toBeGreaterThan(1000);
-    for (const language of ["ru", "bn"]) {
+    for (const language of TRANSLATED) {
       const missing = keys.filter((key) => !(key in (catalogs[language] ?? {})));
       expect(missing, language).toEqual([]);
       const extra = Object.keys(catalogs[language] ?? {}).filter((key) => !(key in en));
@@ -76,7 +127,7 @@ describe("the catalogs", () => {
       );
     for (const [key, value] of Object.entries(en)) {
       const english = names(value);
-      for (const language of ["ru", "bn"]) {
+      for (const language of TRANSLATED) {
         const translated = catalogs[language]?.[key];
         if (typeof value !== "string") {
           expect(typeof translated, `${language} ${key}`).toBe("object");
@@ -85,7 +136,18 @@ describe("the catalogs", () => {
         expect([...names(translated)].sort(), `${language} ${key}`).toEqual([...english].sort());
       }
     }
-    expect(Object.keys(validateCatalog(ru))).toHaveLength(Object.keys(ru).length);
+    for (const language of TRANSLATED) {
+      const catalog = catalogs[language] ?? {};
+      expect(Object.keys(validateCatalog(catalog)), language).toHaveLength(Object.keys(catalog).length);
+    }
+  });
+
+  it("there is a catalog for each bundled language and none for a language that isn't listed", () => {
+    const files = readdirSync(join(ROOT, "src/i18n/locales"))
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.replace(/\.json$/, ""))
+      .sort();
+    expect(files).toEqual([...LANGUAGES].sort());
   });
 
   it("every key the source asks for with t(\"...\") exists in English", () => {
@@ -161,20 +223,36 @@ describe("translation", () => {
     expect(t("search.resultCount", { count: 5 })).toBe("5টি ফলাফল");
   });
 
-  it("changing the setting changes the language at once (subscribers hear it)", () => {
+  it("changing the setting changes the language at once (subscribers hear it)", async () => {
     let heard = 0;
     const stop = i18n.subscribe(() => {
       heard += 1;
     });
     i18n.setSystemLanguage("ru");
-    applyLanguageSetting("bn");
+    await applyLanguageSetting("bn");
     expect(i18n.language).toBe("bn");
-    applyLanguageSetting("system");
+    await applyLanguageSetting("system");
     expect(i18n.language).toBe("ru");
-    applyLanguageSetting("en");
+    await applyLanguageSetting("en");
     expect(i18n.language).toBe("en");
     expect(heard).toBe(3);
     stop();
+  });
+
+  it("when two switches overlap, the newer one wins", async () => {
+    const first = applyLanguageSetting("ru");
+    const second = applyLanguageSetting("bn");
+    await Promise.all([first, second]);
+    expect(i18n.language).toBe("bn");
+    await applyLanguageSetting("en");
+  });
+
+  it("marks the page's language and text direction", async () => {
+    await applyLanguageSetting("ru");
+    expect(document.documentElement.lang).toBe("ru");
+    expect(document.documentElement.dataset.uiDir).toBe("ltr");
+    await applyLanguageSetting("en");
+    expect(document.documentElement.lang).toBe("en");
   });
 });
 

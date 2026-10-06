@@ -11,6 +11,9 @@ import type { TerminalService } from "../terminalService";
 import type { ShellKind } from "../ipc";
 import type { NetworkIpc } from "./networkIpc";
 import { NETWORK_COMMANDS, wireNetwork } from "./networkWiring";
+import { preloadLanguages } from "../../testUtils/languages";
+
+preloadLanguages("ru");
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 

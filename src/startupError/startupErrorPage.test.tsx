@@ -13,6 +13,9 @@ import {
   type StartupErrorApi,
   type StartupFailure,
 } from "./startupErrorApi";
+import { preloadLanguages } from "../testUtils/languages";
+
+preloadLanguages("ru", "bn");
 
 const FIRST_STEP = "Exit, and start the OpenMind Studio build that last used this folder.";
 

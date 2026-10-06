@@ -102,7 +102,7 @@ export function wirePreferences(deps: PreferencesWiringDeps) {
     applySearchDefaults();
     // The UI language: the setting (System Default follows the PC). Changing it re-renders the UI at once.
     const applyLanguage = () => {
-      applyLanguageSetting(settings.string("workbench.language", SYSTEM_LANGUAGE));
+      void applyLanguageSetting(settings.string("workbench.language", SYSTEM_LANGUAGE));
     };
     applyLanguage();
     settings.onChange(["workbench.language"], applyLanguage);

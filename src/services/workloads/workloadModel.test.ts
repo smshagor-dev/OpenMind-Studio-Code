@@ -17,6 +17,9 @@ import {
   warningText,
 } from "./workloadModel";
 import type { ComponentView, WorkloadCatalog } from "./workloadsIpc";
+import { preloadLanguages } from "../../testUtils/languages";
+
+preloadLanguages("ru", "bn");
 
 export function comp(id: string, patch: Partial<ComponentView> = {}): ComponentView {
   return {

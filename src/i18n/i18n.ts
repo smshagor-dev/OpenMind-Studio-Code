@@ -8,18 +8,12 @@
  * keeps that from happening). Only the app's own text is translated — never code, paths, ids or extensions' text.
  */
 
-export const LANGUAGES = ["en", "ru", "bn"] as const;
-export type Language = (typeof LANGUAGES)[number];
+import { isLanguage, isRtl, languageForTag, type Language } from "./languages";
+
+export { LANGUAGE_INFO, LANGUAGE_NAMES, LANGUAGES, isLanguage, languageForTag, type Language } from "./languages";
 
 /** The value of `workbench.language` that follows the PC. */
 export const SYSTEM_LANGUAGE = "system";
-
-/** Each language's own name (shown as-is in every UI language). */
-export const LANGUAGE_NAMES: Record<Language, string> = {
-  en: "English",
-  ru: "Русский",
-  bn: "বাংলা",
-};
 
 type PluralForm = "zero" | "one" | "two" | "few" | "many" | "other";
 const PLURAL_FORMS: readonly PluralForm[] = ["zero", "one", "two", "few", "many", "other"];
@@ -28,16 +22,6 @@ const PLURAL_FORMS: readonly PluralForm[] = ["zero", "one", "two", "few", "many"
 export type Message = string | Partial<Record<PluralForm, string>>;
 export type Catalog = Record<string, Message>;
 export type Params = Record<string, string | number>;
-
-function isLanguage(value: string): value is Language {
-  return (LANGUAGES as readonly string[]).includes(value);
-}
-
-/** The bundled language for a locale tag (`ru-RU`, `bn_BD`, `EN`), or null. Mirrors `openmind_core::locale`. */
-export function languageForTag(tag: string): Language | null {
-  const base = tag.trim().split(/[-_.@]/)[0]?.toLowerCase() ?? "";
-  return isLanguage(base) ? base : null;
-}
 
 /** The setting first, then the system's languages in order, then English. */
 export function resolveLanguage(setting: string, systemTags: readonly string[]): Language {
@@ -81,7 +65,9 @@ export function interpolate(template: string, params?: Params): string {
 }
 
 export class I18n {
-  private readonly catalogs: Record<Language, Catalog>;
+  /** Loaded catalogs; English always, the others once `addCatalog` has been given them. */
+  private readonly catalogs: Partial<Record<Language, Catalog>>;
+  private readonly englishCatalog: Catalog;
   private current: Language = "en";
   private systemLanguage: Language = "en";
   private readonly listeners = new Set<() => void>();
@@ -89,12 +75,21 @@ export class I18n {
   /** Keys asked for that English doesn't have (a bug: the UI then shows the key). */
   readonly missing = new Set<string>();
 
-  constructor(raw: Record<Language, unknown>) {
-    this.catalogs = {
-      en: validateCatalog(raw.en),
-      ru: validateCatalog(raw.ru),
-      bn: validateCatalog(raw.bn),
-    };
+  constructor(raw: { en: unknown } & Partial<Record<Language, unknown>>) {
+    this.englishCatalog = validateCatalog(raw.en);
+    this.catalogs = { en: this.englishCatalog };
+    for (const [language, catalog] of Object.entries(raw)) {
+      if (language !== "en" && isLanguage(language)) this.addCatalog(language, catalog);
+    }
+  }
+
+  /** Makes a language's catalog available (a damaged one is filtered by `validateCatalog`). */
+  addCatalog(language: Language, raw: unknown): void {
+    this.catalogs[language] = validateCatalog(raw);
+  }
+
+  isLoaded(language: Language): boolean {
+    return this.catalogs[language] !== undefined;
   }
 
   get language(): Language {
@@ -113,7 +108,10 @@ export class I18n {
   setLanguage(language: Language): void {
     if (language === this.current) return;
     this.current = language;
-    if (typeof document !== "undefined") document.documentElement.lang = language;
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = language;
+      document.documentElement.dataset.uiDir = isRtl(language) ? "rtl" : "ltr";
+    }
     for (const listener of this.listeners) listener();
   }
 
@@ -125,21 +123,21 @@ export class I18n {
   };
 
   has(key: string, language: Language = this.current): boolean {
-    return key in this.catalogs[language];
+    return key in (this.catalogs[language] ?? {});
   }
 
   /** The English text of a plain (non-plural) message, if English has the key. */
   english(key: string): string | undefined {
-    const message = this.catalogs.en[key];
+    const message = this.englishCatalog[key];
     return typeof message === "string" ? message : undefined;
   }
 
   keys(language: Language): string[] {
-    return Object.keys(this.catalogs[language]);
+    return Object.keys(this.catalogs[language] ?? {});
   }
 
   t = (key: string, params?: Params): string => {
-    const message = this.catalogs[this.current][key] ?? this.catalogs.en[key];
+    const message = this.catalogs[this.current]?.[key] ?? this.englishCatalog[key];
     if (message === undefined) {
       this.missing.add(key);
       return key;
@@ -150,7 +148,7 @@ export class I18n {
   private pick(message: Message, key: string, params?: Params): string {
     if (typeof message === "string") return message;
     const count = params?.count;
-    const language = this.catalogs[this.current][key] === message ? this.current : "en";
+    const language = this.catalogs[this.current]?.[key] === message ? this.current : "en";
     const form = typeof count === "number" ? this.pluralRules(language).select(count) : "other";
     return message[form] ?? message.other ?? "";
   }

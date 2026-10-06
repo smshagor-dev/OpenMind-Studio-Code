@@ -85,3 +85,18 @@ button {
   display: block;
   width: 100%;
 }
+
+/* Right-to-left UI languages (Arabic, Persian, Urdu, Hebrew; `data-ui-dir` is set by `i18n.setLanguage`): the
+   workbench keeps its layout, as VS Code and JetBrains IDEs do, while each piece of text runs in the direction of its
+   own script, so a translated label reads right to left and a file name or command inside it stays left to right.
+   The editor and the terminal lay out their own text. */
+:root[data-ui-dir="rtl"] body
+  :where(p, span, label, button, a, li, h1, h2, h3, h4, h5, h6, td, th, dt, dd, legend, summary, option, input, textarea) {
+  unicode-bidi: plaintext;
+}
+
+:root[data-ui-dir="rtl"] .monaco-editor *,
+:root[data-ui-dir="rtl"] .monaco-diff-editor *,
+:root[data-ui-dir="rtl"] .xterm * {
+  unicode-bidi: normal;
+}
