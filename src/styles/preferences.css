@@ -318,71 +318,34 @@
 }
 
 /* Settings > Language: every language as its own row. */
-.prefs-language-picker {
-  position: relative;
+.prefs-languages {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   max-width: 420px;
 }
 
-.prefs-language-picker__input {
-  width: 100%;
-  padding-right: 24px;
-  cursor: pointer;
-}
-
-.prefs-language-picker__input[aria-expanded="true"] {
-  cursor: text;
-}
-
-.prefs-language-picker__chevron {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: var(--fg-muted);
-  font-size: 11px;
-}
-
-.prefs-language-picker__list {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 2px);
-  left: 0;
-  right: 0;
-  max-height: 320px;
-  margin: 0;
-  padding: 4px;
-  overflow-y: auto;
-  list-style: none;
-  background: var(--menu-bg);
-  color: var(--menu-fg);
-  border: 1px solid var(--menu-border);
-  border-radius: 6px;
-  box-shadow: 0 4px 16px var(--widget-shadow);
-}
-
-.prefs-language-picker__option {
+.prefs-languages__item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 5px 8px;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.prefs-language-picker__option--active {
+.prefs-languages__item:hover {
   background: var(--list-hover-bg);
 }
 
-.prefs-language-picker__option--current {
-  color: var(--list-active-selection-fg);
+.prefs-languages__item--active {
   background: var(--list-active-selection-bg);
+  color: var(--list-active-selection-fg);
 }
 
-.prefs-language-picker__empty {
-  padding: 6px 8px;
-  color: var(--fg-muted);
+.prefs-languages__item input:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
 }
 
 .prefs-row__note {

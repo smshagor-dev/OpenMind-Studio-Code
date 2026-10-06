@@ -15,9 +15,6 @@ vi.mock("../../services/container", () => ({
 }));
 
 import { NetworkDialog, NetworkFailureCard, NetworkStatusButton, StaleTerminalBanner } from "./NetworkDialog";
-import { preloadLanguages } from "../../testUtils/languages";
-
-preloadLanguages("ru", "bn");
 
 const STATUS: NetworkStatus = {
   mode: "manual",

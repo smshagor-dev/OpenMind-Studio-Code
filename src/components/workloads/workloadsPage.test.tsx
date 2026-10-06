@@ -19,9 +19,6 @@ vi.mock("../../services/container", () => ({
 }));
 
 import { FirstRunWorkloads, WorkloadsPage } from "./WorkloadsPage";
-import { preloadLanguages } from "../../testUtils/languages";
-
-preloadLanguages("ru");
 
 const NETWORK_STATE = { status: null, offline: [], staleTerminals: [] };
 const RUNTIME_STATE = {

@@ -4,9 +4,8 @@ import { container } from "../services/container";
 import type { SettingDefinition, SettingsScope, SettingValue } from "../services/ipc";
 import { categoryLabel, optionLabel, settingDescription, settingTitle } from "../i18n/settingsText";
 import { t } from "../i18n";
-import { LanguagePicker } from "./LanguagePicker";
 
-/** The UI language setting, shown as a searchable drop-down of all bundled languages. */
+/** The UI language setting, shown as a list of all bundled languages. */
 const LANGUAGE_SETTING = "workbench.language";
 
 interface SettingRowProps {
@@ -94,18 +93,31 @@ export function SettingRow({ def, scope, value }: SettingRowProps) {
           </label>
         ) : null}
         {def.kind.type === "enum" && def.id === LANGUAGE_SETTING ? (
-          // Settings > Language: a drop-down with a search box (there are many languages).
-          <LanguagePicker
-            id={id}
-            label={settingTitle(def)}
-            options={def.kind.options.map((option) => ({ value: option.value, label: optionLabel(def.id, option) }))}
-            value={String(value)}
-            disabled={!available.enabled}
-            title={available.reason}
-            onChange={(next) => {
-              void commit(next);
-            }}
-          />
+          // Settings > Language: every bundled language as its own choice (not hidden in a drop-down).
+          <div className="prefs-languages" role="radiogroup" aria-label={settingTitle(def)} id={id}>
+            {def.kind.options.map((option) => (
+              <label
+                key={option.value}
+                className={
+                  String(value) === option.value
+                    ? "prefs-languages__item prefs-languages__item--active"
+                    : "prefs-languages__item"
+                }
+              >
+                <input
+                  type="radio"
+                  name={id}
+                  value={option.value}
+                  checked={String(value) === option.value}
+                  disabled={!available.enabled}
+                  onChange={() => {
+                    void commit(option.value);
+                  }}
+                />
+                <span>{optionLabel(def.id, option)}</span>
+              </label>
+            ))}
+          </div>
         ) : null}
         {def.kind.type === "enum" && def.id !== LANGUAGE_SETTING ? (
           <select

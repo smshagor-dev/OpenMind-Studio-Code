@@ -76,27 +76,6 @@ fn opts(pairs: &[(&str, &str)]) -> SettingKind {
     }
 }
 
-/// `workbench.language`: System Default, then every bundled UI language as "<own name> (<English name>)".
-fn language_options() -> SettingKind {
-    let mut options = vec![EnumOption {
-        value: "system".to_string(),
-        label: "System Default".to_string(),
-    }];
-    options.extend(
-        openmind_core::locale::LANGUAGES
-            .iter()
-            .map(|language| EnumOption {
-                value: language.code.to_string(),
-                label: if language.native == language.english {
-                    language.native.to_string()
-                } else {
-                    format!("{} ({})", language.native, language.english)
-                },
-            }),
-    );
-    SettingKind::Enum { options }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn def(
     id: &str,
@@ -361,7 +340,7 @@ fn app_definitions() -> Vec<SettingDef> {
         def("workbench.colorTheme", "Workbench", "Color Theme", "Colors of the workbench, the editor and the terminal. System follows Windows.", opts(&[("system", "System"), ("dark", "Dark"), ("light", "Light"), ("high-contrast", "High Contrast")]), json!("dark"), User),
         def("workbench.iconTheme", "Workbench", "Icon Theme", "The icons in the Explorer, tabs and search. The built-in themes are bundled with the app; an extension's icon theme uses the images inside that extension. Nothing is downloaded.", opts(&[("material", "Material Icons (files and folders)"), ("material-files", "Material Icons (files only)"), ("minimal", "Minimal (one file icon, no folder icons)")]), json!("material"), User),
         def("workbench.productIconTheme", "Workbench", "Product Icon Theme", "The icons used by workbench buttons and views.", opts(&[("default", "Default")]), json!("default"), User),
-        def("workbench.language", "Language", "Display Language", "The language of OpenMind Studio's own menus, dialogs and messages. System Default follows the language of Windows; English is used for anything a language doesn't translate. Code, file paths and extensions keep their own text.", language_options(), json!("system"), User),
+        def("workbench.language", "Language", "Display Language", "The language of OpenMind Studio's own menus, dialogs and messages. System Default follows the language of Windows; English is used for anything a language doesn't translate. Code, file paths and extensions keep their own text.", opts(&[("system", "System Default"), ("en", "English"), ("ru", "Русский (Russian)"), ("bn", "বাংলা (Bangla)")]), json!("system"), User),
         def("workbench.welcomeOnStartup", "Workbench", "Show Welcome Page on Startup", "Open the Welcome page when the app starts.", SettingKind::Bool, json!(true), User),
     ]
 }

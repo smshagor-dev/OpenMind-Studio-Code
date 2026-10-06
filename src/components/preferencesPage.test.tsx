@@ -160,58 +160,25 @@ describe("Settings page", () => {
     expect(screen.getByRole("status")).toHaveTextContent("No settings match");
   });
 
-  it("Settings > Language is a searchable drop-down; picking a language saves it", async () => {
+  it("Settings > Language lists every language, and picking one saves it", async () => {
     const r = await open("settings");
     fireEvent.click(screen.getByRole("button", { name: /^Language/ }));
     const list = screen.getByRole("region", { name: "Settings" });
-    const box = within(list).getByRole("combobox", { name: "Display Language" });
-    expect(box).toHaveValue("System Default — currently English");
-    fireEvent.focus(box);
-    const options = within(list).getAllByRole("option");
-    expect(options.map((o) => o.textContent)).toEqual([
-      "System Default — currently English✓",
-      "English",
-      "Русский (Russian)",
-      "বাংলা (Bangla)",
-    ]);
-    // Searching filters by the own name, the English name or the code.
-    fireEvent.change(box, { target: { value: "bang" } });
-    expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["বাংলা (Bangla)"]);
-    fireEvent.change(box, { target: { value: "ру" } });
-    expect(within(list).getAllByRole("option").map((o) => o.textContent)).toEqual(["Русский (Russian)"]);
-    fireEvent.change(box, { target: { value: "klingon" } });
-    expect(within(list).queryAllByRole("option")).toHaveLength(0);
-    expect(within(list).getByText('No language matches "klingon".')).toBeInTheDocument();
-    // Keyboard: type, then Enter picks the first match.
-    fireEvent.change(box, { target: { value: "ru" } });
-    fireEvent.keyDown(box, { key: "Enter" });
+    const group = within(list).getByRole("radiogroup", { name: "Display Language" });
+    const choices = within(group).getAllByRole("radio");
+    expect(choices.map((c) => (c as HTMLInputElement).value)).toEqual(["system", "en", "ru", "bn"]);
+    expect(within(group).getByText("Русский (Russian)")).toBeInTheDocument();
+    expect(within(group).getByText("বাংলা (Bangla)")).toBeInTheDocument();
+    expect(choices[0]).toBeChecked();
+    fireEvent.click(within(group).getByRole("radio", { name: "Русский (Russian)" }));
     await waitFor(() => {
       expect(r.ipc.preferencesSet).toHaveBeenCalledWith("user", "workbench.language", "ru");
     });
-    expect(within(list).queryByRole("listbox")).toBeNull();
-  });
-
-  it("the language drop-down: mouse pick, arrow keys and Escape", async () => {
-    const r = await open("settings");
-    fireEvent.click(screen.getByRole("button", { name: /^Language/ }));
-    const list = screen.getByRole("region", { name: "Settings" });
-    const box = within(list).getByRole("combobox", { name: "Display Language" });
-    fireEvent.focus(box);
-    fireEvent.keyDown(box, { key: "Escape" });
-    expect(within(list).queryByRole("listbox")).toBeNull();
-    expect(r.ipc.preferencesSet).not.toHaveBeenCalledWith("user", "workbench.language", expect.anything());
-    fireEvent.click(box);
-    fireEvent.keyDown(box, { key: "ArrowDown" });
-    fireEvent.keyDown(box, { key: "ArrowDown" });
-    fireEvent.keyDown(box, { key: "Enter" });
     await waitFor(() => {
-      expect(r.ipc.preferencesSet).toHaveBeenCalledWith("user", "workbench.language", "ru");
+      expect(within(group).getByRole("radio", { name: "Русский (Russian)" })).toBeChecked();
     });
-    fireEvent.click(box);
-    fireEvent.mouseDown(within(list).getByRole("option", { name: "বাংলা (Bangla)" }));
-    await waitFor(() => {
-      expect(r.ipc.preferencesSet).toHaveBeenCalledWith("user", "workbench.language", "bn");
-    });
+    // The dropdown is not used for it.
+    expect(within(list).queryByRole("combobox", { name: "Display Language" })).toBeNull();
   });
 
   it("Display Language... opens Settings on the Language section", async () => {
@@ -222,7 +189,7 @@ describe("Settings page", () => {
     });
     expect(r.page.getState().category).toBe("Language");
     const list = screen.getByRole("region", { name: "Settings" });
-    expect(within(list).getByRole("combobox", { name: "Display Language" })).toBeInTheDocument();
+    expect(within(list).getByRole("radiogroup", { name: "Display Language" })).toBeInTheDocument();
     expect(within(list).queryByText("editor.wordWrap")).toBeNull();
   });
 

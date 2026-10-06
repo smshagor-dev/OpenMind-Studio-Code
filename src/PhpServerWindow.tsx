@@ -32,7 +32,7 @@ export function PhpServerWindow() {
     void container.controlPanel.initialize();
     // The UI language follows the setting here too (the settings are re-read when this window gets focus).
     const stopLanguage = container.settings.onChange(["workbench.language"], () => {
-      void applyLanguageSetting(container.settings.string("workbench.language", SYSTEM_LANGUAGE));
+      applyLanguageSetting(container.settings.string("workbench.language", SYSTEM_LANGUAGE));
     });
     const refresh = () => {
       void container.settings.reload();

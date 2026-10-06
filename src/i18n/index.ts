@@ -1,48 +1,14 @@
 import { useSyncExternalStore } from "react";
 
-import { I18n, isLanguage, resolveLanguage, type Language, type Params } from "./i18n";
+import { I18n, LANGUAGES, resolveLanguage, type Language, type Params } from "./i18n";
+import bn from "./locales/bn.json";
 import en from "./locales/en.json";
+import ru from "./locales/ru.json";
 
-export {
-  LANGUAGE_INFO,
-  LANGUAGE_NAMES,
-  LANGUAGES,
-  SYSTEM_LANGUAGE,
-  resolveLanguage,
-  type Language,
-} from "./i18n";
+export { LANGUAGE_NAMES, LANGUAGES, SYSTEM_LANGUAGE, resolveLanguage, type Language } from "./i18n";
 
 /** The app's one translator (every window builds its own; all read the same bundled files). */
-export const i18n = new I18n({ en });
-
-/**
- * The other languages' catalogs: bundled with the app as separate chunks, so only the language in use is parsed.
- * Nothing is downloaded — these are files of the app itself.
- */
-const CATALOGS = import.meta.glob<{ default: unknown }>(["./locales/*.json", "!./locales/en.json"]);
-
-/** Loads a language's catalog if it isn't loaded yet; `false` when it isn't bundled or can't be read. */
-export async function loadLanguage(language: Language): Promise<boolean> {
-  if (i18n.isLoaded(language)) return true;
-  const load = CATALOGS[`./locales/${language}.json`];
-  if (!load) return false;
-  try {
-    i18n.addCatalog(language, (await load()).default);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-let switchSeq = 0;
-
-/** Shows `language` once its catalog is loaded (English if it can't be); a newer switch wins over an older one. */
-async function switchTo(language: Language): Promise<void> {
-  const seq = ++switchSeq;
-  const loaded = await loadLanguage(language);
-  if (seq !== switchSeq) return;
-  i18n.setLanguage(loaded ? language : "en");
-}
+export const i18n = new I18n({ en, ru, bn });
 
 /** Translates `key` into the current UI language (English when the language lacks it). */
 export function t(key: string, params?: Params): string {
@@ -66,7 +32,7 @@ export interface UiLanguage {
 }
 
 function asLanguage(value: string): Language {
-  return isLanguage(value) ? value : "en";
+  return (LANGUAGES as readonly string[]).includes(value) ? (value as Language) : "en";
 }
 
 /**
@@ -88,14 +54,14 @@ export async function initLanguage(
     ]);
     if (!answer) return null;
     i18n.setSystemLanguage(asLanguage(answer.systemLanguage));
-    await switchTo(resolveLanguage(answer.setting, answer.systemTags));
+    i18n.setLanguage(resolveLanguage(answer.setting, answer.systemTags));
     return answer;
   } catch {
     return null;
   }
 }
 
-/** Applies a new value of `workbench.language` (live: every component using `useT` re-renders once it is loaded). */
-export function applyLanguageSetting(setting: string): Promise<void> {
-  return switchTo(resolveLanguage(setting, [i18n.system]));
+/** Applies a new value of `workbench.language` (live: every component using `useT` re-renders). */
+export function applyLanguageSetting(setting: string): void {
+  i18n.setLanguage(resolveLanguage(setting, [i18n.system]));
 }

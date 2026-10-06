@@ -11,9 +11,6 @@ import {
   testSummary,
   validateProxyAddress,
 } from "./networkModel";
-import { preloadLanguages } from "../../testUtils/languages";
-
-preloadLanguages("ru", "bn");
 
 const STATUS: NetworkStatus = {
   mode: "manual",

@@ -52,9 +52,6 @@ vi.mock("@tauri-apps/api/webview", () => ({
 
 import { App } from "./App";
 import { applyLanguageSetting, i18n } from "./i18n";
-import { preloadLanguages } from "./testUtils/languages";
-
-preloadLanguages("ru", "bn");
 
 // Monaco's clipboard service (started by the editor theme) handles every click
 // by writing a ClipboardItem whose data promise it may cancel later; jsdom has
@@ -88,7 +85,7 @@ function noMissingKeys() {
 describe("the workbench in the PC's language", () => {
   it("shows the menus, activity bar and welcome page in Russian", async () => {
     i18n.setSystemLanguage("ru");
-    await applyLanguageSetting("system");
+    applyLanguageSetting("system");
     render(<App />);
     const menubar = screen.getByRole("menubar", { name: "Меню приложения" });
     for (const name of ["Файл", "Правка", "Выделение", "Вид", "Перейти", "Выполнить", "Терминал", "Справка"]) {
@@ -108,7 +105,7 @@ describe("the workbench in the PC's language", () => {
 
   it("shows Bangla when that is chosen by hand", async () => {
     i18n.setSystemLanguage("ru");
-    await applyLanguageSetting("bn");
+    applyLanguageSetting("bn");
     render(<App />);
     const menubar = screen.getByRole("menubar", { name: "অ্যাপ্লিকেশন মেনু" });
     expect(within(menubar).getByText("ফাইল")).toBeInTheDocument();
@@ -121,21 +118,19 @@ describe("the workbench in the PC's language", () => {
     render(<App />);
     const menubar = screen.getByRole("menubar", { name: "Application menu" });
     expect(within(menubar).getByText("File")).toBeInTheDocument();
-    // Start-up applies the saved setting itself; switch only after it has.
-    await screen.findByText("Welcome");
-    await act(async () => {
-      await applyLanguageSetting("ru");
+    act(() => {
+      applyLanguageSetting("ru");
     });
     expect(await within(screen.getByRole("menubar")).findByText("Файл")).toBeInTheDocument();
-    await act(async () => {
-      await applyLanguageSetting("en");
+    act(() => {
+      applyLanguageSetting("en");
     });
     expect(await within(screen.getByRole("menubar")).findByText("File")).toBeInTheDocument();
   });
 
   it("Run and Debug and Extensions render in Russian with no missing text", async () => {
     i18n.setSystemLanguage("ru");
-    await applyLanguageSetting("system");
+    applyLanguageSetting("system");
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^Запуск и отладка/ }));
     expect(await screen.findByText("Точки останова")).toBeInTheDocument();

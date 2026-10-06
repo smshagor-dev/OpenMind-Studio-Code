@@ -75,9 +75,8 @@ except through well-defined public APIs; no circular crate dependencies (enforce
 
 - `openmind-core` — shared error types, `AppPaths` (portable, exe-relative path resolution),
   logging init. No I/O beyond what's needed for path/logging setup. Everything else depends on
-  this; this depends on nothing else in the workspace. Since Milestone 20.1 `locale` (pure): `LANGUAGES` (code, own name, English
-  name, right to left) + `SUPPORTED_LANGUAGES`, `language_for_tag` (`ru-RU` -> `ru`; `zh-Hant`/`TW`/`HK`/`MO` -> `zh-TW`, other `zh` ->
-  `zh-CN`, `pt-*` -> `pt-BR`, `tl`/`iw`/`in` -> `fil`/`he`/`id`) and `pick_language` (first bundled system language, else `en`).
+  this; this depends on nothing else in the workspace. Since Milestone 20.1 `locale` (pure): `SUPPORTED_LANGUAGES`
+  (`en`, `ru`, `bn`), `language_for_tag` (`ru-RU` -> `ru`) and `pick_language` (first bundled system language, else `en`).
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern. Since Milestone 20.0: `migrations::MIGRATOR` (the embedded
   migrations; `build.rs` + `migration_inputs.rs` print `cargo:rerun-if-changed` for the folder and every `.sql`, so a
@@ -1141,15 +1140,11 @@ internals.
   and terminal output (strong problems only); `RuntimeService.setFailureListener` gives the card a Retry). UI: `components/network/`
   (`NetworkDialog` with Proxy and Offline Packages tabs, `NetworkFailureCard`, `NetworkStatusButton` in the terminal panel header).
   Strings are `network.*`, `command.network.*`, `submenu.network`; settings `network.*` (category Network, user scope).
-- **UI language (Milestone 20.1; global-languages work after Release 1.0.1).** `src/i18n/`: `languages.ts` (`LANGUAGE_INFO`, the
-  mirror of the Rust table; a test compares them), `locales/<code>.json` (flat stable keys, named `{placeholders}`,
+- **UI language (Milestone 20.1).** `src/i18n/`: `locales/{en,ru,bn}.json` (flat stable keys, named `{placeholders}`,
   plural objects chosen with `Intl.PluralRules`), `i18n.ts` (the `I18n` class: fallback to English, then the key itself;
   `validateCatalog` drops malformed entries; `resolveLanguage` = setting > PC language > English), `index.ts` (the shared
-  `i18n`, `t`, `useT`, `initLanguage` — `main.tsx` asks `ui_language` and loads the catalog before the first render, 1.5 s max —,
-  `applyLanguageSetting` (async; the newer of two switches wins), `loadLanguage`: English is in the main bundle, every other catalog is
-  a lazily loaded chunk of the app via `import.meta.glob`; tests that show another language call `preloadLanguages` from
-  `src/testUtils/languages.ts`; a right-to-left language sets `data-ui-dir="rtl"` and the UI text runs in its script's direction
-  with `unicode-bidi: plaintext` while the layout stays as it is, see `docs/localization.md`), `menuLabels.ts` (menus stay English data and are translated when a menu opens:
+  `i18n`, `t`, `useT`, `initLanguage` — `main.tsx` asks `ui_language` before the first render, 1.5 s max —,
+  `applyLanguageSetting`), `menuLabels.ts` (menus stay English data and are translated when a menu opens:
   `menu.<id>`, `command.<id>[.alt|.toggled]`, `submenu.<name>`, only when the row's label is that key's English, so data
   rows keep their text), `settingsText.ts` (setting titles/descriptions/options/categories translated when the backend's
   English matches the catalog; extensions' settings untouched; Settings search matches both languages) and

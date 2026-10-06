@@ -524,8 +524,6 @@
   "setting.workbench.welcomeOnStartup.description": "অ্যাপ চালু হলে স্বাগতম পাতা খোলে।",
   "settings.language.currentlySystem": "সিস্টেম ডিফল্ট — এখন {language}",
   "settings.language.appliesNow": "ভাষা সঙ্গে সঙ্গে বদলায়। Monaco এডিটরের নিজস্ব অংশ (খোঁজার বাক্স, কমান্ড প্যালেট) ইংরেজিতেই থাকে।",
-  "settings.language.search": "ভাষা খুঁজুন (নাম বা কোড)",
-  "settings.language.noMatch": "\"{query}\"-এর সাথে মেলে এমন কোনো ভাষা নেই।",
   "settings.row.wholeNumber": "{title} একটি পূর্ণসংখ্যা হতে হবে।",
   "settings.row.modified": "পরিবর্তিত",
   "settings.row.setInUser": "ব্যবহারকারীর সেটিংসে ঠিক করা",
