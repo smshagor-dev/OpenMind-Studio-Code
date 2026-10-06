@@ -1,0 +1,17 @@
+{
+  "name": "openmind-fmt-prettier",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "prettier": "3.9.9",
+    "@prettier/plugin-php": "0.25.0",
+    "@prettier/plugin-xml": "3.4.2",
+    "prettier-plugin-sh": "0.20.2",
+    "prettier-plugin-sql": "0.20.0",
+    "prettier-plugin-toml": "3.0.2",
+    "prettier-plugin-java": "2.11.0",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte": "5.57.1",
+    "prettier-plugin-astro": "1.1.0"
+  }
+}

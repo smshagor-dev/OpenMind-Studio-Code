@@ -101,12 +101,12 @@ pub const KNOWN: &[Known] = &[
     tool("debugpy", "Python debugger (debugpy)", Debugger, "Debug adapter for Python.",
         "debugpy is the debug adapter behind Run and Debug for Python. It runs on the active Python (OpenMind's portable Python first). Several versions can be kept; the active one is used when you start debugging. Nothing is downloaded when you debug: if no version is present the Run and Debug view says so and offers the Runtime Manager install.",
         &["Python"], "debugpy", NOT_SHIPPED),
-    tool("ruff", "Ruff", Linter, "Fast Python linter and formatter.", "Ruff lints Python and can format it. A project-local Ruff (in .venv) wins over this one.", &["Python"], "ruff", NOT_SHIPPED),
+    tool("ruff", "Ruff", Linter, "Fast Python linter and formatter.", "Ruff lints Python and can format it. A project-local Ruff (in .venv) wins over this one; without either, Format Document uses the Ruff bundled with OpenMind.", &["Python"], "ruff", NOT_SHIPPED),
     tool("black", "Black", Formatter, "Python code formatter.", "Black formats Python files. A project-local Black wins over this one.", &["Python"], "black", NOT_SHIPPED),
     tool("isort", "isort", Formatter, "Sorts Python imports.", "isort orders Python import statements.", &["Python"], "isort", NOT_SHIPPED),
     tool("pytest", "pytest", HelperTool, "Python test runner.", "pytest runs a Python project's tests. It is normally installed in the project's own environment.", &["Python"], "pytest", NOT_SHIPPED),
     tool("eslint", "ESLint", Linter, "JavaScript and TypeScript linter.", "ESLint lints JavaScript and TypeScript. A project-local ESLint wins over a bundled one.", &["JavaScript", "TypeScript"], "eslint", NOT_SHIPPED),
-    tool("prettier", "Prettier", Formatter, "Code formatter for web languages.", "Prettier formats JavaScript, TypeScript, CSS, HTML, JSON, Markdown and more. A project-local Prettier wins over a bundled one.", &["JavaScript", "TypeScript", "CSS", "HTML", "JSON", "Markdown"], "prettier", NOT_SHIPPED),
+    tool("prettier", "Prettier", Formatter, "Code formatter for web languages.", "Prettier formats JavaScript, TypeScript, CSS, HTML, JSON, Markdown and more. A project-local Prettier wins over this one; without either, Format Document uses the Prettier bundled with OpenMind.", &["JavaScript", "TypeScript", "CSS", "HTML", "JSON", "Markdown"], "prettier", NOT_SHIPPED),
     tool("biome", "Biome", Formatter, "Formatter and linter for web languages.", "Biome formats and lints JavaScript, TypeScript, JSON and CSS.", &["JavaScript", "TypeScript", "JSON"], "biome", NOT_SHIPPED),
     tool("tailwindcss-language-server", "Tailwind CSS server", LanguageServer, "Tailwind class completions.", "The Tailwind CSS language server.", &["Tailwind CSS"], "tailwindcss-language-server", NOT_SHIPPED),
     tool("vue-language-server", "Vue language server", LanguageServer, "Vue single-file components.", "The Vue (Volar) language server.", &["Vue"], "vue-language-server", NOT_SHIPPED),
@@ -171,14 +171,15 @@ mod tests {
         ] {
             assert!(known(id).expect(id).external, "{id}");
         }
-        for id in ["git", "composer", "debugpy", "prettier", "eslint", "black"] {
+        for id in ["git", "composer", "debugpy", "biome", "eslint", "black"] {
             assert!(!known(id).expect(id).external, "{id}");
         }
     }
 
     #[test]
-    fn servers_of_the_offline_lsp_bundle_are_not_tool_packs() {
-        // They live in `lsp/` and are shown by Language Tools; listing them here too would show them "Missing".
+    fn servers_and_native_formatters_of_the_offline_lsp_bundle_are_not_tool_packs() {
+        // They live in `lsp/` (Language Tools, formatting); listing them here too would show them "Missing".
+        // Prettier and Ruff stay: Language Tools can install them as tool packs, which run before the bundled copies.
         for id in [
             "pyright",
             "typescript-language-server",
@@ -187,6 +188,9 @@ mod tests {
             "clangd",
             "yaml-language-server",
             "dockerfile-language-server",
+            "gofmt",
+            "clang-format",
+            "stylua",
         ] {
             assert!(known(id).is_none(), "{id}");
         }

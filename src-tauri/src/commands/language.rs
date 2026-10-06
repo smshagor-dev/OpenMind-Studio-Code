@@ -26,10 +26,12 @@ pub(crate) async fn tool_env(state: &AppState) -> ToolEnv {
         Ok(env) => env,
         Err(err) => {
             tracing::warn!(%err, "could not read the runtime environment for tool lookup");
-            ToolEnv::with_bundled(
+            let mut env = ToolEnv::with_bundled(
                 crate::commands::toolchains::bundled_dirs(state).await,
                 Vec::new(),
-            )
+            );
+            add_offline_bundle_tools(&mut env, &state.app_root);
+            env
         }
     }
 }
@@ -44,7 +46,52 @@ async fn tool_env_checked(state: &AppState) -> Result<ToolEnv, String> {
         .await
         .map_err(|err| err.to_string())?
         .path_prepend;
-    Ok(ToolEnv::with_bundled(bundled, portable))
+    let mut env = ToolEnv::with_bundled(bundled, portable);
+    add_offline_bundle_tools(&mut env, &state.app_root);
+    Ok(env)
+}
+
+/// The offline bundle's formatters that are already unpacked (Milestone 18): native programs join the bundled
+/// folders (after the user's own `tools/` packs), Prettier becomes a launcher on the bundle's Node.js (or, without
+/// one, OpenMind's portable Node — never a system one). Unpacking itself happens only when formatting is asked for
+/// (`unpack_offline_formatters`).
+fn add_offline_bundle_tools(env: &mut ToolEnv, app_root: &Path) {
+    let bundle = openmind_lsp::bundle::load(app_root).ok().flatten();
+    let node = openmind_lsp::resolve_lsp_node(
+        bundle.as_ref().and_then(|b| b.node_path()),
+        &env.portable_dirs,
+        None,
+    )
+    .ok()
+    .map(|node| node.path);
+    for tool in openmind_lsp::tools::ready_tools(app_root, node.as_deref()) {
+        if let Some(dir) = tool.dir {
+            env.bundled_dirs.push(dir);
+        }
+        if let Some(launcher) = tool.launcher {
+            env.launchers.insert(tool.tool.to_string(), launcher);
+        }
+    }
+}
+
+/// Unpacks the offline bundle's formatter packs that aren't unpacked yet (offline, once; a few seconds the first
+/// time). A pack that fails is logged and left out; formatting then says the tool is missing.
+pub(crate) async fn unpack_offline_formatters(state: &AppState) {
+    let root = state.app_root.clone();
+    let outcome = tokio::task::spawn_blocking(move || match openmind_lsp::bundle::load(&root) {
+        Ok(Some(bundle)) => openmind_lsp::tools::ensure_unpacked(&root, &bundle),
+        Ok(None) => Vec::new(),
+        Err(problem) => vec![problem],
+    })
+    .await;
+    match outcome {
+        Ok(problems) => {
+            for problem in problems {
+                tracing::warn!(%problem, "a bundled formatter could not be unpacked");
+            }
+        }
+        Err(err) => tracing::warn!(?err, "unpacking the bundled formatters stopped"),
+    }
 }
 
 /// Every language OpenMind knows (static data).

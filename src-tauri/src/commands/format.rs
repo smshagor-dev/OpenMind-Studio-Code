@@ -66,6 +66,7 @@ async fn prepare(
         Some(file) => nearest_project_root(file, workspace.as_deref()),
         None => workspace.clone().unwrap_or_else(|| state.app_root.clone()),
     };
+    super::language::unpack_offline_formatters(state).await;
     let env = super::language::tool_env(state).await.for_project(&cwd);
     let path_prepend: Vec<PathBuf> = env
         .bundled_dirs
@@ -280,6 +281,7 @@ mod tests {
             bundled_dirs: vec![],
             portable_dirs: vec![],
             system_dirs: vec![],
+            launchers: Default::default(),
             pathext: vec![],
             vars: Default::default(),
         };

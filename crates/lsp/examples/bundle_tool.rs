@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use openmind_lsp::pack::create_pack;
-use openmind_lsp::registry::{PACKAGES, SERVERS};
+use openmind_lsp::registry::{BUNDLED_TOOLS, PACKAGES, SERVERS};
 use openmind_lsp::unpack::{extract, sha256_file};
 use openmind_lsp::{package_by_id, LspError, Source};
 
@@ -56,6 +56,19 @@ fn pack(id: &str, folder: &str, out: &str) -> Result<String, LspError> {
     let package = package_by_id(id)
         .ok_or_else(|| LspError::InstallFailed(format!("unknown package {id}")))?;
     let folder = PathBuf::from(folder);
+    let tool_files = BUNDLED_TOOLS
+        .iter()
+        .filter(|tool| tool.package == package.id)
+        .flat_map(|tool| std::iter::once(tool.entry).chain(tool.plugins.iter().copied()));
+    if let Some(missing) = tool_files
+        .into_iter()
+        .find(|path| !folder.join(path).is_file())
+    {
+        return Err(LspError::InstallFailed(format!(
+            "{missing} is missing from {}",
+            folder.display()
+        )));
+    }
     for server in SERVERS.iter().filter(|server| server.package == package.id) {
         if !folder.join(server.entry).is_file() {
             return Err(LspError::InstallFailed(format!(

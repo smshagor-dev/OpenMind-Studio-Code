@@ -17,6 +17,7 @@ fn empty_env(os: Os) -> ToolEnv {
         bundled_dirs: vec![],
         portable_dirs: vec![],
         system_dirs: vec![],
+        launchers: Default::default(),
         pathext: if os == Os::Windows {
             vec![".exe".into()]
         } else {

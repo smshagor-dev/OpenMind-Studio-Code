@@ -2495,7 +2495,7 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   no writable workspace `fs.rename/copy`, no file-system-provider watch events, formatter selectors by language only, font icon themes and `light`/`highContrast` icon variants unused, webview views get no VS Code theme
   variables); the update check reads Open VSX only and ignores extensions without a publisher; the permission guard is still not a sandbox; the extension host keeps running after its last code extension is
   uninstalled until the app closes. Files that were over 700 lines before this milestone (`contributions.rs`, `tests/host.rs`, `container.ts`, `workspaceService.ts`) are still over it; this milestone moved its own
-  additions out where it could. The unmerged `formatters-offline` branch (`2b739b2`) calls itself "Milestone 18" in its CLAUDE.md and needs renumbering before it is merged. Left on disk: `C:\omm18`.
+  additions out where it could. Left on disk: `C:\omm18`.
 - [x] **Milestone 19** — Advanced debug, tasks and notebook foundation (`feat: add advanced debug tasks and notebook foundation`). New crates `openmind-tasks` and `openmind-notebook`
   (see above), `openmind_core::{jsonc, vars}`, `openmind_dap::launch`, migration `0003_debug_tasks_notebooks.sql` (breakpoint `hit_condition`/`log_message`, `notebook_trust`,
   `notebook_runs`), `commands::{tasks, notebook}` + `debug_configurations`.
@@ -2965,6 +2965,27 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
     - No MASM/FASM; no source-level debugging (NASM objects carry CodeView only, which GDB can't read).
     - Single-file builds (`%include` works).
     - cmd.exe refuses Run in Terminal for names with `&`/`$`/quotes.
+- [x] **Bundled offline formatters** (built as "Milestone 18" on branch `formatters-offline` from Milestone 17, merged after Assembly support; the "Milestone 18" mentions in its code comments mean this work) (`feat: bundle offline formatters for every supported language`). A user asked for a formatter that
+  works in every language with nothing to install ("No formatter available for HTML. Prettier not found." was the trigger). The offline bundle (`lsp/`)
+  now also carries **Prettier 3.9.9 with plugins** (PHP, shell + Dockerfile + `.properties` + `.env`, XML, SQL, TOML, Java, Svelte, Astro — plus
+  its own HTML/CSS/JS/TS/JSON/Markdown/YAML/GraphQL/Vue), **Ruff 0.16.9** (Python), **gofmt** (only `gofmt.exe` from Go 1.27.1), **clang-format
+  23.1.1** (from the official PyPI wheel; C/C++/Objective-C/C#, Java after Prettier) and **StyLua 2.5.2** (Lua), each SHA256-pinned in
+  `bundle-sources.json` (new native option `only`: keep just those files) or by the Prettier lockfile. `openmind-lsp`: formatter `PACKAGES`,
+  `registry::BUNDLED_TOOLS` (tool id, package, entry, runtime, Prettier's plugin files), `tools.rs` (`ensure_unpacked` — all formatter packs at once,
+  process-wide gate — and `ready_tools`: a native tool's folder, or Prettier's launcher `node <prettier.cjs> --plugin=<absolute path>...`; no Node,
+  no Prettier), unpack/`bundle_tool` also check tool entries. `openmind-language`: `ToolEnv.launchers` (tool id -> program + leading args, looked at
+  right after the project's own copy), `Found.args` + `Found::command()`, StyLua tool + recipe, formatters added for PHP, shell, Dockerfile, XML, SQL,
+  TOML, Java, C#, Lua, `.properties`, `.env` (with the Format level). `openmind-format`: a launcher is named after its script in messages, the shown path
+  is the script. App: `commands::language::tool_env` adds the unpacked bundle tools (after the user's `tools/` packs); `commands::format::prepare` first
+  calls `unpack_offline_formatters` (so the first format/format status after install unpacks, offline, ~a few seconds; nothing at launch). gofmt,
+  clang-format and StyLua are not `tools/` catalog entries (they would show "Missing"); Prettier and Ruff stay in it because Language Tools installs them as tool packs, which run before the bundled copies (fixed in the merge). Order stays: user default > project's own tool > **bundled** > built-in JSON > portable >
+  system. **Not bundled** (need a toolchain): rustfmt, `dotnet format`, ktlint, `dart format`, Ruby, PowerShell. Sizes: formatter packs +42 MB (bundle
+  209 MB), unpacked 177 MB. Tests: `crates/format/tests/bundled_formatters.rs` (ignored; 21 files — HTML, CSS, TS, TSX, JSON, Markdown, YAML, PHP,
+  shell, Dockerfile, XML, SQL, TOML, Java, Svelte, Python, Go, C, C++, C#, Lua — each formatted by a *bundled* tool with an empty system PATH), unit tests
+  for the launcher order, ready tools, labels, registry. Verified by hand (debug build, fresh copy `E:\omfmt18`, workspace with a space): nothing
+  unpacked at launch; Edit > Format Document formatted HTML ("HTML — Prettier (bundled with OpenMind)"), PHP, Python (Ruff), Go (gofmt), Lua (StyLua),
+  SQL, shell and C++ (clang-format); no formatter process stayed, no connection from the app's processes; close left 0 processes. Rust 927 passed,
+  frontend 1590. Built on branch `milestone-18` in the clean worktree `E:\wt-release`.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

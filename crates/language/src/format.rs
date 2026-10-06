@@ -117,6 +117,12 @@ const RECIPES: &[Recipe] = &[
         stdin: None,
     },
     Recipe {
+        tool: "stylua",
+        kind: Category::Format,
+        args: &["{file}"],
+        stdin: Some(&["--stdin-filepath", "{file}", "-"]),
+    },
+    Recipe {
         tool: "clang-format",
         kind: Category::Format,
         args: &["-i", "{file}"],
@@ -204,13 +210,15 @@ pub fn options(
                 .found
                 .as_ref()
                 .map(|found| {
-                    let mut argv = vec![found.path.clone()];
+                    let mut argv = found.command();
                     argv.extend(recipe.args.iter().map(|a| a.replace("{file}", file)));
                     argv
                 })
                 .unwrap_or_default();
             let stdin_argv = match (&status.found, recipe.stdin) {
-                (Some(found), Some(args)) => std::iter::once(found.path.clone())
+                (Some(found), Some(args)) => found
+                    .command()
+                    .into_iter()
                     .chain(args.iter().map(|a| a.replace("{file}", file)))
                     .collect(),
                 _ => Vec::new(),
@@ -245,6 +253,7 @@ mod tests {
             bundled_dirs: vec![],
             portable_dirs: vec![],
             system_dirs: vec![system.to_path_buf()],
+            launchers: Default::default(),
             pathext: vec![],
             vars: HashMap::new(),
         }
@@ -318,9 +327,15 @@ mod tests {
                 .len()
                 == 1
         );
-        // Pint and PHP CS Fixer only rewrite files on disk.
+        // Pint and PHP CS Fixer only rewrite files on disk; Prettier (with the PHP plugin) reads stdin.
         let php = options(by_id("php").expect("php"), Category::Format, "/w/a.php", &e);
-        assert!(php.iter().all(|o| o.stdin_argv.is_empty()));
+        assert!(php
+            .iter()
+            .filter(|o| o.tool != "prettier")
+            .all(|o| o.stdin_argv.is_empty()));
+        assert!(php
+            .iter()
+            .any(|o| o.tool == "prettier" && !o.stdin_argv.is_empty()));
     }
 
     #[test]

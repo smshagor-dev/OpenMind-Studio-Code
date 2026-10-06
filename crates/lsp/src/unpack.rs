@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use crate::bundle::{Bundle, PackEntry};
 use crate::error::LspError;
 use crate::install::package_dir;
-use crate::registry::{Package, SERVERS};
+use crate::registry::{Package, BUNDLED_TOOLS, SERVERS};
 
 /// The file inside an unpacked package that names the pack it came from.
 pub const MARKER: &str = ".openmind-bundle";
@@ -103,12 +103,21 @@ pub fn unpack(
 }
 
 fn check_entries(dir: &Path, package: &Package) -> Result<(), LspError> {
-    let missing: Vec<&str> = SERVERS
+    let servers = SERVERS
         .iter()
         .filter(|server| server.package == package.id)
         .filter(|server| !dir.join(server.entry).is_file())
-        .map(|server| server.id)
-        .collect();
+        .map(|server| server.id);
+    let tools = BUNDLED_TOOLS
+        .iter()
+        .filter(|tool| tool.package == package.id)
+        .filter(|tool| {
+            std::iter::once(tool.entry)
+                .chain(tool.plugins.iter().copied())
+                .any(|path| !dir.join(path).is_file())
+        })
+        .map(|tool| tool.tool);
+    let missing: Vec<&str> = servers.chain(tools).collect();
     if missing.is_empty() {
         Ok(())
     } else {

@@ -43,15 +43,20 @@ pub struct Job<'a> {
     pub path_prepend: &'a [PathBuf],
 }
 
+fn stem(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
+}
+
+/// The tool's name for messages: the program's, or for a Node launcher (`node <script> ...`) the script's.
 fn label(argv: &[String]) -> String {
-    argv.first()
-        .map(|program| {
-            Path::new(program)
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_else(|| program.clone())
-        })
-        .unwrap_or_else(|| "The formatter".into())
+    match argv {
+        [program, script, ..] if stem(program).eq_ignore_ascii_case("node") => stem(script),
+        [program, ..] => stem(program),
+        [] => "The formatter".into(),
+    }
 }
 
 fn child_path(prepend: &[PathBuf]) -> Option<OsString> {
@@ -195,6 +200,26 @@ pub fn run_stdin(job: &Job<'_>) -> Result<String, RunError> {
         return Err(RunError::Empty(name));
     }
     Ok(text)
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::label;
+
+    #[test]
+    fn a_node_launcher_is_named_after_its_script() {
+        let argv = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            label(&argv(&[
+                "C:/App/lsp/node/node.exe",
+                "C:/x/bin/prettier.cjs",
+                "--plugin=a"
+            ])),
+            "prettier"
+        );
+        assert_eq!(label(&argv(&["C:/tools/ruff.exe", "format"])), "ruff");
+        assert_eq!(label(&[]), "The formatter");
+    }
 }
 
 #[cfg(all(test, windows))]

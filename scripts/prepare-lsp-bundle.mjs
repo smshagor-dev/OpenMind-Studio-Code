@@ -165,7 +165,7 @@ async function buildNative(pkg) {
   tool("extract", archive, raw);
   for (const file of filesUnder(raw)) {
     const kept = strippedName(relative(raw, file), source.stripComponents, source.skip);
-    if (kept === null) continue;
+    if (kept === null || (source.only && !source.only.includes(kept))) continue;
     mkdirSync(dirname(join(folder, kept)), { recursive: true });
     copyFileSync(file, join(folder, kept));
   }

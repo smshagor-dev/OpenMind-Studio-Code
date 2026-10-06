@@ -18,3 +18,5 @@ openmind-process = { version = "1.0.1", path = "../process" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+# The offline bundle's formatters, for the ignored end-to-end test (tests/bundled_formatters.rs).
+openmind-lsp = { version = "1.0.1", path = "../lsp" }

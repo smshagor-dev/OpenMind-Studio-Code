@@ -93,7 +93,7 @@ pub const TOOLS: &[ToolDef] = &[
     exe("rustc", "rustc", &["rustc"], "Install Rust (rustup) — OpenMind doesn't install it."),
     exe("rustfmt", "rustfmt", &["rustfmt"], "Add it with `rustup component add rustfmt`."),
     exe("go", "Go", &["go"], "Install Go from Runtime Manager > Workloads (app-local), or use one already on this computer."),
-    exe("gofmt", "gofmt", &["gofmt"], "gofmt comes with Go (Runtime Manager > Workloads)."),
+    exe("gofmt", "gofmt", &["gofmt"], "It ships in OpenMind's offline bundle (release builds); otherwise it comes with Go (Runtime Manager > Workloads)."),
     exe("java", "Java (JDK/JRE)", &["java"], "Install the Java JDK (Temurin) from Runtime Manager > Workloads, or use one already on this computer."),
     exe("javac", "javac", &["javac"], "Install the Java JDK (Temurin) from Runtime Manager > Workloads (a JRE has no javac)."),
     exe("mvn", "Maven", &["mvn"], "Install Maven from Runtime Manager > Workloads, or use the project's mvnw wrapper."),
@@ -114,7 +114,7 @@ pub const TOOLS: &[ToolDef] = &[
     exe("gfortran", "GNU Fortran", &["gfortran"], "Install Fortran from the Runtime Manager."),
     exe("fpc", "Free Pascal Compiler", &["fpc64", "fpc"], "Install Pascal from the Runtime Manager."),
     exe("clang", "Clang", &["clang"], "Install the C/C++ toolchain (LLVM-MinGW) from Runtime Manager > Workloads."),
-    exe("clang-format", "clang-format", &["clang-format"], "clang-format comes with the C/C++ toolchain (LLVM-MinGW) in Runtime Manager > Workloads."),
+    exe("clang-format", "clang-format", &["clang-format"], "It ships in OpenMind's offline bundle (release builds); otherwise it comes with the C/C++ toolchain (LLVM-MinGW) in Runtime Manager > Workloads."),
     exe("git", "Git", &["git"], "Install Git from the Runtime Manager."),
     exe("git-lfs", "Git LFS", &["git-lfs"], "Install Git LFS from Runtime Manager > Workloads."),
     exe("ninja", "Ninja", &["ninja"], "Install Ninja from Runtime Manager > Workloads."),
@@ -133,15 +133,16 @@ pub const TOOLS: &[ToolDef] = &[
     exe("cl", "MSVC compiler (cl)", &["cl"], "Install Visual Studio Build Tools (needs admin rights) — OpenMind doesn't install them."),
     exe("nvcc", "NVIDIA CUDA compiler", &["nvcc"], "Install the CUDA Toolkit with NVIDIA's installer — OpenMind never installs GPU drivers."),
     // Formatters and linters
-    exe("prettier", "Prettier", &["prettier"], "Add it to the project (`npm i -D prettier`) — OpenMind doesn't install it."),
+    exe("prettier", "Prettier", &["prettier"], "It ships in OpenMind's offline bundle (release builds); otherwise add it to the project (`npm i -D prettier`)."),
     exe("eslint", "ESLint", &["eslint"], "Add it to the project (`npm i -D eslint`) — OpenMind doesn't install it."),
     exe("biome", "Biome", &["biome"], "Add it to the project (`npm i -D @biomejs/biome`) — OpenMind doesn't install it."),
     exe("stylelint", "Stylelint", &["stylelint"], "Add it to the project (`npm i -D stylelint`) — OpenMind doesn't install it."),
     exe("black", "Black", &["black"], "Install Black in the project's environment (`pip install black`)."),
-    exe("ruff", "Ruff", &["ruff"], "Install Ruff in the project's environment (`pip install ruff`)."),
+    exe("ruff", "Ruff", &["ruff"], "It ships in OpenMind's offline bundle (release builds); otherwise install it in the project's environment (`pip install ruff`)."),
     exe("isort", "isort", &["isort"], "Install isort in the project's environment (`pip install isort`)."),
     exe("php-cs-fixer", "PHP CS Fixer", &["php-cs-fixer"], "Add it to the project (`composer require --dev friendsofphp/php-cs-fixer`)."),
     exe("pint", "Laravel Pint", &["pint"], "Add it to the project (`composer require --dev laravel/pint`)."),
+    exe("stylua", "StyLua", &["stylua"], "It ships in OpenMind's offline bundle (release builds); otherwise install StyLua."),
     exe("golangci-lint", "golangci-lint", &["golangci-lint"], "Install golangci-lint — OpenMind doesn't install it."),
     exe("ktlint", "ktlint", &["ktlint"], "Install ktlint — OpenMind doesn't install it."),
     // Language servers (found only; OpenMind starts its own ones itself — see `lsp::builtin_server`)
@@ -187,6 +188,18 @@ pub fn tool(id: &str) -> Option<&'static ToolDef> {
 pub struct Found {
     pub path: String,
     pub source: Source,
+    /// Arguments that go right after `path` (a launcher: `node <script> --plugin=...` for a bundled Node tool).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+}
+
+impl Found {
+    /// The program and its leading arguments.
+    pub fn command(&self) -> Vec<String> {
+        std::iter::once(self.path.clone())
+            .chain(self.args.iter().cloned())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -205,8 +218,12 @@ pub struct ToolStatus {
 pub struct ToolEnv {
     pub os: Os,
     pub project_dirs: Vec<PathBuf>,
-    /// Folders of the active app-local tool versions (`<app>/tools/...`), after the project's own copy.
+    /// Folders of the active app-local tool versions (`<app>/tools/...` and the offline bundle's formatters), after
+    /// the project's own copy.
     pub bundled_dirs: Vec<PathBuf>,
+    /// Bundled tools that run through an interpreter, by tool id: the program and its leading arguments (the offline
+    /// bundle's Prettier = bundled Node.js + its script + plugins). Looked at right after the project's own copy.
+    pub launchers: HashMap<String, Vec<String>>,
     pub portable_dirs: Vec<PathBuf>,
     pub system_dirs: Vec<PathBuf>,
     /// Windows executable suffixes, in order (`.exe`, `.cmd`, ...). Empty elsewhere.
@@ -243,6 +260,7 @@ impl ToolEnv {
             os,
             project_dirs: Vec::new(),
             bundled_dirs,
+            launchers: HashMap::new(),
             portable_dirs,
             system_dirs,
             pathext,
@@ -299,7 +317,23 @@ fn find_in(dirs: &[PathBuf], names: &[&str], env: &ToolEnv) -> Option<PathBuf> {
 
 /// Looks for `def` (a file lookup; nothing is run).
 pub fn resolve(def: &ToolDef, env: &ToolEnv) -> ToolStatus {
-    let found = match def.kind {
+    let project = match def.kind {
+        Kind::Exe(names) => find_in(&env.project_dirs, names, env),
+        Kind::Env(_) => None,
+    };
+    let launcher = env
+        .launchers
+        .get(def.id)
+        .filter(|_| project.is_none())
+        .and_then(|launcher| {
+            let (program, args) = launcher.split_first()?;
+            Some(Found {
+                path: program.clone(),
+                source: Source::Bundled,
+                args: args.to_vec(),
+            })
+        });
+    let found = launcher.or_else(|| match def.kind {
         Kind::Exe(names) => [
             (&env.project_dirs, Source::Project),
             (&env.bundled_dirs, Source::Bundled),
@@ -311,6 +345,7 @@ pub fn resolve(def: &ToolDef, env: &ToolEnv) -> ToolStatus {
             find_in(dirs, names, env).map(|path| Found {
                 path: path.display().to_string(),
                 source: *source,
+                args: Vec::new(),
             })
         }),
         Kind::Env(vars) => vars.iter().find_map(|var| {
@@ -318,9 +353,10 @@ pub fn resolve(def: &ToolDef, env: &ToolEnv) -> ToolStatus {
             Path::new(value).is_dir().then(|| Found {
                 path: value.clone(),
                 source: Source::Env,
+                args: Vec::new(),
             })
         }),
-    };
+    });
     ToolStatus {
         id: def.id.to_string(),
         name: def.name.to_string(),
@@ -358,6 +394,7 @@ mod tests {
             bundled_dirs: vec![base.join("bundled")],
             portable_dirs: vec![base.join("portable")],
             system_dirs: vec![base.join("system")],
+            launchers: Default::default(),
             pathext: if os == Os::Windows {
                 vec![".exe".into(), ".cmd".into()]
             } else {
@@ -457,5 +494,54 @@ mod tests {
         let dirs = project_tool_dirs(Path::new("/p"));
         assert!(dirs.iter().all(|d| d.starts_with("/p")));
         assert!(dirs.contains(&Path::new("/p").join("node_modules").join(".bin")));
+    }
+}
+
+#[cfg(test)]
+mod launcher_tests {
+    use super::*;
+
+    fn env(project: &Path, bundled: &Path) -> ToolEnv {
+        ToolEnv {
+            os: Os::Linux,
+            project_dirs: vec![project.to_path_buf()],
+            bundled_dirs: vec![bundled.to_path_buf()],
+            launchers: HashMap::from([(
+                "prettier".to_string(),
+                vec![
+                    "/app/lsp/node/node".to_string(),
+                    "/app/prettier.cjs".to_string(),
+                    "--plugin=/app/php.mjs".to_string(),
+                ],
+            )]),
+            portable_dirs: vec![],
+            system_dirs: vec![],
+            pathext: vec![],
+            vars: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn a_bundled_launcher_comes_after_the_project_copy_and_before_everything_else() {
+        let project = tempfile::tempdir().expect("tmp");
+        let bundled = tempfile::tempdir().expect("tmp");
+        std::fs::write(bundled.path().join("prettier"), "").expect("file");
+        let e = env(project.path(), bundled.path());
+        let found = status_of("prettier", &e).found.expect("found");
+        assert_eq!(found.source, Source::Bundled);
+        assert_eq!(found.path, "/app/lsp/node/node");
+        assert_eq!(
+            found.command(),
+            [
+                "/app/lsp/node/node",
+                "/app/prettier.cjs",
+                "--plugin=/app/php.mjs"
+            ]
+        );
+        // The project's own Prettier still wins.
+        std::fs::write(project.path().join("prettier"), "").expect("file");
+        let found = status_of("prettier", &e).found.expect("found");
+        assert_eq!(found.source, Source::Project);
+        assert!(found.args.is_empty());
     }
 }

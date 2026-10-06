@@ -97,6 +97,7 @@ fn env(tools: &[&str]) -> (tempfile::TempDir, ToolEnv) {
         bundled_dirs: vec![],
         portable_dirs: vec![],
         system_dirs: vec![bin.path().to_path_buf()],
+        launchers: Default::default(),
         pathext: vec![".exe".into()],
         vars: HashMap::new(),
     };

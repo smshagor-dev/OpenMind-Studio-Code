@@ -3085,6 +3085,7 @@ version = "1.0.1"
 dependencies = [
  "openmind-core",
  "openmind-language",
+ "openmind-lsp",
  "openmind-process",
  "serde",
  "tempfile",

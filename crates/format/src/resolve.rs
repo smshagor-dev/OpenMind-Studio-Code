@@ -121,7 +121,11 @@ fn builtin_for(language: &LanguageDef) -> Option<Resolved> {
 fn from_option(option: FormatOption, policy: &Policy, turned_off: Option<&str>) -> Resolved {
     let stdin = !option.stdin_argv.is_empty();
     let source = option.found.as_ref().map(|found| source_of(found.source));
-    let path = option.found.as_ref().map(|found| found.path.clone());
+    // A launcher's program is Node.js; the tool itself is its script.
+    let path = option
+        .found
+        .as_ref()
+        .map(|found| found.args.first().unwrap_or(&found.path).clone());
     let blocked = source.and_then(|s| blocked_by_policy(s, policy));
     let (available, reason) = if source.is_none() {
         let reason = match turned_off {
@@ -260,6 +264,7 @@ mod tests {
             bundled_dirs: bundled.map(Path::to_path_buf).into_iter().collect(),
             portable_dirs: portable.map(Path::to_path_buf).into_iter().collect(),
             system_dirs: vec![system.to_path_buf()],
+            launchers: Default::default(),
             pathext: vec![],
             vars: HashMap::new(),
         }

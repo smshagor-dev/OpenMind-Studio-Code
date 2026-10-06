@@ -15,7 +15,10 @@ is ever added to PATH, installed system-wide or started at launch, and no
 administrator rights are needed. Delete ..\language-servers\ to unpack again.
 
 Servers: TypeScript/JavaScript, Python (Pyright), HTML, CSS/SCSS/Less, JSON,
-YAML, Bash, Dockerfile, Rust (rust-analyzer), C/C++ (clangd). The PHP server
+YAML, Bash, Dockerfile, Rust (rust-analyzer), C/C++ (clangd).
+Formatters: Prettier with plugins (web languages, PHP, shell, Dockerfile, XML,
+SQL, TOML, Java, Svelte, Astro), Ruff (Python), gofmt (Go), clang-format
+(C/C++/C#) and StyLua (Lua), unpacked the first time you format a file. The PHP server
 (Intelephense) is not included - its licence does not allow redistribution -
 and is installed from npm only when you press Install in Language Tools.
 

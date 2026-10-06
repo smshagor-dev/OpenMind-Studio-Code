@@ -18,6 +18,23 @@ connection. This page is for whoever builds a release.
 | clangd | C, C++ | 22.1.6 | its own program | Apache-2.0 WITH LLVM-exception |
 | Node.js | — (runs the servers above) | 24.21.0 (`node.exe` only, no npm) | — | MIT |
 
+### Formatters (Milestone 18)
+
+| Formatter | Formats | Version | Runs on | Licence |
+| --- | --- | --- | --- | --- |
+| Prettier + plugins | HTML, CSS/SCSS/Less, JavaScript/TypeScript/JSX/TSX, JSON, Markdown, YAML, GraphQL, Vue, **PHP** (@prettier/plugin-php), **shell, Dockerfile, `.properties`, `.env`** (prettier-plugin-sh), **XML** (@prettier/plugin-xml), **SQL** (prettier-plugin-sql), **TOML** (prettier-plugin-toml), **Java** (prettier-plugin-java), **Svelte**, **Astro** | 3.9.9 | bundled Node.js | MIT (prettier-plugin-java: Apache-2.0) |
+| Ruff | Python | 0.16.9 | its own program | MIT |
+| gofmt | Go | from Go 1.27.1 (only `gofmt.exe`) | its own program | BSD-3-Clause |
+| clang-format | C, C++, Objective-C, C#, Java (after Prettier) | 23.1.1 (from the official PyPI wheel) | its own program | Apache-2.0 WITH LLVM-exception |
+| StyLua | Lua | 2.5.2 | its own program | MPL-2.0 |
+
+They are found like any bundled tool, **after the project's own copy** (a project's `node_modules/.bin/prettier`, `.venv`
+Black/Ruff ... still wins and uses the project's configuration) and before the built-in JSON formatter, the portable runtimes and the
+system PATH. Prettier runs as a launcher — `lsp/node/node.exe <unpacked>/node_modules/prettier/bin/prettier.cjs --plugin=<absolute
+path>...` — an argument list, no `.cmd`, no shell. The formatter packs are unpacked the first time formatting (or the formatter status)
+is asked for, all at once (about 2 seconds, offline); nothing is unpacked at launch. Not bundled because they need a toolchain OpenMind
+doesn't ship: rustfmt (needs the Rust toolchain; allow system tools), `dotnet format`, ktlint, `dart format`, Ruby, PowerShell.
+
 Every dependency and its licence is listed in `lsp/THIRD-PARTY-NOTICES.txt` (generated); the licence texts are
 inside each pack (`node_modules/<package>/LICENSE*`) and next to `node.exe`.
 
@@ -31,9 +48,11 @@ OmniSharp/csharp-ls (.NET), Kotlin, Dart. They are still reported as "found / ca
 
 ## Sizes (Windows x64)
 
-- `lsp/` in the app: 167 MB (packs are compressed zips, 106 MB; `node.exe` 89 MB).
-- Installers with the bundle: NSIS setup 104 MB, MSI 121 MB, portable ZIP 120 MB.
-- On disk after every server has been used once: `language-servers/` about 317 MB more.
+- `lsp/` in the app: 209 MB (13 packs as compressed zips, 148 MB — the 8 server packs 106 MB, the 5 formatter packs 42 MB —
+  plus `node.exe` 89 MB).
+- Installers with servers only (Milestone 17): NSIS setup 104 MB, MSI 121 MB, portable ZIP 120 MB; the formatters add about 42 MB.
+- On disk after every server has been used once: `language-servers/` about 317 MB more; the formatters unpack to about 177 MB more
+  (Prettier's SQL plugin alone brings an 89 MB parser).
 
 ## Layout and runtime behaviour
 
@@ -104,6 +123,15 @@ to the exe of any `tauri build`/`tauri dev`), `pnpm package:portable` copies it 
 
    Each test unpacks its pack into a fresh folder, runs the server with a PATH of only `System32` (no system Node,
    npm, Python, Rust or C++ toolchain) and needs a real answer (a diagnostic, hover or document symbols).
+
+   For the formatters:
+
+   ```text
+   cargo test -p openmind-format --test bundled_formatters -- --ignored
+   ```
+
+   It unpacks the formatter packs, resolves each file's formatter with an empty system PATH exactly as Format Document does, and
+   needs every one of 21 sample files (HTML ... Lua) formatted by a bundled tool.
 
 ## Limits
 
