@@ -29,6 +29,26 @@
       "license": "Apache-2.0 WITH LLVM-exception (https://llvm.org/LICENSE.txt)",
       "stripComponents": 1,
       "skip": []
+    },
+    {
+      "package": "asm-lsp",
+      "revision": "1",
+      "contents": "asm-lsp 0.10.1",
+      "url": "https://conda.anaconda.org/conda-forge/win-64/asm-lsp-0.10.1-h487f906_1.conda",
+      "sha256": "25cb3ff76526789767d92dd3122b89cd01671391dfeee50b310e6056b7d45562",
+      "license": "BSD-2-Clause (https://github.com/bergercookie/asm-lsp)",
+      "archive": "conda",
+      "onlyUnder": "Library/bin",
+      "parts": [
+        {
+          "contents": "Microsoft Visual C++ runtime 14.44.35208 (conda-forge vc14_runtime, the DLLs asm-lsp.exe loads)",
+          "url": "https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.44.35208-h818238b_41.conda",
+          "sha256": "ec706fe9368b837fbd05af4851f5ebef12bef8c471a273f4805f7af788407317",
+          "license": "Microsoft Visual C++ 2015-2022 Redistributable licence (https://visualstudio.microsoft.com/license-terms/)",
+          "archive": "conda",
+          "onlyUnder": "Library/bin"
+        }
+      ]
     }
   ]
 }

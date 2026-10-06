@@ -117,6 +117,10 @@ fn every_runtime_declares_features_so_its_card_can_show_real_status() {
     assert_eq!(ids("php"), ["cli", "server", "ini"]);
     assert_eq!(ids("fortran"), ["gfortran", "gcc-toolchain", "make"]);
     assert_eq!(ids("pascal"), ["compiler", "win64-target", "rtl-units"]);
+    assert_eq!(
+        ids("assembly"),
+        ["nasm", "linker", "binutils", "gdb", "x86"]
+    );
     assert_eq!(ids("composer"), ["phar"]);
 }
 
@@ -369,4 +373,59 @@ fn install_paths_are_rooted_under_the_runtimes_folder_and_downloads_under_cache(
     assert!(paths.downloads_dir().starts_with("root/cache"));
     assert!(paths.version_dir("python", "..").is_err());
     assert!(paths.version_dir("../python", "1").is_err());
+}
+
+#[test]
+fn assembly_is_a_verified_portable_nasm_toolchain_with_an_optional_x86_part() {
+    let registry = RuntimeRegistry::builtin();
+    let assembly = registry.get("assembly").expect("assembly");
+    assert_eq!(assembly.default_version, "2.15.05");
+    let version = assembly
+        .versions
+        .iter()
+        .find(|v| v.version == assembly.default_version)
+        .expect("version");
+    let artifact = &version.artifacts[0];
+    // w64devkit 1.19.0, never 1.23.0: Microsoft Defender quarantines that archive.
+    assert!(
+        artifact.url.ends_with("/v1.19.0/w64devkit-1.19.0.zip"),
+        "{}",
+        artifact.url
+    );
+    assert_eq!(artifact.sha256.len(), 64);
+    assert_eq!(artifact.strip_components, 1);
+    // Only toolchain launchers reach a terminal's PATH: never the folder with BusyBox's find/sort/tar.
+    assert!(assembly.bin_dirs.is_empty());
+    let names: Vec<&str> = assembly
+        .shims
+        .iter()
+        .map(|shim| shim.name.as_str())
+        .collect();
+    for tool in ["nasm", "ndisasm", "gcc", "as", "ld", "objdump", "nm", "gdb"] {
+        assert!(names.contains(&tool), "{tool} missing from {names:?}");
+    }
+    for busybox in ["find", "sort", "tar", "bash", "sh", "make", "cc"] {
+        assert!(
+            !names.contains(&busybox),
+            "{busybox} must not shadow the system's"
+        );
+    }
+    for shim in &assembly.shims {
+        assert_eq!(shim.path_dirs, ["bin"], "{}", shim.name);
+    }
+    for file in ["bin/nasm.exe", "bin/gcc.exe", "bin/ld.exe", "bin/gdb.exe"] {
+        assert!(assembly.verify_files.iter().any(|f| f == file), "{file}");
+    }
+    assert_eq!(assembly.version_command.output_prefix, "NASM version");
+    // x86: the i686 toolchain keeps its own `w64devkit/` folder, so it never replaces the x64 files.
+    let x86 = version
+        .addons
+        .iter()
+        .find(|addon| addon.id == "x86")
+        .expect("x86 add-on");
+    assert_eq!(x86.verify_file, "w64devkit/bin/gcc.exe");
+    assert_eq!(x86.artifacts[0].strip_components, 0);
+    assert!(x86.artifacts[0]
+        .url
+        .ends_with("/v1.19.0/w64devkit-i686-1.19.0.zip"));
 }

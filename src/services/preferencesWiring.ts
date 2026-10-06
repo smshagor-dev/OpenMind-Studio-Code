@@ -114,6 +114,10 @@ export function wirePreferences(deps: PreferencesWiringDeps) {
     settings.onChange(["lsp.enabled"], () => {
       void deps.lsp.applyEnabled();
     });
+    // asm-lsp reads its configuration (architecture, NASM) when it starts; turned off, the backend refuses the re-sync.
+    settings.onChange(["assembly.architecture", "assembly.enableLanguageServer"], () => {
+      void deps.lsp.restart("assembly");
+    });
     settings.onChange(["lsp.verboseLogging"], () => {
       void deps.lsp.setVerbose(settings.bool("lsp.verboseLogging", false));
     });

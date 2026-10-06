@@ -96,46 +96,72 @@ pub(super) async fn install_server(server: &str, state: &AppState) -> Result<(),
     }
 }
 
-/// Downloads a native server's pinned archive into the download cache (through the app's network route, resumable),
-/// checks its SHA-256 and unpacks it into `staging` with the archive's own folder stripped. A cached archive whose
-/// checksum still matches is reused.
+/// Downloads each pinned archive of a native server (asm-lsp has two: the program and the runtime DLLs it loads)
+/// and unpacks them into `staging`. Each is checked against its own SHA-256 before anything is unpacked.
 fn fetch_native(
     cache: &Path,
     download: &openmind_lsp::NativeDownload,
     staging: &Path,
     log: &dyn Fn(&str),
 ) -> Result<(), String> {
-    use openmind_runtime_manager::download::{download as fetch, verify_sha256};
-    use openmind_runtime_manager::extract::{extract_zip, ExtractSelection};
     std::fs::create_dir_all(cache).map_err(|err| err.to_string())?;
-    let name = download.url.rsplit('/').next().unwrap_or("archive.zip");
-    let archive = cache.join(format!("{}-{name}", &download.sha256[..12]));
+    for piece in download.pieces() {
+        fetch_piece(cache, &piece, staging, log)?;
+    }
+    Ok(())
+}
+
+/// One archive into the download cache (through the app's network route, resumable), its SHA-256 checked, then
+/// unpacked into `staging` (zip or conda package, its own folder stripped or only one folder kept). A cached archive
+/// whose checksum still matches is reused.
+fn fetch_piece(
+    cache: &Path,
+    piece: &openmind_lsp::NativePart,
+    staging: &Path,
+    log: &dyn Fn(&str),
+) -> Result<(), String> {
+    use openmind_runtime_manager::download::{download as fetch, verify_sha256};
+    use openmind_runtime_manager::extract::{extract_archive, ExtractSelection};
+    use openmind_runtime_manager::manifest::ArchiveKind;
+    let name = piece.url.rsplit('/').next().unwrap_or("archive.zip");
+    let archive = cache.join(format!("{}-{name}", &piece.sha256[..12]));
     let cached =
-        archive.is_file() && verify_sha256(&archive, &download.sha256, &mut |_, _| {}).is_ok();
+        archive.is_file() && verify_sha256(&archive, &piece.sha256, &mut |_, _| {}).is_ok();
     if !cached {
+        log(&format!(
+            "Downloading {} ({})...",
+            piece.contents, piece.url
+        ));
         let client = openmind_runtime_manager::UreqClient::new();
-        fetch(&client, &download.url, &archive, None, &mut |_, _| {})
+        fetch(&client, &piece.url, &archive, None, &mut |_, _| {})
             .map_err(|err| err.user_message())?;
-        verify_sha256(&archive, &download.sha256, &mut |_, _| {})
-            .map_err(|err| err.user_message())?;
+        verify_sha256(&archive, &piece.sha256, &mut |_, _| {}).map_err(|err| err.user_message())?;
         log(&format!(
             "Downloaded and verified (SHA-256 {}).",
-            download.sha256
+            piece.sha256
         ));
     } else {
-        log("Using the verified copy in the download cache.");
+        log(&format!(
+            "Using the verified copy of {} in the download cache.",
+            piece.contents
+        ));
     }
-    extract_zip(
+    let kind = match piece.archive {
+        openmind_lsp::NativeArchive::Zip => ArchiveKind::Zip,
+        openmind_lsp::NativeArchive::Conda => ArchiveKind::Conda,
+    };
+    extract_archive(
+        kind,
         &archive,
         staging,
         ExtractSelection {
-            strip_components: download.strip_components,
-            only_under: None,
+            strip_components: piece.strip_components,
+            only_under: piece.only_under.as_deref(),
         },
         &mut |_, _| {},
     )
     .map_err(|err| err.user_message())?;
-    log(&format!("Unpacked {}.", download.contents));
+    log(&format!("Unpacked {}.", piece.contents));
     Ok(())
 }
 

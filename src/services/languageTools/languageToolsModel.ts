@@ -14,6 +14,7 @@ const SERVER_LANGUAGE: Readonly<Record<string, string>> = {
   rust: "Rust",
   clangd: "C/C++",
   fortran: "Fortran",
+  assembly: "Assembly",
 };
 
 export function serverLanguage(server: Pick<LspServerInfo, "id" | "name">): string {

@@ -2905,6 +2905,66 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   per-file outcomes). Tests: `explorerWorkspace.test.ts` (cases A-S over an in-memory disk), `openmind_fs` names/ops, recent-files rename,
   `lspService` (folder close, snapshot identity). Verified by hand in a debug build (`C:\omexp`). Not done: the Save As dialog was not driven by
   hand; language-on-create for `.ts/.js/.json` is covered by the language table, not by a Monaco test (worker hazard, Milestone 3.6).
+- [x] **Assembly language support** (branch `feature/assembly-support`, not committed yet). See `docs/assembly.md`.
+  - **Runtime Manager**: manifest `assembly` = w64devkit 1.19.0 (NASM 2.15.05, MinGW-w64 GCC 13.1 / GNU ld, binutils 2.40, GDB 13.1; OpenPGP
+    signature checked when pinned, SHA-256 at install; 1.23.0 refused because Defender flags it).
+    - Launchers only for the toolchain commands (`shims` with `pathDirs: ["bin"]`), so busybox `find`/`sort` never shadow Windows'.
+    - Add-on `x86` = w64devkit-i686, in its own `w64devkit/` folder.
+    - Workloads: runtime `assembly`, component `lsp-asm-lsp`, GDB `IncludedWith` assembly (no longer Planned).
+  - **New archive kind `Conda`** (`extract::extract_conda`: a zip holding one `pkg-*.tar.zst`, decoded by `ruzstd`, the same `extract_tar`
+    checks as tar.gz). `extract_archive` dispatches by kind.
+  - **Runner**: `openmind_runner::assembly`, `RunnableKind::Assembly`.
+    - `.asm`/`.nasm` → `nasm -f win64|win32 -I <dir>/` then a gcc link (`BuildStep.link`, run in the same Job Object only after
+      the assembler succeeded); `.s`/`.S` → one gcc step; `.inc` not runnable.
+    - Entry: `main`/`_main` through the C runtime, `start`/`_start`/`mainCRTStartup` with `-nostartfiles -Wl,-e,<sym>`.
+    - gcc gets `-B<its bin>/`, and the include folder ends in `/`. Both found by the smoke: in a terminal, PowerShell's `"…\"` swallowed the next
+      arguments, and collect2 couldn't find `ld` behind the launchers.
+    - Settings `assembly.architecture|extraAssemblerArgs|extraLinkerArgs|enableLanguageServer` (category Assembly, user scope) are read
+      in the backend (`commands::assembly::options`), never taken from the page.
+  - **LSP**: native package `asm-lsp` (download-only, `redistributable: false`).
+    - Two pinned conda-forge packages (asm-lsp + vc14_runtime DLLs, `NativeDownload.parts`, `archive: conda`, `onlyUnder: Library/bin`).
+    - Language id `nasm` for `.asm`/`.nasm`.
+    - `StartContext.config_root` → `rootPath`; `<app>/settings/asm-lsp/.asm-lsp.toml` is written from the settings with the absolute NASM, unless
+      the project has its own.
+    - `ServerDef.ranged_changes` + `Capabilities.incremental_sync`: asm-lsp exits on a range-less `didChange`, so it gets one ranged change over
+      the previous text (`DocumentSync::new(true)`); other servers are unchanged.
+    - An empty `%APPDATA%\asm-lsp` that this run's asm-lsp created is removed at shutdown.
+  - **Frontend**:
+    - Monarch grammars `nasm`/`gas` (`editor/assemblyGrammars.ts`; `.s` mapped in the document table because Monaco's MIPS claims it).
+    - `.inc` is NASM only when its text looks like assembly.
+    - Icons; status item `NASM · x86-64` (opens the Assembly settings).
+    - Run Code: a missing tool can be installed from the Run button. `RunAvailability.installRuntime` + `RunMissingRuntimeHost`
+      (Install / Open Runtime Manager / Cancel); *Install Assembly Toolchain* = runtime + x86 add-on when x86 + asm-lsp.
+    - Run Code's runtime fingerprint counts add-ons.
+    - Language Tools card gained *Open Runtime Manager*.
+    - `assembly.debugInGdb` (Run > Debug in GDB (Terminal): `gdb --args`).
+    - Input detection for `scanf`/`ReadConsole`; Output channel "Assembly"; settings changes restart asm-lsp.
+  - **Tests**: runner unit + real-toolchain tests (`OPENMIND_TEST_ASSEMBLY`, incl. the exact PowerShell/cmd terminal line from a System32-only
+    PATH); conda extraction; `tests/asm_lsp.rs` (real asm-lsp, `OPENMIND_TEST_ASM_LSP`/`OPENMIND_TEST_NASM`; fails without the ranged-change
+    fix); frontend grammar/document/run/prompt/GDB/fingerprint tests.
+  - **Verified by hand** in a debug build (`C:\omexp`, workspace `Asm Work`); details are in the report.
+  - **Production pass** (same branch):
+    - Runtime Manager card:
+      - `AssemblySetupLine` lists the parts. *Install Assembly Toolchain* installs, or repairs, the runtime, adds the
+        x86 part when x86 is chosen, and installs the optional asm-lsp.
+      - The plain Install adds x86 too (`commands::assembly::after_install`).
+    - **Repair keeps add-ons** (`addons::recorded_addons`, re-added after the rebuild; it used to drop Python's Tcl/Tk and
+      the x86 part).
+    - Settings: changing an Assembly setting re-checks Run Code (`RunCodeService.recheck`). asm-lsp switched off is
+      `SyncOutcome::TurnedOff` with its own status text.
+    - `DocumentSync::clamp_positions`: asm-lsp panicked on positions past a line's end, so requests to range-based
+      servers are moved inside the text.
+    - Search index: assembly symbol reader (labels, local labels, `equ`, `%define`/`%assign`, `%macro`; `SCHEMA_VERSION`
+      2), so Ctrl+T covers assembly (asm-lsp has no workspace symbols).
+    - The extra-arguments error is one sentence.
+    - Real tests: odd file names (Run Code and the exact PowerShell/cmd terminal line), link errors, no stale `.exe`,
+      stderr, and asm-lsp past-the-end positions (fails without the guard).
+    - Smoke in a fresh copy `C:\om asm smoke` (no system NASM/gcc/asm-lsp): see the report.
+  - **Limits**:
+    - asm-lsp: problems only on save, References returns only the declaration, no workspace symbols of its own.
+    - No MASM/FASM; no source-level debugging (NASM objects carry CodeView only, which GDB can't read).
+    - Single-file builds (`%include` works).
+    - cmd.exe refuses Run in Terminal for names with `&`/`$`/quotes.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

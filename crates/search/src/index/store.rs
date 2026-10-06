@@ -11,8 +11,10 @@ use serde::Serialize;
 use crate::error::SearchError;
 use crate::index::symbols::Symbol;
 
-/// Bumped when the tables change; an index with another version is thrown away and rebuilt.
-const SCHEMA_VERSION: &str = "1";
+/// Bumped when the tables change, or when what is read from a file changes (2: assembly symbols, `.asm`/`.nasm`/`.s`
+/// files gained a language) — an index with another version is thrown away and rebuilt, so unchanged files are read
+/// again.
+const SCHEMA_VERSION: &str = "2";
 
 /// What is stored about one file.
 #[derive(Debug, Clone)]

@@ -353,6 +353,7 @@ function runMenu(projectCommands: ProjectMenuCommand[]): TopLevelMenu {
       cmd("Run Code in Terminal", "run.codeInTerminal"),
       cmd("Run Code and Show Output", "run.codeShowOutput"),
       cmd("Run Code with Arguments...", "run.codeWithArguments"),
+      cmd("Debug in GDB (Terminal)", "assembly.debugInGdb"),
       cmd("Stop Running Code", "run.stop"),
       cmd("Configure Run Command...", "run.configure"),
       cmd("Select Runtime...", "run.selectRuntime"),

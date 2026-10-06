@@ -28,6 +28,18 @@ pub struct BuildStep {
     /// folder first (Free Pascal's units, gfortran's module files) finds the files next to the source, not
     /// same-named ones in the workspace root. The program itself still runs in the plan's `cwd`.
     pub cwd: PathBuf,
+    /// A second build command run after the first succeeded, in the same folder and process tree: Assembly links the
+    /// object file the assembler wrote. `None` for languages whose compiler links by itself.
+    pub link: Option<LinkStep>,
+}
+
+/// The link command of a two-step build (assemble, then link).
+#[derive(Debug, Clone)]
+pub struct LinkStep {
+    /// `argv[0]` is the absolute path of the linker driver (gcc).
+    pub argv: Vec<String>,
+    /// As the user would type it (display only).
+    pub display: String,
 }
 
 /// Compilers tried for a kind, in order. The first one found in OpenMind's portable toolchains wins; otherwise the
@@ -412,6 +424,7 @@ pub(crate) fn plan_compiled(
             compiler: compiler.path,
             dir: build_dir.to_path_buf(),
             cwd: build_cwd,
+            link: None,
         }),
     })
 }

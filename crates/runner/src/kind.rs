@@ -17,6 +17,8 @@ pub enum RunnableKind {
     Rust,
     Fortran,
     Pascal,
+    /// NASM (`.asm`) or GNU assembler (`.s`) source: assembled, linked with gcc, then run (see `assembly.rs`).
+    Assembly,
     /// Not a file Run Code can run: the database server's own processes.
     MariaDb,
 }
@@ -35,6 +37,7 @@ impl RunnableKind {
             Self::Rust => "Rust",
             Self::Fortran => "Fortran",
             Self::Pascal => "Pascal",
+            Self::Assembly => "Assembly",
             Self::MariaDb => "MariaDB",
         }
     }
@@ -51,6 +54,7 @@ impl RunnableKind {
             Self::Rust => "rust",
             Self::Fortran => "fortran",
             Self::Pascal => "pascal",
+            Self::Assembly => "assembly",
             Self::MariaDb => "mariadb",
         }
     }
@@ -70,16 +74,23 @@ impl RunnableKind {
             Self::Rust => "rustc",
             Self::Fortran => "gfortran",
             Self::Pascal => "fpc64",
+            Self::Assembly => "nasm",
             // Never used: MariaDB's commands are built by `stack.rs`, not from a template.
             Self::MariaDb => "mysqld",
         }
     }
 
-    /// Built before it runs (C, C++, Java, Rust, Fortran, Pascal).
+    /// Built before it runs (C, C++, Java, Rust, Fortran, Pascal, Assembly).
     pub fn is_compiled(self) -> bool {
         matches!(
             self,
-            Self::C | Self::Cpp | Self::Java | Self::Rust | Self::Fortran | Self::Pascal
+            Self::C
+                | Self::Cpp
+                | Self::Java
+                | Self::Rust
+                | Self::Fortran
+                | Self::Pascal
+                | Self::Assembly
         )
     }
 
@@ -125,6 +136,11 @@ pub fn detect(path: &Path) -> Detection {
             Detection::Runnable(RunnableKind::Fortran)
         }
         Some("pas" | "pp") => Detection::Runnable(RunnableKind::Pascal),
+        Some("asm" | "nasm" | "s") => Detection::Runnable(RunnableKind::Assembly),
+        Some("inc") if crate::assembly::is_assembly_include(path) => not(
+            "This is an assembly include file: run the .asm file that %includes it.",
+            false,
+        ),
         Some("md" | "markdown") => not(
             "Markdown files aren't run — open the preview instead.",
             true,
@@ -176,6 +192,14 @@ mod tests {
         assert_eq!(kind("legacy.F"), Detection::Runnable(RunnableKind::Fortran));
         assert_eq!(kind("main.pas"), Detection::Runnable(RunnableKind::Pascal));
         assert_eq!(kind("unit.PP"), Detection::Runnable(RunnableKind::Pascal));
+        for name in ["hello.asm", "boot.NASM", "gas.s", "pre.S"] {
+            assert_eq!(
+                kind(name),
+                Detection::Runnable(RunnableKind::Assembly),
+                "{name}"
+            );
+        }
+        assert!(RunnableKind::Assembly.is_compiled());
         assert!(RunnableKind::Rust.is_compiled() && !RunnableKind::Python.is_compiled());
         // A header is not a program.
         assert!(matches!(kind("a.h"), Detection::NotRunnable { .. }));

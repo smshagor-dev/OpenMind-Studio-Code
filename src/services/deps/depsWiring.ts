@@ -10,7 +10,7 @@ import { DependencyService, type PythonGuiHost } from "./dependencyService";
 import { tauriDepsIpc, type DepsIpc } from "./depsIpc";
 
 /** Run Code's Output channels: a program's own errors land there. */
-const RUN_CHANNELS = new Set(["Python", "Node.js", "PHP", "C", "C++", "Java", "Rust", "Run Code"]);
+const RUN_CHANNELS = new Set(["Python", "Node.js", "PHP", "C", "C++", "Java", "Rust", "Assembly", "Run Code"]);
 
 export interface DepsWiringDeps {
   events: EventBus<AppEvents>;

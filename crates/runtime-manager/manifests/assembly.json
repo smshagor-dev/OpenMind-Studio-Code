@@ -1,0 +1,199 @@
+{
+  "id": "assembly",
+  "displayName": "Assembly (NASM)",
+  "description": "Assemble, link, run and debug x86-64 and x86 assembly with NASM, MinGW-w64 GCC/GNU ld, GNU binutils and GDB.",
+  "defaultVersion": "2.15.05",
+  "versionCommand": {
+    "executable": "bin/nasm.exe",
+    "args": [
+      "-v"
+    ],
+    "outputPrefix": "NASM version"
+  },
+  "binDirs": [],
+  "shims": [
+    {
+      "name": "nasm",
+      "target": "bin/nasm.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "ndisasm",
+      "target": "bin/ndisasm.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "gcc",
+      "target": "bin/gcc.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "as",
+      "target": "bin/as.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "ld",
+      "target": "bin/ld.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "ar",
+      "target": "bin/ar.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "nm",
+      "target": "bin/nm.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "objdump",
+      "target": "bin/objdump.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "objcopy",
+      "target": "bin/objcopy.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "strip",
+      "target": "bin/strip.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "size",
+      "target": "bin/size.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "strings",
+      "target": "bin/strings.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "addr2line",
+      "target": "bin/addr2line.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    },
+    {
+      "name": "gdb",
+      "target": "bin/gdb.exe",
+      "pathDirs": [
+        "bin"
+      ]
+    }
+  ],
+  "verifyFiles": [
+    "bin/nasm.exe",
+    "bin/gcc.exe",
+    "bin/as.exe",
+    "bin/ld.exe",
+    "bin/objdump.exe",
+    "bin/gdb.exe"
+  ],
+  "features": [
+    {
+      "id": "nasm",
+      "label": "NASM assembler (.asm)",
+      "verifyFile": "bin/nasm.exe",
+      "missingNote": "nasm.exe isn't in this install. Use Repair to reinstall the Assembly toolchain."
+    },
+    {
+      "id": "linker",
+      "label": "MinGW-w64 linker (gcc + GNU ld) for Windows EXEs",
+      "verifyFile": "bin/ld.exe",
+      "missingNote": "The linker (gcc/ld) is missing. Use Repair to reinstall the Assembly toolchain."
+    },
+    {
+      "id": "binutils",
+      "label": "GNU binutils (as, objdump, nm, objcopy, strip)",
+      "verifyFile": "bin/objdump.exe",
+      "missingNote": "GNU binutils are missing. Use Repair to reinstall the Assembly toolchain."
+    },
+    {
+      "id": "gdb",
+      "label": "Debug with GDB",
+      "verifyFile": "bin/gdb.exe",
+      "missingNote": "gdb.exe isn't in this install. Use Repair to reinstall the Assembly toolchain."
+    },
+    {
+      "id": "x86",
+      "label": "x86 (32-bit) programs",
+      "verifyFile": "w64devkit/bin/gcc.exe",
+      "missingNote": "Add the x86 (32-bit) toolchain below to build 32-bit programs."
+    }
+  ],
+  "license": {
+    "name": "NASM: BSD-2-Clause; GCC, binutils and GDB: GPL with runtime exceptions; MinGW-w64: ZPL/MIT-style; w64devkit build scripts: Unlicense",
+    "url": "https://github.com/skeeto/w64devkit",
+    "acceptanceRequired": false
+  },
+  "notes": "w64devkit 1.19.0 (Christopher Wellons): a portable MinGW-w64 toolchain with NASM 2.15.05, GCC 13.1.0, GNU binutils 2.40 and GDB 13.1. The archive's OpenPGP signature (key 5EEB8C8D5069C4E9B94AA852AFD1503A8C8FF42A) was verified when it was pinned; its SHA-256 is checked before anything is extracted. Run Code assembles .asm files with NASM, links them with gcc (GNU ld) and runs the program; .s/.S files are assembled with GNU as through gcc. Only these toolchain commands are added to OpenMind terminals (as small launchers); the other programs w64devkit ships (busybox's find, sort, tar ...) are not, so Windows' own commands keep working. x86 (32-bit) programs need the optional x86 toolchain add-on, which installs into its own w64devkit folder inside this install. w64devkit 1.23.0 is not used: Microsoft Defender flags its archive. The system PATH is not changed.",
+  "versions": [
+    {
+      "version": "2.15.05",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/skeeto/w64devkit/releases/download/v1.19.0/w64devkit-1.19.0.zip",
+          "installBytes": 334580004,
+          "sha256": "2862f388e1720b40026f2fd95c6100a9932e3b14fb13aac4f225a02b11e31ca9",
+          "sizeBytes": 81844373,
+          "archive": "zip",
+          "stripComponents": 1
+        }
+      ],
+      "addons": [
+        {
+          "id": "x86",
+          "label": "x86 (32-bit) toolchain",
+          "description": "w64devkit 1.19.0 for i686: GCC 13.1.0, GNU ld and binutils that link `nasm -f win32` objects into 32-bit Windows programs (OpenPGP signature verified when pinned). Installed into its own w64devkit folder inside this install, next to the x64 toolchain.",
+          "verifyFile": "w64devkit/bin/gcc.exe",
+          "license": {
+            "name": "GCC/binutils: GPL with runtime exceptions; MinGW-w64: ZPL/MIT-style; w64devkit: Unlicense",
+            "url": "https://github.com/skeeto/w64devkit"
+          },
+          "artifacts": [
+            {
+              "platform": "windows-x64",
+              "url": "https://github.com/skeeto/w64devkit/releases/download/v1.19.0/w64devkit-i686-1.19.0.zip",
+              "sha256": "dc4f6984f7320b02fc057d19c23c06b2406d8133fb5b149c438dba1ee78a77e6",
+              "sizeBytes": 77744927,
+              "installBytes": 307253846,
+              "archive": "zip",
+              "stripComponents": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

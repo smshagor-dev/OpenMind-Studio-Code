@@ -78,6 +78,7 @@ fn fortls_installs_starts_and_navigates_between_files() {
         python: Some(python),
         path_prepend: vec![],
         vars: vec![],
+        config_root: None,
     };
     manager
         .sync_document(def, &context, &path, MAIN)

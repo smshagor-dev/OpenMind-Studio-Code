@@ -107,6 +107,7 @@ fn run(server_id: &str, file_name: &str, source: &str, check: Check) {
         python: None,
         path_prepend: vec![],
         vars: vec![("PATH".into(), system32_only())],
+        config_root: None,
     };
     manager
         .sync_document(def, &context, &path, source)

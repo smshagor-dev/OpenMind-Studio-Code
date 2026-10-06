@@ -232,6 +232,8 @@ export interface LspSnapshot {
 export type LspSyncOutcome =
   | { state: "ready"; server: string }
   | { state: "unsupported" }
+  /** Its server is switched off in Settings (asm-lsp: Assembly > Enable Language Server). */
+  | { state: "turnedOff"; server: string }
   | { state: "noWorkspace" }
   | { state: "outsideWorkspace" }
   | { state: "otherWindowFolder" }
@@ -620,7 +622,8 @@ export interface IpcClient
   runStart: (request: RunRequestArgs) => Promise<RunInfo>;
   runStop: (runId: string) => Promise<boolean>;
   runActive: () => Promise<RunInfo[]>;
-  runTerminalCommand: (request: RunRequestArgs, shell: ShellStyle) => Promise<TerminalCommand>;
+  /** `underGdb`: an assembly file's program runs under GDB (`gdb --args`). */
+  runTerminalCommand: (request: RunRequestArgs, shell: ShellStyle, underGdb?: boolean) => Promise<TerminalCommand>;
   onRunEvent: (handler: (event: CodeRunEvent) => void) => Promise<() => void>;
 
   // PHP built-in server (portable PHP only, bound to 127.0.0.1; events share the run event shape)
@@ -815,6 +818,8 @@ export interface RunAvailability {
   command: string | null;
   /** Absolute path of the interpreter a run would start. */
   resolved: string | null;
+  /** When a tool is missing: the Runtime Manager item that provides it (Run Code offers to install it). */
+  installRuntime?: string | null;
 }
 
 export interface RunInfo {
@@ -1255,8 +1260,8 @@ export const tauriIpcClient: IpcClient = {
 
   runActive: () => invoke<RunInfo[]>("run_active"),
 
-  runTerminalCommand: (request, shell) =>
-    invoke<TerminalCommand>("run_terminal_command", { request, shell }),
+  runTerminalCommand: (request, shell, underGdb) =>
+    invoke<TerminalCommand>("run_terminal_command", { request, shell, debugger: underGdb ?? false }),
 
   onRunEvent: (handler) =>
     listen<RunEvent>("run:event", (event) => {

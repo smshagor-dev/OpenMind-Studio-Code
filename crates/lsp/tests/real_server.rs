@@ -74,6 +74,7 @@ fn the_typescript_server_installs_starts_and_answers() {
         python: None,
         path_prepend: vec![],
         vars: vec![],
+        config_root: None,
     };
     manager
         .sync_document(def, &context, &path, SOURCE)
@@ -190,6 +191,7 @@ fn diagnoses(server_id: &str, file_name: &str, source: &str, expect: &str, hover
         python: None,
         path_prepend: vec![],
         vars: vec![],
+        config_root: None,
     };
     manager
         .sync_document(def, &context, &path, source)

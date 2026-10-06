@@ -33,6 +33,9 @@ pub struct RunAvailability {
     pub command: Option<String>,
     /// Absolute path of the interpreter a run would start.
     pub resolved: Option<String>,
+    /// When a tool is missing: the Runtime Manager item that provides it (`assembly`, `python` ...), so Run Code can
+    /// offer to install it. `None` for tools OpenMind doesn't install (Rust).
+    pub install_runtime: Option<String>,
 }
 
 impl RunAvailability {
@@ -47,6 +50,7 @@ impl RunAvailability {
             runtime: None,
             command: None,
             resolved: None,
+            install_runtime: None,
         }
     }
 }
@@ -193,13 +197,29 @@ async fn make_plan(
     folder: BuildFolder,
 ) -> Result<openmind_runner::RunPlan, RunError> {
     let environment = environment(state).await;
+    let mut request = request.clone();
+    if matches!(
+        detect(&request.file),
+        Detection::Runnable(RunnableKind::Assembly)
+    ) {
+        request.assembly = crate::commands::assembly::options(state);
+    }
     plan(
-        request,
+        &request,
         &environment,
         &state.app_root,
         std::env::var_os("PATH"),
         &build_dir(state, &request.file, &folder),
     )
+}
+
+/// The Runtime Manager item that provides what `file` needs to run (none for Rust: rustup manages it).
+fn installable_runtime(file: &Path) -> Option<String> {
+    match detect(file) {
+        Detection::Runnable(RunnableKind::Rust) => None,
+        Detection::Runnable(kind) => Some(kind.runtime_id().to_string()),
+        Detection::NotRunnable { .. } => None,
+    }
 }
 
 #[tauri::command]
@@ -226,6 +246,7 @@ pub async fn run_resolve(
                 runtime: Some(plan.runtime_label),
                 command: Some(plan.display),
                 resolved: Some(plan.resolved.to_string_lossy().into_owned()),
+                install_runtime: None,
             },
             Err(err) => {
                 let missing = matches!(
@@ -234,7 +255,11 @@ pub async fn run_resolve(
                         | RunError::NoTypeScriptRunner
                         | RunError::CompilerMissing(_)
                 );
-                RunAvailability::refused(err.to_string(), false, missing)
+                let mut availability = RunAvailability::refused(err.to_string(), false, missing);
+                if missing {
+                    availability.install_runtime = installable_runtime(&request.file);
+                }
+                availability
             }
         },
     )
@@ -278,19 +303,29 @@ pub fn run_active(state: State<'_, AppState>) -> Vec<RunInfo> {
 pub async fn run_terminal_command(
     request: RunRequest,
     shell: ShellStyle,
+    debugger: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<TerminalCommand, String> {
-    let plan = make_plan(&request, &state, BuildFolder::Terminal)
+    let mut plan = make_plan(&request, &state, BuildFolder::Terminal)
         .await
         .map_err(|err| err.to_string())?;
+    if debugger == Some(true) {
+        under_gdb(&mut plan, &state).await?;
+    }
     let (line, display) = match &plan.build {
         Some(build) => {
             // The compiler writes into this folder, so it must exist before the line runs in the terminal.
             std::fs::create_dir_all(&build.dir).map_err(|err| err.to_string())?;
-            (
-                shell_chain(&[build.argv.clone(), plan.argv.clone()], shell),
-                format!("{} && {}", build.display, plan.display),
-            )
+            // Assemble, link (a two-step build), then run: each only after the one before succeeded.
+            let mut steps = vec![build.argv.clone()];
+            let mut shown = vec![build.display.clone()];
+            if let Some(link) = &build.link {
+                steps.push(link.argv.clone());
+                shown.push(link.display.clone());
+            }
+            steps.push(plan.argv.clone());
+            shown.push(plan.display.clone());
+            (shell_chain(&steps, shell), shown.join(" && "))
         }
         None => (shell_command_line(&plan.argv, shell), plan.display.clone()),
     };
@@ -302,6 +337,22 @@ pub async fn run_terminal_command(
         resolved: plan.resolved.to_string_lossy().into_owned(),
         language: plan.kind.display_name().to_string(),
     })
+}
+
+/// Debug in GDB (Terminal): the program's last step becomes `gdb --args <program> <arguments>` (Assembly only: other
+/// languages debug through the debugger view).
+async fn under_gdb(plan: &mut openmind_runner::RunPlan, state: &AppState) -> Result<(), String> {
+    if plan.kind != RunnableKind::Assembly {
+        return Err("Debug in GDB is available for assembly files.".into());
+    }
+    let environment = environment(state).await;
+    let arch = crate::commands::assembly::options(state).arch;
+    let system_path = std::env::var_os("PATH");
+    plan.argv =
+        openmind_runner::assembly::debugger_argv(plan, &environment, system_path.as_deref(), arch)
+            .map_err(|err| err.to_string())?;
+    plan.display = format!("gdb --args {}", plan.display);
+    Ok(())
 }
 
 #[cfg(test)]

@@ -6,6 +6,9 @@ import type { RunConfigurationService } from "./runConfigurationService";
 import type { RunArgumentsService } from "./runArgumentsService";
 import type { RunCodeService } from "./runCodeService";
 
+/** Files Debug in GDB applies to (NASM and GNU as sources). */
+const ASSEMBLY_EXTENSIONS = new Set([".asm", ".nasm", ".s"]);
+
 export interface RunCommandDeps {
   commands: CommandRegistry;
   events: EventBus<AppEvents>;
@@ -48,6 +51,16 @@ export function registerRunCommands(deps: RunCommandDeps): void {
     },
     {
       enabled: canRun,
+    },
+  );
+  // Assembly: build, then start the program under GDB in the terminal (break main, stepi, info registers ...).
+  commands.register(
+    "assembly.debugInGdb",
+    async () => {
+      await runCode.run({ target: "terminal", debugger: true });
+    },
+    {
+      enabled: () => canRun() && ASSEMBLY_EXTENSIONS.has(extensionOf(runCode.activeEditor()?.path ?? null) ?? ""),
     },
   );
   commands.register(

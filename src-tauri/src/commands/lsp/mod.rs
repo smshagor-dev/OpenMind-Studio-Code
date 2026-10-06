@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use openmind_lsp::{
-    install as installed, package_by_id, server_for_path, LspError, LspManager, Runtime,
+    install as installed, package_by_id, server_for_path, LspError, LspManager, Runtime, ServerDef,
     StartContext,
 };
 use serde::Serialize;
@@ -54,6 +54,10 @@ pub enum SyncOutcome {
         server: &'static str,
     },
     Unsupported,
+    /// The file's server is switched off by a setting (asm-lsp: `assembly.enableLanguageServer`).
+    TurnedOff {
+        server: &'static str,
+    },
     NoWorkspace,
     OutsideWorkspace,
     /// This extra window's folder isn't the main window's, and servers serve the main window's folder.
@@ -79,6 +83,9 @@ pub async fn lsp_sync_document(
     let Some(def) = server_for_path(&path) else {
         return Ok(SyncOutcome::Unsupported);
     };
+    if def.id == "assembly" && !crate::commands::assembly::language_server_enabled(&state) {
+        return Ok(SyncOutcome::TurnedOff { server: def.id });
+    }
     let workspace = match folder::server_root(&state, window.label(), Path::new(&path)).await {
         Ok(root) => root,
         Err(outcome) => return Ok(outcome),
@@ -108,6 +115,16 @@ pub async fn lsp_sync_document(
         }
         (_, python) => python.ok(),
     };
+    let config_root = match config_root_of(
+        &state,
+        def,
+        &workspace,
+        &resolved.path_prepend,
+        &resolved.vars,
+    ) {
+        Ok(root) => root,
+        Err(outcome) => return Ok(outcome),
+    };
     let context = StartContext {
         app_root: state.app_root.clone(),
         workspace,
@@ -115,6 +132,7 @@ pub async fn lsp_sync_document(
         python,
         path_prepend: resolved.path_prepend,
         vars: resolved.vars,
+        config_root,
     };
     let manager = state.lsp.clone();
     let outcome =
@@ -129,6 +147,30 @@ pub async fn lsp_sync_document(
             server: def.id,
             message: err.to_string(),
         },
+    })
+}
+
+/// The folder named as `rootPath` for `def`: asm-lsp gets the configuration written from the Assembly settings (see
+/// `commands::assembly::lsp_config_root`); every other server the workspace.
+fn config_root_of(
+    state: &AppState,
+    def: &'static ServerDef,
+    workspace: &Path,
+    path_prepend: &[std::path::PathBuf],
+    vars: &[(String, String)],
+) -> Result<Option<std::path::PathBuf>, SyncOutcome> {
+    if def.id != "assembly" {
+        return Ok(None);
+    }
+    let environment = openmind_runner::RunEnvironment {
+        path_prepend: path_prepend.to_vec(),
+        vars: vars.to_vec(),
+    };
+    crate::commands::assembly::lsp_config_root(state, workspace, &environment).map_err(|message| {
+        SyncOutcome::Failed {
+            server: def.id,
+            message,
+        }
     })
 }
 

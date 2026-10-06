@@ -30,6 +30,7 @@ import { TerminalService } from "./terminalService";
 import { ThemeService } from "./themeService";
 import { tauriWindowApi, WindowService } from "./windowService";
 import { registerRuntimeCommands } from "./runtimeCommands";
+import { missingRuntimeHost } from "./assembly/assemblyToolchain";
 import { registerLspCommands } from "./lspCommands";
 import { registerDebugCommands } from "./debugCommands";
 import { launchJsonOpener, wireNotebooks } from "./workflowWiring";
@@ -279,6 +280,9 @@ const searchWiring = wireSearch({
 });
 void workspaceIndex.listen();
 registerRuntimeCommands(commands, events);
+// A missing toolchain met by Run Code: Install / Open Runtime Manager / Cancel (Assembly also gets asm-lsp).
+const confirmMissing = (request: Parameters<typeof extensions.prompts.confirm>[0]) => extensions.prompts.confirm(request);
+runCode.setMissingRuntimeHost(missingRuntimeHost({ runtime, lsp, settings, confirm: confirmMissing, run }));
 registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerDebugCommands({
   commands,

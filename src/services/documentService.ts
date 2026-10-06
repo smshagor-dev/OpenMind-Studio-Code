@@ -1,5 +1,6 @@
 import type * as monaco from "monaco-editor";
 
+import { assemblyIncludeLanguage } from "../editor/assemblyGrammars";
 import type { BufferManager } from "./bufferManager";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
@@ -137,7 +138,9 @@ export class DocumentService {
       external: "none",
       diskContent: null,
     });
-    const model = this.buffers.create(id, opened.content, this.languageFor(opened.path));
+    // `.inc` is PHP's as often as NASM's: an include whose text looks like assembly opens as NASM.
+    const include = opened.path.toLowerCase().endsWith(".inc") ? assemblyIncludeLanguage(opened.content) : null;
+    const model = this.buffers.create(id, opened.content, include ?? this.languageFor(opened.path));
     // Monaco holds one line ending per model, so a mixed (or lone-CR) file reads back
     // slightly different from the file. The baseline is what the model holds right
     // after loading; otherwise such a file would look edited the moment it opens.
@@ -500,6 +503,10 @@ const EXTENSION_LANGUAGE_MAP: Record<string, string> = {
   yml: "yaml",
   toml: "ini",
   sql: "sql",
+  // Assembly: Monaco's own MIPS grammar also claims `.s`; OpenMind's x86 GNU as grammar wins.
+  asm: "nasm",
+  nasm: "nasm",
+  s: "gas",
 };
 
 function languageIdForPath(path: string): string {

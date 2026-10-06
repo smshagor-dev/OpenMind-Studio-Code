@@ -4,6 +4,7 @@
 //! whole process tree dies on Stop or on app shutdown. Nothing goes through a
 //! shell: a run is an argument list, so a file name can't become a command.
 
+pub mod assembly;
 pub mod compiled;
 pub mod display;
 pub mod error;
@@ -19,7 +20,8 @@ pub mod stack;
 pub mod template;
 pub mod webroot;
 
-pub use compiled::{java_main_class, missing_compiler, BuildStep};
+pub use assembly::{Arch, AssemblyOptions};
+pub use compiled::{java_main_class, missing_compiler, BuildStep, LinkStep};
 pub use display::{command_line, shell_chain, shell_command_line, ShellStyle};
 pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};

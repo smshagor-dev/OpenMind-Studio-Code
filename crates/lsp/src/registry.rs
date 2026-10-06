@@ -69,6 +69,9 @@ pub struct ServerDef {
     pub after_initialized: &'static [&'static str],
     /// Extra environment for the server process only.
     pub env: &'static [(&'static str, &'static str)],
+    /// Every `didChange` carries a range (the whole previous text), for a server that refuses range-less changes
+    /// although the protocol allows them (asm-lsp). Used only when the server also asked for incremental sync.
+    pub ranged_changes: bool,
 }
 
 /// The defaults for the three offline/behaviour fields.
@@ -137,7 +140,20 @@ pub const PACKAGES: &[Package] = &[
         redistributable: true,
     },
     python!("fortran", "1", "fortls 3.2.2", false),
+    // Downloaded on request from conda-forge (two pinned packages: asm-lsp and the Visual C++ runtime DLLs it loads);
+    // not part of the offline bundle.
+    Package {
+        id: "asm-lsp",
+        revision: "1",
+        contents: "asm-lsp 0.10.1",
+        source: Source::Native,
+        redistributable: false,
+    },
 ];
+
+/// asm-lsp reads its settings from `.asm-lsp.toml` in the folder named by `rootPath` (OpenMind writes one from its
+/// Assembly settings unless the project has its own) and checks a file with NASM when it is saved.
+pub const ASM_LSP_NOTE: &str = "Assembly (NASM) language server: hover for instructions, registers and directives, completion, symbols, Go to Definition and Find References. Problems come from NASM each time the file is saved (not while you type; turn on Auto Save to have them follow your edits), so they need the Assembly toolchain from the Runtime Manager.";
 
 /// fortls publishes problems only when a file is opened or saved, and both re-read the file from disk: asking for them
 /// while the user types would make it forget the unsaved edits (and report the saved text), so OpenMind doesn't.
@@ -162,6 +178,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: r#"{"disableAutomaticTypingAcquisition":true}"#,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "python",
@@ -175,6 +192,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "php",
@@ -188,6 +206,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "json",
@@ -202,6 +221,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: r#"{"handledSchemaProtocols":["file"],"provideFormatter":true}"#,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "css",
@@ -215,6 +235,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "html",
@@ -228,6 +249,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "yaml",
@@ -242,6 +264,7 @@ pub const SERVERS: &[ServerDef] = &[
         // Remote schemas are asked of the client (which refuses) instead of being downloaded.
         after_initialized: &["yaml/registerContentRequest"],
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "bash",
@@ -255,6 +278,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "dockerfile",
@@ -268,6 +292,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "rust",
@@ -282,6 +307,7 @@ pub const SERVERS: &[ServerDef] = &[
         after_initialized: PLAIN.1,
         // cargo (run by rust-analyzer for project metadata) works from its local cache only.
         env: &[("CARGO_NET_OFFLINE", "true")],
+        ranged_changes: false,
     },
     ServerDef {
         id: "clangd",
@@ -296,6 +322,7 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: PLAIN.2,
+        ranged_changes: false,
     },
     ServerDef {
         id: "fortran",
@@ -313,6 +340,21 @@ pub const SERVERS: &[ServerDef] = &[
         init_options: PLAIN.0,
         after_initialized: PLAIN.1,
         env: &[("PIP_NO_INDEX", "1")],
+        ranged_changes: false,
+    },
+    ServerDef {
+        id: "assembly",
+        name: "asm-lsp",
+        package: "asm-lsp",
+        entry: "asm-lsp.exe",
+        args: &[],
+        runtime: Runtime::Native,
+        languages: &["nasm"],
+        note: Some(ASM_LSP_NOTE),
+        init_options: PLAIN.0,
+        after_initialized: PLAIN.1,
+        env: PLAIN.2,
+        ranged_changes: true,
     },
 ];
 
@@ -458,11 +500,25 @@ mod tests {
     #[test]
     fn native_packages_are_redistributable_and_intelephense_is_not() {
         for package in PACKAGES {
-            if matches!(package.source, Source::Native) {
+            // asm-lsp is download-only: it isn't built into the offline bundle (and so needs no pack).
+            if matches!(package.source, Source::Native) && package.id != "asm-lsp" {
                 assert!(package.redistributable, "{}", package.id);
             }
         }
         assert!(!package_by_id("php").expect("php").redistributable);
+        assert!(!package_by_id("asm-lsp").expect("asm-lsp").redistributable);
+    }
+
+    #[test]
+    fn asm_lsp_serves_nasm_files_as_its_own_program() {
+        let server = server_for_path("C:/My Asm/hello.asm").expect("asm");
+        assert_eq!(
+            (server.id, server.package, server.entry),
+            ("assembly", "asm-lsp", "asm-lsp.exe")
+        );
+        assert_eq!(server.runtime, Runtime::Native);
+        assert!(server.args.is_empty());
+        assert!(server_for_path("gas.s").is_none());
     }
 
     #[test]

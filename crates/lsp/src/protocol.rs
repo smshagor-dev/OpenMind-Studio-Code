@@ -113,6 +113,10 @@ pub struct Capabilities {
     pub document_symbol: bool,
     /// `workspace/symbol`: symbols of the whole folder by name (Ctrl+T).
     pub workspace_symbol: bool,
+    /// The server asked for incremental `didChange` (sync kind 2): every change must carry a range. asm-lsp rejects a
+    /// change without one and exits.
+    #[serde(skip)]
+    pub incremental_sync: bool,
 }
 
 /// A provider is supported when it is `true` or an options object.
@@ -165,6 +169,15 @@ pub fn parse_capabilities(initialize_result: &Value) -> Capabilities {
         range_formatting: supported(caps.get("documentRangeFormattingProvider")),
         document_symbol: supported(caps.get("documentSymbolProvider")),
         workspace_symbol: supported(caps.get("workspaceSymbolProvider")),
+        incremental_sync: sync_kind(caps.get("textDocumentSync")) == Some(2),
+    }
+}
+
+/// `textDocumentSync` is a kind (0 none, 1 full, 2 incremental) or an options object with `change`.
+fn sync_kind(value: Option<&Value>) -> Option<u64> {
+    match value? {
+        Value::Number(kind) => kind.as_u64(),
+        options => options.get("change").and_then(Value::as_u64),
     }
 }
 
@@ -304,6 +317,18 @@ mod tests {
         );
         let params = initialize_params(1, "file:///r", "r", "not json");
         assert_eq!(params["initializationOptions"], json!({}));
+    }
+
+    #[test]
+    fn incremental_sync_is_read_from_a_kind_or_an_options_object() {
+        let caps = |sync: Value| {
+            parse_capabilities(&json!({ "capabilities": { "textDocumentSync": sync } }))
+        };
+        assert!(caps(json!(2)).incremental_sync);
+        assert!(caps(json!({ "openClose": true, "change": 2 })).incremental_sync);
+        assert!(!caps(json!(1)).incremental_sync);
+        assert!(!caps(json!({ "change": 1 })).incremental_sync);
+        assert!(!parse_capabilities(&json!({ "capabilities": {} })).incremental_sync);
     }
 
     #[test]

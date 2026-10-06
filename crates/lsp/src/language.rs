@@ -30,6 +30,9 @@ pub fn language_id(path: &str) -> Option<&'static str> {
         "c" | "h" => "c",
         "cpp" | "cc" | "cxx" | "hpp" | "hh" | "hxx" => "cpp",
         "f" | "for" | "f90" | "f95" | "f03" | "f08" => "fortran",
+        // NASM sources. GAS `.s`/`.S` are not: asm-lsp's problems come from NASM. A `.inc` file is shared by PHP and
+        // other languages and the name alone can't tell, so it gets no server.
+        "asm" | "nasm" => "nasm",
         _ => return None,
     })
 }
@@ -55,6 +58,10 @@ mod tests {
         assert_eq!(language_id("x.h"), Some("c"));
         assert_eq!(language_id("x.hpp"), Some("cpp"));
         assert_eq!(language_id("solver.F90"), Some("fortran"));
+        assert_eq!(language_id("C:/My Asm/hello.ASM"), Some("nasm"));
+        assert_eq!(language_id("boot.nasm"), Some("nasm"));
+        assert_eq!(language_id("gas.s"), None);
+        assert_eq!(language_id("macros.inc"), None);
     }
 
     #[test]

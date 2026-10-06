@@ -43,17 +43,21 @@ export function wireTerminalRefresh(deps: TerminalRefreshDeps): TerminalRefreshS
     }
     refreshedRuntimes = runtimes;
   });
-  // An interpreter appearing or going (install / delete / switch) changes what can run.
+  // An interpreter appearing or going (install / delete / switch) changes what can run, and so does an add-on (the
+  // Assembly runtime's x86 toolchain makes 32-bit programs buildable).
   runtime.subscribe(() => {
-    deps.runtimesChanged(
-      runtime
-        .getState()
-        .runtimes.map(
-          (r) =>
-            `${r.id}:${r.activeVersion ?? "-"}:${String(r.installed.filter((v) => v.healthy).length)}`,
-        )
-        .join(","),
-    );
+    deps.runtimesChanged(runCodeFingerprint(runtime.getState().runtimes));
   });
   return terminalRefresh;
+}
+
+/** What Run Code's answer depends on: per runtime the active version, how many healthy versions, installed add-ons. */
+export function runCodeFingerprint(runtimes: readonly RuntimeStatus[]): string {
+  return runtimes
+    .map((r) => {
+      const healthy = r.installed.filter((v) => v.healthy);
+      const addons = healthy.flatMap((v) => (v.addons ?? []).filter((a) => a.installed).map((a) => `${v.version}+${a.id}`));
+      return `${r.id}:${r.activeVersion ?? "-"}:${String(healthy.length)}:${addons.join("+")}`;
+    })
+    .join(",");
 }

@@ -30,6 +30,10 @@ pub struct RunRequest {
     /// never run through one; they go after everything else (after the file for an interpreter).
     #[serde(default)]
     pub arguments: Option<String>,
+    /// The Assembly settings (architecture, extra arguments). Filled by the app from the user's settings, never taken
+    /// from the page that asks for the run.
+    #[serde(skip)]
+    pub assembly: crate::assembly::AssemblyOptions,
 }
 
 /// Everything needed to start a process, fully resolved and validated — and
@@ -119,6 +123,16 @@ fn plan_command(
                 "a custom run command isn't supported for {} files",
                 kind.display_name()
             )));
+        }
+        if kind == RunnableKind::Assembly {
+            return crate::assembly::plan_assembly(
+                &file,
+                cwd,
+                environment,
+                system_path,
+                build_dir,
+                &request.assembly,
+            );
         }
         return plan_compiled(kind, &file, cwd, environment, system_path, build_dir);
     }
@@ -329,6 +343,7 @@ fn default_program(kind: RunnableKind) -> &'static str {
         RunnableKind::Rust => "rustc",
         RunnableKind::Fortran => "gfortran",
         RunnableKind::Pascal => "fpc64",
+        RunnableKind::Assembly => "nasm",
         RunnableKind::MariaDb => "mysqld",
     }
 }
@@ -345,6 +360,19 @@ pub(crate) fn child_path(
     if resolved.source == RuntimeSource::Project {
         dirs.extend(project_dirs.iter().cloned());
     }
+    openmind_core::path_env::prepend_path(&dirs, system_path.as_deref()).ok_or_else(|| {
+        RunError::BadCommand("a PATH folder contains a '\"' or other invalid character".into())
+    })
+}
+
+/// [`child_path`] with `first` (a toolchain's own folder) ahead of every runtime folder.
+pub(crate) fn child_path_with(
+    environment: &RunEnvironment,
+    first: &[PathBuf],
+    system_path: Option<OsString>,
+) -> Result<OsString, RunError> {
+    let mut dirs: Vec<PathBuf> = first.to_vec();
+    dirs.extend(environment.path_prepend.iter().cloned());
     openmind_core::path_env::prepend_path(&dirs, system_path.as_deref()).ok_or_else(|| {
         RunError::BadCommand("a PATH folder contains a '\"' or other invalid character".into())
     })
@@ -420,6 +448,7 @@ mod tests {
             arguments: None,
             workspace,
             template: None,
+            assembly: Default::default(),
         }
     }
 
@@ -677,6 +706,7 @@ mod tests {
             workspace: None,
             template: Some(template.into()),
             arguments: None,
+            assembly: Default::default(),
         };
 
         let ok = make(&fx, &with("python -u \"${file}\" --flag")).expect("plan");
@@ -709,6 +739,7 @@ mod tests {
             arguments: None,
             workspace: None,
             template: Some("pypy \"${file}\"".into()),
+            assembly: Default::default(),
         };
 
         let error = make(&fx, &req).expect_err("must fail");

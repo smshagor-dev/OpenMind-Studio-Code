@@ -266,6 +266,17 @@ pub fn user_bool(state: &AppState, id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// A user text/choice setting read straight from the settings file (its default when unset or invalid), for backend
+/// decisions such as the Assembly architecture of a build.
+pub fn user_string(state: &AppState, id: &str) -> String {
+    let layer = store::read_layer(&state.settings_file);
+    store::effective(&layer, None, &Extras::default())
+        .into_iter()
+        .find(|entry| entry.id == id)
+        .and_then(|entry| entry.value.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
 /// A boolean setting's value for the folder `root`: its workspace value, else the user's, else the default.
 pub fn folder_bool(state: &AppState, root: &Path, id: &str) -> bool {
     let user = store::read_layer(&state.settings_file);

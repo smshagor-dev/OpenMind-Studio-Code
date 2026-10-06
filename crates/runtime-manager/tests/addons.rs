@@ -201,3 +201,52 @@ async fn an_unknown_addon_is_refused() {
         .await;
     assert!(matches!(result, Err(RuntimeError::Addon(_))), "{result:?}");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repairing_a_damaged_version_puts_its_installed_addons_back() {
+    let fx = fixture(None).await;
+    let dir = fx.dir.path().join("my runtimes/demo/versions/1.0.0");
+    fx.manager
+        .install("demo", None, no_progress())
+        .await
+        .expect("install");
+    fx.manager
+        .install_addon("demo", "1.0.0", "gui", no_progress())
+        .await
+        .expect("add-on");
+    // A file of the runtime goes missing: Repair rebuilds the version from its archive.
+    std::fs::remove_file(dir.join("demo.exe")).expect("damage");
+
+    let repaired = fx
+        .manager
+        .repair("demo", "1.0.0", no_progress())
+        .await
+        .expect("repair");
+
+    assert!(repaired);
+    assert!(dir.join("demo.exe").is_file());
+    assert_eq!(
+        std::fs::read_to_string(dir.join("DLLs/gui.pyd")).expect("the add-on is back"),
+        "gui"
+    );
+    let listed = fx.manager.list().await.expect("list");
+    assert!(listed[0].installed[0].healthy);
+    assert!(listed[0].installed[0].addons[0].installed);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn repairing_without_addons_adds_none() {
+    let fx = fixture(None).await;
+    let dir = fx.dir.path().join("my runtimes/demo/versions/1.0.0");
+    fx.manager
+        .install("demo", None, no_progress())
+        .await
+        .expect("install");
+    std::fs::remove_file(dir.join("demo.exe")).expect("damage");
+    fx.manager
+        .repair("demo", "1.0.0", no_progress())
+        .await
+        .expect("repair");
+    assert!(!dir.join("DLLs/gui.pyd").exists());
+    assert!(!dir.join(".openmind-addons").exists());
+}

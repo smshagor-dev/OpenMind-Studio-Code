@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::detect::system_versions;
 use crate::download::{verify_sha256, HttpClient};
 use crate::error::RuntimeError;
-use crate::extract::{extract_tar_gz, extract_zip, ExtractSelection};
+use crate::extract::{extract_archive, ExtractSelection};
 use crate::manifest::{ArchiveKind, License, RuntimeManifest, RuntimeRegistry};
 use crate::paths::RuntimePaths;
 use crate::postinstall;
@@ -259,9 +259,17 @@ impl RuntimeManager {
             write_shims(&manifest, version, &shim_dir)?;
             return Ok(true);
         }
+        // Rebuilding the version would drop its add-ons (Tcl/Tk for Python, the Assembly x86 toolchain): the ones that
+        // were installed are added back afterwards, from the download cache when their archive is still there.
+        let addons = addons::recorded_addons(&manifest, version, &dir);
         remove_dir_if_exists(&dir)?;
         remove_dir_if_exists(&self.paths.shim_dir(kind, version)?)?;
-        self.install_inner(kind, version, progress).await?;
+        self.install_inner(kind, version, progress.clone()).await?;
+        drop(_guard);
+        for addon in addons {
+            self.install_addon(kind, version, &addon, progress.clone())
+                .await?;
+        }
         Ok(true)
     }
 
@@ -609,18 +617,10 @@ fn install_files(
         only_under: artifact.extract_root.as_deref(),
     };
     match artifact.archive {
-        ArchiveKind::Zip => extract_zip(archive, staging, selection, &mut |c, t| {
-            report(Extract, c, t);
-        })?,
-        ArchiveKind::TarGz => extract_tar_gz(archive, staging, selection, &mut |c, t| {
-            report(Extract, c, t);
-        })?,
         ArchiveKind::File => place_file(archive, staging, artifact.install_as.as_deref())?,
-        ArchiveKind::Msi => {
-            crate::msi_archive::extract_msi(archive, staging, selection, &mut |c, t| {
-                report(Extract, c, t);
-            })?
-        }
+        kind => extract_archive(kind, archive, staging, selection, &mut |c, t| {
+            report(Extract, c, t);
+        })?,
     }
     write_seed_files(manifest, staging)?;
     // Files a setup step is going to create can't be checked yet; those installs

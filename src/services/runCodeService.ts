@@ -66,6 +66,8 @@ export interface RunOptions {
   target?: RunTarget;
   /** Bring up the Output panel on this run's channel. */
   showOutput?: boolean;
+  /** Terminal target only: the built program runs under GDB (assembly files). */
+  debugger?: boolean;
 }
 
 const INITIAL: RunState = {
@@ -108,6 +110,8 @@ export function describeRunButton(input: {
   checking: boolean;
   running: boolean;
   error: string | null;
+  /** A click on a "runtime missing" button can offer to install it (see `RunMissingRuntimeHost`). */
+  canOfferInstall?: boolean;
 }): RunButtonView {
   const { editor, availability } = input;
   const disabled = (state: RunButtonState, tooltip: string): RunButtonView => ({
@@ -130,6 +134,14 @@ export function describeRunButton(input: {
     return disabled(input.checking ? "checking" : "disabled", "Checking how to run this file…");
   }
   if (!availability.runnable) {
+    if (availability.runtimeMissing && availability.installRuntime && input.canOfferInstall === true) {
+      return {
+        state: "runtimeMissing",
+        enabled: true,
+        tooltip: `${availability.reason ?? ""} — click to install`,
+        canStop: false,
+      };
+    }
     return disabled(
       availability.runtimeMissing ? "runtimeMissing" : "disabled",
       availability.reason ?? "This file can't be run.",
@@ -176,9 +188,18 @@ export interface RunInteractiveHost {
   choose: (file: string) => Promise<"terminal" | "output" | null>;
 }
 
+/**
+ * What Run Code does when the tool a file needs isn't installed: asks (Install / Open Runtime Manager / Cancel) and
+ * installs on request. Resolves `true` when something was installed (the file is checked again).
+ */
+export interface RunMissingRuntimeHost {
+  offer: (runtimeId: string, reason: string) => Promise<boolean>;
+}
+
 export class RunCodeService {
   private state: RunState = INITIAL;
   private interactive: RunInteractiveHost | null = null;
+  private missingRuntime: RunMissingRuntimeHost | null = null;
   private argumentsOf: (path: string) => string = () => "";
   /** Runs whose program asked for input it couldn't get (Python's EOFError). */
   private readonly missedInput = new Set<string>();
@@ -223,6 +244,11 @@ export class RunCodeService {
   /** Wired after the prompts exist (the composition root). */
   setInteractiveHost(host: RunInteractiveHost): void {
     this.interactive = host;
+  }
+
+  /** Wired by the composition root, where the Runtime Manager and the prompts are. */
+  setMissingRuntimeHost(host: RunMissingRuntimeHost): void {
+    this.missingRuntime = host;
   }
 
   subscribe(listener: () => void): () => void {
@@ -275,6 +301,7 @@ export class RunCodeService {
       checking: this.state.checking,
       running: editor?.path != null && editor.path in this.state.running,
       error: this.state.error,
+      canOfferInstall: this.missingRuntime !== null,
     });
   }
 
@@ -333,6 +360,12 @@ export class RunCodeService {
     if (editor === null) return this.fail("Open a file to run it.");
     if (editor.path === null) return this.fail("Save the file before running.");
     if (editor.path in this.state.running || this.starting.has(editor.path)) return false;
+    const missing = this.missingRuntimeOf(editor.path);
+    if (missing !== null && this.missingRuntime !== null) {
+      // An install changes the runtimes, and `noteRuntimesChanged` checks the file again.
+      await this.missingRuntime.offer(missing.runtimeId, missing.reason);
+      return false;
+    }
     this.update({ error: null });
 
     if (editor.dirty && !this.prefs.saveBeforeRun()) {
@@ -361,8 +394,16 @@ export class RunCodeService {
     }
     const request = this.requestFor(editor.path);
     return target === "terminal"
-      ? this.runInTerminal(request)
+      ? this.runInTerminal(request, options.debugger === true)
       : this.runManaged(request, options.showOutput ?? true);
+  }
+
+  /** The runtime to install before `path` can run, when the last check said one is missing. */
+  private missingRuntimeOf(path: string): { runtimeId: string; reason: string } | null {
+    const availability = this.state.availability;
+    if (availability === null || this.state.checkedKey !== this.keyFor(path)) return null;
+    if (availability.runnable || !availability.runtimeMissing || !availability.installRuntime) return null;
+    return { runtimeId: availability.installRuntime, reason: availability.reason ?? "" };
   }
 
   /** Stops the active file's run, or the only run if that isn't it. */
@@ -408,7 +449,7 @@ export class RunCodeService {
     }
   }
 
-  private async runInTerminal(request: RunRequestArgs): Promise<boolean> {
+  private async runInTerminal(request: RunRequestArgs, underGdb = false): Promise<boolean> {
     const view = this.terminal.getState();
     let session = view.sessions.find((s) => s.id === view.activeId && !s.exited);
     if (session === undefined) {
@@ -419,7 +460,7 @@ export class RunCodeService {
     const style = shellStyleFor(session.shell);
     if (style === null) return this.fail("Run Code in Terminal isn't supported in WSL terminals.");
     try {
-      const command = await this.ipc.runTerminalCommand(request, style);
+      const command = await this.ipc.runTerminalCommand(request, style, underGdb);
       // The terminal echoes exactly what is typed, so the command is visible there.
       this.terminal.write(session.id, `${command.line}\r`);
       this.terminal.setActive(session.id);
@@ -587,6 +628,12 @@ export class RunCodeService {
 
   private keyFor(path: string): string {
     return `${path}|${this.configs.templateFor(extensionOf(path)) ?? ""}|${this.argumentsOf(path)}`;
+  }
+
+  /** Asks the backend again about the active file (a setting the backend reads changed: the assembly architecture ...). */
+  recheck(): void {
+    this.lastSignature = "";
+    void this.refresh();
   }
 
   /** Called by the composition root when the installed/active runtimes change: an interpreter may have appeared or gone. */

@@ -53,6 +53,7 @@ pub const CATEGORIES: &[&str] = &[
     "Search",
     "Terminal",
     "Runtime & Run Code",
+    "Assembly",
     "Git",
     "Language Servers",
     "Extensions",
@@ -321,6 +322,10 @@ fn app_definitions() -> Vec<SettingDef> {
     vec![
         def("extensions.allowSystemNode", "Extensions", "Allow System Node.js for Extensions", "Run the extension host with a Node.js found on this computer when OpenMind's portable Node.js is not installed. It is always labelled as the system Node.js.", SettingKind::Bool, json!(false), User),
         def("extensions.marketplace.autoFetch", "Extensions", "Load Marketplace Automatically", "Load the Popular list from Open VSX (open-vsx.org) whenever the Extensions view is shown (not at launch). Turn it off to contact the marketplace only when you search, load Popular, open an extension page or install.", SettingKind::Bool, json!(true), User),
+        def("assembly.architecture", "Assembly", "Architecture", "What Run Code builds assembly files for: x86-64 (NASM -f win64, the 64-bit linker) or x86 (NASM -f win32, the Assembly runtime's optional x86 toolchain).", opts(&[("x86-64", "x86-64 (64-bit)"), ("x86", "x86 (32-bit)")]), json!("x86-64"), User),
+        def("assembly.extraAssemblerArgs", "Assembly", "Extra Assembler Arguments", "Arguments added to every NASM (or, for .s files, gcc) command Run Code uses, for example -w+all or -g. Split like a command line; nothing runs through a shell.", text(500), json!(""), User),
+        def("assembly.extraLinkerArgs", "Assembly", "Extra Linker Arguments", "Arguments added to the gcc command that links the program, for example -lgdi32 or -mwindows. Split like a command line; nothing runs through a shell.", text(500), json!(""), User),
+        def("assembly.enableLanguageServer", "Assembly", "Enable Language Server", "Use asm-lsp for assembly files: completion, hover documentation, symbols, navigation and NASM problems on save. Turn it off to keep only highlighting and Run Code.", SettingKind::Bool, json!(true), User),
         def("php.server.defaultPort", "PHP Server", "Default Port", "Port the PHP server uses until you choose another one in the PHP control panel.", SettingKind::Int { min: 1024, max: 65_535 }, json!(8000), User),
         def("php.tray.hideOnClose", "PHP Server", "Keep Servers Running in the Tray", "Closing the main window while a PHP, MariaDB or phpMyAdmin server runs hides the app to the system tray instead of quitting.", SettingKind::Bool, json!(true), User),
         def("network.proxy.mode", "Network", "Proxy", "How programs OpenMind starts (terminals, Run Code, tasks, Git, package managers, downloads) reach the network. No Proxy changes nothing. Use System Proxy uses the proxy Windows or the environment already names. Manual Proxy uses the addresses below. Only processes OpenMind starts are affected; Windows' own settings are never changed.", opts(&[("none", "No Proxy"), ("system", "Use System Proxy"), ("manual", "Manual Proxy")]), json!("none"), User),

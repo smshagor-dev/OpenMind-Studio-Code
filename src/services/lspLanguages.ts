@@ -44,6 +44,8 @@ const BY_EXTENSION: Record<string, string> = {
   f95: "fortran",
   f03: "fortran",
   f08: "fortran",
+  asm: "nasm",
+  nasm: "nasm",
 };
 
 export function lspLanguageId(path: string): string | null {
@@ -75,6 +77,7 @@ export const LSP_MONACO_LANGUAGES = [
   "c",
   "cpp",
   "fortran",
+  "nasm",
 ] as const;
 
 /** Monaco's language id for an LSP language id (`typescriptreact` is TypeScript to Monaco). */

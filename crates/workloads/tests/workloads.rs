@@ -140,7 +140,6 @@ fn nothing_without_a_safe_app_local_package_is_ever_installable() {
     let facts = fresh();
     for id in [
         "redis",
-        "gdb",
         "rustup",
         "cargo",
         "docker",
@@ -175,7 +174,7 @@ fn nothing_without_a_safe_app_local_package_is_ever_installable() {
         ("cuda", State::AdminRequired),
         ("redis", State::ExternalRequired),
         ("rustup", State::ExternalRequired),
-        ("gdb", State::Planned),
+        ("gdb", State::Available),
     ] {
         assert_eq!(
             resolve(component(id).expect(id), &facts).state,
@@ -344,10 +343,9 @@ fn a_workload_plan_sums_sizes_skips_installed_runtimes_and_warns_about_the_rest(
         .warnings
         .iter()
         .any(|w| w.kind == WarningKind::AdminRequired && w.component == "msvc"));
-    assert!(systems
-        .warnings
-        .iter()
-        .any(|w| w.kind == WarningKind::Planned && w.component == "gdb"));
+    // GDB comes with the Assembly toolchain, which the systems workload installs.
+    assert!(systems.install.iter().any(|r| r == "assembly"));
+    assert!(!systems.warnings.iter().any(|w| w.component == "gdb"));
 }
 
 #[test]

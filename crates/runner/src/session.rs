@@ -335,7 +335,11 @@ impl RunRegistry {
         thread::spawn(move || {
             let mut code = wait_for(&watch.child, &watch.readers);
             let mut build_failed = false;
-            if watch.plan.build.is_some() {
+            if let Some(build) = &watch.plan.build {
+                // A two-step build (Assembly): the link runs only after the assembler succeeded.
+                if let Some(link) = build.link.as_ref().filter(|_| code == Some(0)) {
+                    code = link_program(&watch, link, &build.cwd);
+                }
                 let stopped = watch.stopped.load(Ordering::SeqCst);
                 let success = code == Some(0) && !stopped;
                 watch.sink(RunEvent {
@@ -410,20 +414,54 @@ fn wait_for(child: &Mutex<Child>, readers: &[thread::JoinHandle<()>]) -> Option<
     code
 }
 
+/// After a successful assemble: runs the link command in the same process tree and waits for it. Its command line
+/// and output are build output.
+fn link_program(watch: &Watch, link: &crate::compiled::LinkStep, cwd: &Path) -> Option<i32> {
+    watch.sink(RunEvent {
+        run_id: watch.run_id.clone(),
+        event: RunEventKind::Output {
+            stream: Stream::Stdout,
+            line: format!("> {}", link.display),
+            phase: Phase::Build,
+        },
+    });
+    let readers = spawn_next(watch, &link.argv, cwd, &link.display, Phase::Build)?;
+    wait_for(&watch.child, &readers)
+}
+
 /// After a successful build: starts the program in the same process tree and waits for it.
 fn run_program(watch: &Watch) -> Option<i32> {
+    let readers = spawn_next(
+        watch,
+        &watch.plan.argv,
+        &watch.plan.cwd,
+        &watch.plan.display,
+        Phase::Run,
+    )?;
+    wait_for(&watch.child, &readers)
+}
+
+/// Starts the run's next process (the linker, then the program) inside its job object, makes it the run's current
+/// process and streams its output. `None` when stopped meanwhile or when it couldn't start (said in the output).
+fn spawn_next(
+    watch: &Watch,
+    argv: &[String],
+    cwd: &Path,
+    display: &str,
+    phase: Phase,
+) -> Option<Vec<thread::JoinHandle<()>>> {
     if watch.stopped.load(Ordering::SeqCst) {
         return None;
     }
-    let mut program = match command_for(&watch.plan.argv, &watch.plan.cwd, &watch.plan).spawn() {
+    let mut program = match command_for(argv, cwd, &watch.plan).spawn() {
         Ok(program) => program,
         Err(err) => {
             watch.sink(RunEvent {
                 run_id: watch.run_id.clone(),
                 event: RunEventKind::Output {
                     stream: Stream::Stderr,
-                    line: format!("Couldn't start \"{}\": {err}", watch.plan.display),
-                    phase: Phase::Run,
+                    line: format!("Couldn't start \"{display}\": {err}"),
+                    phase,
                 },
             });
             return None;
@@ -449,9 +487,10 @@ fn run_program(watch: &Watch) -> Option<i32> {
             let _ = current.kill();
         }
     }
-    watch.sink(started_event(&watch.run_id, &watch.plan, pid));
-    let readers = pumps(stdout, stderr, Phase::Run, &watch.run_id, &watch.sink);
-    wait_for(&watch.child, &readers)
+    if phase == Phase::Run {
+        watch.sink(started_event(&watch.run_id, &watch.plan, pid));
+    }
+    Some(pumps(stdout, stderr, phase, &watch.run_id, &watch.sink))
 }
 
 fn pumps(

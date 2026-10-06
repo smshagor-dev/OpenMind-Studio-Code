@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use crate::*;
 
+mod assembly;
 mod compiled;
 mod fortran_pascal;
 

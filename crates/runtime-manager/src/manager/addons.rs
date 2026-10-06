@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use super::{remove_dir_if_exists, InstallPhase, InstallProgress, ProgressSink, RuntimeManager};
 use crate::download::verify_sha256;
 use crate::error::RuntimeError;
-use crate::extract::{extract_tar_gz, extract_zip, safe_entry_path, ExtractSelection};
+use crate::extract::{extract_archive, safe_entry_path, ExtractSelection};
 use crate::manifest::{Addon, ArchiveKind, Artifact, License, RuntimeManifest};
 
 /// The folder inside an install that holds the add-on records.
@@ -43,6 +43,24 @@ struct AddonRecord {
     files: Vec<String>,
     /// Folders the add-on created, deepest first.
     folders: Vec<String>,
+}
+
+/// The manifest add-ons of `version` that have a record in the install `dir` (so Repair can add them back after it
+/// rebuilt the version). Only ids the manifest knows are returned; a stray file in the record folder is ignored.
+pub(crate) fn recorded_addons(
+    manifest: &RuntimeManifest,
+    version: &str,
+    dir: &Path,
+) -> Vec<String> {
+    addons_of(manifest, version)
+        .iter()
+        .filter(|addon| {
+            dir.join(RECORD_DIR)
+                .join(format!("{}.json", addon.id))
+                .is_file()
+        })
+        .map(|addon| addon.id.clone())
+        .collect()
 }
 
 fn addons_of<'a>(manifest: &'a RuntimeManifest, version: &str) -> &'a [Addon] {
@@ -212,16 +230,16 @@ fn unpack_and_merge(
         only_under: artifact.extract_root.as_deref(),
     };
     let mut extracted = |c, t| report(InstallPhase::Extract, c, t);
-    match artifact.archive {
-        ArchiveKind::Zip => extract_zip(archive, staging, selection, &mut extracted)?,
-        ArchiveKind::TarGz => extract_tar_gz(archive, staging, selection, &mut extracted)?,
-        ArchiveKind::Msi => {
-            crate::msi_archive::extract_msi(archive, staging, selection, &mut extracted)?;
-        }
-        ArchiveKind::File => {
-            return Err(RuntimeError::Addon("an add-on must be an archive".into()));
-        }
+    if artifact.archive == ArchiveKind::File {
+        return Err(RuntimeError::Addon("an add-on must be an archive".into()));
     }
+    extract_archive(
+        artifact.archive,
+        archive,
+        staging,
+        selection,
+        &mut extracted,
+    )?;
     if !staging.join(&addon.verify_file).is_file() {
         return Err(RuntimeError::InvalidArchive(format!(
             "\"{}\" is missing from the add-on",

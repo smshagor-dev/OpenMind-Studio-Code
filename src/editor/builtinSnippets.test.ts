@@ -10,7 +10,7 @@ describe("Fortran and Pascal snippets", () => {
     const providers = new Map(
       register.mock.calls.map(([selector, provider]) => [selector as string, provider]),
     );
-    expect([...providers.keys()].sort()).toEqual(["fortran", "pascal"]);
+    expect([...providers.keys()].sort()).toEqual(["fortran", "nasm", "pascal"]);
 
     const labels = (language: string, text: string) => {
       const model = monaco.editor.createModel(text, language);

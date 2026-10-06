@@ -54,6 +54,15 @@ pub async fn runtime_install(
             }
         }
     }
+    // A new Assembly toolchain is complete for the chosen architecture: x86 gets its 32-bit part in the same click.
+    let result = match result {
+        Ok(installed) if kind == "assembly" => {
+            crate::commands::assembly::after_install(&state, &installed, progress_sink(app.clone()))
+                .await
+                .map(|()| installed)
+        }
+        other => other,
+    };
     // A new MariaDB gets its database at once (root / root, test-started and stopped), so MySQL > Start just works. An
     // existing database is never touched. A failure leaves MariaDB installed and is reported; MySQL > Start retries it.
     let result = match result {

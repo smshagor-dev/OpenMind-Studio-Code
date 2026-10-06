@@ -154,6 +154,7 @@ pub async fn stop_everything(app: &AppHandle) {
             crate::commands::debug::stop_debug(&stopper);
             stopper.state::<AppState>().notebooks.stop_all();
             crate::commands::lsp::stop_lsp(&stopper);
+            crate::commands::assembly::remove_empty_config_folder();
             crate::commands::extension_host::stop_host(&stopper);
             crate::commands::git::stop_git(&stopper);
             crate::commands::database::stop_all_services(&stopper)

@@ -25,6 +25,8 @@ pub fn language_of(extension: &str) -> Option<&'static str> {
         "py" | "pyw" => "python",
         "php" => "php",
         "rs" => "rust",
+        "asm" | "nasm" => "nasm",
+        "s" => "gas",
         "md" | "markdown" => "markdown",
         "json" | "jsonc" => "json",
         "html" | "htm" => "html",

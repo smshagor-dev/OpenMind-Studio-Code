@@ -562,6 +562,36 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [Hl, Lsp, Run, Build]
     ),
     lang!(
+        "assembly",
+        "Assembly (NASM)",
+        Systems,
+        [".asm", ".nasm"],
+        [],
+        ";",
+        "nasm",
+        Exact,
+        [],
+        [],
+        ["asm-lsp"],
+        ["nasm", "gcc", "gdb"],
+        [Hl, Lsp, Run, Build]
+    ),
+    lang!(
+        "gas",
+        "Assembly (GAS)",
+        Systems,
+        [".s"],
+        [],
+        "#",
+        "gas",
+        Exact,
+        [],
+        [],
+        [],
+        ["gcc", "gdb"],
+        [Hl, Run, Build]
+    ),
+    lang!(
         "pascal",
         "Pascal",
         Systems,
@@ -994,6 +1024,9 @@ mod tests {
             ("legacy.F", "fortran"),
             ("program.pas", "pascal"),
             ("unit.pp", "pascal"),
+            ("hello.asm", "assembly"),
+            ("boot.NASM", "assembly"),
+            ("start.S", "gas"),
             ("run.sh", "shellscript"),
             ("build.ps1", "powershell"),
             ("go.bat", "bat"),
@@ -1066,11 +1099,12 @@ mod tests {
             "c",
             "cpp",
             "fortran",
+            "assembly",
         ] {
             assert!(lsp.contains(&expected), "{expected}");
         }
         for not_yet in [
-            "go", "java", "csharp", "vue", "kotlin", "dart", "sql", "pascal",
+            "go", "java", "csharp", "vue", "kotlin", "dart", "sql", "pascal", "gas",
         ] {
             assert!(!lsp.contains(&not_yet), "{not_yet} has no built-in server");
         }
@@ -1099,6 +1133,8 @@ mod tests {
                 "c",
                 "cpp",
                 "fortran",
+                "assembly",
+                "gas",
                 "pascal"
             ]
         );

@@ -1,5 +1,6 @@
 pub mod about;
 pub mod ai;
+pub mod assembly;
 pub mod broker;
 pub mod database;
 pub mod debug;

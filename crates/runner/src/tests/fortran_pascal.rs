@@ -40,6 +40,7 @@ impl Project {
             workspace: Some(self.workspace.clone()),
             template: None,
             arguments: None,
+            assembly: Default::default(),
         };
         let env = RunEnvironment {
             path_prepend: vec![bin],
@@ -220,6 +221,7 @@ fn c_uses_llvm_mingw_clang_over_the_fortran_runtimes_gcc_and_gcc_only_without_it
             workspace: Some(p.workspace.clone()),
             template: None,
             arguments: None,
+            assembly: Default::default(),
         };
         let env = RunEnvironment {
             path_prepend: dirs,
@@ -258,6 +260,7 @@ fn c_uses_llvm_mingw_clang_over_the_fortran_runtimes_gcc_and_gcc_only_without_it
         workspace: Some(p.workspace.clone()),
         template: None,
         arguments: None,
+        assembly: Default::default(),
     };
     let env = RunEnvironment {
         path_prepend: vec![fortran_shims],
@@ -286,6 +289,7 @@ fn arguments_follow_the_program_for_compiled_and_interpreted_files() {
         workspace: Some(p.workspace.clone()),
         template: None,
         arguments: Some(r#"7 "two words""#.into()),
+        assembly: Default::default(),
     };
     let env = RunEnvironment {
         path_prepend: vec![bin],
@@ -353,6 +357,7 @@ fn a_fortran_and_a_pascal_program_receive_their_arguments() {
             workspace: Some(p.workspace.clone()),
             template: None,
             arguments: Some(r#"7 "two words""#.into()),
+            assembly: Default::default(),
         };
         let env = RunEnvironment {
             path_prepend: vec![bin],
@@ -397,6 +402,7 @@ fn pascal_falls_back_to_fpc_when_there_is_no_fpc64_and_prefers_the_portable_one(
         workspace: Some(p.workspace.clone()),
         template: None,
         arguments: None,
+        assembly: Default::default(),
     };
     let env = RunEnvironment {
         path_prepend: vec![portable],

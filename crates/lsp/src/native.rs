@@ -31,6 +31,58 @@ pub struct NativeDownload {
     /// Files of the archive that are not needed (debug symbols): removed after unpacking.
     #[serde(default)]
     pub skip: Vec<String>,
+    /// `zip` (default) or `conda` (a conda-forge package: a zip holding a zstd-compressed tar).
+    #[serde(default)]
+    pub archive: NativeArchive,
+    /// Unpack only this folder of the archive, its prefix removed (`Library/bin` of a conda package).
+    #[serde(default)]
+    pub only_under: Option<String>,
+    /// Further pinned archives unpacked into the same folder (DLLs the program needs), each checked like the first.
+    #[serde(default)]
+    pub parts: Vec<NativePart>,
+}
+
+/// The archive format of a native download.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NativeArchive {
+    #[default]
+    Zip,
+    Conda,
+}
+
+/// One more pinned archive of a native package.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativePart {
+    pub contents: String,
+    pub url: String,
+    pub sha256: String,
+    pub license: String,
+    #[serde(default)]
+    pub archive: NativeArchive,
+    #[serde(default)]
+    pub strip_components: usize,
+    #[serde(default)]
+    pub only_under: Option<String>,
+}
+
+impl NativeDownload {
+    /// Every archive to fetch and unpack, the main one first.
+    pub fn pieces(&self) -> Vec<NativePart> {
+        let main = NativePart {
+            contents: self.contents.clone(),
+            url: self.url.clone(),
+            sha256: self.sha256.clone(),
+            license: self.license.clone(),
+            archive: self.archive,
+            strip_components: self.strip_components,
+            only_under: self.only_under.clone(),
+        };
+        std::iter::once(main)
+            .chain(self.parts.iter().cloned())
+            .collect()
+    }
 }
 
 #[derive(Deserialize)]
@@ -98,7 +150,7 @@ impl LspManager {
         self.log(
             def.id,
             LogLevel::Info,
-            &format!("Downloading {} ({})...", download.contents, download.url),
+            &format!("Installing {}...", download.contents),
         );
         let staging = install::staging_dir_of(app_root, def.package);
         let outcome = (|| {
@@ -185,6 +237,31 @@ mod tests {
             "npm packages aren't native"
         );
         assert!(native_download("nope").is_none());
+    }
+
+    #[test]
+    fn asm_lsp_comes_from_two_pinned_conda_forge_packages_unpacked_from_library_bin() {
+        let download = native_download("asm-lsp").expect("asm-lsp");
+        let pieces = download.pieces();
+        assert_eq!(
+            pieces.len(),
+            2,
+            "asm-lsp and the Visual C++ runtime DLLs it needs"
+        );
+        for piece in &pieces {
+            assert!(
+                piece
+                    .url
+                    .starts_with("https://conda.anaconda.org/conda-forge/win-64/"),
+                "{}",
+                piece.url
+            );
+            assert_eq!(piece.archive, NativeArchive::Conda);
+            assert_eq!(piece.only_under.as_deref(), Some("Library/bin"));
+            assert_eq!(piece.sha256.len(), 64);
+        }
+        assert!(pieces[0].url.contains("/asm-lsp-"));
+        assert!(pieces[1].url.contains("/vc14_runtime-"));
     }
 
     #[test]

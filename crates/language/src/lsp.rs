@@ -22,6 +22,7 @@ pub fn builtin_server(tool_id: &str) -> Option<&'static str> {
         "rust-analyzer" => Some("rust"),
         "clangd" => Some("clangd"),
         "fortls" => Some("fortran"),
+        "asm-lsp" => Some("assembly"),
         _ => None,
     }
 }
@@ -107,6 +108,7 @@ mod tests {
         assert_eq!(
             all.into_iter().collect::<Vec<_>>(),
             [
+                "assembly",
                 "bash",
                 "clangd",
                 "css",

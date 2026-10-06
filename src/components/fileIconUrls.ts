@@ -5,7 +5,7 @@
 export const ICON_URLS: Record<string, string> = Object.fromEntries(
   Object.entries({
     ...import.meta.glob<string>(
-      "../../node_modules/material-icon-theme/icons/{android,astro,audio,babel,bun,c,certificate,claude,cmake,console,cpp,csharp,css,dart,database,deno,dll,docker,document,editorconfig,elixir,erlang,eslint,exe,file,font,fortran,fsharp,gemfile,git,go,go-mod,gradle,graphql,h,haskell,hpp,html,image,java,javascript,jest,json,jupyter,key,kotlin,laravel,less,license,lock,log,lua,makefile,markdown,mdx,nginx,nodejs,npm,pascal,pdf,perl,php,pnpm,powershell,prettier,prisma,proto,python,python-misc,r,react,react_ts,readme,ruby,rust,sass,scala,settings,svelte,svg,swift,table,tauri,terraform,tex,toml,tsconfig,tune,typescript,typescript-def,url,video,vim,vite,vitest,vue,webassembly,webpack,xml,yaml,yarn,zig,zip}.svg",
+      "../../node_modules/material-icon-theme/icons/{android,assembly,astro,audio,babel,bun,c,certificate,claude,cmake,console,cpp,csharp,css,dart,database,deno,dll,docker,document,editorconfig,elixir,erlang,eslint,exe,file,font,fortran,fsharp,gemfile,git,go,go-mod,gradle,graphql,h,haskell,hpp,html,image,java,javascript,jest,json,jupyter,key,kotlin,laravel,less,license,lock,log,lua,makefile,markdown,mdx,nginx,nodejs,npm,pascal,pdf,perl,php,pnpm,powershell,prettier,prisma,proto,python,python-misc,r,react,react_ts,readme,ruby,rust,sass,scala,settings,svelte,svg,swift,table,tauri,terraform,tex,toml,tsconfig,tune,typescript,typescript-def,url,video,vim,vite,vitest,vue,webassembly,webpack,xml,yaml,yarn,zig,zip}.svg",
       { eager: true, query: "?url", import: "default" },
     ),
     ...import.meta.glob<string>(

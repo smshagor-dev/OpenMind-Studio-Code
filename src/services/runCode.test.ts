@@ -633,6 +633,7 @@ describe("RunCodeService", () => {
       expect(r.ipc.runTerminalCommand).toHaveBeenCalledWith(
         { file: "C:/p/hello.py", workspace: "C:/p", template: null, arguments: null },
         "powerShell",
+        false,
       );
       expect(r.ipc.terminalWrite).toHaveBeenCalledWith(
         "t1",

@@ -79,6 +79,10 @@ const TOOLS: Record<string, { runtime: string | null; label: string }> = {
   "clang++": { runtime: "llvm-mingw", label: "C/C++ toolchain (LLVM-MinGW)" },
   cc: { runtime: "llvm-mingw", label: "C/C++ toolchain (LLVM-MinGW)" },
   "c++": { runtime: "llvm-mingw", label: "C/C++ toolchain (LLVM-MinGW)" },
+  nasm: { runtime: "assembly", label: "Assembly toolchain (NASM)" },
+  ndisasm: { runtime: "assembly", label: "Assembly toolchain (NASM)" },
+  gdb: { runtime: "assembly", label: "Assembly toolchain (GDB)" },
+  objdump: { runtime: "assembly", label: "Assembly toolchain (GNU binutils)" },
   cmake: { runtime: "cmake", label: "CMake" },
   ninja: { runtime: "ninja", label: "Ninja" },
   node: { runtime: "node", label: "Node.js" },
@@ -192,10 +196,20 @@ export function needsInteractiveInput(extension: string, text: string): boolean 
     case "pas":
     case "pp":
       return PASCAL_STDIN.test(text);
+    case "asm":
+    case "nasm":
+    case "s":
+      return ASM_STDIN.test(text) || (/\bGetStdHandle\b/.test(text) && /\bRead(?:Console[AW]?|File)\b/.test(text));
     default:
       return false;
   }
 }
+
+/**
+ * Assembly reading the keyboard through the C runtime (`call scanf`, `call [getchar]`, `call _fgets` in 32-bit code);
+ * the Windows API form (`GetStdHandle` + `ReadConsole`/`ReadFile`) is checked next to it.
+ */
+const ASM_STDIN = /\bcall\s+(?:qword\s+|dword\s+)?\[?\s*_?(?:scanf|getchar|gets|fgets|getline|_getch|getch)\b/i;
 
 /** Fortran reading the keyboard: `read *, x`, `read (*, *) x`, `read (5, ...)`, `read (unit=input_unit, ...)`. */
 const FORTRAN_STDIN = /\bread\s*(?:\*\s*,|\(\s*(?:unit\s*=\s*)?(?:\*|5|input_unit)\s*[,)])/i;

@@ -15,6 +15,12 @@ describe("availability: every disabled action says why", () => {
     ...patch,
   });
 
+  it("a server switched off in Settings says where to switch it on", () => {
+    const off = file({ path: "C:/p/hello.asm", outcome: { state: "turnedOff", server: "assembly" } });
+    expect(fileProblem(off)).toBe("The language server is turned off in Settings (Assembly > Enable Language Server).");
+    expect(actionAvailability("hover", off).enabled).toBe(false);
+  });
+
   it("a running server with the capability enables the action", () => {
     expect(actionAvailability("definition", file())).toEqual({ enabled: true });
     expect(actionAvailability("hover", file())).toEqual({ enabled: true });

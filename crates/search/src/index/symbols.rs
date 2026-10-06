@@ -141,6 +141,13 @@ static RS_IMPL: LazyLock<Regex> = LazyLock::new(|| {
 });
 static MD_HEADING: LazyLock<Regex> = LazyLock::new(|| re(r"^(#{1,6})\s+(.+?)\s*#*\s*$"));
 static JSON_KEY: LazyLock<Regex> = LazyLock::new(|| re(r#"^(\s{0,4})"([^"\\]{1,80})"\s*:"#));
+/// An assembly label at the start of a line (`main:`, `.loop:`), NASM or GNU as.
+static ASM_LABEL: LazyLock<Regex> = LazyLock::new(|| re(r"^\s*([A-Za-z_.?@$][\w.$?@#~]*)\s*:"));
+/// `NAME equ value`, `%define NAME`, `%assign NAME`, `%macro NAME` (NASM).
+static ASM_EQU: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)^\s*([A-Za-z_?@$][\w.$?@#~]*)\s+equ\b"));
+static ASM_DIRECTIVE: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)^\s*%\s*(i?x?define|assign|macro)\s+([A-Za-z_?@$][\w.$?@#~]*)"));
 
 const NOT_METHODS: [&str; 14] = [
     "if",
@@ -394,9 +401,48 @@ fn json(text: &str) -> Vec<Symbol> {
     out
 }
 
+/// Assembly (NASM and GNU as): labels (a local `.label` belongs to the label before it), `equ` constants and NASM's
+/// `%define`/`%assign` (constants) and `%macro` (functions). asm-lsp offers no workspace symbols, so Ctrl+T reads these.
+fn assembly(text: &str) -> Vec<Symbol> {
+    let mut c = Collector::new();
+    let mut scope: Option<String> = None;
+    for (i, line) in text.lines().enumerate() {
+        if c.full() {
+            break;
+        }
+        if let Some(name) = ASM_LABEL.captures(line).and_then(|cap| cap.get(1)) {
+            let label = name.as_str();
+            if label.starts_with('.') {
+                c.containers = scope.iter().map(|outer| (outer.clone(), 0)).collect();
+                c.push(i, line, name.start(), label, "function");
+            } else {
+                c.containers.clear();
+                c.push(i, line, name.start(), label, "function");
+                scope = Some(label.to_string());
+            }
+            continue;
+        }
+        c.containers.clear();
+        if let Some(name) = ASM_EQU.captures(line).and_then(|cap| cap.get(1)) {
+            c.push(i, line, name.start(), name.as_str(), "constant");
+        } else if let Some(cap) = ASM_DIRECTIVE.captures(line) {
+            if let (Some(directive), Some(name)) = (cap.get(1), cap.get(2)) {
+                let kind = if directive.as_str().eq_ignore_ascii_case("macro") {
+                    "function"
+                } else {
+                    "constant"
+                };
+                c.push(i, line, name.start(), name.as_str(), kind);
+            }
+        }
+    }
+    c.out
+}
+
 /// The symbols found in `text` for a language id (see `text::language_of`), or none when the language has no reader.
 pub fn extract(language: &str, text: &str) -> Vec<Symbol> {
     match language {
+        "nasm" | "gas" => assembly(text),
         "typescript" | "javascript" => typescript(text),
         "python" => python(text),
         "php" => php(text),
@@ -480,6 +526,25 @@ mod tests {
                 "function:global_fn@15:10",
             ]
         );
+    }
+
+    #[test]
+    fn assembly_labels_locals_constants_and_macros() {
+        let nasm = "BUFSIZE equ 64\n%define GREETING 1\n%macro print 1\n%endmacro\n        section .text\nmain:\n.next:   cmp edi, ebx\n        jmp .next ; not a label\n.done:\nhelper:\n";
+        assert_eq!(
+            summary(&extract("nasm", nasm)),
+            [
+                "constant:BUFSIZE@1:1",
+                "constant:GREETING@2:9",
+                "function:print@3:8",
+                "function:main@6:1",
+                "function:.next@7:1 in main",
+                "function:.done@9:1 in main",
+                "function:helper@10:1",
+            ]
+        );
+        let gas = "\t.globl main\nmain:\n\tmovl $5, %eax\n1:\n\tret\n";
+        assert_eq!(summary(&extract("gas", gas)), ["function:main@2:1"]);
     }
 
     #[test]

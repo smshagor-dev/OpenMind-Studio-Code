@@ -5,13 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 30] = [
+const BUILTIN: [&str; 31] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
     include_str!("../manifests/php.json"),
     include_str!("../manifests/fortran.json"),
     include_str!("../manifests/pascal.json"),
+    include_str!("../manifests/assembly.json"),
     include_str!("../manifests/composer.json"),
     include_str!("../manifests/mariadb.json"),
     include_str!("../manifests/phpmyadmin.json"),
@@ -67,6 +68,8 @@ pub enum ArchiveKind {
     /// A Windows Installer package read as an archive (`msi_archive.rs`): its files are extracted, nothing is
     /// installed through Windows Installer.
     Msi,
+    /// A conda-forge package (`.conda`: a zip holding a zstd-compressed tar of the files). Same checks as a zip.
+    Conda,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -469,8 +472,11 @@ fn validate_artifact(artifact: &Artifact, version: &str) -> Result<(), RuntimeEr
                 "a \"file\" artifact needs a plain installAs file name".into(),
             ));
         }
-        (ArchiveKind::Zip | ArchiveKind::TarGz | ArchiveKind::Msi, None) => {}
-        (ArchiveKind::Zip | ArchiveKind::TarGz | ArchiveKind::Msi, Some(_)) => {
+        (ArchiveKind::Zip | ArchiveKind::TarGz | ArchiveKind::Msi | ArchiveKind::Conda, None) => {}
+        (
+            ArchiveKind::Zip | ArchiveKind::TarGz | ArchiveKind::Msi | ArchiveKind::Conda,
+            Some(_),
+        ) => {
             return Err(invalid_manifest(
                 "installAs only applies to \"file\" artifacts".into(),
             ));

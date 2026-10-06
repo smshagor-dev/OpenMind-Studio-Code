@@ -148,7 +148,77 @@ pub fn extract_tar_gz(
     progress: &mut dyn FnMut(u64, Option<u64>),
 ) -> Result<(), RuntimeError> {
     let file = File::open(archive_path).map_err(|err| RuntimeError::io(archive_path, err))?;
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    extract_tar(
+        flate2::read::GzDecoder::new(file),
+        dest,
+        selection,
+        progress,
+    )
+}
+
+/// A conda-forge package (`.conda`): a zip holding metadata and exactly one `pkg-*.tar.zst`, the zstd-compressed tar
+/// of the package's files. Only that tar is extracted, with the same checks as any other archive.
+pub fn extract_conda(
+    archive_path: &Path,
+    dest: &Path,
+    selection: ExtractSelection<'_>,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<(), RuntimeError> {
+    let file = File::open(archive_path).map_err(|err| RuntimeError::io(archive_path, err))?;
+    let mut package =
+        zip::ZipArchive::new(file).map_err(|err| RuntimeError::InvalidArchive(err.to_string()))?;
+    let payloads: Vec<String> = package
+        .file_names()
+        .filter(|name| {
+            name.starts_with("pkg-") && name.ends_with(".tar.zst") && !name.contains('/')
+        })
+        .map(str::to_string)
+        .collect();
+    let [payload] = payloads.as_slice() else {
+        return Err(RuntimeError::InvalidArchive(
+            "a conda package must hold exactly one pkg-*.tar.zst".into(),
+        ));
+    };
+    let entry = package
+        .by_name(payload)
+        .map_err(|err| RuntimeError::InvalidArchive(err.to_string()))?;
+    let decoder = ruzstd::decoding::StreamingDecoder::new(entry)
+        .map_err(|err| RuntimeError::InvalidArchive(format!("{payload}: {err}")))?;
+    extract_tar(decoder, dest, selection, progress)
+}
+
+/// Extracts `archive_path` of kind `kind` into `dest` (the one place the archive kinds are told apart). A single
+/// file (`ArchiveKind::File`) isn't an archive: callers copy it themselves.
+pub fn extract_archive(
+    kind: crate::manifest::ArchiveKind,
+    archive_path: &Path,
+    dest: &Path,
+    selection: ExtractSelection<'_>,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<(), RuntimeError> {
+    use crate::manifest::ArchiveKind;
+    match kind {
+        ArchiveKind::Zip => extract_zip(archive_path, dest, selection, progress),
+        ArchiveKind::TarGz => extract_tar_gz(archive_path, dest, selection, progress),
+        ArchiveKind::Conda => extract_conda(archive_path, dest, selection, progress),
+        ArchiveKind::Msi => {
+            crate::msi_archive::extract_msi(archive_path, dest, selection, progress)
+        }
+        ArchiveKind::File => Err(RuntimeError::InvalidArchive(
+            "a single-file download isn't an archive".into(),
+        )),
+    }
+}
+
+/// Extracts a tar stream (gzip- or zstd-compressed by the caller). Every entry is validated like a zip entry; links
+/// are refused and the total size is capped.
+fn extract_tar(
+    reader: impl io::Read,
+    dest: &Path,
+    selection: ExtractSelection<'_>,
+    progress: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<(), RuntimeError> {
+    let mut archive = tar::Archive::new(reader);
     fs::create_dir_all(dest).map_err(|err| RuntimeError::io(dest, err))?;
     let entries = archive
         .entries()
@@ -461,3 +531,7 @@ pub(crate) mod tests {
         assert!(!dir.path().join("evil.txt").exists());
     }
 }
+
+#[cfg(test)]
+#[path = "extract_conda_tests.rs"]
+mod conda_tests;

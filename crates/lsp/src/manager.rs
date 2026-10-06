@@ -58,6 +58,9 @@ pub struct StartContext {
     /// The Runtime Manager's folders, put first on the *server's* PATH only.
     pub path_prepend: Vec<PathBuf>,
     pub vars: Vec<(String, String)>,
+    /// The folder `initialize` names as `rootPath` when it isn't the workspace: asm-lsp reads its `.asm-lsp.toml`
+    /// from there (and can't read a Windows `rootUri`), so OpenMind points it at the settings it wrote.
+    pub config_root: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -360,16 +363,15 @@ impl LspManager {
             }),
         );
         let mut process = spawned.process;
-        let init = session.request(
-            "initialize",
-            &initialize_params(
-                std::process::id(),
-                &root_uri,
-                &workspace_name,
-                def.init_options,
-            ),
-            INITIALIZE_TIMEOUT,
+        let mut params = initialize_params(
+            std::process::id(),
+            &root_uri,
+            &workspace_name,
+            def.init_options,
         );
+        let root_path = context.config_root.as_ref().unwrap_or(&context.workspace);
+        params["rootPath"] = serde_json::Value::String(root_path.display().to_string());
+        let init = session.request("initialize", &params, INITIALIZE_TIMEOUT);
         let capabilities = match init {
             Ok(result) => parse_capabilities(&result),
             Err(err) => {
@@ -394,7 +396,9 @@ impl LspManager {
         Ok(Arc::new(Running {
             session,
             process: Mutex::new(process),
-            docs: Mutex::new(DocumentSync::default()),
+            docs: Mutex::new(DocumentSync::new(
+                def.ranged_changes && capabilities.incremental_sync,
+            )),
             capabilities,
             workspace: context.workspace.clone(),
             node_label: runtime_label,
@@ -446,7 +450,9 @@ impl LspManager {
             return Err(LspError::Refused(method.to_string()));
         }
         let running = self.running_of(server_id).ok_or(LspError::NotRunning)?;
-        running.session.request(method, params, timeout)
+        let mut params = params.clone();
+        lock(&running.docs).clamp_positions(&mut params);
+        running.session.request(method, &params, timeout)
     }
 
     /// Stops one server: `shutdown`/`exit`, then its process tree is killed.
@@ -784,6 +790,7 @@ mod tests {
             python: None,
             path_prepend: vec![],
             vars: vec![],
+            config_root: None,
         }
     }
 

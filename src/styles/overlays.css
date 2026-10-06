@@ -374,3 +374,21 @@
   margin-bottom: 12px;
   font-size: 12px;
 }
+
+/* The Assembly card's complete setup line: part statuses, then Install Assembly Toolchain. */
+.modal--runtimes .runtime-card__setup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 6px 0 0;
+}
+
+.modal--runtimes .runtime-card__setup-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+}

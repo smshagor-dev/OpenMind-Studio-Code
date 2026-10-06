@@ -27,7 +27,7 @@ pub use language::language_id;
 pub use manager::{
     LogLevel, LspEvents, LspManager, PythonExecutable, RuntimeStatus, ServerState, StartContext,
 };
-pub use native::{native_download, NativeDownload};
+pub use native::{native_download, NativeArchive, NativeDownload, NativePart};
 pub use node::{resolve_lsp_node, resolve_node, NodeExecutable, NodeSource};
 pub use protocol::{Capabilities, Diagnostic, PublishedDiagnostics};
 pub use registry::{

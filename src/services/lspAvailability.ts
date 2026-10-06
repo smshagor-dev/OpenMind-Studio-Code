@@ -72,6 +72,8 @@ export function fileProblem(file: FileLspStatus): string | null {
   switch (file.outcome?.state) {
     case "unsupported":
       return "No language server supports this file type.";
+    case "turnedOff":
+      return "The language server is turned off in Settings (Assembly > Enable Language Server).";
     case "noWorkspace":
       return "Open a folder to use language servers.";
     case "outsideWorkspace":

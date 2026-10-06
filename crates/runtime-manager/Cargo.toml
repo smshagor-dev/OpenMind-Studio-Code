@@ -21,6 +21,8 @@ ureq = { version = "3.4.2", features = ["rustls"] }
 zip = { version = "7.2.0", default-features = false, features = ["deflate"] }
 msi = "0.8"
 cab = "0.6"
+# zstd decoding (pure Rust) for conda-forge `.conda` packages: a zip holding `pkg-*.tar.zst`.
+ruzstd = "0.8"
 
 [dev-dependencies]
 tempfile = "3.27.0"

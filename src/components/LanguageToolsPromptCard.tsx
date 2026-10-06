@@ -42,6 +42,16 @@ export function LanguageToolsPromptCard() {
           disabled={state.installing}
           onClick={() => {
             prompt.dismiss();
+            container.run("lsp.manage");
+          }}
+        >
+          {t("languageTools.prompt.open")}
+        </button>
+        <button
+          type="button"
+          disabled={state.installing}
+          onClick={() => {
+            prompt.dismiss();
           }}
         >
           {t("common.dismissAction")}

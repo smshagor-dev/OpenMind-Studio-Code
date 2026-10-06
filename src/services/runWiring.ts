@@ -16,6 +16,9 @@ import type { TerminalService } from "./terminalService";
 import type { WorkspaceService } from "./workspaceService";
 import { t } from "../i18n";
 
+/** Settings the backend's assembly build plan depends on. */
+export const ASSEMBLY_BUILD_SETTINGS = ["assembly.architecture", "assembly.extraAssemblerArgs", "assembly.extraLinkerArgs"];
+
 export interface RunWiringDeps {
   ipc: IpcClient;
   events: EventBus<AppEvents>;
@@ -76,6 +79,11 @@ export function wireRunCode(deps: RunWiringDeps) {
           password: false,
         }),
     },
+  });
+  // The backend reads the Assembly settings when it plans a build: x86 needs the x86 toolchain, extra arguments can be
+  // invalid. A change is checked at once instead of at the next click.
+  settings.onChange(ASSEMBLY_BUILD_SETTINGS, () => {
+    runCode.recheck();
   });
   // Run Code's Output can't type into a program: a file that reads the keyboard is offered the terminal.
   runCode.setInteractiveHost({

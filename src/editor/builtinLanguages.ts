@@ -1,5 +1,6 @@
 import * as monaco from "monaco-editor";
 
+import { GAS_TOKENS, NASM_TOKENS } from "./assemblyGrammars";
 import { FORTRAN_TOKENS, PASCAL_TOKENS } from "./builtinGrammars";
 
 let registered = false;
@@ -9,6 +10,7 @@ export function registerBuiltInLanguages(): void {
   registered = true;
   registerFortran();
   registerPascal();
+  registerAssembly();
 }
 
 function ensureLanguage(id: string, extensions: string[], aliases: string[]): void {
@@ -87,4 +89,48 @@ function registerPascal(): void {
     ["if", "if ${1:condition} then\nbegin\n  ${0}\nend;", "If block"],
     ["for", "for ${1:i} := ${2:1} to ${3:n} do\nbegin\n  ${0}\nend;", "For loop"],
   ]);
+}
+
+/**
+ * x86/x86-64 assembly: NASM (`.asm`, `.nasm`; Intel syntax, OpenMind's default) and GNU as (`.s`, `.S`; AT&T syntax).
+ * `.inc` is not claimed here: PHP and others use it too, so an assembly include gets the NASM grammar only when its
+ * text looks like assembly (`assemblyIncludeLanguage`).
+ */
+function registerAssembly(): void {
+  ensureLanguage("nasm", [".asm", ".nasm"], ["Assembly (NASM)", "nasm", "asm"]);
+  monaco.languages.setLanguageConfiguration("nasm", {
+    comments: { lineComment: ";" },
+    brackets: [
+      ["[", "]"],
+      ["(", ")"],
+    ],
+    autoClosingPairs: [
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: "`", close: "`" },
+    ],
+  });
+  monaco.languages.setMonarchTokensProvider("nasm", NASM_TOKENS);
+  registerSnippets("nasm", [
+    [
+      "main",
+      '        default rel\n        global  main\n        extern  printf\n\n        section .data\nmsg:    db "${1:Hello, world!}", 10, 0\n\n        section .text\nmain:\n        sub     rsp, 40\n        lea     rcx, [msg]\n        call    printf\n        add     rsp, 40\n        xor     eax, eax\n        ret\n',
+      "Windows x64 program with main (C runtime)",
+    ],
+    ["section", "section .${1|text,data,bss,rdata|}\n${0}", "Section"],
+    ["proc", "${1:name}:\n        push    rbp\n        mov     rbp, rsp\n        ${0}\n        pop     rbp\n        ret", "Procedure with a frame"],
+    ["macro", "%macro ${1:name} ${2:0}\n        ${0}\n%endmacro", "Macro"],
+  ]);
+  ensureLanguage("gas", [".s", ".S"], ["Assembly (GAS)", "gas", "GNU Assembler"]);
+  monaco.languages.setLanguageConfiguration("gas", {
+    comments: { lineComment: "#", blockComment: ["/*", "*/"] },
+    brackets: [["(", ")"]],
+    autoClosingPairs: [
+      { open: "(", close: ")" },
+      { open: '"', close: '"' },
+    ],
+  });
+  monaco.languages.setMonarchTokensProvider("gas", GAS_TOKENS);
 }

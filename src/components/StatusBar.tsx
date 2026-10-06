@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { container } from "../services/container";
 import type { DocumentSnapshot } from "../services/documentService";
 import type { LineEnding, TextEncoding } from "../services/ipc";
+import { AssemblyStatusItem } from "./AssemblyStatusItem";
 import { DebugStatusItem } from "./DebugStatusItem";
 import { IndexStatusItem } from "./IndexStatusItem";
 import { FormatterStatusItem } from "./formatting/FormatterStatusItem";
@@ -130,6 +131,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
             <span className="statusbar__item" title={t("status.languageMode")}>
               {languageName(status.languageId)}
             </span>
+            <AssemblyStatusItem languageId={status.languageId} />
           </>
         ) : null}
       </div>

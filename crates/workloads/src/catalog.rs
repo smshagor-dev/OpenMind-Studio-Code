@@ -229,6 +229,7 @@ pub const COMPONENTS: &[Component] = &[
     rt("llvm-mingw", "C/C++ toolchain (LLVM-MinGW)", Sdk, Some("clang"), &[]),
     rt("fortran", "Fortran compiler (gfortran)", Sdk, Some("gfortran"), &[]),
     rt("pascal", "Free Pascal compiler", Sdk, Some("fpc"), &[]),
+    rt("assembly", "Assembly toolchain (NASM, MinGW-w64 linker, binutils, GDB)", Sdk, Some("nasm"), &[]),
     rt("kubectl", "kubectl", Tool, Some("kubectl"), &[]),
     rt("helm", "Helm", Tool, Some("helm"), &[]),
     rt("terraform", "Terraform", Tool, Some("terraform"), &[]),
@@ -262,6 +263,8 @@ pub const COMPONENTS: &[Component] = &[
     lsp("lsp-clangd", "clangd", "clangd"),
     c("lsp-fortls", "fortls (Fortran language server)", LanguageServer, Provision::LspOnRequest { server: "fortran" }, Some("fortls"),
       "Installed with Python/pip when you click Install in Language Tools.", &["python"]),
+    c("lsp-asm-lsp", "asm-lsp (Assembly language server)", LanguageServer, Provision::LspOnRequest { server: "assembly" }, Some("asm-lsp"),
+      "Downloaded from conda-forge (SHA-256 checked) when you click Install in Language Tools.", &[]),
     c("lsp-intelephense", "Intelephense (PHP language server)", LanguageServer, Provision::LspOnRequest { server: "php" }, Some("intelephense"),
       "Its licence doesn't allow bundling: installed from npm when you click Install in Language Tools.", &["node"]),
     // Added to a project by its package manager.
@@ -311,7 +314,7 @@ pub const COMPONENTS: &[Component] = &[
     ext("cuda", "NVIDIA CUDA", Sdk, true, Some("nvcc"), "A driver-level stack installed by NVIDIA's installer. OpenMind never installs GPU drivers."),
     ext("rocm", "AMD ROCm", Sdk, true, None, "A driver-level stack; not available for Windows desktops in general. Never installed by OpenMind."),
     // Not available yet.
-    planned("gdb", "GDB", Debugger, Some("gdb"), "Not packaged: use LLDB from LLVM-MinGW."),
+    with("gdb", "GDB", Debugger, "assembly", "Comes with the Assembly toolchain (w64devkit's GDB)."),
     planned("jdtls", "Java language server (JDT LS)", LanguageServer, Some("jdtls"), "OpenMind can't start JDT LS yet."),
     planned("csharp-lsp", "C# language server (OmniSharp / Roslyn)", LanguageServer, Some("omnisharp"), "OpenMind can't start a C# language server yet."),
     planned("phpactor", "Phpactor (PHP language server)", LanguageServer, Some("phpactor"), "A future offline (MIT) option for PHP."),
@@ -552,8 +555,8 @@ pub const WORKLOADS: &[Workload] = &[
         frameworks: &["flutter-app", "dart-package", "android-project", "react-native", "expo", "ionic", "capacitor"],
     },
     Workload {
-        id: "systems", name: "Systems development", summary: "Go, C/C++, Fortran, Pascal, CMake, Ninja, clangd, fortls and rust-analyzer. Rust itself installs with rustup.",
-        components: &["go", "gopls", "llvm-mingw", "lldb", "fortran", "pascal", "cmake", "ninja", "lsp-clangd", "lsp-fortls", "lsp-rust-analyzer", "rustup", "cargo", "gdb", "msvc"],
+        id: "systems", name: "Systems development", summary: "Go, C/C++, Fortran, Pascal, Assembly (NASM), CMake, Ninja, clangd, fortls, asm-lsp and rust-analyzer. Rust itself installs with rustup.",
+        components: &["go", "gopls", "llvm-mingw", "lldb", "fortran", "pascal", "assembly", "lsp-asm-lsp", "cmake", "ninja", "lsp-clangd", "lsp-fortls", "lsp-rust-analyzer", "rustup", "cargo", "gdb", "msvc"],
         frameworks: &["cargo-project", "go-module", "cmake-project", "makefile-project"],
     },
     Workload {
@@ -573,7 +576,7 @@ pub const WORKLOADS: &[Workload] = &[
     },
     Workload {
         id: "full-offline", name: "Full offline toolkit", summary: "Every runtime and SDK OpenMind can install, the offline language servers, the debuggers and the offline cache. Several GB: deselect the heavy SDKs you don't need.",
-        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
+        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "assembly", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
         frameworks: &[],
     },
 ];
