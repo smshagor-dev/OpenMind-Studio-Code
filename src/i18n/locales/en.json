@@ -524,6 +524,8 @@
   "setting.workbench.welcomeOnStartup.description": "Open the Welcome page when the app starts.",
   "settings.language.currentlySystem": "System Default — currently {language}",
   "settings.language.appliesNow": "The language changes at once. Monaco's own editor widgets (find box, command palette) stay in English.",
+  "settings.language.search": "Search languages (name or code)",
+  "settings.language.noMatch": "No language matches \"{query}\".",
   "settings.row.wholeNumber": "{title} must be a whole number.",
   "settings.row.modified": "Modified",
   "settings.row.setInUser": "Set in user settings",

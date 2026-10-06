@@ -524,6 +524,8 @@
   "setting.workbench.welcomeOnStartup.description": "Открывать страницу приветствия при запуске приложения.",
   "settings.language.currentlySystem": "Системный по умолчанию — сейчас {language}",
   "settings.language.appliesNow": "Язык меняется сразу. Встроенные элементы редактора Monaco (поле поиска, палитра команд) остаются на английском.",
+  "settings.language.search": "Поиск языка (название или код)",
+  "settings.language.noMatch": "Нет языка, соответствующего «{query}».",
   "settings.row.wholeNumber": "{title}: нужно целое число.",
   "settings.row.modified": "Изменено",
   "settings.row.setInUser": "Задано в параметрах пользователя",
