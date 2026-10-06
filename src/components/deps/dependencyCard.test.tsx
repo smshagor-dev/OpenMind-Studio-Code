@@ -154,15 +154,11 @@ describe("DependencyCard", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("is translated (Russian, Bangla)", async () => {
+  it("is translated (Russian)", async () => {
     const r = setup();
     i18n.setLanguage("ru");
-    const { unmount } = render(<DependencyCard />);
+    render(<DependencyCard />);
     await show(r, "ModuleNotFoundError: No module named 'tkinter'");
     expect(screen.getByRole("alert")).toHaveTextContent("Нет поддержки графики Python (Tkinter / Tcl/Tk).");
-    unmount();
-    i18n.setLanguage("bn");
-    render(<DependencyCard />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Python GUI (Tkinter / Tcl/Tk) সাপোর্ট নেই।");
   });
 });

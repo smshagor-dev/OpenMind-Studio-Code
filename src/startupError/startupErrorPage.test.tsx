@@ -177,11 +177,11 @@ describe("start-up database error page in the UI language", () => {
     expect([...i18n.missing]).toEqual([]);
   });
 
-  it("shows Bangla, and an unknown kind falls back to the backend's own English", async () => {
-    i18n.setLanguage("bn");
+  it("names the failure and the Exit button in Russian", async () => {
+    i18n.setLanguage("ru");
     render(<StartupErrorPage api={fakeApi()} />);
-    await screen.findByText("লোকাল ডেটাবেস এই বিল্ডের সঙ্গে মেলে না");
-    expect(screen.getByRole("button", { name: "প্রস্থান" })).toBeTruthy();
+    await screen.findByText("Локальная база данных не соответствует этой сборке");
+    expect(screen.getByRole("button", { name: "Выход" })).toBeTruthy();
   });
 
   it("a kind this page doesn't know keeps the backend's text", async () => {

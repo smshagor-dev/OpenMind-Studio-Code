@@ -1,14 +1,13 @@
 import { useSyncExternalStore } from "react";
 
 import { I18n, LANGUAGES, resolveLanguage, type Language, type Params } from "./i18n";
-import bn from "./locales/bn.json";
 import en from "./locales/en.json";
 import ru from "./locales/ru.json";
 
 export { LANGUAGE_NAMES, LANGUAGES, SYSTEM_LANGUAGE, resolveLanguage, type Language } from "./i18n";
 
 /** The app's one translator (every window builds its own; all read the same bundled files). */
-export const i18n = new I18n({ en, ru, bn });
+export const i18n = new I18n({ en, ru });
 
 /** Translates `key` into the current UI language (English when the language lacks it). */
 export function t(key: string, params?: Params): string {

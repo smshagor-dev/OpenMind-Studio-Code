@@ -519,7 +519,6 @@
   "setting.workbench.language.option.system": "Системный по умолчанию",
   "setting.workbench.language.option.en": "English",
   "setting.workbench.language.option.ru": "Русский (Russian)",
-  "setting.workbench.language.option.bn": "বাংলা (Bangla)",
   "setting.workbench.welcomeOnStartup.title": "Показывать страницу приветствия при запуске",
   "setting.workbench.welcomeOnStartup.description": "Открывать страницу приветствия при запуске приложения.",
   "settings.language.currentlySystem": "Системный по умолчанию — сейчас {language}",

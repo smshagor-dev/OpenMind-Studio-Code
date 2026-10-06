@@ -76,7 +76,7 @@ except through well-defined public APIs; no circular crate dependencies (enforce
 - `openmind-core` — shared error types, `AppPaths` (portable, exe-relative path resolution),
   logging init. No I/O beyond what's needed for path/logging setup. Everything else depends on
   this; this depends on nothing else in the workspace. Since Milestone 20.1 `locale` (pure): `SUPPORTED_LANGUAGES`
-  (`en`, `ru`, `bn`), `language_for_tag` (`ru-RU` -> `ru`) and `pick_language` (first bundled system language, else `en`).
+  (`en`, `ru`), `language_for_tag` (`ru-RU` -> `ru`) and `pick_language` (first bundled system language, else `en`).
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern. Since Milestone 20.0: `migrations::MIGRATOR` (the embedded
   migrations; `build.rs` + `migration_inputs.rs` print `cargo:rerun-if-changed` for the folder and every `.sql`, so a
@@ -1140,7 +1140,7 @@ internals.
   and terminal output (strong problems only); `RuntimeService.setFailureListener` gives the card a Retry). UI: `components/network/`
   (`NetworkDialog` with Proxy and Offline Packages tabs, `NetworkFailureCard`, `NetworkStatusButton` in the terminal panel header).
   Strings are `network.*`, `command.network.*`, `submenu.network`; settings `network.*` (category Network, user scope).
-- **UI language (Milestone 20.1).** `src/i18n/`: `locales/{en,ru,bn}.json` (flat stable keys, named `{placeholders}`,
+- **UI language (Milestone 20.1).** `src/i18n/`: `locales/{en,ru}.json` (Bangla was removed after Release 1.0.1; flat stable keys, named `{placeholders}`,
   plural objects chosen with `Intl.PluralRules`), `i18n.ts` (the `I18n` class: fallback to English, then the key itself;
   `validateCatalog` drops malformed entries; `resolveLanguage` = setting > PC language > English), `index.ts` (the shared
   `i18n`, `t`, `useT`, `initLanguage` — `main.tsx` asks `ui_language` before the first render, 1.5 s max —,

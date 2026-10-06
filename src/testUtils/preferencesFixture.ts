@@ -87,7 +87,6 @@ export const TEST_DEFINITIONS: SettingDefinition[] = [
         { value: "system", label: "System Default" },
         { value: "en", label: "English" },
         { value: "ru", label: "Русский (Russian)" },
-        { value: "bn", label: "বাংলা (Bangla)" },
       ],
     },
     default: "system",

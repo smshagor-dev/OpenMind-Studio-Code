@@ -126,8 +126,8 @@ mod tests {
 
     #[test]
     fn a_manual_choice_beats_the_system_language() {
-        let answer = describe(tags(&["ru-RU"]), false, "bn".into());
-        assert_eq!(answer.language, "bn");
+        let answer = describe(tags(&["ru-RU"]), false, "en".into());
+        assert_eq!(answer.language, "en");
         assert_eq!(answer.system_language, "ru");
     }
 

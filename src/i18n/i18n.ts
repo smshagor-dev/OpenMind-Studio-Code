@@ -8,7 +8,7 @@
  * keeps that from happening). Only the app's own text is translated — never code, paths, ids or extensions' text.
  */
 
-export const LANGUAGES = ["en", "ru", "bn"] as const;
+export const LANGUAGES = ["en", "ru"] as const;
 export type Language = (typeof LANGUAGES)[number];
 
 /** The value of `workbench.language` that follows the PC. */
@@ -18,7 +18,6 @@ export const SYSTEM_LANGUAGE = "system";
 export const LANGUAGE_NAMES: Record<Language, string> = {
   en: "English",
   ru: "Русский",
-  bn: "বাংলা",
 };
 
 type PluralForm = "zero" | "one" | "two" | "few" | "many" | "other";
@@ -33,7 +32,7 @@ function isLanguage(value: string): value is Language {
   return (LANGUAGES as readonly string[]).includes(value);
 }
 
-/** The bundled language for a locale tag (`ru-RU`, `bn_BD`, `EN`), or null. Mirrors `openmind_core::locale`. */
+/** The bundled language for a locale tag (`ru-RU`, `ru_KZ`, `EN`), or null. Mirrors `openmind_core::locale`. */
 export function languageForTag(tag: string): Language | null {
   const base = tag.trim().split(/[-_.@]/)[0]?.toLowerCase() ?? "";
   return isLanguage(base) ? base : null;
@@ -93,7 +92,6 @@ export class I18n {
     this.catalogs = {
       en: validateCatalog(raw.en),
       ru: validateCatalog(raw.ru),
-      bn: validateCatalog(raw.bn),
     };
   }
 

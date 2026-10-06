@@ -166,9 +166,8 @@ describe("Settings page", () => {
     const list = screen.getByRole("region", { name: "Settings" });
     const group = within(list).getByRole("radiogroup", { name: "Display Language" });
     const choices = within(group).getAllByRole("radio");
-    expect(choices.map((c) => (c as HTMLInputElement).value)).toEqual(["system", "en", "ru", "bn"]);
+    expect(choices.map((c) => (c as HTMLInputElement).value)).toEqual(["system", "en", "ru"]);
     expect(within(group).getByText("Русский (Russian)")).toBeInTheDocument();
-    expect(within(group).getByText("বাংলা (Bangla)")).toBeInTheDocument();
     expect(choices[0]).toBeChecked();
     fireEvent.click(within(group).getByRole("radio", { name: "Русский (Russian)" }));
     await waitFor(() => {

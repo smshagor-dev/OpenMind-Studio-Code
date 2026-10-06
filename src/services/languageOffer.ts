@@ -27,7 +27,7 @@ function keptLanguages(raw: string | null): string[] {
 }
 
 /**
- * At start-up, when the UI isn't English (the PC's language or the setting picked Bangla, Russian ...): offers to
+ * At start-up, when the UI isn't English (the PC's language or the setting picked Russian): offers to
  * switch to English. The title and buttons are English so the offer can be read either way; the note is in the
  * current language too. "Keep" is remembered per language (no nagging); closing the dialog asks again next launch.
  */

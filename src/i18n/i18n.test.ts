@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { applyLanguageSetting, i18n, initLanguage, t, type UiLanguage } from "./index";
 import { I18n, interpolate, languageForTag, LANGUAGES, resolveLanguage, validateCatalog } from "./i18n";
-import bn from "./locales/bn.json";
 import en from "./locales/en.json";
 import ru from "./locales/ru.json";
 import { commandLabel, submenuLabel, topMenuLabel } from "./menuLabels";
@@ -32,18 +31,18 @@ function sources(dir: string, out: string[] = []): string[] {
 describe("language resolution", () => {
   it("maps locale tags to bundled languages by their base", () => {
     expect(languageForTag("ru-RU")).toBe("ru");
-    expect(languageForTag("bn-BD")).toBe("bn");
-    expect(languageForTag("bn_IN")).toBe("bn");
+    expect(languageForTag("ru_KZ")).toBe("ru");
     expect(languageForTag("EN-gb")).toBe("en");
     expect(languageForTag("hi-IN")).toBeNull();
     expect(languageForTag("ur-PK")).toBeNull();
+    expect(languageForTag("bn-BD")).toBeNull();
     expect(languageForTag("")).toBeNull();
   });
 
   it("uses the setting first, then the system languages in order, then English", () => {
-    expect(resolveLanguage("bn", ["ru-RU"])).toBe("bn");
+    expect(resolveLanguage("ru", ["en-US"])).toBe("ru");
     expect(resolveLanguage("system", ["ru-RU", "en-US"])).toBe("ru");
-    expect(resolveLanguage("system", ["hi-IN", "bn-IN"])).toBe("bn");
+    expect(resolveLanguage("system", ["hi-IN", "ru-RU"])).toBe("ru");
     expect(resolveLanguage("system", ["de-DE"])).toBe("en");
     expect(resolveLanguage("klingon", [])).toBe("en");
   });
@@ -55,12 +54,12 @@ describe("language resolution", () => {
 });
 
 describe("the catalogs", () => {
-  const catalogs = { en, ru, bn } as Record<string, Record<string, unknown>>;
+  const catalogs = { en, ru } as Record<string, Record<string, unknown>>;
 
-  it("Russian and Bangla translate every English key (no silent fallback)", () => {
+  it("Russian translates every English key (no silent fallback)", () => {
     const keys = Object.keys(en);
     expect(keys.length).toBeGreaterThan(1000);
-    for (const language of ["ru", "bn"]) {
+    for (const language of ["ru"]) {
       const missing = keys.filter((key) => !(key in (catalogs[language] ?? {})));
       expect(missing, language).toEqual([]);
       const extra = Object.keys(catalogs[language] ?? {}).filter((key) => !(key in en));
@@ -76,7 +75,7 @@ describe("the catalogs", () => {
       );
     for (const [key, value] of Object.entries(en)) {
       const english = names(value);
-      for (const language of ["ru", "bn"]) {
+      for (const language of ["ru"]) {
         const translated = catalogs[language]?.[key];
         if (typeof value !== "string") {
           expect(typeof translated, `${language} ${key}`).toBe("object");
@@ -114,12 +113,10 @@ describe("translation", () => {
     expect(t("common.save")).toBe("Save");
     i18n.setLanguage("ru");
     expect(t("common.save")).toBe("Сохранить");
-    i18n.setLanguage("bn");
-    expect(t("common.save")).toBe("সংরক্ষণ করুন");
   });
 
   it("a key a language lacks falls back to English, and an unknown key shows itself", () => {
-    const translator = new I18n({ en: { a: "A", b: "B {name}" }, ru: { a: "А" }, bn: {} });
+    const translator = new I18n({ en: { a: "A", b: "B {name}" }, ru: { a: "А" } });
     translator.setLanguage("ru");
     expect(translator.t("a")).toBe("А");
     expect(translator.t("b", { name: "x" })).toBe("B x");
@@ -131,13 +128,11 @@ describe("translation", () => {
     const translator = new I18n({
       en: { a: "A", plural: { one: "{count} item", other: "{count} items" } },
       ru: { a: 5, plural: { one: "only one form" } },
-      bn: "not an object",
     });
     translator.setLanguage("ru");
     expect(translator.t("a")).toBe("A");
     expect(translator.t("plural", { count: 2 })).toBe("2 items");
-    translator.setLanguage("bn");
-    expect(translator.t("a")).toBe("A");
+    expect(new I18n({ en: { a: "A" }, ru: "not an object" }).t("a")).toBe("A");
     expect(validateCatalog([1, 2])).toEqual({});
     expect(validateCatalog(null)).toEqual({});
   });
@@ -157,8 +152,6 @@ describe("translation", () => {
     expect(t("search.resultCount", { count: 3 })).toBe("3 результата");
     expect(t("search.resultCount", { count: 5 })).toBe("5 результатов");
     expect(t("search.resultCount", { count: 21 })).toBe("21 результат");
-    i18n.setLanguage("bn");
-    expect(t("search.resultCount", { count: 5 })).toBe("5টি ফলাফল");
   });
 
   it("changing the setting changes the language at once (subscribers hear it)", () => {
@@ -167,13 +160,14 @@ describe("translation", () => {
       heard += 1;
     });
     i18n.setSystemLanguage("ru");
-    applyLanguageSetting("bn");
-    expect(i18n.language).toBe("bn");
     applyLanguageSetting("system");
     expect(i18n.language).toBe("ru");
     applyLanguageSetting("en");
     expect(i18n.language).toBe("en");
-    expect(heard).toBe(3);
+    applyLanguageSetting("ru");
+    expect(i18n.language).toBe("ru");
+    applyLanguageSetting("en");
+    expect(heard).toBe(4);
     stop();
   });
 });
@@ -184,7 +178,7 @@ describe("start-up", () => {
     systemLanguage: "ru",
     setting: "system",
     language: "ru",
-    supported: ["en", "ru", "bn"],
+    supported: ["en", "ru"],
     simulated: false,
     ...over,
   });
@@ -196,8 +190,8 @@ describe("start-up", () => {
   });
 
   it("a manual choice beats the PC's language", async () => {
-    await initLanguage(() => Promise.resolve(answer({ setting: "bn" })));
-    expect(i18n.language).toBe("bn");
+    await initLanguage(() => Promise.resolve(answer({ setting: "en" })));
+    expect(i18n.language).toBe("en");
   });
 
   it("an unsupported PC language, an error or no answer means English", async () => {
@@ -229,17 +223,17 @@ describe("menus and settings text", () => {
   });
 
   it("built-in settings are translated, an extension's setting keeps its own text", () => {
-    i18n.setLanguage("bn");
-    expect(settingTitle({ id: "editor.fontSize", title: "Font Size" })).toBe("ফন্টের আকার");
+    i18n.setLanguage("ru");
+    expect(settingTitle({ id: "editor.fontSize", title: "Font Size" })).toBe("Размер шрифта");
     expect(settingTitle({ id: "myExt.option", title: "My Option" })).toBe("My Option");
     expect(settingTitle({ id: "editor.fontSize", title: "Changed In Rust" })).toBe("Changed In Rust");
     expect(settingDescription({ id: "editor.tabSize", description: "Number of spaces a tab is equal to." })).toBe(
-      "একটি ট্যাব কতগুলো স্পেসের সমান।",
+      "Количество пробелов, которому равна табуляция.",
     );
-    expect(categoryLabel("Editor")).toBe("এডিটর");
+    expect(categoryLabel("Editor")).toBe("Редактор");
     i18n.setSystemLanguage("ru");
     expect(optionLabel("workbench.language", { value: "system", label: "System Default" })).toBe(
-      "সিস্টেম ডিফল্ট — এখন Русский",
+      "Системный по умолчанию — сейчас Русский",
     );
     expect(optionLabel("workbench.language", { value: "ru", label: "Русский (Russian)" })).toBe("Русский (Russian)");
   });

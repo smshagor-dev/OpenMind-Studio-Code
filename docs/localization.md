@@ -9,18 +9,17 @@ bundled with the app: nothing is downloaded, and nothing is translated by a serv
 | --- | --- | --- |
 | English | `en` | Source language and fallback |
 | Russian | `ru` | Every key translated |
-| Bangla | `bn` | Every key translated |
 
-Hindi, Urdu and German are not bundled. A PC in one of them gets English.
+Bangla (`bn`) was bundled until it was removed after Release 1.0.1. Any other PC language gets English.
 
-The Russian and Bangla text was written for this milestone without a translation service. It has **not been reviewed
+The Russian text was written for this milestone without a translation service. It has **not been reviewed
 by native speakers yet**; please report wording that reads wrong.
 
 ## Which language shows
 
 1. The setting **Display Language** (`workbench.language`, Settings > Workbench), when it names a bundled language.
 2. Otherwise (**System Default**, the default) the PC's display language: Windows' preferred UI languages in their
-   order, each reduced to its base (`ru-RU` -> `ru`, `bn-BD` / `bn-IN` -> `bn`, `en-GB` -> `en`). The first one the app
+   order, each reduced to its base (`ru-RU` / `ru-KZ` -> `ru`, `en-GB` -> `en`). The first one the app
    bundles wins.
 3. Otherwise English.
 
@@ -40,7 +39,7 @@ from happening.
 
 ## Files
 
-- `src/i18n/locales/en.json`, `ru.json`, `bn.json`: flat `key -> message` maps with stable, descriptive keys
+- `src/i18n/locales/en.json`, `ru.json`: flat `key -> message` maps with stable, descriptive keys
   (`common.save`, `menu.file`, `command.file.save`, `tasks.confirm.title`, `databaseError.kind.locked.title` ...).
 - A message is text with named placeholders (`"Found {count} results"`), or plural forms chosen by the `count`
   parameter with the language's rules (`{"one": "...", "few": "...", "many": "...", "other": "..."}`; `other` is required).

@@ -58,12 +58,12 @@ mod tests {
         store::set_value(
             &file,
             LANGUAGE_SETTING,
-            &json!("bn"),
+            &json!("ru"),
             false,
             &Extras::default(),
         )
         .expect("set");
-        assert_eq!(language_setting(&file), "bn");
+        assert_eq!(language_setting(&file), "ru");
         let text = std::fs::read_to_string(&file).expect("read");
         assert!(
             text.contains("\"editor.fontSize\": 18"),
@@ -73,7 +73,7 @@ mod tests {
             store::set_value(
                 &file,
                 LANGUAGE_SETTING,
-                &json!("bn"),
+                &json!("ru"),
                 true,
                 &Extras::default()
             )
@@ -84,8 +84,8 @@ mod tests {
 
     #[test]
     fn fallback_chain_setting_then_system_then_english() {
-        assert_eq!(effective_language("ru", "bn"), "ru");
-        assert_eq!(effective_language(SYSTEM, "bn"), "bn");
+        assert_eq!(effective_language("en", "ru"), "en");
+        assert_eq!(effective_language(SYSTEM, "ru"), "ru");
         assert_eq!(
             effective_language(SYSTEM, openmind_core::locale::pick_language(&["hi-IN"])),
             "en"

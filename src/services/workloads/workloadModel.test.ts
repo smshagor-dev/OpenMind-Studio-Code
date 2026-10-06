@@ -138,8 +138,7 @@ describe("cards and text", () => {
     i18n.setLanguage("ru");
     expect(warningText(warning, CATALOG)).toBe("Java JDK (Temurin 21) добавлен, потому что он нужен для Maven.");
     expect(componentName({ id: "no-such-component", name: "Plain Name" })).toBe("Plain Name");
-    i18n.setLanguage("bn");
-    expect(componentName({ id: "kotlin", name: "Kotlin compiler" })).toBe("Kotlin কম্পাইলার");
+    expect(componentName({ id: "kotlin", name: "Kotlin compiler" })).toBe("Компилятор Kotlin");
     expect(componentName(jdk)).toBe("Java JDK (Temurin 21)");
   });
 });

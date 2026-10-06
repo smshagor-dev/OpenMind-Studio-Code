@@ -25,8 +25,8 @@ describe("offerEnglish", () => {
     expect(r.confirm).not.toHaveBeenCalled();
   });
 
-  it("offers English for Bangla or Russian and switches the setting on request", async () => {
-    for (const language of ["bn", "ru"] as const) {
+  it("offers English for Russian and switches the setting on request", async () => {
+    for (const language of ["ru"] as const) {
       const r = rig(language, SWITCH_TO_ENGLISH);
       expect(await offerEnglish(r.deps)).toBe("english");
       const request = r.confirm.mock.calls[0]?.[0] as { title: string; buttons: string[]; details: { value: string }[] };
@@ -45,16 +45,17 @@ describe("offerEnglish", () => {
     const again = rig("ru", SWITCH_TO_ENGLISH, "ru");
     expect(await offerEnglish(again.deps)).toBe("not-needed");
     expect(again.confirm).not.toHaveBeenCalled();
-    const otherLanguage = rig("bn", "Keep বাংলা", "ru");
-    expect(await offerEnglish(otherLanguage.deps)).toBe("kept");
-    expect(otherLanguage.store.get(ENGLISH_OFFER_KEY)).toBe("ru,bn");
-    const closed = rig("bn", null);
+    // A language kept in an older version (no longer bundled) stays in the list.
+    const older = rig("ru", "Keep Русский", "bn");
+    expect(await offerEnglish(older.deps)).toBe("kept");
+    expect(older.store.get(ENGLISH_OFFER_KEY)).toBe("bn,ru");
+    const closed = rig("ru", null);
     expect(await offerEnglish(closed.deps)).toBe("closed");
     expect(closed.store.has(ENGLISH_OFFER_KEY)).toBe(false);
   });
 
   it("reports when the setting couldn't be saved", async () => {
-    const r = rig("bn", SWITCH_TO_ENGLISH);
+    const r = rig("ru", SWITCH_TO_ENGLISH);
     r.switchToEnglish.mockResolvedValue(false);
     expect(await offerEnglish(r.deps)).toBe("english-failed");
   });

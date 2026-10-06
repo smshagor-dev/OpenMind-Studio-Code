@@ -519,7 +519,6 @@
   "setting.workbench.language.option.system": "System Default",
   "setting.workbench.language.option.en": "English",
   "setting.workbench.language.option.ru": "Русский (Russian)",
-  "setting.workbench.language.option.bn": "বাংলা (Bangla)",
   "setting.workbench.welcomeOnStartup.title": "Show Welcome Page on Startup",
   "setting.workbench.welcomeOnStartup.description": "Open the Welcome page when the app starts.",
   "settings.language.currentlySystem": "System Default — currently {language}",

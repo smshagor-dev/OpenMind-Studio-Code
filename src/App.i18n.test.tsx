@@ -103,14 +103,14 @@ describe("the workbench in the PC's language", () => {
     noMissingKeys();
   });
 
-  it("shows Bangla when that is chosen by hand", async () => {
+  it("shows English when that is chosen by hand on a Russian PC", async () => {
     i18n.setSystemLanguage("ru");
-    applyLanguageSetting("bn");
+    applyLanguageSetting("en");
     render(<App />);
-    const menubar = screen.getByRole("menubar", { name: "অ্যাপ্লিকেশন মেনু" });
-    expect(within(menubar).getByText("ফাইল")).toBeInTheDocument();
-    expect(within(menubar).getByText("সাহায্য")).toBeInTheDocument();
-    await screen.findByText("স্বাগতম");
+    const menubar = screen.getByRole("menubar", { name: "Application menu" });
+    expect(within(menubar).getByText("File")).toBeInTheDocument();
+    expect(within(menubar).getByText("Help")).toBeInTheDocument();
+    await screen.findByText("Welcome");
     noMissingKeys();
   });
 

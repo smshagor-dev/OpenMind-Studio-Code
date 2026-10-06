@@ -89,7 +89,7 @@ describe("validateProxyAddress", () => {
 });
 
 describe("labels", () => {
-  it("names the mode for the terminal header in English, Russian and Bangla", () => {
+  it("names the mode for the terminal header in English and Russian", () => {
     expect(statusLabel(null, 0)).toBe("Network: No Proxy");
     expect(statusLabel(STATUS, 0)).toBe("Network: Manual Proxy");
     expect(statusLabel({ ...STATUS, mode: "system", source: "systemUser" }, 0)).toBe("Network: System Proxy");
@@ -99,8 +99,6 @@ describe("labels", () => {
     );
     i18n.setLanguage("ru");
     expect(statusLabel(STATUS, 0)).toBe("Сеть: прокси вручную");
-    i18n.setLanguage("bn");
-    expect(statusLabel(STATUS, 0)).toBe("নেটওয়ার্ক: ম্যানুয়াল প্রক্সি");
   });
 
   it("a test result leads with an actionable label and keeps the raw error for Details", () => {
@@ -156,8 +154,6 @@ describe("labels", () => {
     }
     i18n.setLanguage("ru");
     expect(testSummary({ ...base, ok: false, problem: "dns" }).title).toBe("Не удалось найти имя в DNS");
-    i18n.setLanguage("bn");
-    expect(testSummary({ ...base, ok: false, problem: "tls" }).title).toBe("TLS সার্টিফিকেট যাচাই ব্যর্থ হয়েছে");
   });
 
   it("diagnostics of the settings become sentences in the UI language", () => {
@@ -185,10 +181,6 @@ describe("labels", () => {
     expect(
       diagnosticText({ severity: "warning", kind: "ignoredField", field: "https", problem: "credentialsInAddress" }),
     ).toContain("Прокси HTTPS не используется");
-    i18n.setLanguage("bn");
-    expect(
-      diagnosticText({ severity: "warning", kind: "ignoredField", field: "https", problem: "credentialsInAddress" }),
-    ).toContain("HTTPS প্রক্সি উপেক্ষা করা হয়েছে");
   });
 
   it("recognizes pip's output and keeps its proxy cause ahead of 'No matching distribution'", () => {

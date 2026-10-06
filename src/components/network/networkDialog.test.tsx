@@ -179,12 +179,12 @@ describe("NetworkFailureCard and the terminal label", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("the terminal header names the mode and opens the settings (Bangla)", async () => {
+  it("the terminal header names the mode and opens the settings (Russian)", async () => {
     const r = setup();
     await r.network.load();
-    i18n.setLanguage("bn");
+    i18n.setLanguage("ru");
     render(<NetworkStatusButton />);
-    fireEvent.click(screen.getByRole("button", { name: "নেটওয়ার্ক: ম্যানুয়াল প্রক্সি" }));
+    fireEvent.click(screen.getByRole("button", { name: "Сеть: прокси вручную" }));
     expect(r.run).toHaveBeenCalledWith("network.openSettings");
   });
 });
@@ -269,19 +269,15 @@ describe("Milestone 22.2: diagnostics, Test Connection labels, pip, stale termin
     expect(r.terminals.openProxyReady).toHaveBeenCalledWith(null);
   });
 
-  it("the pip card in Russian and Bangla", () => {
+  it("the pip card in Russian", () => {
     const r = setup();
     act(() => {
       r.network.report("407 Proxy Authentication Required /simple/pandas/", "Terminal", null, true);
     });
     i18n.setLanguage("ru");
-    const { unmount } = render(<NetworkFailureCard />);
+    render(<NetworkFailureCard />);
     expect(screen.getByRole("alert")).toHaveTextContent("Это не отсутствующий пакет Python.");
     expect(screen.getByRole("button", { name: "Импортировать колёса / офлайн-пакет" })).toBeInTheDocument();
-    unmount();
-    i18n.setLanguage("bn");
-    render(<NetworkFailureCard />);
-    expect(screen.getByRole("alert")).toHaveTextContent("এটি কোনো অনুপস্থিত Python প্যাকেজ নয়।");
   });
 
   it("a stale terminal gets the banner with Open New, Restart and Keep", async () => {
@@ -411,19 +407,13 @@ describe("Milestone 22.3: saved credentials that can't be read", () => {
     expect(document.body.textContent).not.toContain("w0rd");
   });
 
-  it("the warning in Russian and Bangla", async () => {
+  it("the warning in Russian", async () => {
     const r = setup(UNREADABLE);
     i18n.setLanguage("ru");
-    const { unmount } = render(<NetworkDialog />);
+    render(<NetworkDialog />);
     await act(() => r.network.openWindow());
     expect(screen.getByRole("region", { name: "Диагностика" })).toHaveTextContent(
       "Сохранённые учётные данные прокси не удалось прочитать. Удалите их или сохраните снова.",
-    );
-    unmount();
-    i18n.setLanguage("bn");
-    render(<NetworkDialog />);
-    expect(screen.getByRole("region", { name: "ডায়াগনস্টিক" })).toHaveTextContent(
-      "সংরক্ষিত প্রক্সি লগইন তথ্য পড়া যায়নি। সেগুলো মুছুন অথবা আবার সংরক্ষণ করুন।",
     );
   });
 });
