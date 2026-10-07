@@ -108,11 +108,7 @@ pub struct AboutResponse {
 pub fn about_info(state: State<'_, AppState>) -> AboutResponse {
     let webview = tauri::webview_version().unwrap_or_else(|_| "unknown".into());
     let app_dir = state.app_root.to_string_lossy().replace('\\', "/");
-    let logs_dir = state
-        .app_root
-        .join("logs")
-        .to_string_lossy()
-        .replace('\\', "/");
+    let logs_dir = state.paths.logs_dir.to_string_lossy().replace('\\', "/");
     let info = AboutInfo::new(&app_dir, &logs_dir, webview, tauri::VERSION.to_string());
     let system_info = info.system_info();
     AboutResponse { info, system_info }

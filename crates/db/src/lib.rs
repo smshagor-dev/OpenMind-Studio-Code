@@ -3,12 +3,14 @@ pub mod editor_settings;
 pub mod error;
 pub mod explorer_state;
 pub mod installed_runtimes;
+pub mod migration;
 pub mod migrations;
 pub mod notebooks;
 pub mod opened_projects;
 pub mod pinned_folders;
 pub mod recent_files;
 pub mod session;
+pub mod snapshot;
 pub mod theme;
 pub mod window_state;
 
@@ -54,7 +56,11 @@ impl Db {
         let options = SqliteConnectOptions::new()
             .filename(db_path)
             .create_if_missing(true)
-            .journal_mode(SqliteJournalMode::Wal);
+            .journal_mode(SqliteJournalMode::Wal)
+            // Two windows (or two copies on one computer) wait for each other instead of failing at once. Separate
+            // computers on one portable drive never meet here: each opens its own file (see openmind_core::data_scope).
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .foreign_keys(true);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(8)

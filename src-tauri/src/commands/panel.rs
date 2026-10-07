@@ -21,9 +21,10 @@ pub async fn panel_config_path(
     state: State<'_, AppState>,
 ) -> Result<Option<String>, String> {
     let file = match kind.as_str() {
-        "mariadb" => Some(openmind_runner::MariaDbPaths::new(&state.app_root).config_file),
+        "mariadb" => Some(crate::commands::database::app_paths(&state).config_file),
         "php" => install_file(&state, "php", "php.ini").await,
-        "phpmyadmin" => install_file(&state, "phpmyadmin", "config.inc.php").await,
+        // This computer's own configuration; the install only holds the shared stub.
+        "phpmyadmin" => Some(crate::commands::pma_config::real_file(&state.paths)),
         _ => return Err(format!("Unknown module: {kind}")),
     };
     Ok(file

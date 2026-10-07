@@ -121,9 +121,10 @@ pub(crate) fn path_order(
     order
 }
 
-/// `<app>/cache/run-builds`: where C, C++, Java and Rust files are compiled. Never the project folder.
+/// `<app>/cache/run-builds` (this computer's `cache/run-builds` in the per-computer data scope): where C, C++, Java and
+/// Rust files are compiled. Never the project folder.
 fn build_root(state: &AppState) -> PathBuf {
-    state.app_root.join("cache").join(BUILD_ROOT)
+    state.paths.machine_cache_dir.join(BUILD_ROOT)
 }
 
 /// Which build folder a plan gets.

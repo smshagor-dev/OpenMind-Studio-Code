@@ -208,7 +208,12 @@ pub fn move_database_aside(db_path: &Path, data_dir: &Path, stamp: u64) -> Resul
 
 /// Opens the error window in place of the main window.
 pub fn show(app: &tauri::App, paths: &AppPaths, err: &DbError) -> tauri::Result<()> {
-    let failure = describe(err, &paths.db_path, &paths.data_dir);
+    // The database's own folder: `data/`, or this computer's `data/machines/<id>/` in the per-computer data scope.
+    let data_dir = paths
+        .db_path
+        .parent()
+        .map_or_else(|| paths.data_dir.clone(), Path::to_path_buf);
+    let failure = describe(err, &paths.db_path, &data_dir);
     tracing::error!(
         category = %failure.category,
         error = %failure.error_chain.join(": "),
@@ -217,7 +222,7 @@ pub fn show(app: &tauri::App, paths: &AppPaths, err: &DbError) -> tauri::Result<
     app.manage(StartupFailureState {
         failure,
         db_path: paths.db_path.clone(),
-        data_dir: paths.data_dir.clone(),
+        data_dir,
     });
     tauri::WebviewWindowBuilder::new(
         app,

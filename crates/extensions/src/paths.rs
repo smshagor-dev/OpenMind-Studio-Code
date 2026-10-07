@@ -45,6 +45,16 @@ impl ExtensionPaths {
         }
     }
 
+    /// The same layout with the host's log in `logs` instead of `<root>/logs`: a per-computer data scope keeps it in
+    /// that computer's log folder (`openmind_core::AppPaths::extension_logs_dir`).
+    pub fn with_logs(root: &Path, logs: &Path) -> Self {
+        Self {
+            host_log: logs.join("extension-host.log"),
+            logs: logs.to_path_buf(),
+            ..Self::new(root)
+        }
+    }
+
     pub fn ensure(&self) -> Result<(), ExtensionError> {
         for dir in [
             &self.installed,

@@ -117,6 +117,8 @@ pub struct RuntimeManager {
     client: Arc<dyn HttpClient>,
     platform: String,
     busy: Arc<Mutex<HashSet<(String, String)>>>,
+    /// When the records were last brought in line with the shared `runtimes/` folder (see `manager/reconcile.rs`).
+    reconciled: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 impl RuntimeManager {
@@ -134,6 +136,7 @@ impl RuntimeManager {
             client,
             platform: platform.to_string(),
             busy: Arc::default(),
+            reconciled: Arc::default(),
         }
     }
 
@@ -317,6 +320,7 @@ impl RuntimeManager {
     /// The folder of the active, healthy install of `kind`, if there is one (for tools that are not
     /// commands on a PATH: a debug adapter's files).
     pub async fn installed_dir(&self, kind: &str) -> Option<PathBuf> {
+        self.reconcile_recent().await;
         let entries = InstalledRuntimesRepository::new(self.db.pool())
             .list()
             .await
@@ -333,6 +337,7 @@ impl RuntimeManager {
     /// The environment for a process launched by OpenMind Studio: the active
     /// version of each installed, healthy runtime.
     pub async fn environment(&self) -> Result<RuntimeEnvironment, RuntimeError> {
+        self.reconcile_recent().await;
         let entries = InstalledRuntimesRepository::new(self.db.pool())
             .list()
             .await?;
@@ -541,47 +546,6 @@ impl RuntimeManager {
             addons: addons::addon_statuses(&manifest, version, &self.platform, &final_dir),
         })
     }
-
-    async fn reconcile(&self) -> Result<(), RuntimeError> {
-        let repo = InstalledRuntimesRepository::new(self.db.pool());
-        let known = repo.list().await?;
-        let in_flight: HashSet<(String, String)> =
-            self.busy.lock().map(|set| set.clone()).unwrap_or_default();
-        for manifest in self.registry.all() {
-            let versions_dir = self.paths.versions_dir(&manifest.id)?;
-            // Shims of a version that no longer exists are just clutter.
-            if let Ok(shim_entries) = fs::read_dir(self.paths.shims_root(&manifest.id)?) {
-                for shim_entry in shim_entries.filter_map(Result::ok) {
-                    if !versions_dir.join(shim_entry.file_name()).is_dir() {
-                        let _ = fs::remove_dir_all(shim_entry.path());
-                    }
-                }
-            }
-            let Ok(entries) = fs::read_dir(&versions_dir) else {
-                continue;
-            };
-            for entry in entries.filter_map(Result::ok) {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if let Some(version) = name.strip_suffix(".installing") {
-                    if !in_flight.contains(&(manifest.id.clone(), version.to_string())) {
-                        let _ = fs::remove_dir_all(entry.path());
-                    }
-                    continue;
-                }
-                let Ok(dir) = self.paths.version_dir(&manifest.id, &name) else {
-                    continue;
-                };
-                let recorded = known
-                    .iter()
-                    .any(|k| k.kind == manifest.id && k.version == name);
-                if !recorded && self.ensure_shims(manifest, &manifest.id, &name) {
-                    repo.record(&manifest.id, &name, &dir.to_string_lossy())
-                        .await?;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Download → verify → extract → swap into place. Runs on a blocking thread.
@@ -718,6 +682,7 @@ fn remove_dir_if_exists(dir: &Path) -> Result<(), RuntimeError> {
 }
 
 mod addons;
+mod reconcile;
 pub use addons::AddonStatus;
 
 #[cfg(test)]

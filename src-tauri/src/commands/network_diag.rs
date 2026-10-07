@@ -323,7 +323,7 @@ pub async fn network_diagnostics_export(state: State<'_, AppState>) -> Result<St
         "hasCredentials": resolution.credentials.is_some(),
         "credentialStatus": resolution.credential_status,
     });
-    let logs = state.app_root.join("logs");
+    let logs = state.paths.logs_dir.clone();
     let work = state.broker.temp_dir().join("diagnostics");
     let staging = state.broker.temp_dir().display().to_string();
     let file = logs.join("openmind-network-diagnostics.json");

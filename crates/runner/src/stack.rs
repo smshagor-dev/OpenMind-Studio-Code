@@ -60,6 +60,18 @@ impl MariaDbPaths {
         }
     }
 
+    /// The folders [`openmind_core::AppPaths`] gives MariaDB (`mariadb_data_dir`, `mariadb_logs_dir`,
+    /// `mariadb_config_dir`): the layout above for one profile, `data/machines/<id>/...` per computer.
+    pub fn from_dirs(data_dir: PathBuf, log_dir: PathBuf, config_dir: PathBuf) -> Self {
+        Self {
+            data_dir,
+            log_file: log_dir.join("mariadb.log"),
+            log_dir,
+            config_file: config_dir.join("my.ini"),
+            config_dir,
+        }
+    }
+
     /// Whether the data directory already holds an initialized database.
     pub fn is_initialized(&self) -> bool {
         self.data_dir.join("mysql").is_dir() && self.data_dir.join("ibdata1").is_file()

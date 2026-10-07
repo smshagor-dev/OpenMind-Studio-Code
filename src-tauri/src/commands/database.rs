@@ -22,6 +22,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::app_state::AppState;
+use crate::commands::pma_config;
 use crate::commands::run::environment;
 use crate::secret;
 
@@ -137,7 +138,11 @@ pub(crate) async fn active_install(state: &AppState, kind: &str) -> Option<(Stri
 }
 
 pub(crate) fn app_paths(state: &AppState) -> MariaDbPaths {
-    MariaDbPaths::new(&state.app_root)
+    MariaDbPaths::from_dirs(
+        state.paths.mariadb_data_dir.clone(),
+        state.paths.mariadb_logs_dir.clone(),
+        state.paths.mariadb_config_dir.clone(),
+    )
 }
 
 /// The sink for a long-running service: logs every line to `log`, forwards
@@ -253,6 +258,25 @@ fn has_entries(dir: &Path) -> bool {
 /// with the reason — it is never emptied. A failed run removes only what it created itself (the folder was empty).
 pub(crate) async fn initialize_database(state: &AppState) -> Result<bool, String> {
     let paths = app_paths(state);
+    if paths.is_initialized() {
+        return Ok(false);
+    }
+    // Another OpenMind Studio process on this computer may be initializing the same folder: wait for it (an OS lock,
+    // released if that process dies), then look again — it may have finished the job.
+    let lock_file = paths.data_dir.with_file_name(format!(
+        "{}-init.lock",
+        paths
+            .data_dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "mariadb".into())
+    ));
+    let _lock = tokio::task::spawn_blocking(move || {
+        openmind_core::profile_lock::ProfileLock::acquire_file(&lock_file, Duration::from_secs(300))
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(|err| format!("couldn't lock the MariaDB data folder: {err}"))?;
     if paths.is_initialized() {
         return Ok(false);
     }
@@ -465,11 +489,12 @@ pub async fn mariadb_stop(app: AppHandle) -> Result<(), String> {
 // --- phpMyAdmin ---
 
 fn temp_dir(state: &AppState) -> PathBuf {
-    state.app_root.join("cache").join("phpmyadmin")
+    state.paths.machine_cache_dir.join("phpmyadmin")
 }
 
-/// Writes phpMyAdmin's `config.inc.php` (regenerated on every start). With the default local password phpMyAdmin
-/// signs in by itself; a database with its own password gets the login page (the password is never written to a file).
+/// Writes this computer's phpMyAdmin configuration (regenerated on every start; the shared install only gets a stub,
+/// see `pma_config`). With the default local password phpMyAdmin signs in by itself; a database with its own password
+/// gets the login page (the password is never written to a file).
 async fn write_pma_config(state: &AppState, dir: &Path, mariadb_port: u16) -> Result<(), String> {
     let secret = match secret_setting(state, SECRET_KEY).await? {
         Some(secret) => secret,
@@ -491,7 +516,8 @@ async fn write_pma_config(state: &AppState, dir: &Path, mariadb_port: u16) -> Re
     };
     let text = render_phpmyadmin_config(&secret, mariadb_port, &temp, login)
         .map_err(|err| err.to_string())?;
-    std::fs::write(dir.join("config.inc.php"), text).map_err(|err| err.to_string())
+    pma_config::install(dir, &pma_config::real_file(&state.paths), &text)
+        .map_err(|err| err.to_string())
 }
 
 /// Whether phpMyAdmin signs in by itself (the default local password) or shows its login page.
@@ -519,7 +545,7 @@ pub(crate) async fn spawn_pma(
         .to_string()
     })?;
     let environment = environment(state).await;
-    let plan = php_server_plan(
+    let mut plan = php_server_plan(
         &PhpServerRequest {
             root: dir.clone(),
             port,
@@ -532,6 +558,9 @@ pub(crate) async fn spawn_pma(
         return Err(RunError::PortInUse(port).to_string());
     }
     write_pma_config(state, &dir, mariadb_port).await?;
+    let real = pma_config::real_file(&state.paths);
+    plan.env
+        .push((pma_config::ENV_VAR.into(), real.display().to_string()));
     let log = pma_log_file(state);
     let sink = service_sink(app, "pma:event", None, Some(log), clear_pma);
     let run = state
@@ -555,8 +584,8 @@ pub(crate) async fn spawn_pma(
 
 pub(crate) fn pma_log_file(state: &AppState) -> PathBuf {
     state
-        .app_root
-        .join("logs")
+        .paths
+        .logs_dir
         .join("phpmyadmin")
         .join("phpmyadmin.log")
 }

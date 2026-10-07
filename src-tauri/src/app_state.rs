@@ -26,8 +26,12 @@ pub struct AppState {
     /// The portable app root (`AppPaths::root_dir`) — the always-valid fallback
     /// working directory for terminals whose requested cwd is missing.
     pub app_root: PathBuf,
-    /// Where every window keeps its WebView2 profile (`data/webview`), so nothing lands in AppData.
+    /// Where every window keeps its WebView2 profile (`data/webview`, or this computer's folder in the per-computer
+    /// data scope), so nothing lands in AppData.
     pub webview_dir: PathBuf,
+    /// The resolved layout (see `openmind_core::AppPaths`): the one place machine-specific paths — logs, temporary
+    /// files, MariaDB's folders — come from. Never build them from `app_root` by hand.
+    pub paths: openmind_core::AppPaths,
     /// `settings/settings.json` and `settings/keybindings.json` under the app root.
     pub settings_file: PathBuf,
     pub keybindings_file: PathBuf,

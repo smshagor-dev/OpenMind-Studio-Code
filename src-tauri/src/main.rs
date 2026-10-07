@@ -2,6 +2,7 @@
 
 mod app_state;
 mod commands;
+mod data_scope;
 mod integration;
 mod launch;
 mod locale;
@@ -15,7 +16,6 @@ mod updates;
 mod window_events;
 mod windows;
 
-use openmind_core::AppPaths;
 use openmind_db::Db;
 use openmind_runner::RunRegistry;
 use openmind_runtime_manager::{RuntimeManager, RuntimePaths, RuntimeRegistry, UreqClient};
@@ -36,15 +36,36 @@ fn main() {
     }
     let launch_request = launch::from_process();
     startup::mark_process_start();
-    let app_paths = AppPaths::resolve().expect("failed to resolve application paths");
+    // The app folder, this computer's (hashed) profile id and the portable data scope decide every machine-specific
+    // path; the machine identity never stops the app from starting (see data_scope.rs).
+    let scope = data_scope::resolve().expect("failed to resolve application paths");
+    let app_paths = scope.paths.clone();
+    let needs_scope_setup = scope.needs_setup;
     app_paths
         .ensure_dirs()
         .expect("failed to create application directory layout");
     openmind_core::init_logging_to_file(&app_paths.logs_dir);
 
-    tracing::info!(db_path = %app_paths.db_path.display(), "starting OpenMind Studio");
+    tracing::info!(
+        db_path = %app_paths.db_path.display(),
+        data_scope = if needs_scope_setup { "not chosen" } else { app_paths.scope.label() },
+        profile = scope.machine.as_ref().map(|m| m.machine_id.as_str()).unwrap_or("-"),
+        identity = ?scope.identity.source(),
+        "starting OpenMind Studio"
+    );
+    if scope.identity.source() != openmind_core::machine_identity::IdentitySource::System {
+        tracing::warn!(
+            "System machine identifier unavailable. Using OpenMind fallback device identity."
+        );
+    }
+    // A profile that couldn't be prepared (locked, damaged, an import that failed) gets the start-up error window
+    // below instead of the workbench; no database is opened.
+    let startup_failure = scope.failure.as_ref().map(|err| {
+        tracing::error!(error = %err, "this computer's profile could not be prepared");
+        openmind_db::DbError::Copy(err.to_string())
+    });
     // An update installer downloaded by an earlier run is never reused (it is downloaded and verified again).
-    updates::clean_stale_downloads(&app_paths.root_dir);
+    updates::clean_stale_downloads(&app_paths.temp_dir);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -53,6 +74,7 @@ fn main() {
         .manage(launch::LaunchState::new(launch_request))
         .manage(updates::UpdateState::default())
         .manage(sync::SyncState::default())
+        .manage(scope)
         .invoke_handler(tauri::generate_handler![
             launch::launch_take,
             state::state_snapshot,
@@ -260,6 +282,11 @@ fn main() {
             startup_error::startup_error_back_up,
             startup_error::startup_error_restart,
             startup_error::startup_error_exit,
+            data_scope::data_scope_status,
+            data_scope::data_scope_setup_apply,
+            data_scope::data_scope_change,
+            data_scope::data_scope_restart,
+            data_scope::data_scope_exit,
             commands::profiles::profiles_list,
             commands::profiles::profile_create,
             commands::profiles::profile_switch,
@@ -322,6 +349,15 @@ fn main() {
             commands::preview::preview_xlsx,
         ])
         .setup(move |app| {
+            // A portable copy whose data scope was never chosen asks first: nothing below (no database) starts.
+            if let Some(err) = &startup_failure {
+                startup_error::show(app, &app_paths, err)?;
+                return Ok(());
+            }
+            if needs_scope_setup {
+                data_scope::show_setup(app, &app_paths)?;
+                return Ok(());
+            }
             // A database that can't be opened (a migration mismatch, a damaged or locked file ...) gets a window
             // that explains it instead of a panic; the workbench doesn't start and nothing is reset.
             let db = match tauri::async_runtime::block_on(Db::connect(&app_paths.db_path)) {
@@ -376,6 +412,7 @@ fn main() {
             let broker = commands::broker::BrokerRuntime::start(
                 app.handle(),
                 &app_paths.root_dir,
+                &app_paths.temp_dir,
                 &network_config.go_proxy,
             );
 
@@ -387,9 +424,9 @@ fn main() {
                 search: SearchRegistry::new(),
                 index: commands::index::new_manager(
                     app.handle().clone(),
-                    app_paths.data_dir.join("search-index"),
+                    app_paths.search_index_dir.clone(),
                 ),
-                ai: commands::ai::AiRuntime::new(app_paths.data_dir.join("ai")),
+                ai: commands::ai::AiRuntime::new(app_paths.ai_dir.clone()),
                 notebooks: commands::notebook::NotebookRuntime::default(),
                 runner: RunRegistry::new(),
                 php_server: RunRegistry::new(),
@@ -403,12 +440,16 @@ fn main() {
                 git: openmind_git::GitRegistry::default(),
                 dap: commands::debug::new_manager(app.handle().clone()),
                 lsp: commands::lsp::new_manager(app.handle().clone(), &app_paths.logs_dir),
-                extensions: commands::extensions::ExtensionsRuntime::new(&app_paths.extensions_dir),
+                extensions: commands::extensions::ExtensionsRuntime::new(
+                    &app_paths.extensions_dir,
+                    &app_paths.extension_logs_dir,
+                ),
                 file_watch: std::sync::Mutex::new(std::collections::HashMap::new()),
                 editor_windows: crate::windows::EditorWindows::default(),
                 window_states: window_state_service.clone(),
                 app_root: app_paths.root_dir.clone(),
                 webview_dir: app_paths.webview_dir.clone(),
+                paths: app_paths.clone(),
                 settings_file: app_paths.settings_file.clone(),
                 keybindings_file: app_paths.keybindings_file.clone(),
                 terminal: TerminalRegistry::new(),

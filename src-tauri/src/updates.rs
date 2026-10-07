@@ -110,12 +110,12 @@ fn info(app: &AppHandle, state: &UpdateState, update: Option<&Update>) -> Update
 }
 
 fn update_dir(app: &AppHandle) -> PathBuf {
-    app.state::<AppState>().app_root.join("temp").join("update")
+    app.state::<AppState>().paths.temp_dir.join("update")
 }
 
 /// Removes installers downloaded by an earlier run (they are downloaded again when needed).
-pub fn clean_stale_downloads(app_root: &Path) {
-    let _ = std::fs::remove_dir_all(app_root.join("temp").join("update"));
+pub fn clean_stale_downloads(temp_dir: &Path) {
+    let _ = std::fs::remove_dir_all(temp_dir.join("update"));
 }
 
 fn updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
@@ -327,7 +327,7 @@ mod tests {
         let dir = tmp.path().join("temp").join("update");
         std::fs::create_dir_all(&dir).expect("dir");
         std::fs::write(dir.join("OpenMind-Studio-9.9.9.installer"), b"x").expect("write");
-        clean_stale_downloads(tmp.path());
+        clean_stale_downloads(&tmp.path().join("temp"));
         assert!(!dir.exists());
         assert!(
             tmp.path().join("temp").exists(),

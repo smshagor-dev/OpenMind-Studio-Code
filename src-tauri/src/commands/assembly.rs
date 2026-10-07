@@ -56,8 +56,9 @@ pub fn language_server_enabled(state: &AppState) -> bool {
 }
 
 /// The folder asm-lsp reads its `.asm-lsp.toml` from: `None` when the project has its own (asm-lsp then reads the
-/// workspace's), else `<app>/settings/asm-lsp`, holding the configuration written from the Assembly settings and the
-/// NASM the Run Code environment finds. Nothing is ever written into the project.
+/// workspace's), else `AppPaths::asm_lsp_config_dir` (`<app>/settings/asm-lsp`, or this computer's folder in the
+/// per-computer data scope: it holds this computer's absolute NASM path), with the configuration written from the
+/// Assembly settings and the NASM the Run Code environment finds. Nothing is ever written into the project.
 pub fn lsp_config_root(
     state: &AppState,
     workspace: &Path,
@@ -70,7 +71,7 @@ pub fn lsp_config_root(
     let nasm = openmind_runner::assembly::find_nasm(environment, system_path.as_deref());
     let arch = options(state).arch;
     let config = openmind_runner::assembly::asm_lsp_config(nasm.as_deref(), arch);
-    let folder = state.app_root.join("settings").join("asm-lsp");
+    let folder = state.paths.asm_lsp_config_dir.clone();
     write_if_changed(&folder.join(".asm-lsp.toml"), &config)?;
     note_config_folder();
     Ok(Some(folder))

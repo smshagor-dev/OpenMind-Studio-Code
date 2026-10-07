@@ -20,6 +20,8 @@ import { ErrorToast } from "./components/ErrorToast";
 import { AiConfirmDialog } from "./components/ai/AiConfirmDialog";
 import { FormatterDialog } from "./components/formatting/FormatterDialog";
 import { ProfilesDialog } from "./components/profiles/ProfilesDialog";
+import { DataScopeDialog } from "./dataScope/DataScopeDialog";
+import { tauriWorkbenchApi } from "./dataScope/dataScopeApi";
 import { NetworkDialog, NetworkFailureCard } from "./components/network/NetworkDialog";
 import { DependencyCard } from "./components/deps/DependencyCard";
 import { DependencySetupCard } from "./components/deps/DependencySetupCard";
@@ -187,6 +189,7 @@ export function App() {
       <LanguageStatusDialog />
       <FormatterDialog />
       <ProfilesDialog />
+      <DataScopeDialog service={container.dataScope} api={tauriWorkbenchApi} />
       <NetworkDialog />
       <NetworkFailureCard />
       <DependencyCard />

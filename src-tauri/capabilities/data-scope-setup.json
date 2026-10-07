@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "data-scope-setup",
+  "description": "The first-run window of a portable copy: choose one profile or one per computer before any database is opened",
+  "windows": ["data-scope-setup"],
+  "permissions": ["core:default"]
+}

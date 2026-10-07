@@ -1,12 +1,12 @@
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Mutex;
 
-use sha2::{Digest, Sha256};
-
 use super::*;
 use crate::download::HttpResponse;
 use crate::extract::tests::build_zip;
+mod shared;
 
 /// Serves a fixed body per URL and counts requests; an unknown URL fails
 /// like an offline machine would.

@@ -101,8 +101,8 @@ impl LspEvents for Sink {
 
 pub(super) fn log_path(state: &AppState, server: &str) -> PathBuf {
     state
-        .app_root
-        .join("logs")
+        .paths
+        .logs_dir
         .join("lsp")
         .join(format!("{server}.log"))
 }

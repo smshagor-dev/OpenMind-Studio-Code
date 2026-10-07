@@ -84,8 +84,9 @@ pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl ExtensionsRuntime {
-    pub fn new(extensions_dir: &std::path::Path) -> Self {
-        let paths = ExtensionPaths::new(extensions_dir);
+    /// `extensions_dir` is shared on the drive; `logs_dir` is `AppPaths::extension_logs_dir` (per computer in that scope).
+    pub fn new(extensions_dir: &std::path::Path, logs_dir: &std::path::Path) -> Self {
+        let paths = ExtensionPaths::with_logs(extensions_dir, logs_dir);
         if let Err(err) = paths.ensure() {
             tracing::warn!(%err, "couldn't create the extension folders");
         }

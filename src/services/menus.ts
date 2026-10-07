@@ -103,6 +103,7 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
       cmd("Auto Save", "file.toggleAutoSave"),
       sub("Preferences", [
         cmd("Profiles", "profiles.manage"),
+        cmd("Data Scope...", "preferences.dataScope"),
         cmd("Settings", "preferences.openSettings"),
         cmd("Workspace Settings", "preferences.openWorkspaceSettings"),
         cmd("Open Settings (JSON)", "preferences.openSettingsJson"),
@@ -481,6 +482,7 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Command Palette...", "workbench.commandPalette"),
   SEPARATOR,
   cmd("Profiles", "profiles.manage"),
+  cmd("Data Scope...", "preferences.dataScope"),
   cmd("Settings", "preferences.openSettings"),
   cmd("Extensions", "view.showExtensions"),
   cmd("Keyboard Shortcuts", "preferences.openKeybindings"),

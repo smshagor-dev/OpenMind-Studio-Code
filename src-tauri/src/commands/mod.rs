@@ -29,6 +29,7 @@ pub mod notebook;
 pub mod panel;
 pub mod php;
 pub mod php_project;
+pub mod pma_config;
 pub mod preferences;
 pub mod preview;
 pub mod profiles;

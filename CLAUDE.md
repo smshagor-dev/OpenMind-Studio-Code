@@ -77,6 +77,13 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   logging init. No I/O beyond what's needed for path/logging setup. Everything else depends on
   this; this depends on nothing else in the workspace. Since Milestone 20.1 `locale` (pure): `SUPPORTED_LANGUAGES`
   (`en`, `ru`), `language_for_tag` (`ru-RU` -> `ru`) and `pick_language` (first bundled system language, else `en`).
+  **Portable data scope** (`data_scope`, `machine_identity` + `machine_signals`, `machine_paths`, `profile_lock`; see
+  `docs/data-scope.md`): `AppPaths::from_root` (personal = the old layout) / `AppPaths::per_machine` (`data/machines/<profile
+  id>/`) is the one resolver of machine-specific paths (database, logs, WebView profile, search index, AI, temp, MariaDB
+  data/logs/config, phpMyAdmin cache, Run Code builds, asm-lsp config, extension host log). Never build those paths from the
+  app root by hand; take them from `AppPaths` (`AppState.paths`). Identity = `SHA-256("openmind-studio:v1:\n" +
+  "os_id=…\nhardware_uuid=…\nhardware_serial=…\n")` from MachineGuid + SMBIOS UUID (serial only without a UUID); never the
+  computer name or anything on the drive; raw values never stored or logged.
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern. Since Milestone 20.0: `migrations::MIGRATOR` (the embedded
   migrations; `build.rs` + `migration_inputs.rs` print `cargo:rerun-if-changed` for the folder and every `.sql`, so a
@@ -1407,6 +1414,17 @@ OpenMind Studio/
     data/ai/                  providers.json (no secrets) and conversations.sqlite, created only when AI is used (Milestone 13)
     data/search-index/        the workspace search index, one SQLite file per folder (Milestone 12)
 ```
+
+**Portable data scope (after Release 1.0.0).** A portable copy keeps either one profile (`personal`, the layout above) or one per
+computer (`perMachine`, recommended): `data/machines/<profile id>/{machine.json, openmind-studio.db, logs/, cache/, state/{webview,
+search-index,ai,mariadb,mariadb-config,asm-lsp}/, temp/}`, chosen in a pre-database setup window (`data-scope-setup`) on first run
+and saved in `data/data-scope.json`; runtimes, tools, language servers, extensions, settings and downloads stay shared (the
+Runtime Manager reconciles its per-computer records with the shared `runtimes/` folder, so an install on one PC is on every PC's
+PATH). Installed copies are `personal` without asking. Start-up holds an OS lock (`data/profile.lock`) while it selects the profile
+(the full hash in `machine.json` confirms a folder; a prefix collision moves to a longer id) and prepares the database. A scope
+change only records an import request; the next start copies the profile with the SQLite Backup API from a read-only connection
+into `.migrating`, `quick_check`s and renames it (`openmind_db::migration`, recovery cases A-H); the source is never changed or
+deleted, an existing database is never overwritten. Details: `docs/data-scope.md`.
 
 `data/`, `runtimes/`, `logs/`, `cache/`, `language-servers/`, `extensions/` (Milestone 10) and `settings/` (Milestone 9) are in use; `themes/`
 is created up front but stays empty until the milestone that owns it lands — don't write into them
@@ -2986,6 +3004,13 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   unpacked at launch; Edit > Format Document formatted HTML ("HTML — Prettier (bundled with OpenMind)"), PHP, Python (Ruff), Go (gofmt), Lua (StyLua),
   SQL, shell and C++ (clang-format); no formatter process stayed, no connection from the app's processes; close left 0 processes. Rust 927 passed,
   frontend 1590. Built on branch `milestone-18` in the clean worktree `E:\wt-release`.
+- [x] **Portable data scope (multi-computer drives)** — see `docs/data-scope.md`. Built by one session and reviewed/reworked by
+  another: `openmind_core::{machine_identity, machine_signals, machine_paths, profile_lock, data_scope}`, `AppPaths::per_machine`,
+  `openmind_db::{snapshot, migration}` (+ explicit `busy_timeout`/`foreign_keys`), `src-tauri/src/data_scope/` (start-up decision
+  and preparation under the lock, setup window + capability, `data_scope_status|setup_apply|change|restart|exit`, `migrate.rs`),
+  the Runtime Manager's `reconcile` (drops records whose shared folder is gone; run before `environment()`/`installed_dir()`),
+  every hand-built `logs/`/`temp/`/MariaDB/run-builds/asm-lsp/extension-log path moved to `AppState.paths`; frontend
+  `src/dataScope/` (setup page, File > Preferences > Data Scope...). MSRV raised to 1.89 (`File::try_lock`).
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

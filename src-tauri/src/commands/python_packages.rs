@@ -140,11 +140,7 @@ pub async fn install_into(
         .get(KIND)
         .map(|manifest| manifest.env.clone())
         .unwrap_or_default();
-    let work = state
-        .app_root
-        .join("temp")
-        .join("python-bundle")
-        .join(version);
+    let work = state.paths.temp_dir.join("python-bundle").join(version);
     report(&progress, version, InstallPhase::Finalize);
     let result = tauri::async_runtime::spawn_blocking(move || {
         let result = python_bundle::install_packages(&bundle, &dir, &python_dir, &work, &env);

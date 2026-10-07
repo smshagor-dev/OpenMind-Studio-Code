@@ -17,6 +17,10 @@ pub enum DbError {
 
     #[error("database query failed")]
     Query(#[source] sqlx::Error),
+
+    /// Bringing a database into place ([`crate::migration`], [`crate::snapshot`]) failed or was refused.
+    #[error("the database copy failed: {0}")]
+    Copy(String),
 }
 
 /// Why the database couldn't be opened, in terms a start-up error screen can explain. Derived from the error only:
@@ -60,6 +64,7 @@ impl DbError {
         use sqlx::migrate::MigrateError as M;
         match self {
             DbError::CreateDataDir { .. } => FailureKind::CreateFolder,
+            DbError::Copy(_) => FailureKind::Other,
             DbError::Connect(err) | DbError::Query(err) => sqlx_kind(err),
             DbError::Migrate(err) => match err {
                 M::VersionMismatch(version) => FailureKind::ChecksumMismatch { version: *version },

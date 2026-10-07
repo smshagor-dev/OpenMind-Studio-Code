@@ -58,6 +58,21 @@ pub const LAYOUT: &[(&str, SyncClass, &str)] = &[
     ("data/search-index/", SyncClass::Never, "project text"),
     ("data/webview/", SyncClass::Never, "browser profile"),
     ("data/mariadb/", SyncClass::Never, "database files"),
+    (
+        "data/machines/",
+        SyncClass::Never,
+        "per-computer profiles (database, logs, WebView profile, search index, AI history, MariaDB data, temp) of a multi-computer portable copy",
+    ),
+    (
+        "data/profile.lock",
+        SyncClass::Never,
+        "the operating-system lock taken while a computer's profile is prepared at start-up",
+    ),
+    (
+        "data/data-scope.json",
+        SyncClass::Never,
+        "whether this copy keeps one profile or one per computer",
+    ),
     ("runtimes/", SyncClass::Never, "runtime binaries"),
     ("tools/", SyncClass::Never, "tool binaries"),
     ("language-servers/", SyncClass::Never, "installed servers"),
@@ -93,6 +108,8 @@ mod tests {
                 "webview",
                 "mariadb",
                 "language-servers",
+                "machines",
+                "profile.lock",
             ]
             .iter()
             .any(|needle| path.contains(needle));

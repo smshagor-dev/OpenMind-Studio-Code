@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use crate::data_scope::DataScope;
 use crate::error::CoreError;
+use crate::machine_paths::MachineDataPaths;
 
 const DB_FILENAME: &str = "openmind-studio.db";
 const SETTINGS_FILENAME: &str = "settings.json";
@@ -27,11 +29,42 @@ const KEYBINDINGS_FILENAME: &str = "keybindings.json";
 ///     themes/                   on-disk theme/icon-theme assets (future milestone)
 ///     settings/                 settings.json and keybindings.json (user-editable)
 /// ```
+///
+/// That is the [`DataScope::Personal`] layout. In the [`DataScope::PerMachine`] scope ([`Self::per_machine`]) the
+/// machine-specific parts — the database, logs, WebView profile, search index, AI history, temporary files, MariaDB's
+/// data/logs/config, phpMyAdmin's cache, asm-lsp's generated configuration and the extension host log — live in
+/// `data/machines/<profile id>/` ([`MachineDataPaths`]) instead, while runtimes, tools, language servers, extensions,
+/// settings and downloads stay shared. Nothing else in the app builds those paths: it takes them from here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppPaths {
     pub root_dir: PathBuf,
+    /// Which layout the machine-specific paths below follow.
+    pub scope: DataScope,
+    /// This computer's folder in the per-computer scope.
+    pub machine: Option<MachineDataPaths>,
+    /// The shared `data/` folder (also the parent of `machines/` and `backups/`).
     pub data_dir: PathBuf,
+    /// The SQLite database this run opens.
     pub db_path: PathBuf,
+    /// `data/openmind-studio.db`: the one-profile database, whichever scope is in force (for migrations).
+    pub shared_db_path: PathBuf,
+    /// The workspace search index (one SQLite file per folder).
+    pub search_index_dir: PathBuf,
+    /// AI provider list and conversation history.
+    pub ai_dir: PathBuf,
+    /// Short-lived files: download staging, update downloads, the per-run npm config.
+    pub temp_dir: PathBuf,
+    /// Small caches that belong to one computer (phpMyAdmin's generated configuration); big downloads stay in the
+    /// shared `cache_dir`.
+    pub machine_cache_dir: PathBuf,
+    /// MariaDB's data directory, log folder and generated `my.ini` folder.
+    pub mariadb_data_dir: PathBuf,
+    pub mariadb_logs_dir: PathBuf,
+    pub mariadb_config_dir: PathBuf,
+    /// asm-lsp's generated `.asm-lsp.toml` (it holds this computer's absolute NASM path).
+    pub asm_lsp_config_dir: PathBuf,
+    /// The extension host's log (`extension-host.log`).
+    pub extension_logs_dir: PathBuf,
     /// The WebView2 profile (cache, local storage, cookies): under `data/`, never `%LOCALAPPDATA%`.
     pub webview_dir: PathBuf,
     pub logs_dir: PathBuf,
@@ -74,15 +107,28 @@ impl AppPaths {
         Self::from_root(exe_dir_of(exe_path))
     }
 
-    /// The layout under one root folder.
+    /// The one-profile ([`DataScope::Personal`]) layout under one root folder — the layout of every earlier version.
     pub fn from_root(root_dir: PathBuf) -> Self {
         let data_dir = root_dir.join("data");
         let db_path = data_dir.join(DB_FILENAME);
         let webview_dir = data_dir.join("webview");
         let settings_dir = root_dir.join("settings");
+        let logs_dir = root_dir.join("logs");
 
         Self {
-            logs_dir: root_dir.join("logs"),
+            scope: DataScope::Personal,
+            machine: None,
+            shared_db_path: db_path.clone(),
+            search_index_dir: data_dir.join("search-index"),
+            ai_dir: data_dir.join("ai"),
+            temp_dir: root_dir.join("temp"),
+            machine_cache_dir: root_dir.join("cache"),
+            mariadb_data_dir: data_dir.join("mariadb"),
+            mariadb_logs_dir: logs_dir.join("mariadb"),
+            mariadb_config_dir: settings_dir.join("mariadb"),
+            asm_lsp_config_dir: settings_dir.join("asm-lsp"),
+            extension_logs_dir: root_dir.join("extensions").join("logs"),
+            logs_dir,
             cache_dir: root_dir.join("cache"),
             runtimes_dir: root_dir.join("runtimes"),
             extensions_dir: root_dir.join("extensions"),
@@ -97,8 +143,39 @@ impl AppPaths {
         }
     }
 
-    /// Create every directory in the portable layout if it doesn't exist yet.
+    /// The per-computer layout: the machine-specific paths in `machine`'s folder (found by
+    /// [`crate::machine_paths::select_profile`]), everything else shared with [`Self::from_root`].
+    pub fn per_machine(root_dir: PathBuf, machine: MachineDataPaths) -> Self {
+        let shared = Self::from_root(root_dir);
+        Self {
+            scope: DataScope::PerMachine,
+            db_path: machine.database.clone(),
+            logs_dir: machine.logs.clone(),
+            webview_dir: machine.state.join("webview"),
+            search_index_dir: machine.state.join("search-index"),
+            ai_dir: machine.state.join("ai"),
+            temp_dir: machine.temp.clone(),
+            machine_cache_dir: machine.cache.clone(),
+            mariadb_data_dir: machine.state.join("mariadb"),
+            mariadb_logs_dir: machine.logs.join("mariadb"),
+            mariadb_config_dir: machine.state.join("mariadb-config"),
+            asm_lsp_config_dir: machine.state.join("asm-lsp"),
+            extension_logs_dir: machine.logs.join("extensions"),
+            machine: Some(machine),
+            ..shared
+        }
+    }
+
+    /// Create every directory in the layout if it doesn't exist yet (and, per computer, its `machine.json`).
     pub fn ensure_dirs(&self) -> Result<(), CoreError> {
+        if let Some(machine) = &self.machine {
+            machine
+                .ensure_dirs()
+                .map_err(|source| CoreError::CreateDir {
+                    path: machine.root.clone(),
+                    source,
+                })?;
+        }
         for dir in [
             &self.data_dir,
             &self.logs_dir,
@@ -341,5 +418,127 @@ mod tests {
         ] {
             assert!(dir.is_dir(), "expected {dir:?} to exist");
         }
+    }
+
+    fn machine(root: &Path, id: &str) -> MachineDataPaths {
+        MachineDataPaths::new(root, id)
+    }
+
+    #[test]
+    fn the_per_computer_scope_isolates_machine_data_and_shares_the_heavy_folders() {
+        let root = PathBuf::from("G:/OpenMind-Studio");
+        let a = AppPaths::per_machine(root.clone(), machine(&root, "42f693bd91a7"));
+        let b = AppPaths::per_machine(root.clone(), machine(&root, "a591cc273781"));
+        let machine_a = root.join("data/machines/42f693bd91a7");
+        assert_eq!(a.db_path, machine_a.join("openmind-studio.db"));
+        assert_eq!(a.logs_dir, machine_a.join("logs"));
+        assert_eq!(a.webview_dir, machine_a.join("state/webview"));
+        assert_eq!(a.search_index_dir, machine_a.join("state/search-index"));
+        assert_eq!(a.ai_dir, machine_a.join("state/ai"));
+        assert_eq!(a.temp_dir, machine_a.join("temp"));
+        assert_eq!(a.machine_cache_dir, machine_a.join("cache"));
+        assert_eq!(a.mariadb_data_dir, machine_a.join("state/mariadb"));
+        assert_eq!(a.mariadb_logs_dir, machine_a.join("logs/mariadb"));
+        assert_eq!(a.mariadb_config_dir, machine_a.join("state/mariadb-config"));
+        assert_eq!(a.asm_lsp_config_dir, machine_a.join("state/asm-lsp"));
+        assert_eq!(a.extension_logs_dir, machine_a.join("logs/extensions"));
+        for (left, right) in [
+            (&a.db_path, &b.db_path),
+            (&a.logs_dir, &b.logs_dir),
+            (&a.webview_dir, &b.webview_dir),
+            (&a.search_index_dir, &b.search_index_dir),
+            (&a.ai_dir, &b.ai_dir),
+            (&a.temp_dir, &b.temp_dir),
+            (&a.machine_cache_dir, &b.machine_cache_dir),
+            (&a.mariadb_data_dir, &b.mariadb_data_dir),
+            (&a.mariadb_logs_dir, &b.mariadb_logs_dir),
+            (&a.mariadb_config_dir, &b.mariadb_config_dir),
+            (&a.asm_lsp_config_dir, &b.asm_lsp_config_dir),
+            (&a.extension_logs_dir, &b.extension_logs_dir),
+        ] {
+            assert_ne!(left, right, "two computers never share {left:?}");
+            assert!(
+                left.starts_with(&machine_a),
+                "{left:?} is inside A's profile"
+            );
+        }
+        for (left, right) in [
+            (&a.runtimes_dir, &b.runtimes_dir),
+            (&a.cache_dir, &b.cache_dir),
+            (&a.extensions_dir, &b.extensions_dir),
+            (&a.settings_dir, &b.settings_dir),
+            (&a.themes_dir, &b.themes_dir),
+            (&a.shared_db_path, &b.shared_db_path),
+        ] {
+            assert_eq!(left, right, "shared on the drive");
+            assert!(
+                !left.starts_with(root.join("data/machines")),
+                "{left:?} is not per computer"
+            );
+        }
+        assert_eq!(a.runtimes_dir, root.join("runtimes"));
+        assert_eq!(a.cache_dir, root.join("cache"));
+        assert_eq!(a.shared_db_path, root.join("data/openmind-studio.db"));
+    }
+
+    #[test]
+    fn the_personal_scope_is_the_earlier_layout() {
+        let root = PathBuf::from("C:/Apps/OpenMind Studio");
+        let personal = AppPaths::from_root(root.clone());
+        assert_eq!(personal.scope, DataScope::Personal);
+        assert_eq!(personal.db_path, root.join("data/openmind-studio.db"));
+        assert_eq!(personal.temp_dir, root.join("temp"));
+        assert_eq!(personal.mariadb_data_dir, root.join("data/mariadb"));
+        assert_eq!(personal.mariadb_logs_dir, root.join("logs/mariadb"));
+        assert_eq!(personal.mariadb_config_dir, root.join("settings/mariadb"));
+        assert_eq!(personal.asm_lsp_config_dir, root.join("settings/asm-lsp"));
+        assert_eq!(personal.extension_logs_dir, root.join("extensions/logs"));
+        assert!(personal.machine.is_none());
+    }
+
+    #[test]
+    fn a_new_drive_letter_keeps_the_same_profile_folder() {
+        let on_g = AppPaths::per_machine(
+            PathBuf::from("G:/OpenMind-Studio"),
+            machine(Path::new("G:/OpenMind-Studio"), "42f693bd91a7"),
+        );
+        let on_h = AppPaths::per_machine(
+            PathBuf::from("H:/OpenMind-Studio"),
+            machine(Path::new("H:/OpenMind-Studio"), "42f693bd91a7"),
+        );
+        assert_eq!(
+            on_g.db_path
+                .strip_prefix("G:/OpenMind-Studio")
+                .expect("inside"),
+            on_h.db_path
+                .strip_prefix("H:/OpenMind-Studio")
+                .expect("inside")
+        );
+        assert_eq!(
+            on_g.runtimes_dir
+                .strip_prefix("G:/OpenMind-Studio")
+                .expect("inside"),
+            on_h.runtimes_dir
+                .strip_prefix("H:/OpenMind-Studio")
+                .expect("inside")
+        );
+    }
+
+    #[test]
+    fn ensure_dirs_creates_the_machine_folder_and_the_shared_ones() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let paths = AppPaths::per_machine(
+            root.path().to_path_buf(),
+            machine(root.path(), "d33ac401128a"),
+        );
+        paths.ensure_dirs().expect("ensure");
+        let machine = paths.machine.as_ref().expect("machine");
+        assert!(machine.temp.is_dir());
+        assert!(paths.logs_dir.is_dir());
+        assert!(paths.runtimes_dir.is_dir());
+        assert!(
+            !root.path().join("logs").exists(),
+            "no shared logs folder per computer"
+        );
     }
 }

@@ -1,11 +1,19 @@
+pub mod data_scope;
 pub mod error;
 pub mod jsonc;
 pub mod locale;
+pub mod machine_identity;
+pub mod machine_paths;
+pub mod machine_signals;
 pub mod path_env;
 pub mod paths;
+pub mod profile_lock;
 pub mod vars;
 
+pub use data_scope::DataScope;
 pub use error::CoreError;
+pub use machine_identity::MachineIdentity;
+pub use machine_paths::MachineDataPaths;
 pub use paths::AppPaths;
 
 /// Initialize structured logging for the application. Call exactly once,

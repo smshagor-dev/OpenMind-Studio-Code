@@ -3009,10 +3009,15 @@ dependencies = [
 name = "openmind-core"
 version = "1.0.1"
 dependencies = [
+ "getrandom 0.3.4",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
  "tracing-subscriber",
+ "winapi",
 ]
 
 [[package]]
@@ -3032,6 +3037,7 @@ dependencies = [
 name = "openmind-db"
 version = "1.0.1"
 dependencies = [
+ "rusqlite",
  "serde",
  "sha2 0.11.0",
  "sqlx",

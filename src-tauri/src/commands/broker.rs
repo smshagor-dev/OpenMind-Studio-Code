@@ -114,9 +114,10 @@ fn write_launchers(dir: &Path) {
 }
 
 impl BrokerRuntime {
-    /// Starts the gateway on 127.0.0.1 and recovers `<app>/temp` in the background. Nothing is downloaded.
-    pub fn start(app: &AppHandle, root: &Path, go_proxy: &str) -> Self {
-        let temp_dir = root.join("temp");
+    /// Starts the gateway on 127.0.0.1 and recovers the temporary folder (`<app>/temp`, or this computer's in the
+    /// per-computer data scope) in the background. Nothing is downloaded. The launchers in `<app>/shims` are shared.
+    pub fn start(app: &AppHandle, root: &Path, temp_dir: &Path, go_proxy: &str) -> Self {
+        let temp_dir = temp_dir.to_path_buf();
         let shims_dir = root.join("shims");
         let recent = Arc::new(Mutex::new(VecDeque::new()));
         let recovery = Arc::new(Mutex::new(None));

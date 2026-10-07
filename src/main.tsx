@@ -9,6 +9,8 @@ import { registerBuiltInLanguages } from "./editor/builtinLanguages";
 import { initLanguage, type UiLanguage } from "./i18n";
 import { StartupErrorPage } from "./startupError/StartupErrorPage";
 import { STARTUP_ERROR_WINDOW_LABEL, tauriStartupErrorApi } from "./startupError/startupErrorApi";
+import { DataScopeSetupPage } from "./dataScope/DataScopeSetupPage";
+import { DATA_SCOPE_SETUP_WINDOW_LABEL, tauriSetupApi } from "./dataScope/dataScopeApi";
 import "./styles/app.css";
 
 installMonacoEnvironment(self, import.meta.env.BASE_URL);
@@ -43,6 +45,8 @@ function start() {
   const label = windowLabel();
   if (label === STARTUP_ERROR_WINDOW_LABEL) {
     render(<StartupErrorPage api={tauriStartupErrorApi} />);
+  } else if (label === DATA_SCOPE_SETUP_WINDOW_LABEL) {
+    render(<DataScopeSetupPage api={tauriSetupApi} />);
   } else if (label === PHP_WINDOW_LABEL) {
     void import("./PhpServerWindow").then(({ PhpServerWindow }) => {
       render(<PhpServerWindow />);
