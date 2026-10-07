@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "targets": ["deb", "appimage"],
+    "resources": {
+      "../lsp-bundle/": null,
+      "../python-bundle/": null,
+      "cli/openmind.cmd": null
+    }
+  }
+}
