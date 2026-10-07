@@ -127,3 +127,24 @@ Get-FileHash .\release\OpenMind-Studio-Setup-0.1.0-x64.exe -Algorithm SHA256
 ```
 
 or read `SHA256SUMS.txt`. Publish the checksums next to the download.
+
+## Linux (x64, built in WSL)
+
+Linux editions: `.deb`, AppImage and a portable zip, **x64 only** (Ubuntu ships no 32-bit WebKitGTK, and the
+AppImage tools are 64-bit). Build in a WSL Ubuntu with WebKitGTK 4.1 and from a clone on the Linux file system (the
+Windows `node_modules` holds Windows binaries):
+
+```bash
+sudo apt install -y build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev libxdo-dev patchelf squashfs-tools libfuse2t64 xdg-utils
+git clone "/mnt/e/Code Editor" ~/openmind-build && cd ~/openmind-build && pnpm install --frozen-lockfile
+export OPENMIND_UPDATER_KEY=/mnt/c/Users/<you>/.tauri/openmind-studio.key   # + TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+APPIMAGE_EXTRACT_AND_RUN=1 node scripts/tauri-signed.mjs build --bundles deb,appimage
+```
+
+`src-tauri/tauri.linux.conf.json` sets the targets and leaves out the Windows-only resources (the offline LSP/formatter
+and Python bundles, `openmind.cmd`). The portable zip is `OpenMind Studio/OpenMindStudio` (mode 755) plus a README; name
+it `OpenMind-Studio-Portable-<version>-linux-x64.zip`. A `.deb` installs to `/usr/bin` and an AppImage runs from a
+read-only mount, so both keep their data in `$XDG_DATA_HOME/openmind-studio` (`~/.local/share/openmind-studio`); the
+portable copy keeps it next to itself when that folder is writable. Not available on Linux: the offline bundles, the
+Runtime Manager's downloads (Windows x64 artifacts) and DPAPI-encrypted secrets (stored unencrypted).
