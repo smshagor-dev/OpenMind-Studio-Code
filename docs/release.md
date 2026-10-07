@@ -29,6 +29,10 @@ pnpm release:build:x86        # tauri build --target i686-pc-windows-msvc --bund
 pnpm release:collect:all      # collects both, named ...-x64 / ...-x86
 ```
 
+Portable ZIPs per architecture: `package:portable -- --no-build --exe <target>/<triple>/release/OpenMindStudio.exe --out <folder>`
+for each build, then pass them to the collector with `--portable <x64 zip> --portable-x86 <x86 zip>` (the zip's own name
+says `win-x64`; the collector renames it to `OpenMind-Studio-Portable-<version>-<arch>.zip`).
+
 When the build used `CARGO_TARGET_DIR`, pass the same folder to the collector (`--target-dir <folder>`; `package:portable`
 reads the variable, `release.mjs` reads only `.cargo/config.toml` or `--target-dir`). Without it the collector picks up
 whatever older installer sits in `target/` — this happened once during Milestone 23.1; check the dates in

@@ -1,5 +1,6 @@
 // The release key that signs update files (tauri updater, minisign). The private key stays outside the repository:
-//   OPENMIND_UPDATER_KEY                 path of the key (default: %USERPROFILE%\.openmind-keys\openmind-updater.key)
+//   OPENMIND_UPDATER_KEY                 path of the key (default: %USERPROFILE%\.tauri\openmind-studio.key, the key whose
+//                                        public half is `plugins.updater.pubkey` in tauri.conf.json)
 //   TAURI_SIGNING_PRIVATE_KEY_PASSWORD   its password; when unset it is read from openmind-updater.password.dpapi next to
 //                                        the key (Windows DPAPI, readable only by the Windows account that wrote it).
 // The key and the password only ever go into the environment of the `tauri` process that signs; nothing is printed.
@@ -8,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export function updaterKeyPaths(env) {
-  const key = env.OPENMIND_UPDATER_KEY || join(env.USERPROFILE || "", ".openmind-keys", "openmind-updater.key");
+  const key = env.OPENMIND_UPDATER_KEY || join(env.USERPROFILE || "", ".tauri", "openmind-studio.key");
   return { key, passwordFile: join(dirname(key), "openmind-updater.password.dpapi") };
 }
 

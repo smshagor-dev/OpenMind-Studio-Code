@@ -1,4 +1,4 @@
-// usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--no-sign]
+// usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--portable-x86 <zip>] [--no-sign]
 //
 // `--targets` collects cross-target builds (`tauri build --target <triple>`), e.g.
 // `x86_64-pc-windows-msvc,i686-pc-windows-msvc`; without it the host build in `<target dir>/release` is collected as x64.
@@ -136,6 +136,7 @@ for (const triple of triples) {
   );
 }
 if (option("--portable")) found.push({ kind: "portable", arch: "x64", from: option("--portable") });
+if (option("--portable-x86")) found.push({ kind: "portable", arch: "x86", from: option("--portable-x86") });
 const present = found.filter((entry) => entry.from !== null && existsSync(entry.from));
 const out = join(root, "release");
 mkdirSync(out, { recursive: true });
