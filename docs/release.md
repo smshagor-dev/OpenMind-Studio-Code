@@ -128,10 +128,9 @@ Get-FileHash .\release\OpenMind-Studio-Setup-0.1.0-x64.exe -Algorithm SHA256
 
 or read `SHA256SUMS.txt`. Publish the checksums next to the download.
 
-## Linux (x64, built in WSL)
+## Linux (x64 in WSL, x86 in a Debian i386 container)
 
-Linux editions: `.deb`, AppImage and a portable zip, **x64 only** (Ubuntu ships no 32-bit WebKitGTK, and the
-AppImage tools are 64-bit). Build in a WSL Ubuntu with WebKitGTK 4.1 and from a clone on the Linux file system (the
+Linux editions: `.deb`, AppImage and a portable zip, for x64 and x86. Build x64 in a WSL Ubuntu with WebKitGTK 4.1 and from a clone on the Linux file system (the
 Windows `node_modules` holds Windows binaries):
 
 ```bash
@@ -148,3 +147,12 @@ it `OpenMind-Studio-Portable-<version>-linux-x64.zip`. A `.deb` installs to `/us
 read-only mount, so both keep their data in `$XDG_DATA_HOME/openmind-studio` (`~/.local/share/openmind-studio`); the
 portable copy keeps it next to itself when that folder is writable. Not available on Linux: the offline bundles, the
 Runtime Manager's downloads (Windows x64 artifacts) and DPAPI-encrypted secrets (stored unencrypted).
+
+**x86 (32-bit)**: Ubuntu has no 32-bit WebKitGTK, but Debian trixie still builds it for i386. Run a `debian:trixie`
+container with `--platform linux/386` (Docker Desktop): install the same `-dev` packages with apt, rustup with
+`--default-host i686-unknown-linux-gnu`, `cargo install tauri-cli --version <the project's @tauri-apps/cli> --locked`,
+clone the repository, copy in the frontend `dist/` built on x64 (Node has no 32-bit Linux build; the bundle doesn't
+depend on the CPU), and run `cargo tauri build --bundles deb,appimage --config '{"build":{"beforeBuildCommand":""}}'`
+with `TAURI_SIGNING_PRIVATE_KEY` (the key file's content), its password and `APPIMAGE_EXTRACT_AND_RUN=1`. Tauri
+downloads the i386 linuxdeploy tools by itself. Name the files `...-x86.deb`, `...-x86.AppImage` and
+`OpenMind-Studio-Portable-<version>-linux-x86.zip`. Check a build in the same container under `xvfb-run`.
