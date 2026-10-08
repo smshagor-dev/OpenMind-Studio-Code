@@ -6,7 +6,7 @@ import { DocumentService } from "./documentService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { OpenedDocument, PinnedFolderEntry, SessionSnapshot, WorkspaceInfo } from "./ipc";
-import { WorkspaceService } from "./workspaceService";
+import { parentFolder, WorkspaceService } from "./workspaceService";
 
 function openedDocFor(path: string): OpenedDocument {
   return { path, content: `content of ${path}`, encoding: "utf8", lineEnding: "lf" };
@@ -284,5 +284,59 @@ describe("WorkspaceService", () => {
     buffers.setValue(id, "edited after dispose");
 
     expect(listener).not.toHaveBeenCalled();
+  });
+  it("saving an untitled file with no folder open opens the file's folder", async () => {
+    const info: WorkspaceInfo = { id: 1, path: "C:\\notes", name: "notes" };
+    const workspaceOpenFolder = vi.fn().mockResolvedValue(info);
+    const ipc = createFakeIpc({
+      saveDocumentDialog: vi.fn().mockResolvedValue("C:\\notes\\a.txt"),
+      workspaceOpenFolder,
+    });
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+    const id = workspace.createUntitled();
+
+    await workspace.save(id);
+
+    expect(workspaceOpenFolder).toHaveBeenCalledWith("C:\\notes");
+    expect(workspace.getActiveWorkspace()).toEqual(info);
+  });
+
+  it("saving an untitled file never replaces an open folder", async () => {
+    const info: WorkspaceInfo = { id: 1, path: "C:/proj", name: "proj" };
+    const workspaceOpenFolder = vi.fn().mockResolvedValue(info);
+    const ipc = createFakeIpc({
+      saveDocumentDialog: vi.fn().mockResolvedValue("D:/other/a.txt"),
+      workspaceOpenFolder,
+    });
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+    await workspace.openFolder("C:/proj");
+    const id = workspace.createUntitled();
+
+    await workspace.saveAs(id);
+
+    expect(workspaceOpenFolder).toHaveBeenCalledTimes(1);
+    expect(workspace.getActiveWorkspace()).toEqual(info);
+  });
+
+  it("a cancelled save dialog opens no folder", async () => {
+    const workspaceOpenFolder = vi.fn();
+    const ipc = createFakeIpc({ workspaceOpenFolder });
+    const documents = new DocumentService(ipc, buffers, events);
+    const workspace = new WorkspaceService(documents, ipc, events);
+    const id = workspace.createUntitled();
+
+    await workspace.saveAs(id);
+
+    expect(workspaceOpenFolder).not.toHaveBeenCalled();
+  });
+
+  it("parentFolder keeps a drive root", () => {
+    expect(parentFolder("C:\\a\\b.txt")).toBe("C:\\a");
+    expect(parentFolder("C:\\b.txt")).toBe("C:\\");
+    expect(parentFolder("D:/x/y.ts")).toBe("D:/x");
+    expect(parentFolder("/home/u/f.py")).toBe("/home/u");
+    expect(parentFolder("f.py")).toBeNull();
   });
 });

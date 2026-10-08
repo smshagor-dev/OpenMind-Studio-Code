@@ -448,6 +448,7 @@ export class WorkspaceService {
   async save(id: string, options: { format?: boolean } = {}): Promise<void> {
     const docId = this.docIdOfTab(id) ?? (this.documents.has(id) ? id : null);
     if (docId === null || this.filePreviews.has(docId)) return;
+    const before = this.documents.snapshot(docId).path;
     await safely(
       this.events,
       () => this.documents.save(docId, options),
@@ -455,14 +456,29 @@ export class WorkspaceService {
       undefined,
     );
     this.recompute();
+    if (before === null) await this.afterFirstSave(docId);
   }
 
   async saveAs(id: string): Promise<void> {
     const docId = this.docIdOfTab(id) ?? (this.documents.has(id) ? id : null);
     if (docId === null || this.filePreviews.has(docId)) return;
+    const before = this.documents.snapshot(docId).path;
     await safely(this.events, () => this.documents.saveAs(docId), "save that file", undefined);
     this.recompute();
+    if (before === null) await this.afterFirstSave(docId);
     await this.persistSession();
+  }
+
+  /**
+   * An untitled file just got its first place on disk. With no folder open (a fresh start), its folder becomes the
+   * workspace, so the Explorer shows it instead of "No Folder Opened". An open folder is never replaced.
+   */
+  private async afterFirstSave(docId: string): Promise<void> {
+    if (this.activeWorkspace !== null || !this.documents.has(docId)) return;
+    const path = this.documents.snapshot(docId).path;
+    if (path === null) return;
+    const folder = parentFolder(path);
+    if (folder !== null) await this.openFolder(folder);
   }
 
   async loadRecentFiles(): Promise<RecentFileInfo[]> {
@@ -726,4 +742,13 @@ export class WorkspaceService {
     for (const off of this.unsubscribers.splice(0)) off();
     this.layout.dispose();
   }
+}
+
+/** The folder holding a file (`C:\a\b.txt` -> `C:\a`, `C:\b.txt` -> `C:\`); `null` when there is none. */
+export function parentFolder(path: string): string | null {
+  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  if (cut < 0) return null;
+  const folder = path.slice(0, cut);
+  if (folder === "") return path.slice(0, 1);
+  return /^[A-Za-z]:$/.test(folder) ? `${folder}${path[cut]}` : folder;
 }
