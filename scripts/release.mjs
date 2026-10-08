@@ -4,10 +4,10 @@
 // `x86_64-pc-windows-msvc,i686-pc-windows-msvc`; without it the host build in `<target dir>/release` is collected as x64.
 //
 // After `pnpm release:build` (tauri build --bundles nsis,msi): copies the installers that exist into `release/` under
-// their release names, signs them when a certificate is configured through the environment (SIGNING_CERT_PATH,
-// SIGNING_CERT_PASSWORD, optional TIMESTAMP_URL and SIGNING_CERT_KIND=test), and writes SHA256SUMS.txt and
+// their release names (with their updater `.sig` files), signs those `tauri build` didn't already sign when a
+// certificate is configured through the environment (SIGNING_CERT_THUMBPRINT, or SIGNING_CERT_PATH +
+// SIGNING_CERT_PASSWORD; optional TIMESTAMP_URL and SIGNING_CERT_KIND=test), and writes SHA256SUMS.txt and
 // RELEASE-REPORT.md for the files that exist. Nothing is uploaded and no secret is printed or written.
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
@@ -28,11 +28,10 @@ import {
   checksumsText,
   publicSigningInfo,
   readSigningConfig,
-  redact,
   releaseName,
   reportText,
-  signtoolArgs,
 } from "./releaseTools.mjs";
+import { hasSignature, signFile } from "./signtool.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -59,22 +58,6 @@ function newest(dir, extension) {
     .map((name) => join(dir, name))
     .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
   return files[0] ?? null;
-}
-
-function findSigntool() {
-  const kits = process.env["ProgramFiles(x86)"]
-    ? join(process.env["ProgramFiles(x86)"], "Windows Kits", "10", "bin")
-    : null;
-  if (!kits || !existsSync(kits)) return null;
-  const versions = readdirSync(kits)
-    .filter((v) => /^\d/.test(v))
-    .sort()
-    .reverse();
-  for (const version of versions) {
-    const candidate = join(kits, version, "x64", "signtool.exe");
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
 }
 
 const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -136,13 +119,13 @@ for (const triple of triples) {
   );
 }
 if (option("--portable")) found.push({ kind: "portable", arch: "x64", from: option("--portable") });
-if (option("--portable-x86")) found.push({ kind: "portable", arch: "x86", from: option("--portable-x86") });
+if (option("--portable-x86"))
+  found.push({ kind: "portable", arch: "x86", from: option("--portable-x86") });
 const present = found.filter((entry) => entry.from !== null && existsSync(entry.from));
 const out = join(root, "release");
 mkdirSync(out, { recursive: true });
 const config = readSigningConfig(process.env);
 console.log(config.message);
-const secrets = [process.env.SIGNING_CERT_PASSWORD];
 let signedCount = 0;
 const artifacts = [];
 
@@ -150,23 +133,29 @@ for (const entry of present) {
   const name = releaseName(entry.kind, version, entry.arch);
   const target = join(out, name);
   copyFileSync(entry.from, target);
-  const canSign =
+  // The updater signature (`.sig`, made by `tauri build`) belongs to these exact bytes.
+  if (existsSync(`${entry.from}.sig`)) copyFileSync(`${entry.from}.sig`, `${target}.sig`);
+  const wantsSigning =
     (config.mode === "signed" || config.mode === "test-signed") &&
     !args.includes("--no-sign") &&
     entry.kind !== "portable";
-  if (canSign) {
-    const tool = findSigntool();
-    if (tool === null) {
-      console.error("signtool.exe (Windows SDK) was not found: this file stays unsigned.");
+  if (wantsSigning) {
+    if (hasSignature(target)) {
+      // Signed during `tauri build` (signCommand); signing again would invalidate the `.sig` file.
+      signedCount += 1;
+      console.log(`${name} is already signed.`);
     } else {
-      const result = spawnSync(tool, signtoolArgs(config, target), { encoding: "utf8" });
-      if (result.status === 0) {
+      const problem = signFile(config, target);
+      if (problem === null) {
         signedCount += 1;
         console.log(`Signed ${name}.`);
+        if (existsSync(`${target}.sig`)) {
+          console.error(
+            `${name}.sig no longer matches the signed file: re-sign it with the updater key.`,
+          );
+        }
       } else {
-        console.error(
-          `Signing ${name} failed: ${redact(result.stderr || result.stdout || "signtool error", secrets)}`,
-        );
+        console.error(`Signing ${name} failed: ${problem}`);
       }
     }
   }

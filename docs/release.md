@@ -31,7 +31,7 @@ pnpm release:collect:all      # collects both, named ...-x64 / ...-x86
 
 Portable ZIPs per architecture: `package:portable -- --no-build --exe <target>/<triple>/release/OpenMindStudio.exe --out <folder>`
 for each build, then pass them to the collector with `--portable <x64 zip> --portable-x86 <x86 zip>` (the zip's own name
-says `win-x64`; the collector renames it to `OpenMind-Studio-Portable-<version>-<arch>.zip`).
+says `win-x64`; the collector renames it to `OpenMind-Studio-<version>-<arch>-portable.zip`).
 
 When the build used `CARGO_TARGET_DIR`, pass the same folder to the collector (`--target-dir <folder>`; `package:portable`
 reads the variable, `release.mjs` reads only `.cargo/config.toml` or `--target-dir`). Without it the collector picks up
@@ -46,7 +46,7 @@ The offline language server bundle is `windows-x64` only: a 32-bit build still c
 
 `release:collect` writes to `release/` (git-ignored):
 
-- `OpenMind-Studio-Setup-<version>-x64.exe`, `OpenMind-Studio-<version>-x64.msi`, `OpenMind-Studio-Portable-<version>-x64.zip`
+- `OpenMind-Studio-Setup-<version>-x64.exe`, `OpenMind-Studio-<version>-x64.msi`, `OpenMind-Studio-<version>-x64-portable.zip`
   — only the files that exist;
 - `SHA256SUMS.txt` (`sha256sum` format);
 - `RELEASE-REPORT.md` — version, architecture, **build type**, date, and each file's size and SHA256.
@@ -79,14 +79,19 @@ All Windows app surfaces are pinned to `src-tauri/icons/icon.ico`: the installed
 
 Signing is optional and configured **only through environment variables** (never commit a certificate or a password):
 
-| Variable                | Meaning                                                            |
-| ----------------------- | ------------------------------------------------------------------ |
-| `SIGNING_CERT_PATH`     | path to the `.pfx` certificate                                     |
-| `SIGNING_CERT_PASSWORD` | its password (never printed or written)                            |
-| `TIMESTAMP_URL`         | optional http(s) timestamp server, e.g. your CA's RFC 3161 address |
-| `SIGNING_CERT_KIND`     | set to `test` for a self-signed test certificate                   |
+| Variable                  | Meaning                                                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SIGNING_CERT_THUMBPRINT` | a certificate in the current user's Windows certificate store (SHA-1 thumbprint; no password, the key stays in the store) — used instead of the two below |
+| `SIGNING_CERT_PATH`       | path to the `.pfx` certificate                                                                                                                            |
+| `SIGNING_CERT_PASSWORD`   | its password (never printed or written)                                                                                                                   |
+| `TIMESTAMP_URL`           | optional http(s) timestamp server, e.g. your CA's RFC 3161 address                                                                                        |
+| `SIGNING_CERT_KIND`       | set to `test` for a self-signed test certificate                                                                                                          |
 
-`signtool.exe` (Windows SDK) signs the installers after they are built. The result is stated in `RELEASE-REPORT.md`:
+`tauri build` signs every Windows binary it makes — `OpenMindStudio.exe`, the NSIS installer and uninstaller, the MSI —
+through `bundle.windows.signCommand` (`scripts/sign-file.mjs` -> `signtool.exe` from the Windows SDK), _before_ it writes
+the updater `.sig` files, so those stay valid. With nothing configured the command does nothing (development builds); a
+half-made configuration stops the build. `release.mjs` copies the files with their `.sig`, signs only a file that isn't
+signed yet, and states the result in `RELEASE-REPORT.md`:
 
 - **unsigned** — nothing configured (development). Windows SmartScreen will warn. The build log says so.
 - **test-signed** — signed with a self-signed test certificate (`SIGNING_CERT_KIND=test`); other computers do not trust it.
@@ -96,8 +101,12 @@ A path without a password (or the reverse) is reported as a misconfiguration and
 certificate for a local check: `New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OpenMind Studio Test" -CertStoreLocation Cert:\CurrentUser\My`
 then export it to a `.pfx` **outside** the repository.
 
-Limitation: only the installer files are signed; the `OpenMindStudio.exe` inside them is not (Tauri's `signCommand`
-could sign it too and is the next step once a real certificate exists).
+The developer machine has a self-signed certificate `CN=OpenMind` (CurrentUser\My, valid to 2031, public part in
+`%USERPROFILE%\.openmind-signing\openmind-codesign.cer`); use it with `SIGNING_CERT_KIND=test`. A computer trusts files
+signed with it only after that `.cer` is imported into its _Trusted Root Certification Authorities_ and _Trusted
+Publishers_ stores, so it is for testing and internal use; public downloads need a certificate from a CA. The portable
+ZIP packs `<target>/<triple>/release/OpenMindStudio.exe`, which `tauri build` leaves **unsigned** (it signs a copy while
+bundling): sign it first with `node scripts/sign-file.mjs <exe>`, then `package:portable -- --no-build --exe <exe>`.
 
 ## Verify an install
 
@@ -111,11 +120,11 @@ could sign it too and is the next step once a real certificate exists).
      unchanged.
    - Install with both checked, or silently with `/S /ADDTOPATH /EXPLORERMENU`. Then:
      - a **new** terminal runs `openmind <folder>`;
-     - right-click on a folder, a folder background and a file shows **Open with OpenMind Studio**, under *Show more
-       options* on Windows 11, and each opens the app.
+     - right-click on a folder, a folder background and a file shows **Open with OpenMind Studio**, under _Show more
+       options_ on Windows 11, and each opens the app.
    - Uninstall: the `...\bin` PATH entry, the three Explorer keys and `HKCU\Software\OpenMind\OpenMind Studio
-     Integration` are gone. Every other PATH entry is as before.
-   - Portable ZIP: launching must change neither PATH nor the Registry. The command-palette *Shell Integration*
+Integration` are gone. Every other PATH entry is as before.
+   - Portable ZIP: launching must change neither PATH nor the Registry. The command-palette _Shell Integration_
      commands add and remove the same entries on request.
    - MSI, only with administrator rights: `msiexec /i ... ADDTOPATH=1 EXPLORERMENU=1`, then uninstall and check the
      machine PATH and `HKLM\Software\Classes`.
@@ -142,8 +151,10 @@ APPIMAGE_EXTRACT_AND_RUN=1 node scripts/tauri-signed.mjs build --bundles deb,app
 ```
 
 `src-tauri/tauri.linux.conf.json` sets the targets and leaves out the Windows-only resources (the offline LSP/formatter
-and Python bundles, `openmind.cmd`). The portable zip is `OpenMind Studio/OpenMindStudio` (mode 755) plus a README; name
-it `OpenMind-Studio-Portable-<version>-linux-x64.zip`. A `.deb` installs to `/usr/bin` and an AppImage runs from a
+and Python bundles, `openmind.cmd`). The portable archive is a `.tar.gz` of `OpenMind Studio/OpenMindStudio` (mode 755) plus a README (tar keeps the
+mode); name the files `OpenMind-Studio-<version>-amd64.deb`, `OpenMind-Studio-<version>-x86_64.AppImage` and
+`OpenMind-Studio-<version>-linux-x86_64-portable.tar.gz`, and sign each with `pnpm tauri signer sign` (the updater key)
+for its detached `.sig`. A `.deb` installs to `/usr/bin` and an AppImage runs from a
 read-only mount, so both keep their data in `$XDG_DATA_HOME/openmind-studio` (`~/.local/share/openmind-studio`); the
 portable copy keeps it next to itself when that folder is writable. Not available on Linux: the offline bundles, the
 Runtime Manager's downloads (Windows x64 artifacts) and DPAPI-encrypted secrets (stored unencrypted).
@@ -154,5 +165,5 @@ container with `--platform linux/386` (Docker Desktop): install the same `-dev` 
 clone the repository, copy in the frontend `dist/` built on x64 (Node has no 32-bit Linux build; the bundle doesn't
 depend on the CPU), and run `cargo tauri build --bundles deb,appimage --config '{"build":{"beforeBuildCommand":""}}'`
 with `TAURI_SIGNING_PRIVATE_KEY` (the key file's content), its password and `APPIMAGE_EXTRACT_AND_RUN=1`. Tauri
-downloads the i386 linuxdeploy tools by itself. Name the files `...-x86.deb`, `...-x86.AppImage` and
-`OpenMind-Studio-Portable-<version>-linux-x86.zip`. Check a build in the same container under `xvfb-run`.
+downloads the i386 linuxdeploy tools by itself. Name the files `...-i386.deb`, `...-i686.AppImage` and
+`OpenMind-Studio-<version>-linux-i686-portable.tar.gz`. Check a build in the same container under `xvfb-run`.

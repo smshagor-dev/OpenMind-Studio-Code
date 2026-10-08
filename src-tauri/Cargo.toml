@@ -15,31 +15,31 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 base64 = "0.23.1"
-openmind-core = { version = "1.0.1", path = "../crates/core" }
-openmind-db = { version = "1.0.1", path = "../crates/db" }
-openmind-file-watch = { version = "1.0.1", path = "../crates/file-watch" }
-openmind-dap = { version = "1.0.1", path = "../crates/dap" }
-openmind-deps = { version = "1.0.1", path = "../crates/deps" }
-openmind-language = { version = "1.0.1", path = "../crates/language" }
-openmind-format = { version = "1.0.1", path = "../crates/format" }
-openmind-lsp = { version = "1.0.1", path = "../crates/lsp" }
-openmind-notebook = { version = "1.0.1", path = "../crates/notebook" }
-openmind-tasks = { version = "1.0.1", path = "../crates/tasks" }
-openmind-extensions = { version = "1.0.1", path = "../crates/extensions" }
-openmind-git = { version = "1.0.1", path = "../crates/git" }
-openmind-fs = { version = "1.0.1", path = "../crates/fs" }
-openmind-preview = { version = "1.0.1", path = "../crates/preview" }
-openmind-toolchains = { version = "1.0.1", path = "../crates/toolchains" }
-openmind-ai = { version = "1.0.1", path = "../crates/ai" }
-openmind-search = { version = "1.0.1", path = "../crates/search" }
-openmind-runner = { version = "1.0.1", path = "../crates/runner" }
-openmind-runtime-manager = { version = "1.0.1", path = "../crates/runtime-manager" }
-openmind-network = { version = "1.0.1", path = "../crates/network" }
-openmind-broker = { version = "1.0.1", path = "../crates/broker" }
-openmind-workloads = { version = "1.0.1", path = "../crates/workloads" }
-openmind-settings = { version = "1.0.1", path = "../crates/settings" }
-openmind-terminal = { version = "1.0.1", path = "../crates/terminal" }
-openmind-workspace = { version = "1.0.1", path = "../crates/workspace" }
+openmind-core = { version = "1.0.2", path = "../crates/core" }
+openmind-db = { version = "1.0.2", path = "../crates/db" }
+openmind-file-watch = { version = "1.0.2", path = "../crates/file-watch" }
+openmind-dap = { version = "1.0.2", path = "../crates/dap" }
+openmind-deps = { version = "1.0.2", path = "../crates/deps" }
+openmind-language = { version = "1.0.2", path = "../crates/language" }
+openmind-format = { version = "1.0.2", path = "../crates/format" }
+openmind-lsp = { version = "1.0.2", path = "../crates/lsp" }
+openmind-notebook = { version = "1.0.2", path = "../crates/notebook" }
+openmind-tasks = { version = "1.0.2", path = "../crates/tasks" }
+openmind-extensions = { version = "1.0.2", path = "../crates/extensions" }
+openmind-git = { version = "1.0.2", path = "../crates/git" }
+openmind-fs = { version = "1.0.2", path = "../crates/fs" }
+openmind-preview = { version = "1.0.2", path = "../crates/preview" }
+openmind-toolchains = { version = "1.0.2", path = "../crates/toolchains" }
+openmind-ai = { version = "1.0.2", path = "../crates/ai" }
+openmind-search = { version = "1.0.2", path = "../crates/search" }
+openmind-runner = { version = "1.0.2", path = "../crates/runner" }
+openmind-runtime-manager = { version = "1.0.2", path = "../crates/runtime-manager" }
+openmind-network = { version = "1.0.2", path = "../crates/network" }
+openmind-broker = { version = "1.0.2", path = "../crates/broker" }
+openmind-workloads = { version = "1.0.2", path = "../crates/workloads" }
+openmind-settings = { version = "1.0.2", path = "../crates/settings" }
+openmind-terminal = { version = "1.0.2", path = "../crates/terminal" }
+openmind-workspace = { version = "1.0.2", path = "../crates/workspace" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri = { version = "2.11.6", features = ["tray-icon"] }
@@ -52,7 +52,7 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [target."cfg(windows)".dependencies]
-openmind-process = { version = "1.0.1", path = "../crates/process" }
+openmind-process = { version = "1.0.2", path = "../crates/process" }
 winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi", "winnls", "winreg", "winnt", "winerror", "processenv", "winuser"] }
 
 [dev-dependencies]

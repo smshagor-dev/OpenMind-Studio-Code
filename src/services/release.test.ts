@@ -160,7 +160,9 @@ describe("optional PATH and File Explorer integration in the installers", () => 
   });
 
   it("the shipped launcher calls the program beside bin and the docs describe the options", () => {
-    expect(text("src-tauri/cli/openmind.cmd")).toContain('start "" "%~dp0..\\OpenMindStudio.exe" %*');
+    expect(text("src-tauri/cli/openmind.cmd")).toContain(
+      'start "" "%~dp0..\\OpenMindStudio.exe" %*',
+    );
     const doc = text("docs/installer.md");
     for (const phrase of [
       "/ADDTOPATH",
@@ -209,6 +211,34 @@ describe("signing configuration", () => {
     expect(readSigningConfig(env).mode).toBe("signed");
     expect(readSigningConfig({ ...env, SIGNING_CERT_KIND: "test" }).mode).toBe("test-signed");
     expect(readSigningConfig({ ...env, SIGNING_CERT_KIND: "test" }).message).toContain("TEST");
+  });
+
+  it("a certificate from the Windows store is chosen by thumbprint, with no password", () => {
+    const thumbprint = "352ED3665AF5E1E59278F1E7ABF463F9BA4FE8EC";
+    const config = readSigningConfig({
+      SIGNING_CERT_THUMBPRINT: ` ${thumbprint.toLowerCase()} `,
+      SIGNING_CERT_KIND: "test",
+      TIMESTAMP_URL: "http://timestamp.example",
+    });
+    expect(config.mode).toBe("test-signed");
+    expect(signtoolArgs(config, "a.exe")).toEqual([
+      "sign",
+      "/fd",
+      "SHA256",
+      "/sha1",
+      thumbprint,
+      "/s",
+      "My",
+      "/tr",
+      "http://timestamp.example",
+      "/td",
+      "SHA256",
+      "a.exe",
+    ]);
+    expect(readSigningConfig({ SIGNING_CERT_THUMBPRINT: "abc" }).mode).toBe("misconfigured");
+    expect(
+      readSigningConfig({ SIGNING_CERT_THUMBPRINT: thumbprint, TIMESTAMP_URL: "ftp://x" }).mode,
+    ).toBe("misconfigured");
   });
 
   it("the password never appears in what is logged or written", () => {
@@ -268,7 +298,12 @@ describe("release artifacts", () => {
   it("uses the release names", () => {
     expect(releaseName("setup", "0.1.0")).toBe("OpenMind-Studio-Setup-0.1.0-x64.exe");
     expect(releaseName("msi", "0.1.0")).toBe("OpenMind-Studio-0.1.0-x64.msi");
-    expect(releaseName("portable", "0.1.0")).toBe("OpenMind-Studio-Portable-0.1.0-x64.zip");
+    expect(releaseName("portable", "0.1.0")).toBe("OpenMind-Studio-0.1.0-x64-portable.zip");
+    expect(releaseName("deb", "0.1.0", "amd64")).toBe("OpenMind-Studio-0.1.0-amd64.deb");
+    expect(releaseName("appimage", "0.1.0", "x86_64")).toBe("OpenMind-Studio-0.1.0-x86_64.AppImage");
+    expect(releaseName("linux-portable", "0.1.0", "x86_64")).toBe(
+      "OpenMind-Studio-0.1.0-linux-x86_64-portable.tar.gz",
+    );
     expect(releaseName("setup", "0.1.0", "x86")).toBe("OpenMind-Studio-Setup-0.1.0-x86.exe");
     expect(() => releaseName("setup", "v1")).toThrow();
   });

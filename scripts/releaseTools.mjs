@@ -3,7 +3,12 @@
 // anything in this file.
 
 /** The environment variables that configure signing. Nothing else is read, and none of them is ever committed. */
-export const SIGNING_VARIABLES = ["SIGNING_CERT_PATH", "SIGNING_CERT_PASSWORD", "TIMESTAMP_URL"];
+export const SIGNING_VARIABLES = [
+  "SIGNING_CERT_PATH",
+  "SIGNING_CERT_PASSWORD",
+  "SIGNING_CERT_THUMBPRINT",
+  "TIMESTAMP_URL",
+];
 
 /**
  * What signing will do for this environment:
@@ -16,8 +21,34 @@ export const SIGNING_VARIABLES = ["SIGNING_CERT_PATH", "SIGNING_CERT_PASSWORD", 
 export function readSigningConfig(env) {
   const path = (env.SIGNING_CERT_PATH ?? "").trim();
   const password = env.SIGNING_CERT_PASSWORD ?? "";
+  const thumbprint = (env.SIGNING_CERT_THUMBPRINT ?? "").replace(/\s/g, "").toUpperCase();
   const timestamp = (env.TIMESTAMP_URL ?? "").trim();
   const test = (env.SIGNING_CERT_KIND ?? "").trim().toLowerCase() === "test";
+  if (timestamp !== "" && !/^https?:\/\//i.test(timestamp)) {
+    return {
+      mode: "misconfigured",
+      message:
+        "TIMESTAMP_URL must be an http(s) address: signing is skipped and the build is UNSIGNED.",
+    };
+  }
+  if (thumbprint !== "") {
+    // A certificate in the current user's Windows certificate store (the private key never leaves it).
+    if (!/^[0-9A-F]{40}$/.test(thumbprint)) {
+      return {
+        mode: "misconfigured",
+        message:
+          "SIGNING_CERT_THUMBPRINT must be the certificate's 40-digit SHA-1 thumbprint: signing is skipped and the build is UNSIGNED.",
+      };
+    }
+    return {
+      mode: test ? "test-signed" : "signed",
+      thumbprint,
+      timestampUrl: timestamp === "" ? null : timestamp,
+      message: test
+        ? "Signing with a TEST certificate from the Windows certificate store: the build is marked TEST-SIGNED (not trusted by other computers)."
+        : "Signing with the certificate from the Windows certificate store: the build is marked SIGNED.",
+    };
+  }
   if (path === "" && password === "") {
     return {
       mode: "unsigned",
@@ -32,13 +63,6 @@ export function readSigningConfig(env) {
         path === ""
           ? "SIGNING_CERT_PASSWORD is set but SIGNING_CERT_PATH is missing: signing is skipped and the build is UNSIGNED."
           : "SIGNING_CERT_PATH is set but SIGNING_CERT_PASSWORD is missing: signing is skipped and the build is UNSIGNED.",
-    };
-  }
-  if (timestamp !== "" && !/^https?:\/\//i.test(timestamp)) {
-    return {
-      mode: "misconfigured",
-      message:
-        "TIMESTAMP_URL must be an http(s) address: signing is skipped and the build is UNSIGNED.",
     };
   }
   return {
@@ -62,7 +86,9 @@ export function signtoolArgs(config, file) {
   if (config.mode !== "signed" && config.mode !== "test-signed") {
     throw new Error("Signing is not configured.");
   }
-  const args = ["sign", "/fd", "SHA256", "/f", config.certPath, "/p", config.password];
+  const args = config.thumbprint
+    ? ["sign", "/fd", "SHA256", "/sha1", config.thumbprint, "/s", "My"]
+    : ["sign", "/fd", "SHA256", "/f", config.certPath, "/p", config.password];
   if (config.timestampUrl) args.push("/tr", config.timestampUrl, "/td", "SHA256");
   args.push(file);
   return args;
@@ -92,7 +118,13 @@ export function releaseName(kind, version, arch = "x64") {
     case "msi":
       return `OpenMind-Studio-${version}-${arch}.msi`;
     case "portable":
-      return `OpenMind-Studio-Portable-${version}-${arch}.zip`;
+      return `OpenMind-Studio-${version}-${arch}-portable.zip`;
+    case "deb":
+      return `OpenMind-Studio-${version}-${arch}.deb`;
+    case "appimage":
+      return `OpenMind-Studio-${version}-${arch}.AppImage`;
+    case "linux-portable":
+      return `OpenMind-Studio-${version}-linux-${arch}-portable.tar.gz`;
     default:
       throw new Error(`Unknown artifact kind "${kind}".`);
   }
@@ -228,14 +260,19 @@ export function checkInstallerConfig(tauri, licenseText) {
     );
   }
   if (!wix.fragmentPaths?.includes("wix/integration.wxs")) {
-    problems.push("The MSI must include wix/integration.wxs (the optional ADDTOPATH / EXPLORERMENU components).");
+    problems.push(
+      "The MSI must include wix/integration.wxs (the optional ADDTOPATH / EXPLORERMENU components).",
+    );
   }
   for (const id of ["OmCliPath", "OmExplorerMenu"]) {
-    if (!wix.componentRefs?.includes(id)) problems.push(`The MSI must reference the ${id} component.`);
+    if (!wix.componentRefs?.includes(id))
+      problems.push(`The MSI must reference the ${id} component.`);
   }
   for (const name of ["openmind.cmd", "openmind"]) {
     if (bundle.resources?.[`cli/${name}`] !== `bin/${name}`) {
-      problems.push(`bundle.resources must copy "cli/${name}" to "bin/${name}" (the command-line launcher).`);
+      problems.push(
+        `bundle.resources must copy "cli/${name}" to "bin/${name}" (the command-line launcher).`,
+      );
     }
   }
   if (bundle.resources?.["../python-bundle/"] !== "python-bundle/") {
@@ -265,7 +302,8 @@ export function checkInstallerHooks(nsh) {
     if (!nsh.includes(`"${flag}"`)) problems.push(`Silent installs need the ${flag} switch.`);
   }
   // Look inside the hook macros themselves, not at comments that mention them.
-  const macro = (name) => nsh.match(new RegExp(`!macro ${name}\\b([\\s\\S]*?)!macroend`))?.[1] ?? "";
+  const macro = (name) =>
+    nsh.match(new RegExp(`!macro ${name}\\b([\\s\\S]*?)!macroend`))?.[1] ?? "";
   const install = macro("NSIS_HOOK_POSTINSTALL");
   for (const action of ["add-path", "remove-path", "add-explorer", "remove-explorer"]) {
     if (!install.includes(`--integration ${action}`)) {
@@ -277,7 +315,9 @@ export function checkInstallerHooks(nsh) {
     problems.push("The uninstaller must run --integration remove-all (except for an update).");
   }
   if (/WriteRegStr|WriteRegExpandStr|EnVar::|setx/i.test(nsh)) {
-    problems.push("The hooks must not write the Registry or PATH themselves (the app does it and records it).");
+    problems.push(
+      "The hooks must not write the Registry or PATH themselves (the app does it and records it).",
+    );
   }
   return problems;
 }
@@ -297,7 +337,10 @@ export function releaseDownloadUrl(version, name) {
  */
 export function latestJson({ version, notes, pubDate, setup, msi }) {
   const platforms = {};
-  const entry = (file) => ({ signature: file.signature.trim(), url: releaseDownloadUrl(version, file.name) });
+  const entry = (file) => ({
+    signature: file.signature.trim(),
+    url: releaseDownloadUrl(version, file.name),
+  });
   if (setup) {
     platforms["windows-x86_64"] = entry(setup);
     platforms["windows-x86_64-nsis"] = entry(setup);

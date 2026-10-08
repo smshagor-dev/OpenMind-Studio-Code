@@ -9,7 +9,7 @@ authors.workspace = true
 [dependencies]
 globset = "0.4"
 ignore = "0.4"
-openmind-fs = { version = "1.0.1", path = "../fs" }
+openmind-fs = { version = "1.0.2", path = "../fs" }
 regex = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }

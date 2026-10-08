@@ -16,7 +16,7 @@ export function publicSigningInfo(config: SigningConfig): {
 };
 export function signtoolArgs(config: SigningConfig, file: string): string[];
 export function redact(text: unknown, secrets: (string | undefined)[]): string;
-export function releaseName(kind: "setup" | "msi" | "portable", version: string, arch?: string): string;
+export function releaseName(kind: "setup" | "msi" | "portable" | "deb" | "appimage" | "linux-portable", version: string, arch?: string): string;
 export function formatSize(bytes: number): string;
 
 export interface Artifact {
