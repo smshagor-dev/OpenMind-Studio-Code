@@ -5,11 +5,14 @@ import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService
 import { withDraft } from "../services/explorerTree";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
-vi.mock("../services/container", () => ({
-  get container() {
-    return harness.current;
-  },
-}));
+vi.mock("../services/container", async () => {
+  const collab = (await import("../testUtils/collabStub")).collabStub();
+  return {
+    get container() {
+      return { collab, ...(harness.current ?? {}) };
+    },
+  };
+});
 
 import { FileTree, type FileTreeProps } from "./FileTree";
 import { useExplorerInteractions } from "./useExplorerInteractions";
@@ -89,8 +92,16 @@ describe("the name box in the tree", () => {
   ];
 
   it("goes first in the folder it is created in", () => {
-    expect(withDraft(rows, ROOT, null).map((r) => r.path)).toEqual([SRC, `${SRC}/a.ts`, `${ROOT}/README.md`]);
-    expect(withDraft(rows, ROOT, { parentDir: ROOT, kind: "file" })[0]).toEqual({ path: null, depth: 0, draft: "file" });
+    expect(withDraft(rows, ROOT, null).map((r) => r.path)).toEqual([
+      SRC,
+      `${SRC}/a.ts`,
+      `${ROOT}/README.md`,
+    ]);
+    expect(withDraft(rows, ROOT, { parentDir: ROOT, kind: "file" })[0]).toEqual({
+      path: null,
+      depth: 0,
+      draft: "file",
+    });
     const inSrc = withDraft(rows, ROOT, { parentDir: SRC, kind: "folder" });
     expect(inSrc[1]).toEqual({ path: null, depth: 1, draft: "folder" });
     expect(inSrc[2]?.path).toBe(`${SRC}/a.ts`);
@@ -121,8 +132,14 @@ describe("the name box in the tree", () => {
   it("is an empty, focused box: Enter gives the typed name, Escape cancels", () => {
     const commit = vi.fn();
     const cancel = vi.fn();
-    tree({ creating: { parentDir: SRC, kind: "file" }, onCommitCreate: commit, onCancelCreate: cancel });
-    const box = screen.getByRole("treeitem", { name: "New file name" }).querySelector("input") as HTMLInputElement;
+    tree({
+      creating: { parentDir: SRC, kind: "file" },
+      onCommitCreate: commit,
+      onCancelCreate: cancel,
+    });
+    const box = screen
+      .getByRole("treeitem", { name: "New file name" })
+      .querySelector("input") as HTMLInputElement;
     expect(box.value).toBe("");
     expect(document.activeElement).toBe(box);
     fireEvent.change(box, { target: { value: "util.ts" } });
@@ -141,7 +158,9 @@ describe("the name box in the tree", () => {
       onCancelCreate: cancel,
       createProblem: (name) => (name.includes("?") ? 'The name "a?.py" contains "?".' : null),
     });
-    const box = screen.getByRole("treeitem", { name: "New file name" }).querySelector("input") as HTMLInputElement;
+    const box = screen
+      .getByRole("treeitem", { name: "New file name" })
+      .querySelector("input") as HTMLInputElement;
     fireEvent.change(box, { target: { value: "a?.py" } });
     expect(screen.getByRole("alert").textContent).toContain('contains "?"');
     expect(box.getAttribute("aria-invalid")).toBe("true");

@@ -50,6 +50,9 @@ export class DocumentService {
   private beforeSave: ((id: string) => Promise<void>) | null = null;
   /** Opens still reading the file: a second open of the same path waits for the first instead of making a second document. */
   private readonly opening = new Map<string, Promise<string>>();
+  /** Documents kept open without a tab (a collaborative document participants edit), and closes they postponed. */
+  private readonly holds = new Map<string, number>();
+  private readonly closeWhenReleased = new Set<string>();
 
   constructor(
     private readonly ipc: IpcClient,
@@ -139,7 +142,9 @@ export class DocumentService {
       diskContent: null,
     });
     // `.inc` is PHP's as often as NASM's: an include whose text looks like assembly opens as NASM.
-    const include = opened.path.toLowerCase().endsWith(".inc") ? assemblyIncludeLanguage(opened.content) : null;
+    const include = opened.path.toLowerCase().endsWith(".inc")
+      ? assemblyIncludeLanguage(opened.content)
+      : null;
     const model = this.buffers.create(id, opened.content, include ?? this.languageFor(opened.path));
     // Monaco holds one line ending per model, so a mixed (or lone-CR) file reads back
     // slightly different from the file. The baseline is what the model holds right
@@ -273,6 +278,11 @@ export class DocumentService {
   isDirty(id: string): boolean {
     const doc = this.requireDocument(id);
     return this.buffers.getValue(id) !== doc.savedContent;
+  }
+
+  /** The text the buffer was last saved as (or opened from): what its unsaved edits are relative to. */
+  savedText(id: string): string {
+    return this.requireDocument(id).savedContent;
   }
 
   snapshot(id: string): DocumentSnapshot {
@@ -434,7 +444,33 @@ export class DocumentService {
     this.buffers.setMarkers(id, owner, markers);
   }
 
+  /**
+   * Keeps a document open even when no tab shows it (Milestone 24: the Owner's copy of a file participants edit). Its
+   * dirty state, Save, Save All and Auto Save work as for any document; a close while held waits for the release.
+   */
+  hold(id: string): void {
+    this.holds.set(id, (this.holds.get(id) ?? 0) + 1);
+  }
+
+  release(id: string): void {
+    const left = (this.holds.get(id) ?? 1) - 1;
+    if (left > 0) {
+      this.holds.set(id, left);
+      return;
+    }
+    this.holds.delete(id);
+    if (this.closeWhenReleased.delete(id)) this.close(id);
+  }
+
+  isHeld(id: string): boolean {
+    return this.holds.has(id);
+  }
+
   close(id: string): void {
+    if (this.holds.has(id)) {
+      this.closeWhenReleased.add(id); // no tab shows it any more; it closes when the hold ends
+      return;
+    }
     this.events.emit("documentClosed", { id, path: this.documents.get(id)?.path ?? null });
     this.buffers.dispose(id);
     this.documents.delete(id);

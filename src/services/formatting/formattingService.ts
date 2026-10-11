@@ -148,6 +148,8 @@ export class FormattingService {
   private defaults: Record<string, string> = {};
   private running = new Set<string>();
   private statusSeq = 0;
+  /** What the last status lookup was for (see `refreshStatusIfChanged`). */
+  private statusKey: string | null = null;
 
   constructor(
     private readonly ipc: IpcClient,
@@ -283,6 +285,29 @@ export class FormattingService {
       selected,
       reason,
     };
+  }
+
+  /**
+   * Re-reads the status only when what it depends on changed — the file in front, its path, language, line ending,
+   * indentation or language server — not on every edit. (The workspace notifies on each keystroke, also on each remote
+   * collaborator's keystroke; a backend lookup each time starved the database under fast typing.)
+   */
+  async refreshStatusIfChanged(): Promise<void> {
+    const active = this.host.active();
+    const key =
+      "target" in active
+        ? JSON.stringify([
+            active.target.id,
+            active.target.path,
+            active.target.language,
+            active.target.eol,
+            active.target.indent,
+            this.host.lsp(active.target.id).available,
+          ])
+        : `none:${active.reason}`;
+    if (key === this.statusKey) return;
+    this.statusKey = key;
+    await this.refreshStatus();
   }
 
   /** Re-reads what formatter applies to the file in front (status bar). Never runs a formatter. */

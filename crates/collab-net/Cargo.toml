@@ -1,0 +1,40 @@
+[package]
+name = "openmind-collab-net"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenMind Studio collaboration networking: WebRTC data channels (str0m), signaling client, ICE/STUN candidate gathering, the TURN relay abstraction and the Owner/participant session drivers. No authorization or persistence (those are openmind-collab and the app)."
+
+[dependencies]
+base64 = "0.22"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+getrandom = "0.3"
+hex = "0.4"
+# Local-network discovery (Milestone 24, phase 5.1): pure-Rust mDNS responder/browser (no Bonjour, no admin), interface
+# facts (type, state, gateway, MAC) for choosing which addresses to advertise, and SO_REUSEADDR for the broadcast port.
+mdns-sd = "0.21"
+netdev = { version = "0.46", default-features = false, features = ["gateway"] }
+openmind-collab = { path = "../collab" }
+openmind-collab-signal = { path = "../collab-signal" }
+openmind-network = { path = "../network" }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+socket2 = { version = "0.6", features = ["all"] }
+str0m = { version = "0.23", default-features = false, features = ["rust-crypto"] }
+thiserror.workspace = true
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+tracing.workspace = true
+turn-client-proto = "0.7.3"
+webpki-roots = "1"
+
+[dev-dependencies]
+# The two-computer check (examples/lan_check) follows the shared folder with the app's own watcher.
+openmind-file-watch = { path = "../file-watch" }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["handshake", "connect"] }

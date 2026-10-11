@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
+import type { CollabSnapshot } from "../collab/collabIpc";
 import type { DepsSnapshot } from "../deps/depsIpc";
 import type { ExtensionsSnapshot } from "../extensionsIpc";
 import type { DebugStatus, GitSnapshot, LspSnapshot, MySqlStatus, PhpServerInfo, RuntimeStatus } from "../ipc";
@@ -32,6 +33,8 @@ export interface GlobalDomainData {
   extensions: ExtensionsSnapshot;
   packages: PackagesState;
   servers: ServersState;
+  /** The collaboration rooms this machine created or joined, with their members. */
+  collaboration: CollabSnapshot;
 }
 
 /** One value per open folder, received only by the windows that have that folder open. */
@@ -54,6 +57,7 @@ export const GLOBAL_DOMAINS: readonly GlobalDomain[] = [
   "extensions",
   "packages",
   "servers",
+  "collaboration",
 ];
 export const WORKSPACE_DOMAINS: readonly WorkspaceDomain[] = ["git", "dependencies", "project", "debug"];
 export const DOMAINS: readonly Domain[] = [...GLOBAL_DOMAINS, ...WORKSPACE_DOMAINS];

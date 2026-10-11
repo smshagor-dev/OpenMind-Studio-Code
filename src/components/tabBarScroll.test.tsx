@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EditorTabView } from "../services/workspaceService";
 import { TabBar } from "./TabBar";
 
+// The collaboration dots read the app's live services; these tests are about the component alone.
+vi.mock("./collab/CollabDots", () => ({ CollabDots: () => null }));
+
 /** jsdom has no layout: every tab is TAB px wide, placed by its index; the row is `rowWidth` wide. */
 const TAB = 120;
 let rowWidth = 300;

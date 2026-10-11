@@ -15,6 +15,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 base64 = "0.23.1"
+openmind-collab = { version = "1.0.2", path = "../crates/collab" }
+openmind-collab-net = { version = "1.0.2", path = "../crates/collab-net" }
+openmind-collab-signal = { version = "1.0.2", path = "../crates/collab-signal" }
 openmind-core = { version = "1.0.2", path = "../crates/core" }
 openmind-db = { version = "1.0.2", path = "../crates/db" }
 openmind-file-watch = { version = "1.0.2", path = "../crates/file-watch" }
@@ -44,6 +47,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri = { version = "2.11.6", features = ["tray-icon"] }
 getrandom = "0.3"
+# Classroom voice (Milestone 24, phase 11): the media server's management API and its credentials.
+hex = "0.4"
+ureq = { version = "3.4.2", features = ["rustls"] }
 tauri-plugin-clipboard-manager = "2.3.3"
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-updater = "2"

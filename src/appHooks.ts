@@ -94,6 +94,11 @@ export function useAppStartup(): boolean {
         container.git.initialize(),
         // Reads the open folder's manifests (nothing runs, nothing installs).
         container.dependencies.initialize(),
+        // A joined room's shared tree and remote documents follow `collab:remote` (nothing is fetched here).
+        container.collab.start().then(
+          () => undefined,
+          () => undefined,
+        ),
       ]);
       await container.sourceControl.initialize();
       timings.mark("background");

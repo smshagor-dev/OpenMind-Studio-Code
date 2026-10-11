@@ -358,3 +358,38 @@ describe("zoom, pages and dimensions", () => {
     expect(service.get(doc.id)?.dimensions).toEqual({ width: 640, height: 480 });
   });
 });
+
+describe("remote collaboration documents", () => {
+  const uri = "omcollab://0123456789abcdef0123456789abcdef/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const collab = {
+    roomUid: "0123456789abcdef0123456789abcdef",
+    fileId: "b".repeat(32),
+    room: "My Project",
+    path: "src/main.ts",
+    sha256: "f".repeat(64),
+    state: "current" as const,
+  };
+
+  it("reuses one document per identity and tracks whether the snapshot is current", () => {
+    const service = new FilePreviewService(createFakeIpc());
+    const first = service.openVirtual({ uri, text: "a", language: "typescript", extension: "My Project", readonly: true, collab });
+    const again = service.openVirtual({ uri, text: "b", language: "typescript", extension: "My Project", readonly: true, collab });
+    expect(again).toBe(first);
+    expect(service.virtualId(uri)).toBe(first);
+    const model = () => service.get(first)?.model;
+    expect(model()).toMatchObject({ type: "virtualText", text: "b", collab: { state: "current" } });
+    service.setCollabState(uri, "stale");
+    expect(model()).toMatchObject({ collab: { state: "stale" } });
+    service.setCollabState(uri, "unavailable");
+    expect(model()).toMatchObject({ text: "b", collab: { state: "unavailable" } });
+    service.release(first);
+    expect(service.virtualId(uri)).toBeNull();
+  });
+
+  it("leaves an extension's document alone", () => {
+    const service = new FilePreviewService(createFakeIpc());
+    const id = service.openVirtual({ uri: "memfs:/a.txt", text: "x", language: "plaintext", extension: "ext", readonly: true });
+    service.setCollabState("memfs:/a.txt", "stale");
+    expect(service.get(id)?.model).not.toHaveProperty("collab");
+  });
+});

@@ -29,6 +29,9 @@ pub enum Domain {
     /// Global. `servers::ServersState`: OpenMind's managed servers (PHP, MariaDB, phpMyAdmin) — app-wide, like
     /// XAMPP's, not tied to a folder — with their ports.
     Servers,
+    /// Global. `commands::collab::CollabSnapshot`: the collaboration rooms this machine created or joined, with their
+    /// members (presence, cursors and voice levels are event streams, never canonical state).
+    Collaboration,
     /// Per workspace. `commands::git::GitSnapshot` (what `git_snapshot` returns for that folder).
     Git,
     /// Per workspace. `openmind_deps::DepsSnapshot` (what `deps_scan` returns for that folder).
@@ -220,6 +223,7 @@ mod tests {
             Domain::Extensions,
             Domain::Packages,
             Domain::Servers,
+            Domain::Collaboration,
         ] {
             assert!(!domain.is_workspace_scoped(), "{domain:?}");
         }

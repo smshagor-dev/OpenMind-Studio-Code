@@ -339,6 +339,7 @@ fn workload_runtimes_carry_sizes_licences_and_honest_flags() {
         "android-platform-tools",
         "sqlite",
         "postgresql",
+        "livekit",
     ] {
         let manifest = registry.get(id).expect(id);
         let (download, install) = manifest.sizes(&manifest.default_version, "windows-x64");

@@ -16,11 +16,38 @@ export type PreviewModel =
   | { type: "latex"; outline: LatexOutline }
   | { type: "message"; message: string }
   /** A document an extension's file system provider served (a custom scheme): shown read-only (Milestone 18). */
-  | { type: "virtualText"; text: string; language: string; extension: string; readonly: boolean }
+  | {
+      type: "virtualText";
+      text: string;
+      language: string;
+      extension: string;
+      readonly: boolean;
+      /** Set for a collaboration room's remote document (`omcollab:`): a snapshot of the Owner's file. */
+      collab?: CollabOrigin;
+    }
   /** A Jupyter notebook: the notebook editor loads and edits it (`NotebookService`), Milestone 19. */
   | { type: "notebook" };
 
 /** Whether a file is a Jupyter notebook (opened in the notebook editor, never run on open). */
+/**
+ * Where a remote collaboration document came from. `stale`: the Owner's file changed after this snapshot (refresh to
+ * fetch it again); `unavailable`: it was deleted, hidden or the room disconnected. Phase 6 replaces snapshots with live
+ * CRDT documents.
+ */
+export interface CollabOrigin {
+  roomUid: string;
+  fileId: string;
+  /** The shared folder's display name. */
+  room: string;
+  /** Workspace-relative. */
+  path: string;
+  sha256: string;
+  /** `live`: a collaborative document (phase 6) — its text follows the shared document, never a snapshot. */
+  state: "current" | "stale" | "unavailable" | "live";
+  /** While live: this member may change it now. */
+  editable?: boolean;
+}
+
 export function isNotebookPath(path: string): boolean {
   return /\.ipynb$/i.test(path);
 }
@@ -203,6 +230,7 @@ export class FilePreviewService {
     language: string;
     extension: string;
     readonly: boolean;
+    collab?: CollabOrigin;
   }): string {
     const key = `virtual:${request.uri}`;
     const model: PreviewModel = {
@@ -211,6 +239,7 @@ export class FilePreviewService {
       language: request.language,
       extension: request.extension,
       readonly: request.readonly,
+      ...(request.collab ? { collab: request.collab } : {}),
     };
     const existing = this.byPath.get(key);
     if (existing !== undefined && this.has(existing)) {
@@ -225,7 +254,7 @@ export class FilePreviewService {
     const id = `pv:${String(this.next)}`;
     this.next += 1;
     this.byPath.set(key, id);
-    const name = request.uri.split("/").pop() || request.uri;
+    const name = (request.collab?.path ?? request.uri).split("/").pop() || request.uri;
     this.set({
       ...this.state.docs,
       [id]: {
@@ -246,6 +275,36 @@ export class FilePreviewService {
       },
     });
     return id;
+  }
+
+  /** The preview id of an open custom-scheme document, if it is open. */
+  virtualId(uri: string): string | null {
+    const id = this.byPath.get(`virtual:${uri}`);
+    return id !== undefined && this.has(id) ? id : null;
+  }
+
+  /** Marks an open remote collaboration document current, stale or unavailable (its text is kept). */
+  setCollabState(uri: string, state: CollabOrigin["state"]): void {
+    const id = this.virtualId(uri);
+    const model = id === null ? undefined : this.state.docs[id]?.model;
+    if (id === null || model?.type !== "virtualText" || !model.collab || model.collab.state === state) return;
+    this.patch(id, { model: { ...model, collab: { ...model.collab, state } } });
+  }
+
+  /** A remote document became live (collaborative); `editable` follows the member's write access. */
+  setCollabLive(uri: string, editable: boolean): void {
+    const id = this.virtualId(uri);
+    const model = id === null ? undefined : this.state.docs[id]?.model;
+    if (id === null || model?.type !== "virtualText" || !model.collab) return;
+    this.patch(id, { model: { ...model, readonly: !editable, collab: { ...model.collab, state: "live", editable } } });
+  }
+
+  /** The remote file was renamed or moved (same document, same identity): its tab shows the new name. */
+  setCollabPath(uri: string, path: string): void {
+    const id = this.virtualId(uri);
+    const model = id === null ? undefined : this.state.docs[id]?.model;
+    if (id === null || model?.type !== "virtualText" || !model.collab || model.collab.path === path) return;
+    this.patch(id, { name: path.split("/").pop() ?? path, model: { ...model, collab: { ...model.collab, path } } });
   }
 
   /** Whether this preview shows an extension's custom-scheme document (it has no file to reload). */

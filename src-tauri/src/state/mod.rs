@@ -201,12 +201,13 @@ pub fn servers_changed(app: &AppHandle) {
 }
 
 /// The global domains every window needs from the start.
-const STARTUP_DOMAINS: [Domain; 5] = [
+const STARTUP_DOMAINS: [Domain; 6] = [
     Domain::Runtimes,
     Domain::Tools,
     Domain::LanguageServers,
     Domain::Extensions,
     Domain::Servers,
+    Domain::Collaboration,
 ];
 
 /// Reads every global domain once at start-up, in the background (the window can show before it ends). A domain that

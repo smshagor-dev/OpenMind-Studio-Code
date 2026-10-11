@@ -19,6 +19,7 @@ import { SheetPreview } from "./filePreview/SheetPreview";
 import { VirtualTextPreview } from "./filePreview/VirtualTextPreview";
 import { MarkdownText } from "./MarkdownPreview";
 import { t } from "../i18n";
+import { shownPath } from "./remoteTabPath";
 
 const KIND_LABEL: Record<PreviewKind, string> = {
   image: "preview.kind.image",
@@ -159,17 +160,35 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
   ].filter((part): part is string => part !== null);
   return (
     <div className="file-preview__toolbar" role="toolbar" aria-label={t("preview.toolbar")}>
-      <span className="file-preview__name" title={doc.path}>
+      <span
+        className="file-preview__name"
+        title={shownPath(doc.path, doc.id, doc.name) ?? doc.name}
+      >
         {doc.name}
       </span>
       <span className="file-preview__meta">
         {model?.type === "virtualText"
-          ? t("preview.servedBy", { extension: model.extension })
+          ? model.collab
+            ? t("preview.collabSharedFrom", { room: model.collab.room, path: model.collab.path })
+            : t("preview.servedBy", { extension: model.extension })
           : meta.join(" · ")}
       </span>
-      <span className="file-preview__badge" title={t("preview.neverChanges")}>
-        {t("preview.readOnly")}
-      </span>
+      {model?.type === "virtualText" && model.collab && model.collab.state !== "current" ? (
+        <span className="file-preview__badge" role="status">
+          {model.collab.state === "live"
+            ? model.collab.editable
+              ? t("preview.collabLive")
+              : t("preview.collabLiveReadOnly")
+            : model.collab.state === "stale"
+              ? t("preview.collabStale")
+              : t("preview.collabUnavailable")}
+        </span>
+      ) : null}
+      {model?.type === "virtualText" && model.collab?.state === "live" ? null : (
+        <span className="file-preview__badge" title={t("preview.neverChanges")}>
+          {t("preview.readOnly")}
+        </span>
+      )}
       <span className="file-preview__spacer" />
       {model?.type === "pdf" ? <PageControls doc={doc} /> : null}
       {model?.type === "image" || model?.type === "pdf" ? <ZoomControls doc={doc} /> : null}
@@ -191,10 +210,16 @@ function Toolbar({ doc }: { doc: FilePreviewDoc }) {
       </ToolButton>
       <ToolButton
         label={t("preview.reload")}
-        disabled={model?.type === "virtualText"}
-        reason={t("preview.reloadReason")}
+        disabled={model?.type === "virtualText" && model.collab?.state !== "stale"}
+        reason={
+          model?.type === "virtualText" && model.collab
+            ? t("preview.collabRefreshReason")
+            : t("preview.reloadReason")
+        }
         onClick={() => {
-          void filePreviews.reload(doc.id);
+          if (model?.type === "virtualText" && model.collab)
+            void container.collab.remote.refresh(doc.path);
+          else void filePreviews.reload(doc.id);
         }}
       >
         {t("preview.reloadShort")}
@@ -242,7 +267,15 @@ function Body({ doc, model }: { doc: FilePreviewDoc; model: PreviewModel }) {
     case "latex":
       return <LatexPreview outline={model.outline} />;
     case "virtualText":
-      return <VirtualTextPreview text={model.text} language={model.language} />;
+      return (
+        <VirtualTextPreview
+          text={model.text}
+          language={model.language}
+          uri={model.collab ? doc.path : null}
+          live={model.collab?.state === "live"}
+          readOnly={!(model.collab?.state === "live" && model.collab.editable === true)}
+        />
+      );
     case "notebook":
       return <NotebookView path={doc.path} />;
     case "message":

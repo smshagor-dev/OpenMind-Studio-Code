@@ -96,6 +96,15 @@
   --widget-shadow: rgba(0, 0, 0, 0.5);
   --danger-bg: #a1260d;
   --error-fg: #f14c4c;
+  /* Collaborators (Milestone 24, phase 7): one colour per member, the same everywhere. */
+  --collab-1: #4fc1ff;
+  --collab-2: #f08d49;
+  --collab-3: #b48ead;
+  --collab-4: #89d185;
+  --collab-5: #f14c94;
+  --collab-6: #d7ba7d;
+  --collab-7: #4ec9b0;
+  --collab-8: #ff8c8c;
 
   /* Status colors (shared by badges, problems, the run/debug UI) and the text on top of them. */
   --success-fg: #3fb950;
@@ -228,6 +237,15 @@
   --warning-bg: #a36b00;
   --info-fg: #0064c8;
   --error-fg: #c72e0f;
+  /* Collaborators (Milestone 24, phase 7): one colour per member, the same everywhere. */
+  --collab-1: #0063b1;
+  --collab-2: #b45309;
+  --collab-3: #7c3aed;
+  --collab-4: #2e7d32;
+  --collab-5: #c2185b;
+  --collab-6: #8a6d00;
+  --collab-7: #00796b;
+  --collab-8: #c62828;
   --error-bg-soft: rgba(190, 17, 0, 0.1);
   --warning-bg-soft: rgba(204, 167, 0, 0.18);
   --search-match-bg: rgba(234, 92, 0, 0.25);
@@ -330,6 +348,15 @@
   --welcome-card-hover-bg: #1a1a1a;
   --widget-shadow: rgba(0, 0, 0, 0);
   --error-fg: #f48771;
+  /* Collaborators (Milestone 24, phase 7): one colour per member, the same everywhere. */
+  --collab-1: #4fc1ff;
+  --collab-2: #ffb86c;
+  --collab-3: #d4a5ff;
+  --collab-4: #b5f5a1;
+  --collab-5: #ff79c6;
+  --collab-6: #ffe66d;
+  --collab-7: #6ff5e1;
+  --collab-8: #ff9e9e;
   --success-fg: #6ce26c;
   --warning-fg: #ffd700;
   --info-fg: #6fc3df;

@@ -173,7 +173,10 @@ export function wireFormatting(deps: FormattingWiringDeps): { service: Formattin
   const refresh = () => {
     void service.refreshStatus();
   };
-  deps.workspace.subscribe(refresh);
+  // Every workspace change (each keystroke too): look up again only when the file in front or its kind changed.
+  deps.workspace.subscribe(() => {
+    void service.refreshStatusIfChanged();
+  });
   settings.onChange(
     [
       "editor.defaultFormatter",

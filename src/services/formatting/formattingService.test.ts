@@ -62,7 +62,10 @@ interface Rig {
 }
 
 function rig(
-  options: { lsp?: { available: boolean; text?: string | null }; extension?: { text: string | null } } = {},
+  options: {
+    lsp?: { available: boolean | (() => boolean); text?: string | null };
+    extension?: { text: string | null };
+  } = {},
 ): Rig {
   const ipc = createFakeIpc({
     formatOptions: vi.fn().mockResolvedValue(answer([BUILTIN, PRETTIER_MISSING])),
@@ -95,11 +98,15 @@ function rig(
       texts.set(id, text);
       applied.push(text);
     },
-    lsp: () => ({
-      available: options.lsp?.available ?? false,
-      reason: options.lsp?.available ? null : "No language server for JSON.",
-      run: () => Promise.resolve(options.lsp?.text ?? null),
-    }),
+    lsp: () => {
+      const given = options.lsp?.available ?? false;
+      const available = typeof given === "function" ? given() : given;
+      return {
+        available,
+        reason: available ? null : "No language server for JSON.",
+        run: () => Promise.resolve(options.lsp?.text ?? null),
+      };
+    },
     ...(options.extension
       ? {
           extensionFormatters: () => [
@@ -412,5 +419,38 @@ describe("extension formatters (Milestone 18)", () => {
     vi.mocked(x.ipc.formatOptions).mockResolvedValue(answer([PRETTIER_MISSING]));
     const outcome = await x.service.formatActive();
     expect(outcome).toEqual({ kind: "formatted", formatter: "Fmt (extension)" });
+  });
+});
+
+describe("the formatter status while typing", () => {
+  it("is looked up once per file in front, not on every edit (local or a collaborator's)", async () => {
+    for (let i = 0; i < 50; i++) await r.service.refreshStatusIfChanged();
+    expect(r.ipc.formatOptions).toHaveBeenCalledTimes(1);
+    // Another file in front, or the same file now another language: looked up again.
+    r.host.focus.value = {
+      ...(r.host.focus.value as FormatTarget),
+      id: "d2",
+      path: "C:/My Project/b.json",
+    };
+    await r.service.refreshStatusIfChanged();
+    r.host.focus.value = { ...(r.host.focus.value), language: "jsonc" };
+    await r.service.refreshStatusIfChanged();
+    await r.service.refreshStatusIfChanged();
+    expect(r.ipc.formatOptions).toHaveBeenCalledTimes(3);
+    // No editor in front: nothing to look up.
+    r.host.focus.value = "Open a text file first.";
+    await r.service.refreshStatusIfChanged();
+    expect(r.ipc.formatOptions).toHaveBeenCalledTimes(3);
+    expect(r.service.getState().status).toBeNull();
+  });
+
+  it("is looked up again when the file's language server becomes available", async () => {
+    let available = false;
+    const lsp = rig({ lsp: { available: () => available } });
+    await lsp.service.refreshStatusIfChanged();
+    await lsp.service.refreshStatusIfChanged();
+    available = true;
+    await lsp.service.refreshStatusIfChanged();
+    expect(lsp.ipc.formatOptions).toHaveBeenCalledTimes(2);
   });
 });

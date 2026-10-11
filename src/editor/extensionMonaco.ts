@@ -1,9 +1,6 @@
 import * as monaco from "monaco-editor";
 
-import type {
-  ProviderInvoke,
-  ProviderRegistration,
-} from "../services/extensionHostBridge";
+import type { ProviderInvoke, ProviderRegistration } from "../services/extensionHostBridge";
 import type { ContributionBinding } from "../services/extensionContributionService";
 import {
   documentationText,

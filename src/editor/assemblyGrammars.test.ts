@@ -21,7 +21,8 @@ beforeAll(() => {
 
 describe("assembly in the editor", () => {
   it("opens NASM and GNU as sources in their language and leaves .inc alone", () => {
-    for (const name of ["hello.asm", "BOOT.ASM", "x.nasm"]) expect(languageForPath(`C:/p/${name}`), name).toBe("nasm");
+    for (const name of ["hello.asm", "BOOT.ASM", "x.nasm"])
+      expect(languageForPath(`C:/p/${name}`), name).toBe("nasm");
     // `.s` is also Monaco's MIPS: the document table picks GNU as (documentService.test.ts).
     expect(monaco.languages.getLanguages().some((language) => language.id === "gas")).toBe(true);
     expect(languageForPath("C:/p/macros.inc")).not.toBe("nasm");
@@ -35,10 +36,10 @@ describe("assembly in the editor", () => {
     expect(tokenOf(line, "nasm", "; load")).toBe("comment");
     expect(tokenOf("        global  main", "nasm", "global")).toBe("keyword.directive");
     expect(tokenOf("main:   ret", "nasm", "main:")).toBe("type.identifier");
-    expect(tokenOf("msg: db \"Hello\", 10, 0", "nasm", '"Hello"')).toBe("string");
+    expect(tokenOf('msg: db "Hello", 10, 0', "nasm", '"Hello"')).toBe("string");
     expect(tokenOf("        add     r12d, 0x1F", "nasm", "r12d")).toBe("variable.predefined");
     expect(tokenOf("        add     r12d, 0x1F", "nasm", "0x1F")).toBe("number.hex");
-    expect(tokenOf("%include \"macros.inc\"", "nasm", "%include")).toBe("keyword.directive");
+    expect(tokenOf('%include "macros.inc"', "nasm", "%include")).toBe("keyword.directive");
     expect(tokenOf("        call    printf", "nasm", "printf")).toBe("identifier");
   });
 
@@ -52,7 +53,8 @@ describe("assembly in the editor", () => {
   });
 
   it("knows the numbered register families", () => {
-    for (const name of ["r8", "r15d", "r9b", "xmm0", "ymm31", "st7", "cr0", "k7"]) expect(REGISTERS).toContain(name);
+    for (const name of ["r8", "r15d", "r9b", "xmm0", "ymm31", "st7", "cr0", "k7"])
+      expect(REGISTERS).toContain(name);
     expect(REGISTERS).not.toContain("r16");
   });
 });

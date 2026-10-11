@@ -1,0 +1,24 @@
+[package]
+name = "openmind-collab-signal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenMind Studio's stateless WebRTC signaling relay and its wire protocol. Holds only topics, sockets and forwarded offers/answers/candidates in memory; persists nothing."
+
+[[bin]]
+name = "openmind-collab-signal"
+path = "src/bin/relay.rs"
+
+[dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+getrandom = "0.3"
+hex = "0.4"
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal"] }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["handshake"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true

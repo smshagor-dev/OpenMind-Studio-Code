@@ -86,11 +86,13 @@ export class WorkspaceIndexService {
     for (const listener of this.listeners) listener();
   }
 
-  /** Listens for status pushed by the backend. Call once. */
+  /** Listens for status pushed by the backend. Call once. Without an event channel there is nothing to follow. */
   async listen(): Promise<void> {
-    this.unlisten = await this.ipc.onIndexStatus((status) => {
-      if (sameFolder(status.root, this.getRoot())) this.update({ status });
-    });
+    this.unlisten = await this.ipc
+      .onIndexStatus((status) => {
+        if (sameFolder(status.root, this.getRoot())) this.update({ status });
+      })
+      .catch(() => null);
   }
 
   dispose(): void {

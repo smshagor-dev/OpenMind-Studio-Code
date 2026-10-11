@@ -106,7 +106,12 @@ export function createFakeExtensionsIpc(): ExtensionsIpc & FakeExtensionReads {
     extHostLog: vi.fn().mockResolvedValue(""),
     extHostStart: vi
       .fn()
-      .mockResolvedValue({ state: "running", pid: 1, node: "OpenMind portable Node.js", error: null }),
+      .mockResolvedValue({
+        state: "running",
+        pid: 1,
+        node: "OpenMind portable Node.js",
+        error: null,
+      }),
     extHostStop: vi.fn().mockResolvedValue(undefined),
     extHostRequest: vi.fn().mockResolvedValue(null),
     extHostNotify: vi.fn().mockResolvedValue(undefined),

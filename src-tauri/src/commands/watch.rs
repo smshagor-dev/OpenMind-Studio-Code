@@ -43,6 +43,8 @@ pub async fn watch_start(
             // Each window hears only about its own folder.
             crate::commands::index::apply_watch_batch(&index, &index_root, &batch);
             crate::commands::watch_state::files_changed(&handle, &folder, &batch);
+            // Rooms this folder hosts: participants' trees follow the same batches (no second watcher).
+            crate::commands::collab::net_share::files_changed(&handle, &folder, &batch);
             let _ = handle.emit_to(target.as_str(), "fs:changed", batch);
         }),
         // The project's installed packages (`npm install`, `pip install` into `.venv` in a terminal ...) and its

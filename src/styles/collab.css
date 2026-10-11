@@ -1,0 +1,795 @@
+/* Presence (Milestone 24, phase 7): other members' cursors, selections, labels and indicators. Colours are the
+   --collab-N theme tokens; a member's colour comes from its peer id, so it is the same in every window. */
+
+.collab-caret {
+  position: relative;
+  border-left: 2px solid var(--collab-color);
+  margin-left: -1px;
+  pointer-events: none;
+}
+
+/* The name above the caret (its text comes from one generated rule per name: .collab-label-N::after). */
+.collab-caret::after {
+  position: absolute;
+  bottom: 100%;
+  left: -2px;
+  padding: 0 4px;
+  border-radius: 3px 3px 3px 0;
+  background: var(--collab-color);
+  color: var(--editor-bg);
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+  z-index: 2;
+}
+
+.collab-caret--below::after {
+  bottom: auto;
+  top: 100%;
+  border-radius: 0 3px 3px 3px;
+}
+
+.collab-caret--typing::after {
+  opacity: 1;
+  font-style: italic;
+}
+
+.collab-selection {
+  background: color-mix(in srgb, var(--collab-color) 28%, transparent);
+}
+
+/* Member badges (tabs, Explorer): the member's initial on its colour, so a badge can't be taken for the
+   "unsaved" dot. */
+.collab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--collab-color);
+  color: var(--editor-bg);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  flex: none;
+}
+
+.collab-badge--typing {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--collab-color) 45%, transparent);
+}
+
+/* A row of member badges / the participant list's dot. */
+.collab-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  flex: none;
+}
+
+.collab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--collab-color);
+}
+
+.collab-dot--typing {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--collab-color) 40%, transparent);
+}
+
+.collab-dots__more {
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.collab-fg-1,
+.collab-bg-1,
+.collab-c-1 {
+  --collab-color: var(--collab-1);
+}
+
+.collab-fg-2,
+.collab-bg-2,
+.collab-c-2 {
+  --collab-color: var(--collab-2);
+}
+
+.collab-fg-3,
+.collab-bg-3,
+.collab-c-3 {
+  --collab-color: var(--collab-3);
+}
+
+.collab-fg-4,
+.collab-bg-4,
+.collab-c-4 {
+  --collab-color: var(--collab-4);
+}
+
+.collab-fg-5,
+.collab-bg-5,
+.collab-c-5 {
+  --collab-color: var(--collab-5);
+}
+
+.collab-fg-6,
+.collab-bg-6,
+.collab-c-6 {
+  --collab-color: var(--collab-6);
+}
+
+.collab-fg-7,
+.collab-bg-7,
+.collab-c-7 {
+  --collab-color: var(--collab-7);
+}
+
+.collab-fg-8,
+.collab-bg-8,
+.collab-c-8 {
+  --collab-color: var(--collab-8);
+}
+
+/* The Collaboration side bar view. */
+.collab-view {
+  padding: 4px 0 8px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+.collab-view--empty {
+  padding: 8px 20px;
+  color: var(--fg-muted);
+}
+
+.collab-room + .collab-room {
+  margin-top: 8px;
+}
+
+.collab-room__header {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 20px;
+}
+
+.collab-room__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-room__connection {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.collab-people {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-person {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "dot name role"
+    ". file status";
+  column-gap: 6px;
+  align-items: center;
+  padding: 3px 20px;
+}
+
+.collab-person .collab-dot {
+  grid-area: dot;
+}
+
+.collab-person__name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-person__role,
+.collab-person__status {
+  color: var(--fg-muted);
+  font-size: 12px;
+  justify-self: end;
+}
+
+.collab-person__role {
+  grid-area: role;
+}
+
+.collab-person__status {
+  grid-area: status;
+}
+
+.collab-person__file {
+  grid-area: file;
+  color: var(--fg-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-person--offline .collab-person__name,
+.collab-person--offline .collab-dot {
+  opacity: 0.5;
+}
+
+/* Room management (phase 8). Everything wraps: long Russian labels and narrow side bars must not overflow. */
+.collab-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 20px 8px;
+}
+
+.collab-view button {
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.collab-view button:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+}
+
+/* Dimmed as a whole: grey text on the light theme's grey buttons was unreadable. */
+.collab-view button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.collab-view button:focus-visible,
+.collab-view input:focus-visible,
+.collab-perms select:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.collab-view button[aria-pressed="true"] {
+  border-color: var(--focus-border);
+}
+
+.collab-view .collab-button--primary {
+  background: var(--button-bg);
+  color: var(--button-fg);
+  border-color: transparent;
+}
+
+.collab-view .collab-button--primary:disabled {
+  color: var(--button-fg);
+  opacity: 0.5;
+}
+
+.collab-view .collab-button--primary:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+}
+
+.collab-view .collab-button--danger {
+  border-color: var(--error-border);
+  background: transparent;
+  color: var(--error-fg);
+}
+
+.collab-view .collab-button--danger:hover:not(:disabled) {
+  background: var(--error-bg-soft);
+}
+
+.collab-view .collab-link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--link-fg);
+  text-align: left;
+}
+
+.collab-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 20px 8px;
+  padding: 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+}
+
+.collab-form__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.collab-form input,
+.collab-form__label input {
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.collab-form input[aria-invalid="true"] {
+  border-color: var(--error-border);
+}
+
+.collab-form__note,
+.collab-form__details {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.collab-form__progress {
+  margin: 0;
+  font-size: 12px;
+}
+
+.collab-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.collab-room__chips,
+.collab-room__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.collab-chip {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.collab-chip--warn {
+  background: var(--warning-bg-soft);
+  color: var(--warning-fg);
+}
+
+.collab-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.collab-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 4px 20px;
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+}
+
+.collab-code__label {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.collab-code__value {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.collab-code__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.collab-subhead {
+  margin: 8px 20px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--sidebar-title-fg);
+}
+
+.collab-requests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-request {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 3px 20px;
+}
+
+.collab-request__name {
+  flex: 1 1 80px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-request__status {
+  flex-basis: 100%;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.collab-request__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.collab-person {
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "dot name role menu"
+    ". file status menu";
+}
+
+.collab-view .collab-person__menu {
+  grid-area: menu;
+  min-height: 20px;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: var(--icon-fg);
+}
+
+.collab-files > .collab-form__note {
+  padding: 0 20px;
+}
+
+.collab-files__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.collab-view .collab-files__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 22px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--sidebar-fg);
+  text-align: left;
+}
+
+.collab-view .collab-files__row:hover {
+  background: var(--list-hover-bg);
+}
+
+.collab-files__twistie {
+  display: inline-flex;
+  width: 16px;
+  flex: none;
+}
+
+.collab-files__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collab-files__progress {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+/* The permission editor and diagnostics dialogs. */
+.collab-perms {
+  width: min(640px, 92vw);
+  max-height: 76vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.collab-perms__groups {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.collab-perms__role,
+.collab-perms__note {
+  margin: 0 0 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.collab-perms__group {
+  margin: 0 0 8px;
+  padding: 4px 8px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+}
+
+.collab-perms__head,
+.collab-perms__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.6fr) minmax(70px, 1fr) minmax(110px, 1fr) minmax(70px, 1fr);
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.collab-perms__head {
+  color: var(--fg-muted);
+  font-size: 11px;
+  padding-bottom: 2px;
+}
+
+.collab-perms__row + .collab-perms__row {
+  margin-top: 3px;
+}
+
+.collab-perms select {
+  min-width: 0;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: inherit;
+}
+
+.collab-perms__on {
+  color: var(--success-fg);
+}
+
+.collab-perms__off {
+  color: var(--fg-muted);
+}
+
+.collab-perms__on::before {
+  content: "✓ ";
+}
+
+.collab-perms__off::before {
+  content: "– ";
+}
+
+.collab-diag {
+  width: min(520px, 92vw);
+}
+
+.collab-diag__list {
+  margin: 0 0 8px;
+}
+
+.collab-diag__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) 2fr;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.collab-diag__row dt {
+  color: var(--fg-muted);
+}
+
+.collab-diag__row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collab-diag__hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .collab-perms__head {
+    display: none;
+  }
+
+  .collab-perms__row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* Dialogs opened from the panel: disabled confirm buttons stay readable, a typed confirmation has room. */
+.modal .modal__confirm--danger:disabled,
+.modal .modal__confirm--primary:disabled {
+  color: var(--on-accent-fg);
+  opacity: 0.5;
+  cursor: default;
+}
+
+.modal .collab-form__label {
+  margin-bottom: 12px;
+}
+
+/* Voice (phase 9). */
+.collab-voice-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 20px;
+  padding: 6px 8px;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+}
+
+.collab-voice-bar__title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.collab-voice-bar__count {
+  font-weight: normal;
+  color: var(--fg-muted);
+}
+
+.collab-voice-bar__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.collab-voice-bar__controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.collab-voice-bar__device {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.collab-voice-bar__device select {
+  min-width: 0;
+  max-width: 100%;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: inherit;
+}
+
+.collab-voice-bar__note,
+.collab-voice-bar__problem {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.collab-voice-bar__problem {
+  color: var(--warning-fg);
+}
+
+.collab-voice {
+  grid-area: voice;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--fg-muted);
+}
+
+.collab-voice__icon {
+  width: 14px;
+  height: 14px;
+}
+
+.collab-voice__icon--speaking {
+  color: var(--success-fg);
+}
+
+.collab-voice__icon--off {
+  color: var(--fg-muted);
+}
+
+.collab-voice__hand {
+  color: var(--warning-fg);
+}
+
+/* An active speaker: a ring around the member's dot (not only colour: the microphone icon changes too). */
+.collab-person--speaking .collab-dot {
+  box-shadow: 0 0 0 2px var(--success-fg);
+}
+
+.collab-person {
+  grid-template-columns: 10px minmax(0, 1fr) auto auto auto;
+  grid-template-areas:
+    "dot name voice role menu"
+    ". file file status menu";
+}
+
+/* Classroom voice (phase 11). */
+.collab-voice-bar__mode {
+  font-weight: normal;
+  font-size: 11px;
+  padding: 0 4px;
+  border: 1px solid var(--card-border);
+  border-radius: 3px;
+  color: var(--fg-muted);
+}
+
+.collab-classroom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 20px 4px;
+  font-size: 12px;
+}
+
+.collab-classroom > button {
+  align-self: flex-start;
+}
+
+.collab-classroom__mode {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.collab-classroom__server {
+  margin: 0;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.collab-classroom__start,
+.collab-classroom__secret {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.collab-classroom select,
+.collab-classroom input[type="password"] {
+  min-width: 0;
+  max-width: 100%;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font: inherit;
+}

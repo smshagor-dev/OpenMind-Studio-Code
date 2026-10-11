@@ -70,12 +70,20 @@ export function backendFeeds(ipc: FakeIpc) {
     tools: ipcFeed(() => ipc.toolchainsList()),
     languageServers: ipcFeed(() => ipc.lspStatus()),
     extensions: ipcFeed(() => ipc.extList()),
-    servers: ipcFeed(async (): Promise<ServersState> => ({ php: await ipc.phpServerStatus(), mysql: await ipc.mysqlStatus() })),
+    servers: ipcFeed(async (): Promise<ServersState> => ({
+      php: await ipc.phpServerStatus(),
+      mysql: await ipc.mysqlStatus(),
+    })),
     git: ipcWorkspaceFeed(() => ipc.gitSnapshot()),
     project: ipcWorkspaceFeed(() => ipc.languageWorkspaceStatus()),
     debug: ipcWorkspaceFeed(async () => {
       const status = await ipc.debugStatus();
-      return { workspace: status.workspace, python: status.python, node: status.node, php: status.php };
+      return {
+        workspace: status.workspace,
+        python: status.python,
+        node: status.node,
+        php: status.php,
+      };
     }),
   };
 }
@@ -107,12 +115,18 @@ export function connectBackend(
 }
 
 /** Attaches `feed` to `store` (a store built inline in a test's object literal) and returns the store. */
-export function following<F, S extends { useCanonical: (feed: F) => unknown }>(store: S, feed: F): S {
+export function following<F, S extends { useCanonical: (feed: F) => unknown }>(
+  store: S,
+  feed: F,
+): S {
   store.useCanonical(feed);
   return store;
 }
 
 /** A ToolchainService following the fake backend's canonical tool list. */
 export function toolchainsFrom(ipc: FakeIpc): ToolchainService {
-  return following(new ToolchainService(ipc), ipcFeed(() => ipc.toolchainsList()));
+  return following(
+    new ToolchainService(ipc),
+    ipcFeed(() => ipc.toolchainsList()),
+  );
 }

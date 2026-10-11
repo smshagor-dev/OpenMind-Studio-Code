@@ -13,11 +13,14 @@ import { createFakeIpc } from "../testUtils/fakeIpcClient";
 
 const harness = vi.hoisted((): { current: unknown } => ({ current: null }));
 
-vi.mock("../services/container", () => ({
-  get container() {
-    return harness.current;
-  },
-}));
+vi.mock("../services/container", async () => {
+  const collab = (await import("../testUtils/collabStub")).collabStub();
+  return {
+    get container() {
+      return { collab, ...(harness.current ?? {}) };
+    },
+  };
+});
 vi.mock("../editor/MonacoDiffHost", () => ({
   MonacoDiffHost: (props: { original: string | null; modified: string | null }) => (
     <div data-testid="diff-host">{`${props.original ?? ""}|${props.modified ?? ""}`}</div>

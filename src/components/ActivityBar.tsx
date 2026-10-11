@@ -12,6 +12,7 @@ import {
   FilesIcon,
   GearIcon,
   PackageIcon,
+  PeopleIcon,
   RemoteIcon,
   RuntimeIcon,
   SearchIcon,
@@ -54,9 +55,15 @@ const VIEW_ITEMS: readonly ViewItem[] = [
     command: "view.showDependencies",
     icon: <PackageIcon />,
   },
+  { view: "collab", label: "view.collaboration", icon: <PeopleIcon /> },
 ];
 
-const AI_ITEM: ViewItem = { view: "ai", label: "view.ai", command: "ai.openChat", icon: <AiIcon /> };
+const AI_ITEM: ViewItem = {
+  view: "ai",
+  label: "view.ai",
+  command: "ai.openChat",
+  icon: <AiIcon />,
+};
 
 /** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
 const UNAVAILABLE_ITEMS: readonly { label: string; reason: string; icon: ReactNode }[] = [

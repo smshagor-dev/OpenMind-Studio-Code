@@ -8,7 +8,7 @@ import {
   type EditorTab,
 } from "./editorGroupService";
 import { EditorLayoutService, type SavedLayout } from "./editorLayoutService";
-import { FilePreviewService, isPreviewableText } from "./filePreviewService";
+import { FilePreviewService, isPreviewableText, type CollabOrigin } from "./filePreviewService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { IpcClient, PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./ipc";
@@ -212,6 +212,7 @@ export class WorkspaceService {
     language: string;
     extension: string;
     readonly: boolean;
+    collab?: CollabOrigin;
   }): string {
     const docId = this.filePreviews.openVirtual(request);
     return this.showDocument(docId, "filePreview", {}).id;
@@ -431,6 +432,10 @@ export class WorkspaceService {
       if (this.documents.isDirty(tab.docId)) {
         await this.save(tab.docId);
       }
+    }
+    // Documents kept open without a tab (collaborative edits on the Owner's side) are saved too.
+    for (const id of this.documents.fileBackedIds()) {
+      if (!seen.has(id) && this.documents.isHeld(id) && this.documents.isDirty(id)) await this.save(id);
     }
   }
 
