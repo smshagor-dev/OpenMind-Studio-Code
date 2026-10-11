@@ -1,33 +1,51 @@
-import { useEffect, useState } from "react";
-import * as monaco from "monaco-editor";
+import { useEffect, useRef, useState } from "react";
+import type * as monaco from "monaco-editor";
 
+import {
+  acquireModel as acquire,
+  markLive,
+  releaseModel as release,
+  wasLive,
+} from "../../editor/collabModels";
 import { MonacoHost } from "../../editor/MonacoHost";
 import { MONACO_THEME_MAP } from "../../editor/monacoThemes";
 
-let counter = 0;
-
 /**
- * A document an extension's file system provider served (a custom scheme such as `memfs:`), in a read-only editor:
- * its own model (never a file on disk, never saved), highlighted as its language. Milestone 18.
+ * A custom-scheme document in an editor that is read-only unless it is a live collaborative document this member may
+ * change: an extension's file system provider (`memfs:`, Milestone 18) or a
+ * collaboration room's remote snapshot (`omcollab:`, Milestone 24). Never a file on disk, never saved. A remote
+ * document has one Monaco model per identity, shared by every view of it and disposed with the last one.
  */
-export function VirtualTextPreview({ text, language }: { text: string; language: string }) {
-  const [model] = useState(() => {
-    counter += 1;
-    const known = monaco.languages.getLanguages().some((l) => l.id === language);
-    return monaco.editor.createModel(
-      text,
-      known ? language : "plaintext",
-      monaco.Uri.parse(`openmind-virtual:/doc-${String(counter)}`),
-    );
-  });
+export function VirtualTextPreview({
+  text,
+  language,
+  uri = null,
+  readOnly = true,
+  live = false,
+}: {
+  text: string;
+  language: string;
+  uri?: string | null;
+  /** False while this member may edit a live collaborative document. */
+  readOnly?: boolean;
+  /** The text is a live collaborative document: the model follows the CRDT, never the snapshot text. */
+  live?: boolean;
+}) {
+  const [model] = useState(() => acquire(uri, text, language));
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   useEffect(() => {
-    if (model.getValue() !== text) model.setValue(text);
-  }, [model, text]);
+    // Once live, the text is the CRDT's: an unavailable (disconnected) document keeps it; the snapshot never returns.
+    if (live) markLive(model);
+    else if (!wasLive(model) && model.getValue() !== text) model.setValue(text);
+  }, [model, text, live]);
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
+  }, [readOnly]);
   useEffect(
     () => () => {
-      model.dispose();
+      release(uri, model);
     },
-    [model],
+    [uri, model],
   );
   const themeKind = document.documentElement.dataset.theme ?? "dark";
   return (
@@ -36,8 +54,11 @@ export function VirtualTextPreview({ text, language }: { text: string; language:
         model={model}
         theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
         onEditorMounted={(editor) => {
-          editor.updateOptions({ readOnly: true, domReadOnly: true });
-          return () => undefined;
+          editorRef.current = editor;
+          editor.updateOptions({ readOnly, domReadOnly: readOnly });
+          return () => {
+            editorRef.current = null;
+          };
         }}
       />
     </div>

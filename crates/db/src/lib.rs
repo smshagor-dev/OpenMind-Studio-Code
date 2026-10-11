@@ -1,4 +1,5 @@
 pub mod breakpoints;
+pub mod collab;
 pub mod editor_settings;
 pub mod error;
 pub mod explorer_state;
@@ -93,6 +94,9 @@ impl Db {
         &self.repairs
     }
 }
+
+#[cfg(test)]
+mod upgrade_tests;
 
 #[cfg(test)]
 mod tests {

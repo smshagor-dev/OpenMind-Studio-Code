@@ -1,3 +1,5 @@
+import { CollabDots } from "./collab/CollabDots";
+import { shownPath } from "./remoteTabPath";
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 import { droppedOutside } from "../services/editorWindowService";
@@ -22,7 +24,7 @@ interface TabBarProps {
 const TAB_DRAG_TYPE = "application/x-openmind-tab";
 
 function tabTitle(tab: EditorTabView): string {
-  const base = tab.path ?? tab.title;
+  const base = shownPath(tab.path, tab.docId, tab.title) ?? tab.title;
   if (tab.external === "deleted") return `${base} (deleted on disk)`;
   if (tab.external === "changed") return `${base} (changed on disk — you have unsaved changes)`;
   return tab.preview ? `${base} (preview — double-click to keep open)` : base;
@@ -48,7 +50,12 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach
     const element = row.current;
     const tab = activeId === null ? undefined : tabElements.current.get(activeId);
     if (!element || !tab) return;
-    const next = revealScrollLeft(element.scrollLeft, element.clientWidth, tab.offsetLeft, tab.offsetWidth);
+    const next = revealScrollLeft(
+      element.scrollLeft,
+      element.clientWidth,
+      tab.offsetLeft,
+      tab.offsetWidth,
+    );
     if (next !== null) element.scrollLeft = next;
   }, [activeId]);
 
@@ -147,6 +154,7 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach
           >
             <FileTypeIcon name={tab.kind === "markdownPreview" ? "preview.md" : tab.title} />
             <span className="tab__label">{tab.title}</span>
+            <CollabDots path={tab.path} />
             <button
               type="button"
               className="tab__close"

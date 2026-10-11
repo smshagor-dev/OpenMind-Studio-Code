@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
 import { FileTree, type FileTreeProps } from "./FileTree";
 
+// The collaboration dots read the app's live services; these tests are about the component alone.
+vi.mock("./collab/CollabDots", () => ({ CollabDots: () => null }));
+
 function node(path: string, parentPath: string, isDir: boolean): ExplorerNode {
   return { path, name: path.split("/").pop() ?? path, isDir, isSymlink: false, parentPath };
 }

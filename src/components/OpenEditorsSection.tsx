@@ -1,4 +1,5 @@
 import { container } from "../services/container";
+import { shownPath } from "./remoteTabPath";
 import type { EditorTabView } from "../services/workspaceService";
 import { FileTypeIcon } from "./fileIcons";
 import { CloseAllIcon, CloseIcon, NewFileIcon, SaveAllIcon } from "./icons";
@@ -73,7 +74,7 @@ export function OpenEditorsSection({
             key={`${tab.groupId}:${tab.id}`}
             tab={tab}
             active={tab.id === activeId && tab.groupId === activeGroupId}
-            location={describeLocation(tab.path, rootPath)}
+            location={describeLocation(shownPath(tab.path, tab.docId, tab.title), rootPath)}
           />
         ))}
       </div>
@@ -95,7 +96,7 @@ function OpenEditorRow({
       role="option"
       aria-selected={active}
       className={active ? "open-editors__row open-editors__row--active" : "open-editors__row"}
-      title={tab.path ?? tab.title}
+      title={shownPath(tab.path, tab.docId, tab.title) ?? tab.title}
       onClick={() => {
         container.workspace.activateTab(tab.groupId, tab.id);
       }}

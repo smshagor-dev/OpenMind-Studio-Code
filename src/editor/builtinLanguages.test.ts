@@ -11,7 +11,10 @@ function tokens(line: string, language: string): [string, string][] {
   return list
     .map((token, index) => {
       const end = list[index + 1]?.offset ?? line.length;
-      return [line.slice(token.offset, end), token.type.replace(`.${language}`, "")] as [string, string];
+      return [line.slice(token.offset, end), token.type.replace(`.${language}`, "")] as [
+        string,
+        string,
+      ];
     })
     .filter(([text]) => text.trim() !== "");
 }
@@ -52,7 +55,9 @@ describe("Fortran and Pascal in the editor", () => {
   });
 
   it("reads fixed-form comment lines but not free-form statements in the first column", () => {
-    expect(tokens("C     comment in column one", "fortran")).toEqual([["C     comment in column one", "comment"]]);
+    expect(tokens("C     comment in column one", "fortran")).toEqual([
+      ["C     comment in column one", "comment"],
+    ]);
     expect(tokens("c---------", "fortran")).toEqual([["c---------", "comment"]]);
     expect(tokens("* star comment", "fortran")).toEqual([["* star comment", "comment"]]);
     expect(tokenOf("contains", "fortran", "contains")).toBe("keyword");

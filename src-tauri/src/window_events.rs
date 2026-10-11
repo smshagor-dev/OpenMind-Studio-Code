@@ -135,6 +135,8 @@ pub async fn stop_everything(app: &AppHandle) {
     state.index.stop_all();
     // A request to an AI provider may not outlive the app, nor a package download.
     state.ai.cancel_all();
+    state.collab.net.stop_all();
+    state.collab.net.sfu.stop_all();
     state.broker.stop();
     // Nothing a run started may outlive the app.
     state.runner.stop_all();

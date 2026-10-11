@@ -75,6 +75,8 @@ pub struct AppState {
     pub extensions: crate::commands::extensions::ExtensionsRuntime,
     /// AI providers, their conversations and the requests in flight (nothing runs until the user asks).
     pub ai: crate::commands::ai::AiRuntime,
+    /// Collaboration rooms this machine hosts (Milestone 24).
+    pub collab: crate::commands::collab::CollabRuntime,
     /// Notebook kernels (started by the user, one per notebook, stopped on app close).
     pub notebooks: crate::commands::notebook::NotebookRuntime,
     /// Geometry of secondary windows (the PHP Server window).

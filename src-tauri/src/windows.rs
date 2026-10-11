@@ -125,8 +125,19 @@ pub fn release_window(app: &AppHandle, label: &str) {
         }
     }
     crate::commands::watch::stop_watching_window(&state, label);
+    crate::commands::collab::net_presence::window_closed(app, label);
+    crate::commands::collab::net_voice::window_closed(app, label);
     // Its folder's canonical state goes too when no other window has that folder open.
     crate::state::detach(app, label);
+}
+
+/// A window's page started loading (its first load, or a reload): what its previous page held in collaboration — a
+/// voice call (left, so the Owner drops the member from the call and from a classroom media server) and what it showed
+/// in presence — is released. A reload keeps the window's label, so the close cleanup above never runs for it; the
+/// room connection itself belongs to the computer, not the page, and stays.
+pub fn page_started(app: &AppHandle, label: &str) {
+    crate::commands::collab::net_presence::window_closed(app, label);
+    crate::commands::collab::net_voice::window_closed(app, label);
 }
 
 /// The folder open in the window `label`: the saved one for `main`, the

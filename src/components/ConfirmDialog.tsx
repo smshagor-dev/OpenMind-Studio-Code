@@ -8,6 +8,8 @@ interface ConfirmDialogProps {
   tone?: "danger" | "primary";
   onConfirm: () => void;
   onCancel: () => void;
+  /** The cancel button's text (callers with translated dialogs pass it). */
+  cancelLabel?: string;
 }
 
 /** A blocking VS Code-style confirmation modal — shown before delete and drag-and-drop move. */
@@ -18,6 +20,7 @@ export function ConfirmDialog({
   tone = "danger",
   onConfirm,
   onCancel,
+  cancelLabel = "Cancel",
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement | null>(null);
 
@@ -57,7 +60,7 @@ export function ConfirmDialog({
             {confirmLabel}
           </button>
           <button type="button" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </button>
         </div>
       </div>

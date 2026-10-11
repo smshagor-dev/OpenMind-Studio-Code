@@ -61,6 +61,7 @@ pub const CATEGORIES: &[&str] = &[
     "AI",
     "PHP Server",
     "Network",
+    "Collaboration",
     "Workbench",
 ];
 
@@ -337,6 +338,14 @@ fn app_definitions() -> Vec<SettingDef> {
         def("network.goProxy", "Network", "Go Module Proxy", "The module proxy OpenMind's package gateway fetches Go modules from (https only). Empty: proxy.golang.org. Checksums are always verified against sum.golang.org.", text(300), json!(""), User),
         def("network.testUrl", "Network", "Connection Test Address", "The address Test Connection requests (http or https). Nothing is contacted until you press Test.", text(300), json!("https://pypi.org/"), User),
         def("network.offline.useWheelhouse", "Network", "Use Offline Python Packages", "Let pip in processes OpenMind starts also look in the imported offline wheels (PIP_FIND_LINKS). pip's own configuration is not changed.", SettingKind::Bool, json!(false), User),
+        def("collaboration.displayName", "Collaboration", "Display Name", "The name people in a room see next to your cursor and in the member list. It is not an identity: members are told apart by their key fingerprint.", text(64), json!(""), User),
+        def("collaboration.signalingUrl", "Collaboration", "Signaling Server", "Address of the signaling relay rooms use to reach each other (wss://, or ws:// only on this computer). It only passes connection offers between computers: no code, files, room history or Room Codes go through it. Empty: rooms can't connect across networks.", text(300), json!(""), User),
+        def("collaboration.localNetwork", "Collaboration", "Local Network", "Find and join rooms on the same local network directly, with no Internet, signaling server, STUN or TURN: a hosted room is announced on the local network (only a code-derived tag and a port, never the Room Code) and computers there connect to each other directly. Off: rooms use only the signaling server.", SettingKind::Bool, json!(true), User),
+        def("collaboration.stunUrls", "Collaboration", "STUN Servers", "Comma-separated STUN addresses (stun:host:port) that help two computers find a direct route to each other. Empty: none is used.", text(1000), json!(""), User),
+        def("collaboration.turnUrls", "Collaboration", "TURN Servers", "Comma-separated TURN relays (turn:host:port, or turns:host:443?transport=tcp for networks that allow only web traffic) used when no direct route works. Empty: none is used.", text(1000), json!(""), User),
+        def("collaboration.turnUsername", "Collaboration", "TURN User Name", "User name for the TURN relays above. The password is stored separately, encrypted for your Windows account, never in this file.", text(200), json!(""), User),
+        def("collaboration.sfuUrl", "Collaboration", "Classroom Media Server", "Address of a self-hosted media server for classroom voice (wss://host for a server on the Internet; ws://address:7880 only on the local network). Empty: classroom voice uses the server this computer can run itself. Only the room's Owner needs it.", text(500), json!(""), User),
+        def("collaboration.sfuApiKey", "Collaboration", "Classroom Media Server API Key", "API key of the media server above. Its secret is stored separately, encrypted for your Windows account, never in this file, and never sent to other members.", text(200), json!(""), User),
         def("workbench.colorTheme", "Workbench", "Color Theme", "Colors of the workbench, the editor and the terminal. System follows Windows.", opts(&[("system", "System"), ("dark", "Dark"), ("light", "Light"), ("high-contrast", "High Contrast")]), json!("dark"), User),
         def("workbench.iconTheme", "Workbench", "Icon Theme", "The icons in the Explorer, tabs and search. The built-in themes are bundled with the app; an extension's icon theme uses the images inside that extension. Nothing is downloaded.", opts(&[("material", "Material Icons (files and folders)"), ("material-files", "Material Icons (files only)"), ("minimal", "Minimal (one file icon, no folder icons)")]), json!("material"), User),
         def("workbench.productIconTheme", "Workbench", "Product Icon Theme", "The icons used by workbench buttons and views.", opts(&[("default", "Default")]), json!("default"), User),

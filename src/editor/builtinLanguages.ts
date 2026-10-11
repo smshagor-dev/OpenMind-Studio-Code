@@ -61,7 +61,11 @@ function registerFortran(): void {
   monaco.languages.setMonarchTokensProvider("fortran", FORTRAN_TOKENS);
   registerSnippets("fortran", [
     ["program", "program ${1:name}\n  implicit none\n  ${0}\nend program ${1:name}", "Program"],
-    ["subroutine", "subroutine ${1:name}(${2:args})\n  implicit none\n  ${0}\nend subroutine ${1:name}", "Subroutine"],
+    [
+      "subroutine",
+      "subroutine ${1:name}(${2:args})\n  implicit none\n  ${0}\nend subroutine ${1:name}",
+      "Subroutine",
+    ],
     ["do", "do ${1:i} = ${2:1}, ${3:n}\n  ${0}\nend do", "Do loop"],
     ["if", "if (${1:condition}) then\n  ${0}\nend if", "If block"],
   ]);
@@ -120,7 +124,11 @@ function registerAssembly(): void {
       "Windows x64 program with main (C runtime)",
     ],
     ["section", "section .${1|text,data,bss,rdata|}\n${0}", "Section"],
-    ["proc", "${1:name}:\n        push    rbp\n        mov     rbp, rsp\n        ${0}\n        pop     rbp\n        ret", "Procedure with a frame"],
+    [
+      "proc",
+      "${1:name}:\n        push    rbp\n        mov     rbp, rsp\n        ${0}\n        pop     rbp\n        ret",
+      "Procedure with a frame",
+    ],
     ["macro", "%macro ${1:name} ${2:0}\n        ${0}\n%endmacro", "Macro"],
   ]);
   ensureLanguage("gas", [".s", ".S"], ["Assembly (GAS)", "gas", "GNU Assembler"]);

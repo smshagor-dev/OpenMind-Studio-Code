@@ -1,3 +1,4 @@
+import { CollabDots } from "./collab/CollabDots";
 import { useEffect, useRef, useState } from "react";
 
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
@@ -138,7 +139,9 @@ function DraftRow(props: FileTreeProps & { depth: number; kind: "file" | "folder
           aria-hidden="true"
         />
       ))}
-      <span className="tree-row__twistie">{kind === "folder" ? <ChevronIcon expanded={false} /> : null}</span>
+      <span className="tree-row__twistie">
+        {kind === "folder" ? <ChevronIcon expanded={false} /> : null}
+      </span>
       {kind === "folder" ? <FolderTypeIcon name="" open={false} /> : <FileTypeIcon name="" />}
       <InlineNameInput
         initialValue=""
@@ -333,6 +336,10 @@ function TreeRowLabel(props: TreeRowProps & { node: ExplorerNode }) {
       {props.dirtyPaths.has(node.path) ? (
         <span className="tree-row__dirty" aria-label="unsaved changes" />
       ) : null}
+      <CollabDots
+        path={node.path}
+        folder={node.isDir && !props.snapshot.expandedPaths.has(node.path)}
+      />
     </span>
   );
 }

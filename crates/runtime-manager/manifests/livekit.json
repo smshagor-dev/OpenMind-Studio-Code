@@ -1,0 +1,38 @@
+{
+  "id": "livekit",
+  "displayName": "Classroom voice server (LiveKit)",
+  "description": "The media server classroom voice uses on this computer for an offline lab or classroom. Only the room's Owner needs it; it runs only while you start it.",
+  "defaultVersion": "1.13.7",
+  "versionCommand": {
+    "executable": "livekit-server.exe",
+    "args": ["--version"],
+    "outputPrefix": "livekit-server version"
+  },
+  "binDirs": [],
+  "verifyFiles": ["livekit-server.exe", "LICENSE"],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "Apache-2.0",
+    "url": "https://github.com/livekit/livekit/blob/master/LICENSE",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "The official LiveKit server release for Windows x64 from GitHub; SHA256 from the release's checksums.txt. Downloaded only when you install it here (never part of the installer). Nothing is added to PATH and no service is installed: OpenMind starts it with a fresh key for each run, bound to one address of this computer, and stops it with the app.",
+  "versions": [
+    {
+      "version": "1.13.7",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/livekit/livekit/releases/download/v1.13.7/livekit_1.13.7_windows_amd64.zip",
+          "sha256": "e539e7d2f75807b9c9202cd2a0bf2cb3d52fc4c52978a6953e0f47bc339fe77f",
+          "sizeBytes": 18916724,
+          "installBytes": 56424542,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+[package]
+name = "openmind-collab"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenMind Studio collaboration core: identities, Room Codes, roles and permissions, protocol frames, replay protection, the Owner's authority and audit chain. No networking, no database."
+
+[dependencies]
+base64 = "0.22"
+ed25519-dalek = "2.2"
+getrandom = "0.3"
+hex = "0.4"
+openmind-fs = { path = "../fs" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+subtle = "2.6"
+thiserror.workspace = true
+# Collaborative text (Milestone 24, phase 6): the Owner's canonical documents, wire-compatible with Yjs.
+yrs = "0.28"
+
+[dev-dependencies]
+tempfile = "3.27.0"

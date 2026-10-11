@@ -457,3 +457,41 @@ export function AiIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function PeopleIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="6" cy="5" r="2.5" />
+      <path d="M1.5 14c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5" />
+      <circle cx="11.5" cy="5.5" r="2" />
+      <path d="M11 9.6c2.1.1 3.5 1.7 3.5 4" />
+    </Svg>
+  );
+}
+
+export function MicIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="6" y="1.5" width="4" height="8" rx="2" />
+      <path d="M3.5 7.5a4.5 4.5 0 009 0M8 12v2.5M5.5 14.5h5" />
+    </Svg>
+  );
+}
+
+export function MicOffIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 6.5V3.5a2 2 0 00-4 0v4a2 2 0 003.2 1.6" />
+      <path d="M3.5 7.5a4.5 4.5 0 007.2 3.6M12.5 7.5a4.5 4.5 0 01-.3 1.6M8 12v2.5M5.5 14.5h5M2 2l12 12" />
+    </Svg>
+  );
+}
+
+export function HandIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 8V3.5a1 1 0 012 0V7M7 7V2.5a1 1 0 012 0V7M9 7V3.5a1 1 0 012 0V9" />
+      <path d="M11 6.5a1 1 0 012 0V10a5 5 0 01-5 5h-.5A4.5 4.5 0 013.6 12.5L2.3 9.7a1 1 0 011.7-1L5 10V8" />
+    </Svg>
+  );
+}

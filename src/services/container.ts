@@ -76,6 +76,7 @@ import { wireWorkloads } from "./workloads/workloadsWiring";
 import { wireLanguageTools } from "./languageTools/languageToolsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
 import { wireDeps } from "./deps/depsWiring";
+import { wireCollab } from "./collab/collabWiring";
 import { pythonGuiHost } from "./deps/pythonGuiHost";
 import { wireDebug } from "./debugWiring";
 import { wireLsp } from "./lspWiring";
@@ -282,8 +283,11 @@ const searchWiring = wireSearch({
 void workspaceIndex.listen();
 registerRuntimeCommands(commands, events);
 // A missing toolchain met by Run Code: Install / Open Runtime Manager / Cancel (Assembly also gets asm-lsp).
-const confirmMissing = (request: Parameters<typeof extensions.prompts.confirm>[0]) => extensions.prompts.confirm(request);
-runCode.setMissingRuntimeHost(missingRuntimeHost({ runtime, lsp, settings, confirm: confirmMissing, run }));
+const confirmMissing = (request: Parameters<typeof extensions.prompts.confirm>[0]) =>
+  extensions.prompts.confirm(request);
+runCode.setMissingRuntimeHost(
+  missingRuntimeHost({ runtime, lsp, settings, confirm: confirmMissing, run }),
+);
 registerLspCommands({ commands, editor, lsp, events, output, panel });
 registerDebugCommands({
   commands,
@@ -614,6 +618,7 @@ function run(id: string, ...args: unknown[]): void {
 /** The app's single composition root: one instance of each service, wired together. */
 export const container = {
   events,
+  collab: wireCollab({ workspace, documents, filePreviews, events, canonical }),
   buffers,
   documents,
   workspace,

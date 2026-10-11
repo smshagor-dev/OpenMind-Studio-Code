@@ -34,16 +34,16 @@ function keyCodeOf(token: string): monaco.KeyCode | null {
   const named = NAMED[token];
   if (named !== undefined) return named;
   if (/^F([1-9]|1\d|2[0-4])$/.test(token)) {
-    return (monaco.KeyCode.F1 + Number(token.slice(1)) - 1);
+    return monaco.KeyCode.F1 + Number(token.slice(1)) - 1;
   }
   if (/^[A-Z]$/.test(token)) {
-    return (monaco.KeyCode.KeyA + token.charCodeAt(0) - 65);
+    return monaco.KeyCode.KeyA + token.charCodeAt(0) - 65;
   }
   if (/^[0-9]$/.test(token)) {
-    return (monaco.KeyCode.Digit0 + Number(token));
+    return monaco.KeyCode.Digit0 + Number(token);
   }
   if (/^Numpad[0-9]$/.test(token)) {
-    return (monaco.KeyCode.Numpad0 + Number(token.slice(6)));
+    return monaco.KeyCode.Numpad0 + Number(token.slice(6));
   }
   return null;
 }

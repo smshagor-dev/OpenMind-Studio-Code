@@ -275,7 +275,9 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
       explorerOtherCopy: null,
     }),
     integrationApply: vi.fn().mockResolvedValue("done"),
-    pythonPackagesStatus: vi.fn().mockResolvedValue({ present: false, problem: null, python: null, packages: [], stdlib: [] }),
+    pythonPackagesStatus: vi
+      .fn()
+      .mockResolvedValue({ present: false, problem: null, python: null, packages: [], stdlib: [] }),
     pythonPackagesInstall: vi.fn().mockResolvedValue("installed"),
     panelConfigPath: vi.fn().mockResolvedValue(null),
     panelOpenFile: vi.fn().mockResolvedValue(undefined),
@@ -324,7 +326,9 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
     tasksProblems: vi.fn().mockResolvedValue([]),
     notebookOpen: vi.fn().mockRejectedValue(new Error("no notebook in tests")),
     notebookSave: vi.fn().mockResolvedValue({ fingerprint: "saved" }),
-    notebookSetTrust: vi.fn().mockImplementation((_path: string, trusted: boolean) => Promise.resolve(trusted)),
+    notebookSetTrust: vi
+      .fn()
+      .mockImplementation((_path: string, trusted: boolean) => Promise.resolve(trusted)),
     notebookKernels: vi.fn().mockResolvedValue([]),
     notebookKernelStart: vi.fn().mockResolvedValue("Python"),
     notebookKernelStop: vi.fn().mockResolvedValue(undefined),

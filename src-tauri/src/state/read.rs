@@ -54,6 +54,10 @@ pub async fn read(app: &AppHandle, domain: Domain) -> Option<Value> {
             value(domain, &extensions)
         }
         Domain::Servers => value(domain, &super::servers::read(&state).await),
+        Domain::Collaboration => {
+            let rooms = kept(domain, crate::commands::collab::snapshot(&state).await)?;
+            value(domain, &rooms)
+        }
         // A marker, changed by `StateStore::bump_packages`; there is nothing to read.
         Domain::Packages => None,
         Domain::Git | Domain::Dependencies | Domain::Project | Domain::Debug => None,

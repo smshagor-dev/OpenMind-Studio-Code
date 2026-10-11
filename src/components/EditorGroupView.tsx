@@ -67,7 +67,12 @@ export function EditorGroupView(props: EditorGroupViewProps) {
         />
       </div>
       {activeTab && props.breadcrumbsVisible ? (
-        <Breadcrumbs path={activeTab.path} title={activeTab.title} rootPath={props.rootPath} />
+        <Breadcrumbs
+          path={activeTab.path}
+          title={activeTab.title}
+          rootPath={props.rootPath}
+          docId={activeTab.docId}
+        />
       ) : null}
       {activeTab && activeTab.kind === "text" ? <ExternalChangeBanner tab={activeTab} /> : null}
       <GroupContent {...props} docId={activeTab?.docId ?? null} kind={activeTab?.kind ?? null} />
