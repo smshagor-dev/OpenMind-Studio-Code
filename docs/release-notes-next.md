@@ -19,6 +19,12 @@ real computers and the installers are signed for the intended channel (see "Rele
   always the `\\server\share` path) and `scripts\deploy\Deploy-OpenMindShortcuts.ps1` for administrators (verified,
   with a CSV report). They use only the rights you have; nothing bypasses Windows or Active Directory permissions.
 - **Signature checks** — release builds verify every installer's Authenticode signature and RFC 3161 timestamp.
+- **Automatic updates** — OpenMind Studio checks GitHub Releases a little after start-up and every few hours, downloads a
+  new stable version in the background, verifies OpenMind's signature, and installs it when you close the app (or now
+  with Restart to Update, which never runs while an editor is unsaved). Portable copies replace only their program
+  files; shared network installations just say a new version exists. A release can require older versions to update.
+  Settings > Workbench > Automatic Updates turns the download off. **Install this version by hand once**: 1.0.2 and
+  older can't update themselves.
 
 ## Fixed
 

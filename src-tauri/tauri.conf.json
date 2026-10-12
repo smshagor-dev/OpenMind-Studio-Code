@@ -81,6 +81,7 @@
       "endpoints": [
         "https://github.com/smshagor-dev/OpenMind-Studio/releases/latest/download/latest.json"
       ],
+      "requireSignedVersion": true,
       "windows": {
         "installMode": "passive"
       }

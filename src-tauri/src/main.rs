@@ -77,6 +77,8 @@ fn main() {
         });
     // An update installer downloaded by an earlier run is never reused (it is downloaded and verified again).
     updates::clean_stale_downloads(&app_paths.temp_dir);
+    // A portable update applied at the last restart left the old program files aside: they go now.
+    updates::finish_previous_update(&app_paths.install_dir);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -103,6 +105,7 @@ fn main() {
             updates::update_download,
             updates::update_install_now,
             updates::update_install_on_exit,
+            updates::update_report_unsaved,
             commands::integration::integration_status,
             commands::integration::integration_apply,
             commands::python_packages::python_packages_status,
@@ -451,6 +454,8 @@ fn main() {
             window.show()?;
             tracing::info!(elapsed_ms = startup::since_start_ms(), "main window shown");
             window_events::register_close_handler(&window, window_state_service.clone());
+            // The automatic update check: a little after start-up, then every few hours (nothing at launch itself).
+            updates::start_scheduler(app.handle().clone());
 
             let (registry, manifest_warnings) = RuntimeRegistry::builtin()
                 .with_overrides(&app_paths.shared_settings_dir.join("runtime-manifests"));

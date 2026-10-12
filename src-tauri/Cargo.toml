@@ -50,6 +50,10 @@ getrandom = "0.3"
 # Classroom voice (Milestone 24, phase 11): the media server's management API and its credentials.
 hex = "0.4"
 ureq = { version = "3.4.2", features = ["rustls"] }
+# Update verification (the same libraries the Tauri updater uses).
+semver = "1.0.28"
+minisign-verify = "0.2.5"
+sha2 = "0.11.0"
 tauri-plugin-clipboard-manager = "2.3.3"
 tauri-plugin-dialog = "2.7.3"
 tauri-plugin-updater = "2"

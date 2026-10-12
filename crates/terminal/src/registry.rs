@@ -257,6 +257,20 @@ impl TerminalRegistry {
         }
     }
 
+    /// `(open sessions, sessions running a program besides their shell)` — what closing everything would interrupt
+    /// (an update asks before it does). A session whose process tree can't be read counts as busy.
+    pub fn activity(&self) -> (usize, usize) {
+        let ids: Vec<String> = match self.sessions.lock() {
+            Ok(sessions) => sessions.keys().cloned().collect(),
+            Err(_) => return (0, 0),
+        };
+        let busy = ids
+            .iter()
+            .filter(|id| self.is_busy(id) != Some(false))
+            .count();
+        (ids.len(), busy)
+    }
+
     /// Kills this session's whole process tree and forgets it. Safe to call
     /// on a session whose shell already exited on its own — killing an
     /// already-dead process tree is a no-op, not an error.
@@ -488,6 +502,11 @@ mod tests {
             registry.is_busy(&info.id) == Some(false)
         });
         assert!(idle, "an idle shell counted as busy");
+        assert_eq!(
+            registry.activity(),
+            (1, 0),
+            "one open terminal, nothing running in it"
+        );
 
         registry
             .write(&info.id, b"ping -n 4 127.0.0.1 > nul\r\n")
@@ -497,6 +516,11 @@ mod tests {
             registry.is_busy(&info.id) == Some(true)
         });
         assert!(busy, "a running program wasn't seen");
+        assert_eq!(
+            registry.activity(),
+            (1, 1),
+            "what an update would interrupt"
+        );
         let idle_again = (0..100).any(|_| {
             std::thread::sleep(std::time::Duration::from_millis(100));
             registry.is_busy(&info.id) == Some(false)

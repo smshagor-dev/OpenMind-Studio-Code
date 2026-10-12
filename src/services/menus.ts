@@ -533,7 +533,7 @@ export const HIDDEN_WHEN_UNREGISTERED: ReadonlySet<string> = new Set(["ai.openCh
 
 const UNBUILT: [RegExp, string][] = [
   [
-    /^help\.(documentation|releaseNotes|editorPlayground|videoTutorials|tipsAndTricks|featureRequests|reportIssue|privacy|checkForUpdates)$/,
+    /^help\.(documentation|releaseNotes|editorPlayground|videoTutorials|tipsAndTricks|featureRequests|reportIssue|privacy)$/,
     "menu.unbuilt.noOnline",
   ],
   [

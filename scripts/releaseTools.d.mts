@@ -54,14 +54,28 @@ export const RELEASE_REPO: string;
 export const UPDATE_ENDPOINT: string;
 export function releaseDownloadUrl(version: string, name: string): string;
 export interface SignedFile {
+  kind: "setup" | "msi" | "portable";
+  arch: "x64" | "x86";
   name: string;
   signature: string;
 }
+export interface FeedEntry {
+  signature: string;
+  url: string;
+}
+export function compareVersions(a: string, b: string): -1 | 0 | 1;
 export function latestJson(input: {
   version: string;
   notes: string;
   pubDate: string;
-  setup: SignedFile | null;
-  msi: SignedFile | null;
-}): { version: string; notes: string; pub_date: string; platforms: Record<string, { signature: string; url: string }> };
+  minimumVersion?: string | null;
+  files: SignedFile[];
+}): {
+  version: string;
+  notes: string;
+  pub_date: string;
+  platforms: Record<string, FeedEntry>;
+  openmind: { channel: "stable"; minimumVersion?: string; portable: Record<string, FeedEntry> };
+};
+export function signedVersion(sig: string): string | null;
 export function checkUpdaterConfig(tauri: Record<string, unknown>): string[];

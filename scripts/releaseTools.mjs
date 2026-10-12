@@ -366,22 +366,78 @@ export function releaseDownloadUrl(version, name) {
   return `https://github.com/${RELEASE_REPO}/releases/download/v${version}/${name}`;
 }
 
-/**
- * The updater's `latest.json` for a release: the per-user setup is the default Windows update (`windows-x86_64` and
- * `-nsis`), the MSI updates MSI installs (`-msi`). `setup`/`msi` = `{ name, signature }` (the minisign `.sig` text) or null.
- */
-export function latestJson({ version, notes, pubDate, setup, msi }) {
-  const platforms = {};
-  const entry = (file) => ({
-    signature: file.signature.trim(),
-    url: releaseDownloadUrl(version, file.name),
-  });
-  if (setup) {
-    platforms["windows-x86_64"] = entry(setup);
-    platforms["windows-x86_64-nsis"] = entry(setup);
+/** Windows architecture names: release file names use x64/x86, the updater uses Rust's x86_64/i686. */
+const UPDATER_ARCH = { x64: "x86_64", x86: "i686" };
+
+/** -1, 0 or 1, comparing plain x.y.z versions. */
+export function compareVersions(a, b) {
+  const parts = (v) => v.split(/[-+]/)[0].split(".").map(Number);
+  const [x, y] = [parts(a), parts(b)];
+  for (let i = 0; i < 3; i += 1) {
+    if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
   }
-  if (msi) platforms["windows-x86_64-msi"] = entry(msi);
-  return { version, notes, pub_date: pubDate, platforms };
+  return 0;
+}
+
+/**
+ * The updater feed (`latest.json`, uploaded to the GitHub release; the app reads it through
+ * `releases/latest/download/latest.json`, which GitHub resolves to the newest stable release).
+ *
+ * `files` = `{ kind: "setup" | "msi" | "portable", arch: "x64" | "x86", name, signature }`, `signature` being the
+ * minisign `.sig` text made with the release key. For each architecture:
+ *  - `windows-<arch>-nsis` = the per-user setup, `windows-<arch>-msi` = the MSI (an installed copy knows which it is);
+ *  - `windows-<arch>` = the setup (else the MSI) — read by any copy that isn't a known installer, so it must exist or
+ *    those copies get an error instead of "up to date";
+ *  - `openmind.portable["windows-<arch>"]` = the signed portable archive (a portable copy swaps its program files);
+ *  - `openmind.minimumVersion`: copies older than it must update (mandatory), only when given;
+ *  - `openmind.channel` = "stable".
+ * A pre-release version, a minimum newer than the release, or a file without a signature is refused: nothing unsigned
+ * is ever offered as an update.
+ */
+export function latestJson({ version, notes, pubDate, minimumVersion = null, files }) {
+  checkVersion(version);
+  if (/-/.test(version)) throw new Error(`${version} is a pre-release: it never goes into the stable update feed.`);
+  if (minimumVersion !== null) {
+    checkVersion(minimumVersion);
+    if (compareVersions(minimumVersion, version) > 0) {
+      throw new Error(`The minimum version ${minimumVersion} is newer than the release ${version}.`);
+    }
+  }
+  const platforms = {};
+  const portable = {};
+  for (const file of files) {
+    const arch = UPDATER_ARCH[file.arch];
+    if (!arch) throw new Error(`Unknown architecture "${file.arch}" for ${file.name}.`);
+    const signature = (file.signature ?? "").trim();
+    if (signature === "") {
+      throw new Error(`${file.name} has no update signature (.sig): it can't be offered as an update.`);
+    }
+    const entry = { signature, url: releaseDownloadUrl(version, file.name) };
+    const key = `windows-${arch}`;
+    if (file.kind === "setup") {
+      platforms[key] = entry;
+      platforms[`${key}-nsis`] = entry;
+    } else if (file.kind === "msi") {
+      platforms[`${key}-msi`] = entry;
+      if (!platforms[key]) platforms[key] = entry;
+    } else if (file.kind === "portable") {
+      portable[key] = entry;
+    } else {
+      throw new Error(`${file.name}: only setups, MSIs and portable archives go into the update feed.`);
+    }
+  }
+  if (Object.keys(platforms).length === 0) throw new Error("The update feed needs at least one signed installer.");
+  const openmind = { channel: "stable", portable };
+  if (minimumVersion !== null) openmind.minimumVersion = minimumVersion;
+  return { version, notes, pub_date: pubDate, platforms, openmind };
+}
+
+/** The version a Tauri update signature was bound to (`--app-version`), or null. `sig` = the base64 `.sig` text. */
+export function signedVersion(sig) {
+  const text = Buffer.from(sig.trim(), "base64").toString("utf8");
+  const comment = text.split("\n").find((line) => line.startsWith("trusted comment:")) ?? "";
+  const field = comment.split("\t").find((part) => part.startsWith("version:"));
+  return field ? field.slice("version:".length).trim() : null;
 }
 
 /** Problems with the updater configuration: a public key, the GitHub endpoint and signed update files. */
@@ -393,6 +449,11 @@ export function checkUpdaterConfig(tauri) {
   }
   if (JSON.stringify(updater.endpoints ?? []) !== JSON.stringify([UPDATE_ENDPOINT])) {
     problems.push(`plugins.updater.endpoints must be ["${UPDATE_ENDPOINT}"].`);
+  }
+  if (updater.requireSignedVersion !== true) {
+    problems.push(
+      "plugins.updater.requireSignedVersion must be true (the feed isn't signed; the version inside each signature is).",
+    );
   }
   if (updater.dangerousInsecureTransportProtocol === true) {
     problems.push("The updater must not allow insecure (http) endpoints in a release.");

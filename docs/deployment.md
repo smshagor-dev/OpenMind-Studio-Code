@@ -104,9 +104,18 @@ Runtime Manager says it is in use. A computer that lost its network in the middl
 
 ### Updating a network installation
 
-Run the new setup on the installing computer with the same shared folder (it keeps "Recommended for All Users"). Computers
-must have OpenMind Studio closed while the program files are replaced. The in-app updater does not update a network installation
-(from any computer): use the setup. Each computer keeps its local data across updates.
+When a new release is published, every computer's OpenMind Studio shows "Version x is available" in the status bar
+(it checks GitHub a little after start-up and every few hours). It never downloads into, or changes, the shared folder:
+a client may only read the share, and replacing a program that other computers are running would break them.
+
+To update, in a maintenance window — everyone has closed OpenMind Studio first: Windows can't replace a program that is
+running on another computer, and the setup then reports the file it couldn't write (Retry once it is closed; the setup is
+not all-or-nothing, so don't Ignore). Run the
+new setup on the installing computer with the same shared folder (it keeps "Recommended for All Users"). Each computer
+keeps its local data, and the runtimes in the share stay. The next start on every computer is the new version.
+
+A release that marks older versions as no longer supported (a mandatory update) does not block the computers of a shared
+installation: they can't install it themselves, so they keep working and keep showing that the new version is available.
 
 ### What is not shared, and limits
 

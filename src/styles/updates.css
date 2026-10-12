@@ -1,0 +1,65 @@
+/* App updates: the status bar item, the details dialog and the mandatory-update overlay. Colours are theme tokens. */
+
+.statusbar__item--update {
+  font-weight: 600;
+}
+
+.update-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.update-dialog p {
+  margin: 8px 0;
+}
+
+.update-dialog__muted {
+  color: var(--fg-muted);
+}
+
+.update-dialog__error {
+  color: var(--error-fg);
+}
+
+.update-dialog__progress {
+  width: 100%;
+}
+
+.update-dialog__notes pre {
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-ui);
+}
+
+.update-dialog__check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.update-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.update-dialog__primary {
+  background: var(--button-bg);
+  color: var(--button-fg);
+}
+
+.update-dialog__primary:hover:not(:disabled) {
+  background: var(--button-hover-bg);
+}
+
+/* Above every other overlay: a required update waits for the user's action. */
+.update-mandatory {
+  z-index: 1000;
+}

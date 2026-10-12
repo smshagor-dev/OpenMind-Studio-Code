@@ -351,6 +351,7 @@ fn app_definitions() -> Vec<SettingDef> {
         def("workbench.productIconTheme", "Workbench", "Product Icon Theme", "The icons used by workbench buttons and views.", opts(&[("default", "Default")]), json!("default"), User),
         def("workbench.language", "Language", "Display Language", "The language of OpenMind Studio's own menus, dialogs and messages. System Default follows the language of Windows; English is used for anything a language doesn't translate. Code, file paths and extensions keep their own text.", opts(&[("system", "System Default"), ("en", "English"), ("ru", "Русский (Russian)")]), json!("system"), User),
         def("workbench.welcomeOnStartup", "Workbench", "Show Welcome Page on Startup", "Open the Welcome page when the app starts.", SettingKind::Bool, json!(true), User),
+        def("updates.automatic", "Workbench", "Automatic Updates", "Check for new versions of OpenMind Studio, download them in the background and install them when you close the app or choose Restart to Update. Every update is checked against OpenMind's signature before it is installed. Off: you are only told that a new version exists.", SettingKind::Bool, json!(true), User),
     ]
 }
 
