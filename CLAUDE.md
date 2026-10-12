@@ -3073,6 +3073,29 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   workflow binds `--app-version`. E2E verified locally with a throwaway key and a localhost feed (installer on close,
   mandatory overlay + Restart, portable swap, bad signature refused, network client only notified). Copies ≤ 1.0.2 must
   install the next release once by hand.
+- [x] **Existing-installation detection and in-place upgrade** (branch `installer-upgrade-detection`). See `docs/installer.md`,
+  "Updating an existing installation". Root causes: the hooks' Welcome page (installation type, PATH, Explorer) always came
+  first; Tauri's reinstall page then defaulted to *uninstall first* and the Directory page allowed another folder (a second
+  install with new data; the uninstall also deleted `install.json`); detection read only the installing user's HKCU, so a
+  shared folder installed by someone else looked fresh; an MSI install was uninstalled and replaced per user; downgrades
+  were allowed. Now (`src-tauri/nsis/installer-hooks.nsh`): `OmDetect` (in `.onGUIInit` via `MUI_CUSTOMFUNCTION_GUIINIT`
+  and again in `NSIS_HOOK_PREINSTALL`) — `/D=` wins (NSIS strips it from `$CMDLINE`, so it is recognised as an `$INSTDIR`
+  that is neither the default nor the recorded folder), else the HKCU product key, else
+  `HKCU\Software\OpenMind\OpenMind Studio Installations` (written by installed copies at start: `integration::remember_installation`
+  via `data_scope::remember_start`, UNC form; removed by `--integration remove-all`); a folder counts only with
+  `OpenMindStudio.exe` + `install.json`/`uninstall.exe`; versions from the exe version resources; MSI found in HKLM (64-bit
+  view, `WindowsInstaller`). States fresh/update/repair/downgrade/msi. The Welcome page becomes the Update/Repair page
+  (no choices; the Next button widened to "Update OpenMind Studio"), Leave runs `OmClaim` (this computer's
+  `OpenMindStudio.exe` via a Toolhelp scan — the template's plugin isn't reachable from hook functions — is never closed;
+  `OpenMindStudio.exe`/`lsp\node\node.exe` opened for writing to detect use elsewhere; `.openmind-setup.lock` share-none +
+  delete-on-close) and jumps to Installing (`WM_NOTIFY_OUTER_NEXT` 5 pages); PREINSTALL applies the same rules to
+  silent/passive installs (15 s wait, exit code 3) and sets the template's `$UpdateMode`. `bundle.windows.allowDowngrades`
+  false (`/ALLOWDOWNGRADE` to override); WiX launch condition `OM_NSIS_INSTALL`. `checkInstallerHooks`/`checkInstallerConfig`
+  pin it. **Verified by hand** (debug NSIS setups 1.0.2/1.0.4 built from this tree over the earlier 1.0.3 test install
+  `C:\omv\e2e\inst`): Update page and in-place update in ~20 s (data, markers, settings kept; the app opened the workbench),
+  app-open refusal, lock refusal, in-use refusal (silent, exit 3 after 15 s), Repair page and silent repair, network layout
+  kept, detection through the installations record, `/D=` fresh page, downgrade page and silent downgrade exit 3. Not run:
+  MSI install (admin), real multi-PC.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

@@ -288,6 +288,11 @@ export function checkInstallerConfig(tauri, licenseText) {
       "The NSIS installer must use nsis/installer-hooks.nsh (the optional PATH / File Explorer check boxes).",
     );
   }
+  if (bundle.windows?.allowDowngrades !== false) {
+    problems.push(
+      "bundle.windows.allowDowngrades must be false (an older setup never replaces a newer installation).",
+    );
+  }
   if (!wix.fragmentPaths?.includes("wix/integration.wxs")) {
     problems.push(
       "The MSI must include wix/integration.wxs (the optional ADDTOPATH / EXPLORERMENU components).",
@@ -348,6 +353,32 @@ export function checkInstallerHooks(nsh) {
   const uninstall = macro("NSIS_HOOK_PREUNINSTALL");
   if (!/\$UpdateMode <> 1[\s\S]*--integration remove-all/.test(uninstall)) {
     problems.push("The uninstaller must run --integration remove-all (except for an update).");
+  }
+  // An existing installation is updated in place, never installed a second time or uninstalled first.
+  const preinstall = macro("NSIS_HOOK_PREINSTALL");
+  if (!/Call OmDetect/.test(preinstall) || !/StrCpy \$UpdateMode 1/.test(preinstall)) {
+    problems.push(
+      "NSIS_HOOK_PREINSTALL must find an existing installation and update it in place ($UpdateMode).",
+    );
+  }
+  if (!/"downgrade"/.test(preinstall) || !nsh.includes('"/ALLOWDOWNGRADE"')) {
+    problems.push("The setup must refuse to replace a newer installation unless /ALLOWDOWNGRADE is given.");
+  }
+  if (!/Call OmClaim/.test(preinstall) || !nsh.includes("OM_LOCK_FILE")) {
+    problems.push(
+      "The setup must check that the installation is not in use and lock it before replacing files.",
+    );
+  }
+  const welcome = nsh.match(/Function OmWelcomeShow\b([\s\S]*?)FunctionEnd/)?.[1] ?? "";
+  const updateFirst =
+    /\$OmState != "fresh"[\s\S]*Call OmUpdatePage[\s\S]*Return[\s\S]*NSD_CreateFirstRadioButton/;
+  if (!updateFirst.test(welcome)) {
+    problems.push(
+      "The Welcome page of an existing installation must be the Update page (no installation type choice).",
+    );
+  }
+  if (/KillProcess/.test(nsh)) {
+    problems.push("The hooks must never close OpenMind Studio for the user (unsaved work, other computers).");
   }
   if (/WriteRegStr|WriteRegExpandStr|EnVar::|setx/i.test(nsh)) {
     problems.push(

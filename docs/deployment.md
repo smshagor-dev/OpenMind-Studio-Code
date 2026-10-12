@@ -108,11 +108,14 @@ When a new release is published, every computer's OpenMind Studio shows "Version
 (it checks GitHub a little after start-up and every few hours). It never downloads into, or changes, the shared folder:
 a client may only read the share, and replacing a program that other computers are running would break them.
 
-To update, in a maintenance window — everyone has closed OpenMind Studio first: Windows can't replace a program that is
-running on another computer, and the setup then reports the file it couldn't write (Retry once it is closed; the setup is
-not all-or-nothing, so don't Ignore). Run the
-new setup on the installing computer with the same shared folder (it keeps "Recommended for All Users"). Each computer
-keeps its local data, and the runtimes in the share stay. The next start on every computer is the new version.
+To update, in a maintenance window — everyone has closed OpenMind Studio first. Run the new setup on any computer whose
+user may write to the share and has started that installation once (or pass `/D=\\server\apps\OpenMind Studio`): it
+finds the shared folder and shows **OpenMind Studio Update** with the installed and new versions — no installation type,
+no folder choice, "Recommended for All Users" is kept. Before it replaces anything it checks that no computer is running
+the program from the share; if one is, it stops with "in use — on another computer … Nothing has been changed" (it never
+closes programs on other computers), so ask everyone to close it and press Update again. Only one setup can change the
+folder at a time (a lock file in the folder). Each computer keeps its local data, and the runtimes in the share stay.
+The next start on every computer is the new version.
 
 A release that marks older versions as no longer supported (a mandatory update) does not block the computers of a shared
 installation: they can't install it themselves, so they keep working and keep showing that the new version is available.
