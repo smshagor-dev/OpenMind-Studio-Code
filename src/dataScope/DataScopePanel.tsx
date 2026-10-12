@@ -66,6 +66,9 @@ export function DataScopePanel({
     );
   }
   const status = load.status;
+  if (status.managed) {
+    return <ManagedLayout status={status} context={context} api={api} onClose={onClose} />;
+  }
   const selected = choice ?? status.recommended;
   const unchanged = context === "workbench" && selected === status.mode;
   const target = targetProfile(status, selected);
@@ -92,6 +95,11 @@ export function DataScopePanel({
       {status.unreadable !== null && (
         <p className="data-scope__warning" role="alert">
           {t("dataScope.unreadable", { reason: status.unreadable })}
+        </p>
+      )}
+      {status.temporaryFolder && (
+        <p className="data-scope__warning" role="alert">
+          {t("dataScope.temporaryFolder", { folder: status.appFolder })}
         </p>
       )}
       {status.singleComputer && <p className="data-scope__muted">{t("dataScope.singleComputer")}</p>}
@@ -156,6 +164,33 @@ export function DataScopePanel({
           <Footer context={context} api={api} onClose={onClose} />
         </div>
       )}
+    </div>
+  );
+}
+
+/** A per-machine or network installation: the installer decided where each computer's data lives; nothing to choose. */
+function ManagedLayout({
+  status,
+  context,
+  api,
+  onClose,
+}: {
+  status: DataScopeStatus;
+  context: "setup" | "workbench";
+  api: DataScopeApi;
+  onClose?: () => void;
+}) {
+  return (
+    <div className="data-scope">
+      <p className="data-scope__lead">{t(`dataScope.managed.${status.layout === "network" ? "network" : "perMachine"}`)}</p>
+      <p className="data-scope__muted">{t("dataScope.managed.installedAt", { folder: status.appFolder })}</p>
+      {status.localFolder !== null && (
+        <p className="data-scope__muted">{t("dataScope.managed.localFolder", { folder: status.localFolder })}</p>
+      )}
+      <p className="data-scope__muted">{t("dataScope.managed.byInstaller")}</p>
+      <div className="data-scope__actions">
+        <Footer context={context} api={api} onClose={onClose} />
+      </div>
     </div>
   );
 }

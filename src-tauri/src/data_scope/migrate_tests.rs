@@ -25,6 +25,8 @@ fn runtime(
         unreadable: None,
         single_computer: false,
         failure: None,
+        local_dir: None,
+        temporary_folder: false,
     }
 }
 

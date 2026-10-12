@@ -16,7 +16,7 @@ use crate::commands::runtime::progress_sink;
 const KIND: &str = "python";
 
 fn bundle_dir(state: &AppState) -> PathBuf {
-    state.app_root.join("python-bundle")
+    openmind_core::paths::shipped_dir(&state.app_root, "python-bundle")
 }
 
 #[derive(Serialize)]

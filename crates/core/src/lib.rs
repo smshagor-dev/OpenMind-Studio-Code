@@ -1,5 +1,6 @@
 pub mod data_scope;
 pub mod error;
+pub mod install;
 pub mod jsonc;
 pub mod locale;
 pub mod machine_identity;
@@ -12,6 +13,7 @@ pub mod vars;
 
 pub use data_scope::DataScope;
 pub use error::CoreError;
+pub use install::InstallLayout;
 pub use machine_identity::MachineIdentity;
 pub use machine_paths::MachineDataPaths;
 pub use paths::AppPaths;

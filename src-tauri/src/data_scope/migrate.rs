@@ -67,6 +67,7 @@ pub fn schedule(
         requested_at: rfc3339_now(),
     });
     write_choice(root, mode, import).map_err(|err| format!("couldn't save the choice: {err}"))?;
+    remember_choice(runtime, mode);
     tracing::info!(
         scope = mode.label(),
         kept_existing,
@@ -78,6 +79,26 @@ pub fn schedule(
         kept_existing,
         will_import,
     })
+}
+
+/// Keeps this computer's record of the choice in step with the drive's file (see `super::remember_start`): written for
+/// a multi-computer choice, and updated when a record already exists.
+fn remember_choice(runtime: &ScopeRuntime, mode: DataScope) {
+    let Some(local) = &runtime.local_dir else {
+        return;
+    };
+    if mode != DataScope::PerMachine && openmind_core::install::read_state(local).is_none() {
+        return;
+    }
+    if let Err(err) = openmind_core::install::record_start(
+        local,
+        &runtime.paths.install_dir,
+        runtime.paths.layout,
+        Some(mode),
+        env!("CARGO_PKG_VERSION"),
+    ) {
+        tracing::warn!(error = %err, "couldn't record the data scope on this computer");
+    }
 }
 
 /// Brings `paths.db_path` into place before it is opened (see the module text). `pending` is this computer's import
@@ -100,6 +121,19 @@ pub fn prepare_at_start(
         DataScope::PerMachine => (&personal, &per_machine),
         DataScope::Personal => (&per_machine, &personal),
     };
+    let outcome = import_profile(from, to, stamp)?;
+    if let Err(err) = clear_pending_import(&root) {
+        // The database is in place; a request left behind only makes the next start confirm that (no second import).
+        tracing::warn!(error = %err, "couldn't clear the finished import request");
+    }
+    tracing::info!(outcome = ?outcome, "profile import finished");
+    Ok(outcome)
+}
+
+/// Copies one profile into another that has no database yet — its AI history and MariaDB data first (each only when
+/// the target has none), then the database (Backup API → `.migrating` → `quick_check` → rename). The source is only
+/// read. A target that already has a database is kept as it is (and checked).
+pub fn import_profile(from: &AppPaths, to: &AppPaths, stamp: u64) -> Result<Prepared, DbError> {
     if !to.db_path.exists() {
         for (name, source, dest) in [
             ("AI history", &from.ai_dir, &to.ai_dir),
@@ -114,13 +148,7 @@ pub fn prepare_at_start(
             }
         }
     }
-    let outcome = migration::prepare(&to.db_path, Some(&from.db_path), stamp)?;
-    if let Err(err) = clear_pending_import(&root) {
-        // The database is in place; a request left behind only makes the next start confirm that (no second import).
-        tracing::warn!(error = %err, "couldn't clear the finished import request");
-    }
-    tracing::info!(outcome = ?outcome, "profile import finished");
-    Ok(outcome)
+    migration::prepare(&to.db_path, Some(&from.db_path), stamp)
 }
 
 /// Copies a folder into `dest` (which must not exist) through `<dest>.partial`, then renames it. SQLite files are copied

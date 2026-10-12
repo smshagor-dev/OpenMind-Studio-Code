@@ -30,7 +30,18 @@ export interface DataScopeStatus {
   profiles: MachineProfileSummary[];
   unreadable: string | null;
   singleComputer: boolean;
+  /** How this copy was installed (`openmind_core::install::InstallLayout`). */
+  layout: InstallLayout;
+  /** Set by the installer (per-machine or network installation): shown, never changeable here. */
+  managed: boolean;
+  /** This computer's local folder for this installation (managed layouts keep their data there). */
+  localFolder: string | null;
+  /** The program runs from a temporary folder (a ZIP opened without extracting it): nothing chosen would last. */
+  temporaryFolder: boolean;
 }
+
+/** `openmind_core::install::InstallLayout`. */
+export type InstallLayout = "portable" | "perUser" | "perMachine" | "network";
 
 /** The backend's `data_scope::migrate::ScheduledChange`: what the next start will do. */
 export interface MigrationOutcome {

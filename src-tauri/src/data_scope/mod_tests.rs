@@ -79,36 +79,92 @@ fn facts(choice: ScopeChoice, portable_root: bool, installed: bool) -> ScopeFact
         choice,
         portable_root,
         installed,
+        remembered: None,
+        own_profile: false,
     }
+}
+
+fn used(scope: DataScope, restore: bool) -> Decision {
+    Decision::Use { scope, restore }
 }
 
 #[test]
 fn a_saved_choice_always_wins() {
     for scope in [DataScope::Personal, DataScope::PerMachine] {
         for (portable, installed) in [(true, false), (false, false), (true, true)] {
-            assert_eq!(
-                decide(&facts(ScopeChoice::Chosen(scope), portable, installed)),
-                Some(scope)
-            );
+            let mut f = facts(ScopeChoice::Chosen(scope), portable, installed);
+            assert_eq!(decide(&f), used(scope, false));
+            // This computer's older record never outranks the drive's own choice.
+            f.remembered = Some(match scope {
+                DataScope::Personal => DataScope::PerMachine,
+                DataScope::PerMachine => DataScope::Personal,
+            });
+            assert_eq!(decide(&f), used(scope, false));
         }
     }
 }
 
 #[test]
 fn a_portable_copy_without_a_choice_asks_and_installed_ones_keep_one_profile() {
-    assert_eq!(decide(&facts(ScopeChoice::NotChosen, true, false)), None);
+    assert_eq!(
+        decide(&facts(ScopeChoice::NotChosen, true, false)),
+        Decision::Ask
+    );
     assert_eq!(
         decide(&facts(ScopeChoice::Unreadable("x".into()), true, false)),
-        None
+        Decision::Ask
     );
     assert_eq!(
         decide(&facts(ScopeChoice::NotChosen, true, true)),
-        Some(DataScope::Personal)
+        used(DataScope::Personal, false)
     );
     assert_eq!(
         decide(&facts(ScopeChoice::NotChosen, false, false)),
-        Some(DataScope::Personal)
+        used(DataScope::Personal, false)
     );
+}
+
+#[test]
+fn a_completed_choice_is_never_asked_again_when_its_file_goes_missing() {
+    // The drive's file is gone (a folder copied over, a cleaned data folder) but this computer remembers the choice.
+    let mut f = facts(ScopeChoice::NotChosen, true, false);
+    f.remembered = Some(DataScope::PerMachine);
+    assert_eq!(decide(&f), used(DataScope::PerMachine, true));
+    f.remembered = Some(DataScope::Personal);
+    assert_eq!(decide(&f), used(DataScope::Personal, true));
+    // No record on this computer (another Windows user), but its own per-computer profile is on the drive.
+    let mut f = facts(ScopeChoice::NotChosen, true, false);
+    f.own_profile = true;
+    assert_eq!(decide(&f), used(DataScope::PerMachine, true));
+}
+
+#[test]
+fn a_file_that_cant_be_read_for_a_moment_never_brings_the_setup_back() {
+    let reason =
+        ScopeChoice::Inaccessible("The network name is no longer available. (os error 64)".into());
+    // What this computer knows decides, and the file (which may be fine) is not rewritten.
+    let mut f = facts(reason.clone(), true, false);
+    f.remembered = Some(DataScope::PerMachine);
+    assert_eq!(decide(&f), used(DataScope::PerMachine, false));
+    let mut f = facts(reason.clone(), true, false);
+    f.own_profile = true;
+    assert_eq!(decide(&f), used(DataScope::PerMachine, false));
+    // Nothing to go on: start-up stops with the reason instead of asking (a second choice would overwrite the first).
+    match decide(&facts(reason, true, false)) {
+        Decision::Fail(text) => {
+            assert!(text.contains("os error 64"), "{text}");
+            assert!(text.contains("Nothing was changed"), "{text}");
+        }
+        other => panic!("expected a failure, got {other:?}"),
+    }
+    // A damaged file with a record: the record decides, the damaged file stays for the user to see.
+    let mut f = facts(
+        ScopeChoice::Unreadable("expected value".into()),
+        true,
+        false,
+    );
+    f.remembered = Some(DataScope::Personal);
+    assert_eq!(decide(&f), used(DataScope::Personal, false));
 }
 
 #[test]
@@ -133,6 +189,8 @@ fn the_university_lab_scenario() {
         unreadable: None,
         single_computer: false,
         failure: None,
+        local_dir: None,
+        temporary_folder: false,
     };
     let scheduled = migrate::schedule(&runtime, DataScope::PerMachine, true).expect("schedule");
     assert!(scheduled.will_import);
@@ -253,6 +311,8 @@ fn two_starts_at_once_on_one_computer_import_once() {
         unreadable: None,
         single_computer: false,
         failure: None,
+        local_dir: None,
+        temporary_folder: false,
     };
     migrate::schedule(&runtime, DataScope::PerMachine, true).expect("schedule");
     let handles: Vec<_> = (0..4)
@@ -305,6 +365,8 @@ fn the_status_never_contains_raw_identifiers() {
         unreadable: None,
         single_computer: false,
         failure: None,
+        local_dir: None,
+        temporary_folder: false,
     };
     let text = serde_json::to_string(&status(&runtime)).expect("json");
     let machine_json =

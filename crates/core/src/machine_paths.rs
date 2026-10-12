@@ -60,6 +60,21 @@ impl MachineDataPaths {
         }
     }
 
+    /// A profile kept on this computer's own disk (an installer-managed layout, see [`crate::install`]): the same files
+    /// directly under `dir` (`<dir>/openmind-studio.db`, `logs/`, `cache/`, `state/`, `temp/`). `id` is what is shown
+    /// for it (the install key).
+    pub fn local(dir: &Path, id: &str) -> Self {
+        Self {
+            machine_id: id.to_string(),
+            database: dir.join(MACHINE_DB_FILENAME),
+            logs: dir.join("logs"),
+            cache: dir.join("cache"),
+            state: dir.join("state"),
+            temp: dir.join("temp"),
+            root: dir.to_path_buf(),
+        }
+    }
+
     pub fn profile_file(&self) -> PathBuf {
         self.root.join(MACHINE_FILE)
     }
@@ -173,6 +188,21 @@ fn holds_nothing(dir: &Path) -> bool {
             name.starts_with(MACHINE_FILE) && entry.file_type().is_ok_and(|t| t.is_file())
         })
     })
+}
+
+/// This computer's existing folder under `data/machines/`, without creating or changing anything: the first candidate id
+/// whose `machine.json` names this computer's full identity hash and which holds a database. Used to bring a profile
+/// along when a shared portable copy becomes a network installation, and as evidence of an earlier per-computer choice.
+pub fn find_own_profile(app_root: &Path, identity: &MachineIdentity) -> Option<MachineDataPaths> {
+    identity
+        .candidate_ids()
+        .map(|id| MachineDataPaths::new(app_root, id))
+        .find(|paths| {
+            paths.database.is_file()
+                && paths
+                    .read_profile()
+                    .is_some_and(|p| p.identity_hash == identity.identity_hash())
+        })
 }
 
 pub fn machines_dir(app_root: &Path) -> PathBuf {
