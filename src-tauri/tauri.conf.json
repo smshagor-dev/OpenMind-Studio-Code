@@ -37,6 +37,7 @@
     "shortDescription": "OpenMind Studio — a portable, native code editor",
     "longDescription": "OpenMind Studio is a portable, native desktop code editor and part of the OpenMind ecosystem (OpenMind AI, OpenMind Runtime, OpenMind Extensions). It runs entirely from its own directory with no admin rights and no dependency on globally installed software.",
     "windows": {
+      "allowDowngrades": false,
       "signCommand": {
         "cmd": "node",
         "args": ["../scripts/sign-file.mjs", "%1"]

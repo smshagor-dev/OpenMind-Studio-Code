@@ -12,10 +12,32 @@ fn this_exe() -> Result<PathBuf, String> {
 
 #[cfg(windows)]
 fn apply(action: Action) -> Result<String, String> {
-    integration::run(
+    let exe = this_exe()?;
+    let result = integration::run(&mut integration::registry::UserRegistry, &exe, action)?;
+    if action == Action::RemoveAll {
+        // The uninstaller: the setup programs no longer find this folder (as started, and as its network path).
+        if let Some(dir) = exe.parent() {
+            let universal = integration::shortcut::universal_path(dir);
+            for dir in [dir, universal.as_path()] {
+                integration::forget_installation(
+                    &mut integration::registry::UserRegistry,
+                    &dir.display().to_string(),
+                )?;
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Notes this installed copy's folder for the setup programs (see `integration::INSTALLATIONS_KEY`); its network path
+/// when it runs from a mapped drive, so another computer's setup finds the same folder.
+#[cfg(windows)]
+pub fn remember_installation(install_dir: &std::path::Path, version: &str) -> Result<(), String> {
+    let dir = integration::shortcut::universal_path(install_dir);
+    integration::remember_installation(
         &mut integration::registry::UserRegistry,
-        &this_exe()?,
-        action,
+        &dir.display().to_string(),
+        version,
     )
 }
 

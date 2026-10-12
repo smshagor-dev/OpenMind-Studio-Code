@@ -25,8 +25,20 @@ real computers and the installers are signed for the intended channel (see "Rele
   files; shared network installations just say a new version exists. A release can require older versions to update.
   Settings > Workbench > Automatic Updates turns the download off. **Install this version by hand once**: 1.0.2 and
   older can't update themselves.
+- **Running a newer setup updates the installation you have.** When OpenMind Studio is already installed the setup's
+  first page is **OpenMind Studio Update** — installed version, new version, installation type and location — with one
+  button, *Update OpenMind Studio* (*Repair OpenMind Studio* for the same version). It replaces the program files in
+  place: no installation type or folder questions, no uninstall first, shortcuts and choices kept, data untouched. A
+  shared network folder someone else installed is found too, once this computer has started it. The setup never
+  closes OpenMind Studio for you, refuses while it runs on another computer from the shared folder, and only one setup
+  can change a folder at a time.
 
 ## Fixed
+
+- Running a newer setup over an existing installation showed the first-install questions again and, by default,
+  uninstalled the old version first; choosing another installation type or folder there made a second installation
+  with its own, empty data. A setup also replaced an MSI installation with a new per-user one (new data location), and
+  an older setup replaced a newer installation.
 
 - The "Choose how OpenMind Studio will be used" page could come back after it had been answered when its saved file
   could not be read for a moment (a network share, a scanner). A choice is now never asked again.
@@ -70,7 +82,9 @@ Nothing in this release changes the database schema (no new migration), so the p
 databases.
 
 1. Close OpenMind Studio everywhere.
-2. Reinstall the previous setup (same folder) or unzip the previous portable copy over this one.
+2. Reinstall the previous setup (same folder) or unzip the previous portable copy over this one. A setup from this
+   version on refuses to replace a newer installation; to go back with such a setup, run it with `/ALLOWDOWNGRADE`
+   (setups of 1.0.2 and older don't check).
 3. Previous versions don't read `install.json`:
    - **For Me** and portable copies behave exactly as before.
    - **MSI** and **network** installations go back to the previous behaviour (data next to the program), so their users'

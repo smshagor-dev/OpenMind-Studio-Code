@@ -97,6 +97,61 @@ Silent installs choose with switches:
 OpenMind added it, and this copy's Explorer entries. Your other PATH entries and other keys are untouched. An update
 (`/UPDATE`) skips this step, so your choice survives it.
 
+## Updating an existing installation
+
+Running a newer setup never makes a second installation and never asks the first-install questions again
+(`src-tauri/nsis/installer-hooks.nsh`).
+
+**How the setup finds the installation** (nothing on the network is searched):
+
+1. the folder given with `/D=`;
+2. the folder this Windows user installed before (`HKCU\Software\OpenMind\OpenMind Studio`, written by the setup);
+3. the folders installed copies note when they start (`HKCU\Software\OpenMind\OpenMind Studio Installations`: one value
+   per folder, its network path when it runs from a mapped drive, and the default value = the folder started last).
+
+The third is how a shared network folder that someone else installed is found on another computer. A folder counts only
+when it holds `OpenMindStudio.exe` together with its `install.json` or `uninstall.exe`. A folder chosen by hand on the
+Directory page of a first install is checked the same way before anything is written. The versions compared are the
+version resources of the installed `OpenMindStudio.exe` and of the setup itself. Portable copies record nothing; the
+uninstaller removes its folder's value.
+
+| Found | Welcome page | Button | What happens |
+| --- | --- | --- | --- |
+| nothing | Installation type, PATH, Explorer | Next | the first-install pages (licence, folder, Start Menu) |
+| an older version | **OpenMind Studio Update**: installed version, new version, installation type, location | **Update OpenMind Studio** | straight to Installing |
+| the same version | **Repair OpenMind Studio** (same facts) | **Repair OpenMind Studio** | straight to Installing |
+| a newer version | "A newer version is installed"; nothing is changed | disabled | — (`/ALLOWDOWNGRADE` allows it on purpose) |
+| an MSI installation | "Update it with the new .msi package" | disabled | — |
+
+An update or repair replaces the program files **in place**: the old version is not uninstalled first, the licence,
+folder and Start Menu pages are skipped, existing shortcuts are kept (the template's update mode), and the earlier
+installation type, PATH and Explorer choices are kept. The data next to the program (`data/`, `settings/`, `runtimes/`,
+`tools/`, `language-servers/`, `extensions/`, `cache/`, `logs/`) and every computer's local profile are never touched;
+database migrations run at the next start as always. The Finish page offers *Run OpenMind Studio*.
+
+**Before any file is replaced** (the Update button, and the same rules for silent and passive installs):
+
+- **OpenMind Studio must be closed.** The interactive setup never closes it for you (unsaved work); it says so and
+  stays on the page. A silent or passive setup — the app's own updater, after the app has quit — closes this user's
+  copy as Tauri's template does.
+- **The program must not be in use elsewhere.** `OpenMindStudio.exe` and `lsp\node\node.exe` are opened for writing
+  without changing them: a program that runs on another computer from the shared folder, or for another Windows user,
+  keeps them locked, and the setup stops with "OpenMind Studio in … is in use — on another computer … Nothing has been
+  changed." It never closes programs on other computers. Silent installs wait up to 15 seconds for a program that is
+  closing.
+- **One setup at a time.** The setup holds `.openmind-setup.lock` in the folder, opened without sharing and deleted by
+  Windows when the setup ends (also after a crash). A second setup on any computer stops with "Another OpenMind Studio
+  setup is already changing …". The same check reports a folder the user may not write to.
+
+Silent installs that are refused exit with code 3 and print the reason to the console (`/S /ALLOWDOWNGRADE` to
+downgrade). `bundle.windows.allowDowngrades` is `false`, which also makes the MSI refuse to replace a newer MSI.
+
+**NSIS and MSI.** They are separate installations (per user / per machine). The NSIS setup refuses to install next to
+an MSI installation (it used to uninstall the MSI and install a new per-user copy with a new data location), and the
+MSI refuses to install for a user who has the NSIS installation (`OM_NSIS_INSTALL` launch condition in
+`wix/integration.wxs`). Each is updated with its own kind of package; switching means uninstalling one first (the data
+next to an NSIS install is kept by its uninstaller).
+
 ## MSI (per machine, administrator)
 
 The MSI installs into Program Files and needs administrator rights (UAC). Its options are Windows Installer properties,

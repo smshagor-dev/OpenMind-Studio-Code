@@ -161,6 +161,36 @@ describe("optional PATH and File Explorer integration in the installers", () => 
     expect(hooks).toMatch(/\$UpdateMode <> 1[\s\S]*Delete "\$INSTDIR\\install\.json"/);
   });
 
+  it("an existing installation is updated in place: no second install, no downgrade, never while in use", () => {
+    expect(checkInstallerHooks(hooks)).toEqual([]);
+    const conf = tauri.bundle as { windows: Record<string, unknown> };
+    expect(conf.windows.allowDowngrades).toBe(false);
+    const downgrades = {
+      ...tauri,
+      bundle: { ...(tauri.bundle as object), windows: { ...conf.windows, allowDowngrades: true } },
+    };
+    expect(checkInstallerConfig(downgrades, license).join(" ")).toContain("allowDowngrades");
+    // The update page replaces the installation type choice, and the button says what happens.
+    expect(hooks).toContain('"STR:OpenMind Studio Update"');
+    expect(hooks).toContain('Push "Update OpenMind Studio"');
+    expect(hooks).toContain('Push "Repair OpenMind Studio"');
+    // Found where installed copies noted themselves (a shared folder someone else installed).
+    expect(hooks).toContain('!define OM_INSTALLATIONS_KEY "Software\\OpenMind\\OpenMind Studio Installations"');
+    const fresh = hooks.replace("Call OmUpdatePage", "Call OmNothing");
+    expect(checkInstallerHooks(fresh).join(" ")).toContain("Update page");
+    const reinstalls = hooks.replace("StrCpy $UpdateMode 1", "StrCpy $UpdateMode 0");
+    expect(checkInstallerHooks(reinstalls).join(" ")).toContain("in place");
+    const downgradeOk = hooks.replaceAll('"/ALLOWDOWNGRADE"', '"/X"');
+    expect(checkInstallerHooks(downgradeOk).join(" ")).toContain("newer installation");
+    const unlocked = hooks.replace(/Call OmClaim\r?\n(?![\s\S]*Call OmClaim)/, "\n");
+    expect(checkInstallerHooks(unlocked).join(" ")).toContain("not in use");
+    const kills = `${hooks}\nnsis_tauri_utils::KillProcessCurrentUser "OpenMindStudio.exe"`;
+    expect(checkInstallerHooks(kills).join(" ")).toContain("never close");
+    // The MSI stops when the per-user setup already installed OpenMind Studio for this user.
+    expect(fragment).toContain("<Condition Message=");
+    expect(fragment).toContain("Installed OR NOT OM_NSIS_INSTALL");
+  });
+
   it("the MSI changes PATH only through ADDTOPATH and adds Explorer entries only with EXPLORERMENU", () => {
     expect(fragment).toMatch(/<Condition>ADDTOPATH = "1"<\/Condition>/);
     expect(fragment).toMatch(/<Condition>EXPLORERMENU = "1"<\/Condition>/);

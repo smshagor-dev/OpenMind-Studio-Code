@@ -20,6 +20,11 @@ use serde::Serialize;
 
 /// Where OpenMind records what it added (per user).
 pub const RECORD_KEY: &str = r"Software\OpenMind\OpenMind Studio Integration";
+/// Where installed copies note their folder for the setup programs (per user), so a new setup finds an installation
+/// it did not install itself (a shared network folder another person installed, a folder chosen by hand): one value
+/// per installation folder (name = the folder, data = the version that last started from it) and the default value
+/// = the folder started last. Written only by installed copies (never portable ones), removed by the uninstaller.
+pub const INSTALLATIONS_KEY: &str = r"Software\OpenMind\OpenMind Studio Installations";
 /// The record of the Explorer entries: the exe they run.
 const EXPLORER_RECORD: &str = "Explorer";
 /// The text of the Explorer entries.
@@ -288,6 +293,28 @@ pub fn remove_explorer(store: &mut dyn Store, exe: &Path) -> Result<String, Stri
     } else {
         format!("Removed \"{MENU_LABEL}\" from File Explorer.")
     })
+}
+
+/// Notes `dir` as an installation started now with `version` (see [`INSTALLATIONS_KEY`]).
+pub fn remember_installation(
+    store: &mut dyn Store,
+    dir: &str,
+    version: &str,
+) -> Result<(), String> {
+    store.set_value(INSTALLATIONS_KEY, dir, version)?;
+    store.set_value(INSTALLATIONS_KEY, "", dir)
+}
+
+/// Removes `dir` from [`INSTALLATIONS_KEY`] (and the key once nothing is left in it).
+pub fn forget_installation(store: &mut dyn Store, dir: &str) -> Result<(), String> {
+    store.delete_value(INSTALLATIONS_KEY, dir)?;
+    if store
+        .value(INSTALLATIONS_KEY, "")?
+        .is_some_and(|last| normalize(&last) == normalize(dir))
+    {
+        store.delete_value(INSTALLATIONS_KEY, "")?;
+    }
+    store.delete_key_if_empty(INSTALLATIONS_KEY)
 }
 
 /// Runs one action and returns what it did, in one line per part.

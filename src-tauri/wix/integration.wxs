@@ -13,6 +13,16 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <Property Id="ADDTOPATH" Secure="yes" />
+    <!--
+      An installation by the per-user NSIS setup (its uninstall record names its uninstaller). Installing the MSI over it
+      would make a second, separate installation with its own data, so the MSI stops with the reason instead; that
+      installation is updated with the NSIS setup (see docs/installer.md). The NSIS setup refuses an MSI installation
+      the same way.
+    -->
+    <Property Id="OM_NSIS_INSTALL">
+      <RegistrySearch Id="OmNsisInstallSearch" Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenMind Studio" Name="UninstallString" Type="raw" />
+    </Property>
+    <Condition Message="OpenMind Studio is already installed for your Windows user with the OpenMind Studio setup program (.exe). Update it with the new setup .exe; this package would make a second, separate installation. Nothing has been changed.">Installed OR NOT OM_NSIS_INSTALL</Condition>
     <Property Id="EXPLORERMENU" Secure="yes" />
     <DirectoryRef Id="INSTALLDIR">
       <!--

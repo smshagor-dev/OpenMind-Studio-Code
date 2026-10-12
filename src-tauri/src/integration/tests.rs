@@ -330,3 +330,39 @@ fn the_launchers_are_the_shipped_files_and_point_at_the_program_beside_bin() {
         cmd
     );
 }
+
+#[test]
+fn installations_are_remembered_for_the_setup_and_forgotten_by_the_uninstaller() {
+    let mut store = Fake::default();
+    let shared = r"\lab\apps\OpenMind Studio";
+    let mine = r"C:\Users\Ivan\AppData\Local\OpenMind Studio";
+    remember_installation(&mut store, shared, "1.0.2").expect("remember");
+    remember_installation(&mut store, mine, "1.0.3").expect("remember");
+    assert_eq!(
+        store
+            .value(INSTALLATIONS_KEY, shared)
+            .expect("read")
+            .as_deref(),
+        Some("1.0.2")
+    );
+    // The default value names the folder started last: the setup looks there first.
+    assert_eq!(
+        store.value(INSTALLATIONS_KEY, "").expect("read").as_deref(),
+        Some(mine)
+    );
+
+    // Forgetting the last-started folder (in another case: value names are case-insensitive) also clears the default.
+    forget_installation(&mut store, &mine.to_uppercase()).expect("forget");
+    assert_eq!(store.value(INSTALLATIONS_KEY, mine).expect("read"), None);
+    assert_eq!(store.value(INSTALLATIONS_KEY, "").expect("read"), None);
+    assert!(
+        store.keys.contains(&INSTALLATIONS_KEY.to_lowercase()),
+        "the shared copy is still recorded"
+    );
+
+    forget_installation(&mut store, shared).expect("forget");
+    assert!(
+        !store.keys.contains(&INSTALLATIONS_KEY.to_lowercase()),
+        "an empty record key goes"
+    );
+}
