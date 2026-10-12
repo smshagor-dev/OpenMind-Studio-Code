@@ -84,8 +84,9 @@ Signing is optional and configured **only through environment variables** (never
 | `SIGNING_CERT_THUMBPRINT` | a certificate in the current user's Windows certificate store (SHA-1 thumbprint; no password, the key stays in the store) — used instead of the two below |
 | `SIGNING_CERT_PATH`       | path to the `.pfx` certificate                                                                                                                            |
 | `SIGNING_CERT_PASSWORD`   | its password (never printed or written)                                                                                                                   |
-| `TIMESTAMP_URL`           | optional http(s) timestamp server, e.g. your CA's RFC 3161 address                                                                                        |
-| `SIGNING_CERT_KIND`       | set to `test` for a self-signed test certificate                                                                                                          |
+| `TIMESTAMP_URL`           | your CA's RFC 3161 time-stamp server (http(s)). **Required for a real certificate**: without a timestamp a signature stops being valid when the certificate expires |
+| `SIGNING_NO_TIMESTAMP`    | `1` waives that requirement (an internal build only)                                                                                                     |
+| `SIGNING_CERT_KIND`       | set to `test` for a self-signed test certificate (no timestamp needed)                                                                                    |
 
 `tauri build` signs every Windows binary it makes — `OpenMindStudio.exe`, the NSIS installer and uninstaller, the MSI —
 through `bundle.windows.signCommand` (`scripts/sign-file.mjs` -> `signtool.exe` from the Windows SDK), _before_ it writes
@@ -96,6 +97,45 @@ signed yet, and states the result in `RELEASE-REPORT.md`:
 - **unsigned** — nothing configured (development). Windows SmartScreen will warn. The build log says so.
 - **test-signed** — signed with a self-signed test certificate (`SIGNING_CERT_KIND=test`); other computers do not trust it.
 - **signed** — signed with the real certificate. Production signing needs a real code-signing certificate (not part of this repo).
+
+**Verification.** After collecting, `release.mjs` asks Windows (`Get-AuthenticodeSignature`) about every installer: a
+**signed** build must have a *Valid* signature (trusted chain, file unchanged since signing) with an RFC 3161 timestamp;
+a **test-signed** one must be signed and unchanged. Each file's result is listed in `RELEASE-REPORT.md`; any failure
+reports the build as **unsigned** and the script exits 1. The same check by hand, on any file:
+
+```powershell
+node scripts/verify-signatures.mjs "release\OpenMind-Studio-Setup-1.0.2-x64.exe" "release\OpenMind-Studio-1.0.2-x64.msi"
+node scripts/verify-signatures.mjs --mode test-signed <files>   # a test certificate
+```
+
+**SmartScreen.** A valid signature is necessary but not sufficient: Microsoft Defender SmartScreen also builds
+*reputation* for the publisher and for each file over time and downloads, so a newly signed release (especially from a
+new certificate) can still show "Windows protected your PC" at first. Nothing in this project disables or works around
+SmartScreen, Smart App Control or Defender. The executable's manifest (`src-tauri/windows-app-manifest.xml`) declares
+`asInvoker`, Windows 10/11 support and long paths, and the publisher, product name and version are the same in the
+executable, both installers and the uninstall entry, which is what Windows shows to users.
+
+### SignPath (GitHub Actions)
+
+`.github/workflows/release-windows.yml` (started by hand) builds the release on GitHub Actions and, when SignPath is
+configured, has SignPath sign the files in the order that keeps everything valid: the program first, then the
+installers built around the signed program, then the update signatures (`.sig`) of the signed installers, then
+`verify-signatures.mjs` and `release.mjs` (with `SIGNING_EXTERNAL=true`: verify only). Nothing is published; the files
+are kept as a workflow artifact.
+
+Setting it up (SignPath Foundation offers free signing to eligible open-source projects; that approval is SignPath's
+decision, not something this repository can arrange):
+
+1. In SignPath: a project, a signing policy (e.g. `release-signing`) and two artifact configurations — one for a single
+   `OpenMindStudio.exe`, one for a ZIP with the NSIS `.exe` and the `.msi` (Authenticode, SHA-256, with SignPath's
+   timestamping).
+2. In the GitHub repository: variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_POLICY_SLUG`,
+   `SIGNPATH_EXE_CONFIG_SLUG`, `SIGNPATH_INSTALLER_CONFIG_SLUG`; secrets `SIGNPATH_API_TOKEN`, `TAURI_UPDATER_KEY` (the
+   minisign private key text) and `TAURI_UPDATER_KEY_PASSWORD`.
+3. Without `SIGNPATH_ORGANIZATION_ID` the workflow builds an unsigned release (reported as such).
+
+The workflow has **not been run yet** (no SignPath project exists for this repository at the time of writing); expect
+to adjust artifact configuration slugs and file patterns on the first run.
 
 A path without a password (or the reverse) is reported as a misconfiguration and the build stays unsigned. A test
 certificate for a local check: `New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OpenMind Studio Test" -CertStoreLocation Cert:\CurrentUser\My`
@@ -128,6 +168,23 @@ Integration` are gone. Every other PATH entry is as before.
      commands add and remove the same entries on request.
    - MSI, only with administrator rights: `msiexec /i ... ADDTOPATH=1 EXPLORERMENU=1`, then uninstall and check the
      machine PATH and `HKLM\Software\Classes`.
+
+## Release gate
+
+A release is published only when all of these hold; otherwise it is **PILOT-READY** (everything but the real-hardware
+pilot and signing) or **BLOCKED**:
+
+1. No open data-loss or cross-computer corruption defect.
+2. Quality gates, all exit code 0: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
+   `cargo test --workspace`, `pnpm lint`, `pnpm exec tsc -b`, `pnpm test`.
+3. Installers built: NSIS setup, MSI, portable ZIP (`pnpm release:build`, `pnpm package:portable`).
+4. The multi-PC pilot (`docs/pilot/multi-pc-pilot.md`) passed on real computers — a single-computer simulation
+   through `\\localhost` does not count.
+5. Signed for the channel: a public release needs a CA-issued certificate (or SignPath) with RFC 3161 timestamps and
+   `verify-signatures.mjs` passing; a test-signed or unsigned build is for internal testing only.
+6. Upgrade from the previous release and the rollback in `docs/release-notes-next.md` checked.
+
+Version bump, commit, tag and publishing need the maintainer's approval.
 
 ## SHA256
 

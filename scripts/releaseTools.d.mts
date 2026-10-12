@@ -16,6 +16,17 @@ export function publicSigningInfo(config: SigningConfig): {
 };
 export function signtoolArgs(config: SigningConfig, file: string): string[];
 export function redact(text: unknown, secrets: (string | undefined)[]): string;
+export interface SignatureInfo {
+  status: string;
+  signer: string | null;
+  timestamped: boolean;
+  timestamper: string | null;
+}
+export function signatureVerdict(
+  info: SignatureInfo | null,
+  mode: "signed" | "test-signed" | "external",
+  options?: { timestampWaived?: boolean },
+): string | null;
 export function releaseName(kind: "setup" | "msi" | "portable" | "deb" | "appimage" | "linux-portable", version: string, arch?: string): string;
 export function formatSize(bytes: number): string;
 

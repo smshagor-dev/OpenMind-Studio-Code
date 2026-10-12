@@ -30,8 +30,9 @@ import {
   readSigningConfig,
   releaseName,
   reportText,
+  signatureVerdict,
 } from "./releaseTools.mjs";
-import { hasSignature, signFile } from "./signtool.mjs";
+import { hasSignature, inspectSignature, signFile } from "./signtool.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -162,9 +163,36 @@ for (const entry of present) {
   artifacts.push({ name, kind: entry.kind, size: statSync(target).size, sha256: sha256(target) });
 }
 
-// A build is only "signed" when every signable file was signed.
+// A build is only "signed" when every signable file was signed — and Windows itself confirms each signature (trusted
+// chain, unchanged file, RFC 3161 timestamp for a release certificate).
 const signable = artifacts.filter((a) => a.kind !== "portable").length;
-const buildType = signedCount > 0 && signedCount === signable ? config.mode : "unsigned";
+const signatureNotes = [];
+let verifyFailures = 0;
+// Signed by an outside service before this script ran (the release workflow's SignPath steps): only verified here.
+const external = process.env.SIGNING_EXTERNAL === "true";
+const verifyMode = external ? "external" : config.mode;
+if (external) signedCount = signable;
+if (verifyMode === "signed" || verifyMode === "test-signed" || verifyMode === "external") {
+  for (const a of artifacts.filter((entry) => entry.kind !== "portable")) {
+    const info = inspectSignature(join(out, a.name));
+    const problem = signatureVerdict(info, verifyMode, {
+      timestampWaived: process.env.SIGNING_NO_TIMESTAMP === "1",
+    });
+    signatureNotes.push(
+      `- ${a.name}: ${problem === null ? "verified" : `NOT verified (${problem})`} — status ${info.status}, ${info.timestamped ? "timestamped" : "no timestamp"}`,
+    );
+    if (problem !== null) {
+      verifyFailures += 1;
+      console.error(`${a.name}: signature not verified: ${problem}`);
+    }
+  }
+}
+const buildType =
+  signedCount > 0 && signedCount === signable && verifyFailures === 0
+    ? external
+      ? "signed"
+      : config.mode
+    : "unsigned";
 
 writeFileSync(join(out, "SHA256SUMS.txt"), checksumsText(artifacts));
 writeFileSync(
@@ -175,8 +203,12 @@ writeFileSync(
     buildType,
     date: new Date().toISOString(),
     artifacts,
-    notes: [`Signing: ${JSON.stringify(publicSigningInfo(config))}`],
+    notes: [`Signing: ${JSON.stringify(publicSigningInfo(config))}`, ...signatureNotes],
   }),
 );
 console.log(`Wrote ${artifacts.length} artifact(s) to ${out} (${buildType}).`);
 for (const a of artifacts) console.log(`  ${a.name}  ${a.size} bytes  ${a.sha256}`);
+if (verifyFailures > 0) {
+  console.error(`${verifyFailures} signature(s) could not be verified: the build is reported UNSIGNED.`);
+  process.exit(1);
+}

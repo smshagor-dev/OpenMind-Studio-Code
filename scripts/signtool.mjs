@@ -32,6 +32,25 @@ export function signFile(config, file) {
   return redact(result.stderr || result.stdout || "signtool error", [config.password]);
 }
 
+/**
+ * What Windows says about a file's Authenticode signature: `{ status, signer, timestamped, timestamper }` (`status` is
+ * `Get-AuthenticodeSignature`'s: Valid, NotTrusted, HashMismatch, NotSigned, UnknownError ...). Needs no Windows SDK.
+ */
+export function inspectSignature(file) {
+  const script =
+    "$s = Get-AuthenticodeSignature -LiteralPath $env:OM_SIGNED_FILE; " +
+    "[Console]::Out.Write((@{ status = [string]$s.Status; " +
+    "signer = if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { $null }; " +
+    "timestamped = $null -ne $s.TimeStamperCertificate; " +
+    "timestamper = if ($s.TimeStamperCertificate) { $s.TimeStamperCertificate.Subject } else { $null } } | ConvertTo-Json -Compress))";
+  const out = execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    encoding: "utf8",
+    env: { ...process.env, OM_SIGNED_FILE: file },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return JSON.parse(out.trim());
+}
+
 /** True when the file has an Authenticode signature (trusted or not). */
 export function hasSignature(file) {
   const script =

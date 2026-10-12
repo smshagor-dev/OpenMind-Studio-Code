@@ -31,6 +31,17 @@ export function readSigningConfig(env) {
         "TIMESTAMP_URL must be an http(s) address: signing is skipped and the build is UNSIGNED.",
     };
   }
+  // A release signature without an RFC 3161 timestamp stops being valid when the certificate expires: a real
+  // certificate needs TIMESTAMP_URL (your certificate authority's time-stamp server), unless explicitly waived.
+  const certificateGiven = thumbprint !== "" || (path !== "" && password !== "");
+  const timestampWaived = (env.SIGNING_NO_TIMESTAMP ?? "").trim() === "1";
+  if (certificateGiven && !test && timestamp === "" && !timestampWaived) {
+    return {
+      mode: "misconfigured",
+      message:
+        "A release certificate needs an RFC 3161 time-stamp server (TIMESTAMP_URL), or its signatures expire with the certificate. Set TIMESTAMP_URL (or SIGNING_NO_TIMESTAMP=1 for an internal build): signing is skipped and the build is UNSIGNED.",
+    };
+  }
   if (thumbprint !== "") {
     // A certificate in the current user's Windows certificate store (the private key never leaves it).
     if (!/^[0-9A-F]{40}$/.test(thumbprint)) {
@@ -92,6 +103,24 @@ export function signtoolArgs(config, file) {
   if (config.timestampUrl) args.push("/tr", config.timestampUrl, "/td", "SHA256");
   args.push(file);
   return args;
+}
+
+/**
+ * Whether one file's Authenticode signature is good enough for `mode`, from what Windows reports
+ * (`Get-AuthenticodeSignature`: `status` Valid / NotTrusted / HashMismatch / NotSigned ..., `timestamped`).
+ *  - `signed`: the signature must be Valid (chain trusted, file unchanged) and carry an RFC 3161 timestamp, unless the
+ *    timestamp was explicitly waived;
+ *  - `test-signed`: present and the file unchanged (a test certificate is not trusted by design);
+ *  - `external`: as `signed` — the files came back from an outside signing service (SignPath).
+ * Returns `null` when it is fine, else the reason.
+ */
+export function signatureVerdict(info, mode, { timestampWaived = false } = {}) {
+  if (info === null || info.status === "NotSigned") return "not signed";
+  if (info.status === "HashMismatch") return "the file was changed after it was signed";
+  if (mode === "test-signed") return null;
+  if (info.status !== "Valid") return `signature status ${info.status}`;
+  if (!info.timestamped && !timestampWaived) return "no RFC 3161 timestamp";
+  return null;
 }
 
 /** Removes a secret from any text (an error message, a command line) before it is printed. */
@@ -264,7 +293,7 @@ export function checkInstallerConfig(tauri, licenseText) {
       "The MSI must include wix/integration.wxs (the optional ADDTOPATH / EXPLORERMENU components).",
     );
   }
-  for (const id of ["OmCliPath", "OmExplorerMenu"]) {
+  for (const id of ["OmCliPath", "OmExplorerMenu", "OmInstallLayout"]) {
     if (!wix.componentRefs?.includes(id))
       problems.push(`The MSI must reference the ${id} component.`);
   }
@@ -298,13 +327,19 @@ export function checkInstallerHooks(nsh) {
   if (!/StrCpy \$OmAddPath 0/.test(nsh) || !/StrCpy \$OmAddMenu 0/.test(nsh)) {
     problems.push("The PATH and File Explorer options must start unchecked.");
   }
-  for (const flag of ["/ADDTOPATH", "/EXPLORERMENU"]) {
+  for (const flag of ["/ADDTOPATH", "/EXPLORERMENU", "/NETWORK"]) {
     if (!nsh.includes(`"${flag}"`)) problems.push(`Silent installs need the ${flag} switch.`);
   }
   // Look inside the hook macros themselves, not at comments that mention them.
   const macro = (name) =>
     nsh.match(new RegExp(`!macro ${name}\\b([\\s\\S]*?)!macroend`))?.[1] ?? "";
   const install = macro("NSIS_HOOK_POSTINSTALL");
+  // The installer, not the app, records how it installed the program (install.json; the app never asks again).
+  for (const layout of ["per-user", "network"]) {
+    if (!install.includes(`--integration set-layout ${layout}`)) {
+      problems.push(`The installer must run --integration set-layout ${layout}.`);
+    }
+  }
   for (const action of ["add-path", "remove-path", "add-explorer", "remove-explorer"]) {
     if (!install.includes(`--integration ${action}`)) {
       problems.push(`The installer must run --integration ${action}.`);
