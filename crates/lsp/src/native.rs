@@ -152,6 +152,8 @@ impl LspManager {
             LogLevel::Info,
             &format!("Installing {}...", download.contents),
         );
+        // One install or unpack of this package at a time, on every computer sharing the folder.
+        let _lock = crate::unpack::lock_package(app_root, def.package)?;
         let staging = install::staging_dir_of(app_root, def.package);
         let outcome = (|| {
             if staging.exists() {
