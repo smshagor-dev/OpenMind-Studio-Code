@@ -18,6 +18,7 @@ pub mod git_credentials;
 pub mod index;
 pub mod integration;
 pub mod language;
+pub mod live_preview;
 pub mod lsp;
 pub mod lsp_manage;
 pub mod marketplace;

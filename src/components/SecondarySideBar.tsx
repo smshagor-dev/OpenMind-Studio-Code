@@ -1,6 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
+import { BrowserView } from "./BrowserView";
 import { CloseIcon } from "./icons";
 import { shortcutFor } from "./shortcutLabel";
 import { t } from "../i18n";
@@ -8,9 +9,10 @@ import { t } from "../i18n";
 /**
  * VS Code's Secondary Side Bar: a card on the far side of the editor showing
  * an Output channel beside the code. Run Code opens it at half width on the
- * run's channel (the bottom panel's Output shows the same lines). Its sash
- * sits on the edge facing the editor. UI only — `SecondarySideBarService`
- * holds the state.
+ * run's channel (the bottom panel's Output shows the same lines), or on the
+ * built-in browser for an HTML page. Its sash sits on the edge facing the
+ * editor. UI only — `SecondarySideBarService` and `BrowserPreviewService`
+ * hold the state.
  */
 export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
   const runKey = shortcutFor("run.code");
@@ -26,6 +28,11 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
     (listener) => container.output.subscribe(listener),
     () => container.output.getLines(state.channel),
   );
+  const browser = useSyncExternalStore(
+    (listener) => container.browser.subscribe(listener),
+    () => container.browser.getState(),
+  );
+  const showBrowser = state.view === "browser" && browser.target !== null;
   const asideRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLPreElement | null>(null);
   const drag = useRef<{ x: number; width: number } | null>(null);
@@ -73,31 +80,59 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
         }}
       />
       <header className="secondary-sidebar__title">
-        <h2 className="secondary-sidebar__label">{t("secondary.output")}</h2>
-        <select
-          className="panel-select"
-          aria-label={t("secondary.channel")}
-          value={state.channel}
-          onChange={(event) => void container.secondarySideBar.setChannel(event.target.value)}
-        >
-          {channels.map((channel) => (
-            <option key={channel} value={channel}>
-              {channel}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          className="secondary-sidebar__action"
-          title={t("secondary.clear")}
-          aria-label={t("secondary.clearLabel")}
-          disabled={lines.length === 0}
-          onClick={() => {
-            container.output.clear(state.channel);
-          }}
-        >
-          ⌫
-        </button>
+        {browser.target === null ? (
+          <h2 className="secondary-sidebar__label">{t("secondary.output")}</h2>
+        ) : (
+          <div className="secondary-sidebar__tabs" role="tablist" aria-label={t("secondary.bar")}>
+            {(["output", "browser"] as const).map((view) => {
+              const selected = view === "browser" ? showBrowser : !showBrowser;
+              return (
+                <button
+                  key={view}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  className={
+                    selected
+                      ? "secondary-sidebar__tab secondary-sidebar__tab--active"
+                      : "secondary-sidebar__tab"
+                  }
+                  onClick={() => void container.secondarySideBar.setView(view)}
+                >
+                  {view === "browser" ? t("secondary.browser") : t("secondary.output")}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {showBrowser ? null : (
+          <>
+            <select
+              className="panel-select"
+              aria-label={t("secondary.channel")}
+              value={state.channel}
+              onChange={(event) => void container.secondarySideBar.setChannel(event.target.value)}
+            >
+              {channels.map((channel) => (
+                <option key={channel} value={channel}>
+                  {channel}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="secondary-sidebar__action"
+              title={t("secondary.clear")}
+              aria-label={t("secondary.clearLabel")}
+              disabled={lines.length === 0}
+              onClick={() => {
+                container.output.clear(state.channel);
+              }}
+            >
+              ⌫
+            </button>
+          </>
+        )}
         <button
           type="button"
           className="secondary-sidebar__action"
@@ -108,10 +143,12 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
           <CloseIcon />
         </button>
       </header>
-      {lines.length === 0 ? (
+      {showBrowser ? (
+        <BrowserView />
+      ) : lines.length === 0 ? (
         <p className="secondary-sidebar__empty">
-          No output in “{state.channel}” yet. Run a file{runKey ? ` (${runKey})` : ""} to see its output
-          here and in the panel below.
+          No output in “{state.channel}” yet. Run a file{runKey ? ` (${runKey})` : ""} to see its
+          output here and in the panel below.
         </p>
       ) : (
         <pre className="output-lines secondary-sidebar__lines" ref={bodyRef}>

@@ -698,6 +698,65 @@ describe("RunCodeService", () => {
   });
 });
 
+describe("RunCodeService and the built-in browser", () => {
+  const PAGE: RunAvailability = {
+    ...RUNNABLE,
+    kind: null,
+    language: "HTML",
+    runtime: "Built-in browser",
+    command: "Open in the built-in browser",
+    resolved: null,
+    browser: true,
+  };
+
+  it("an HTML page opens in the built-in browser, saved first, and no process starts", async () => {
+    const r = await rig({ runResolve: vi.fn().mockResolvedValue(PAGE) });
+    const open = vi.fn().mockResolvedValue(true);
+    r.service.setBrowserHost({ open });
+    r.open(tab("C:/p/index.html", true));
+    await r.service.refresh();
+
+    expect(r.service.buttonView()).toMatchObject({ state: "ready", enabled: true });
+    expect(await r.service.run({ target: "terminal" })).toBe(true);
+
+    expect(r.workspace.save).toHaveBeenCalledWith("doc-1");
+    expect(open).toHaveBeenCalledWith("C:/p/index.html");
+    expect(r.ipc.runStart).not.toHaveBeenCalled();
+    expect(r.ipc.runTerminalCommand).not.toHaveBeenCalled();
+    expect(r.output.getLines("Run Code").join(" ")).toContain("Opened in the built-in browser");
+  });
+
+  it("JavaScript without Node.js runs in the browser instead of being disabled", async () => {
+    const noNode = refused("Node.js runtime is not installed yet.", {
+      runtimeMissing: true,
+      installRuntime: "node",
+      browser: true,
+    });
+    const r = await rig({ runResolve: vi.fn().mockResolvedValue(noNode) });
+    r.open(tab("C:/p/app.js"));
+    await r.service.refresh();
+    expect(r.service.buttonView().enabled).toBe(false);
+
+    const open = vi.fn().mockResolvedValue(true);
+    r.service.setBrowserHost({ open });
+    await r.service.refresh();
+    const view = r.service.buttonView();
+    expect(view.state).toBe("ready");
+    expect(view.tooltip).toContain("built-in browser");
+    expect(await r.service.run()).toBe(true);
+    expect(open).toHaveBeenCalledWith("C:/p/app.js");
+  });
+
+  it("a page that can't be opened is not reported as a run", async () => {
+    const r = await rig({ runResolve: vi.fn().mockResolvedValue(PAGE) });
+    r.service.setBrowserHost({ open: vi.fn().mockResolvedValue(false) });
+    r.open(tab("C:/p/index.html"));
+    await r.service.refresh();
+    expect(await r.service.run()).toBe(false);
+    expect(r.output.getLines("Run Code")).toEqual([]);
+  });
+});
+
 describe("Run menu", () => {
   const flush = async (r: Rig) => {
     await r.service.refresh();

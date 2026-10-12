@@ -16,6 +16,7 @@ describe("SecondarySideBarService", () => {
       half: true,
       width: 420,
       channel: "Run Code",
+      view: "output",
     });
   });
 
@@ -31,6 +32,23 @@ describe("SecondarySideBarService", () => {
       SECONDARY_SIDEBAR_KEY,
       expect.stringContaining('"channel":"Python"'),
     );
+  });
+
+  it("showBrowser switches to the browser at half width; a restart comes back on the Output", async () => {
+    const ipc = createFakeIpc();
+    const service = new SecondarySideBarService(ipc);
+    await service.showBrowser();
+    expect(service.getState()).toMatchObject({ visible: true, half: true, view: "browser" });
+    await service.showOutput("Python");
+    expect(service.getState().view).toBe("output");
+    await service.setView("browser");
+
+    const saved = String(vi.mocked(ipc.settingsSet).mock.lastCall?.[1]);
+    const restored = new SecondarySideBarService(
+      createFakeIpc({ settingsGet: vi.fn().mockResolvedValue(saved) }),
+    );
+    await restored.initialize();
+    expect(restored.getState().view).toBe("output");
   });
 
   it("dragging the sash gives it a fixed, clamped width, saved on release", async () => {
@@ -59,6 +77,7 @@ describe("SecondarySideBarService", () => {
       half: false,
       width: 1600,
       channel: "Run Code",
+      view: "output",
     });
 
     await service.toggle();

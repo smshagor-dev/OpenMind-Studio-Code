@@ -7,6 +7,8 @@ import type { IpcClient } from "./ipc";
 import type { MarkerService } from "./markerService";
 import type { OutputService } from "./outputService";
 import type { PanelService } from "./panelService";
+import { BrowserPreviewService } from "./browserPreview/browserPreviewService";
+import { tauriBrowserIpc, type BrowserIpc } from "./browserPreview/browserIpc";
 import { RunArgumentsService } from "./runArgumentsService";
 import { RunCodeService } from "./runCodeService";
 import { registerRunCommands } from "./runCommands";
@@ -17,7 +19,11 @@ import type { WorkspaceService } from "./workspaceService";
 import { t } from "../i18n";
 
 /** Settings the backend's assembly build plan depends on. */
-export const ASSEMBLY_BUILD_SETTINGS = ["assembly.architecture", "assembly.extraAssemblerArgs", "assembly.extraLinkerArgs"];
+export const ASSEMBLY_BUILD_SETTINGS = [
+  "assembly.architecture",
+  "assembly.extraAssemblerArgs",
+  "assembly.extraLinkerArgs",
+];
 
 export interface RunWiringDeps {
   ipc: IpcClient;
@@ -32,6 +38,10 @@ export interface RunWiringDeps {
   markers: MarkerService;
   /** Shows a run's Output channel beside the editor (the secondary side bar). */
   showBeside: (channel: string) => void;
+  /** Shows the built-in browser beside the editor (the secondary side bar's Browser view). */
+  showBrowser: () => void;
+  /** The built-in browser's backend (tests pass a fake). */
+  browserIpc?: BrowserIpc;
   /** The app's shared prompts (they exist once the extension services do; asked only when a user runs something). */
   confirm: (request: Omit<ConfirmPrompt, "kind" | "id">) => Promise<string | null>;
   inputBox: (request: Omit<InputPrompt, "kind" | "id">) => Promise<string | null>;
@@ -56,6 +66,23 @@ export function wireRunCode(deps: RunWiringDeps) {
     },
     deps.markers,
   );
+  // HTML pages (and JavaScript when Node.js is missing) run in the built-in browser beside the editor.
+  const browser = new BrowserPreviewService(
+    deps.browserIpc ?? tauriBrowserIpc,
+    events,
+    deps.output,
+    deps.showBrowser,
+  );
+  runCode.setBrowserHost({ open: (path) => browser.open(path) });
+  // Files changed outside the editor (another program, Git, a build) reload the page too.
+  void ipc
+    .onFsChanged((batch) => {
+      browser.noteDiskChanges(
+        batch.changes.map((change) => change.path),
+        batch.overflow,
+      );
+    })
+    .catch(() => undefined);
   // Command-line arguments per file, remembered across restarts; every run of that file (Output or terminal) gets them.
   const runArguments = new RunArgumentsService(ipc);
   runCode.setArgumentsSource((path) => runArguments.get(path));
@@ -107,5 +134,5 @@ export function wireRunCode(deps: RunWiringDeps) {
       return answer === terminalLabel ? "terminal" : "output";
     },
   });
-  return { runCode, configs, runArguments };
+  return { runCode, configs, runArguments, browser };
 }

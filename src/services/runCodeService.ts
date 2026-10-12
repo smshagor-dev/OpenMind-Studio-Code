@@ -112,6 +112,8 @@ export function describeRunButton(input: {
   error: string | null;
   /** A click on a "runtime missing" button can offer to install it (see `RunMissingRuntimeHost`). */
   canOfferInstall?: boolean;
+  /** The built-in browser exists (a JavaScript file without Node.js runs there). */
+  canUseBrowser?: boolean;
 }): RunButtonView {
   const { editor, availability } = input;
   const disabled = (state: RunButtonState, tooltip: string): RunButtonView => ({
@@ -133,8 +135,20 @@ export function describeRunButton(input: {
   if (!input.availabilityCurrent || availability === null) {
     return disabled(input.checking ? "checking" : "disabled", "Checking how to run this file…");
   }
+  if (!availability.runnable && availability.browser === true && input.canUseBrowser === true) {
+    return {
+      state: "ready",
+      enabled: true,
+      tooltip: `${availability.reason ?? ""} — Run Code (Ctrl+F5) shows it in the built-in browser`,
+      canStop: false,
+    };
+  }
   if (!availability.runnable) {
-    if (availability.runtimeMissing && availability.installRuntime && input.canOfferInstall === true) {
+    if (
+      availability.runtimeMissing &&
+      availability.installRuntime &&
+      input.canOfferInstall === true
+    ) {
       return {
         state: "runtimeMissing",
         enabled: true,
@@ -196,10 +210,16 @@ export interface RunMissingRuntimeHost {
   offer: (runtimeId: string, reason: string) => Promise<boolean>;
 }
 
+/** The built-in browser beside the editor (`BrowserPreviewService.open`). Resolves `true` when the page opened. */
+export interface RunBrowserHost {
+  open: (path: string) => Promise<boolean>;
+}
+
 export class RunCodeService {
   private state: RunState = INITIAL;
   private interactive: RunInteractiveHost | null = null;
   private missingRuntime: RunMissingRuntimeHost | null = null;
+  private browser: RunBrowserHost | null = null;
   private argumentsOf: (path: string) => string = () => "";
   /** Runs whose program asked for input it couldn't get (Python's EOFError). */
   private readonly missedInput = new Set<string>();
@@ -244,6 +264,13 @@ export class RunCodeService {
   /** Wired after the prompts exist (the composition root). */
   setInteractiveHost(host: RunInteractiveHost): void {
     this.interactive = host;
+  }
+
+  /** Wired by the composition root: HTML pages (and JavaScript without Node.js) open in the built-in browser. */
+  setBrowserHost(host: RunBrowserHost): void {
+    this.browser = host;
+    this.lastSignature = "";
+    void this.refresh();
   }
 
   /** Wired by the composition root, where the Runtime Manager and the prompts are. */
@@ -302,6 +329,7 @@ export class RunCodeService {
       running: editor?.path != null && editor.path in this.state.running,
       error: this.state.error,
       canOfferInstall: this.missingRuntime !== null,
+      canUseBrowser: this.browser !== null,
     });
   }
 
@@ -360,6 +388,7 @@ export class RunCodeService {
     if (editor === null) return this.fail("Open a file to run it.");
     if (editor.path === null) return this.fail("Save the file before running.");
     if (editor.path in this.state.running || this.starting.has(editor.path)) return false;
+    if (this.inBrowser(editor.path)) return this.runInBrowser({ ...editor, path: editor.path });
     const missing = this.missingRuntimeOf(editor.path);
     if (missing !== null && this.missingRuntime !== null) {
       // An install changes the runtimes, and `noteRuntimesChanged` checks the file again.
@@ -398,11 +427,42 @@ export class RunCodeService {
       : this.runManaged(request, options.showOutput ?? true);
   }
 
+  /** HTML always opens in the built-in browser; a JavaScript file does when Node.js is missing. */
+  private inBrowser(path: string): boolean {
+    const availability = this.state.availability;
+    if (
+      this.browser === null ||
+      availability === null ||
+      this.state.checkedKey !== this.keyFor(path)
+    )
+      return false;
+    return availability.browser === true;
+  }
+
+  /** Saves the file first (like every run, unless Save Before Run is off), then shows it in the built-in browser. */
+  private async runInBrowser(editor: RunEditor & { path: string }): Promise<boolean> {
+    this.update({ error: null });
+    if (editor.dirty && this.prefs.saveBeforeRun()) {
+      await this.workspace.save(editor.tabId);
+      if (this.activeEditor()?.dirty === true) {
+        return this.fail("The file has unsaved changes and couldn't be saved.");
+      }
+    }
+    const opened = (await this.browser?.open(editor.path)) ?? false;
+    if (opened)
+      this.output.append(
+        RUN_CHANNEL,
+        stamped(`[Run Code] Opened in the built-in browser: ${editor.path}`),
+      );
+    return opened;
+  }
+
   /** The runtime to install before `path` can run, when the last check said one is missing. */
   private missingRuntimeOf(path: string): { runtimeId: string; reason: string } | null {
     const availability = this.state.availability;
     if (availability === null || this.state.checkedKey !== this.keyFor(path)) return null;
-    if (availability.runnable || !availability.runtimeMissing || !availability.installRuntime) return null;
+    if (availability.runnable || !availability.runtimeMissing || !availability.installRuntime)
+      return null;
     return { runtimeId: availability.installRuntime, reason: availability.reason ?? "" };
   }
 
@@ -568,7 +628,8 @@ export class RunCodeService {
     const channel = process?.channel ?? RUN_CHANNEL;
     this.processes.delete(event.runId);
     this.buildProblems.delete(event.runId);
-    const ranWithoutInput = path !== null && this.withoutInput.delete(path) && event.buildFailed !== true;
+    const ranWithoutInput =
+      path !== null && this.withoutInput.delete(path) && event.buildFailed !== true;
     if (this.missedInput.delete(event.runId) || ranWithoutInput) {
       // The program asked for input; Run Code's Output can't answer it.
       this.output.append(channel, "");

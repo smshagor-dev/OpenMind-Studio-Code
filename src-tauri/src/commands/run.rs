@@ -36,6 +36,9 @@ pub struct RunAvailability {
     /// When a tool is missing: the Runtime Manager item that provides it (`assembly`, `python` ...), so Run Code can
     /// offer to install it. `None` for tools OpenMind doesn't install (Rust).
     pub install_runtime: Option<String>,
+    /// The file can be shown in the built-in browser: an HTML page always (then `runnable` is true and no process
+    /// starts), a JavaScript file when Node.js is missing (Run Code runs it as a page instead).
+    pub browser: bool,
 }
 
 impl RunAvailability {
@@ -51,6 +54,24 @@ impl RunAvailability {
             command: None,
             resolved: None,
             install_runtime: None,
+            browser: false,
+        }
+    }
+
+    /// An HTML page: Run Code opens it in the built-in browser beside the editor.
+    fn browser_page() -> Self {
+        Self {
+            runnable: true,
+            kind: None,
+            language: Some("HTML".into()),
+            reason: None,
+            previewable: false,
+            runtime_missing: false,
+            runtime: Some("Built-in browser".into()),
+            command: Some("Open in the built-in browser".into()),
+            resolved: None,
+            install_runtime: None,
+            browser: true,
         }
     }
 }
@@ -246,6 +267,10 @@ pub async fn run_resolve(
     request: RunRequest,
     state: State<'_, AppState>,
 ) -> Result<RunAvailability, String> {
+    use crate::commands::live_preview::{browser_kind, BrowserKind};
+    if browser_kind(&request.file) == Some(BrowserKind::Page) {
+        return Ok(RunAvailability::browser_page());
+    }
     if let Detection::NotRunnable {
         reason,
         previewable,
@@ -266,6 +291,7 @@ pub async fn run_resolve(
                 command: Some(plan.display),
                 resolved: Some(plan.resolved.to_string_lossy().into_owned()),
                 install_runtime: None,
+                browser: false,
             },
             Err(err) => {
                 let missing = matches!(
@@ -277,6 +303,8 @@ pub async fn run_resolve(
                 let mut availability = RunAvailability::refused(err.to_string(), false, missing);
                 if missing {
                     availability.install_runtime = installable_runtime(&request.file);
+                    // No Node.js: a plain script still runs as a page in the built-in browser.
+                    availability.browser = browser_kind(&request.file) == Some(BrowserKind::Script);
                 }
                 availability
             }

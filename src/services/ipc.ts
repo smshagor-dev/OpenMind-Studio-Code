@@ -820,6 +820,8 @@ export interface RunAvailability {
   resolved: string | null;
   /** When a tool is missing: the Runtime Manager item that provides it (Run Code offers to install it). */
   installRuntime?: string | null;
+  /** Shown in the built-in browser: an HTML page (runnable), or JavaScript when Node.js is missing. */
+  browser?: boolean;
 }
 
 export interface RunInfo {

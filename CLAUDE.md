@@ -735,6 +735,22 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   `commands::notebook`: `notebook_open` (reads only), `notebook_save` (refuses a file that changed on disk unless overwrite; atomic write; keeps trust for the user's own save),
   `notebook_set_trust`, `notebook_kernels`, `notebook_kernel_start` (only a candidate the app found), `notebook_kernel_stop`, `notebook_execute` (refused unless the file's
   content is trusted; each run recorded in `notebook_runs`); `window_events::shutdown` stops every kernel.
+- `openmind-live-preview` — the **built-in browser**'s file server, Tauri-agnostic. `Server::start(folder)` serves one folder over HTTP/1.1 on
+  `127.0.0.1:<random port>` (GET/HEAD only, one request per connection, at most 64 at once): the `Host` header must be its own address (no DNS
+  rebinding), no CORS headers, every path decoded and checked (`..`, drive letters, back slashes, NUL, links out of the folder → 403), folders redirect
+  to a slash and serve `index.html`/`index.htm` or an escaped listing, nothing is written. Every UTF-8 HTML page gets `<script
+  src="/__openmind__/console.js">` first (`inject_bridge`): the bridge reports `console.*`, uncaught errors, rejected promises, failed resource loads
+  and the page's address/title to the embedding window (`parent.postMessage({__openmind: "browser", ...})`); `/__openmind__/run?src=/app.js[&module=1]`
+  is a page that runs one script. **SCSS/Sass** (`sass.rs`, the pure-Rust `grass` compiler, in process): a requested `.scss`/`.sass` is served
+  compiled as CSS, and so is a missing `name.css` that has a `name.scss`/`name.sass` beside it; a compile error becomes a stylesheet that shows the
+  message on top of the page. `src-tauri/src/commands/live_preview.rs`: `live_preview_open(file)` serves the window's open folder when the file is
+  inside it, else the file's folder (one server per folder, at most 6, stopped in `shutdown`), and returns `{origin, url, path, root}`; `run_resolve`
+  answers HTML/HTM with `browser: true` (runnable, no process) and sets `browser` on a JavaScript file whose Node.js is missing. Frontend:
+  `BrowserPreviewService` (`src/services/browserPreview/`; console ≤ 1000 entries, copied to the "Browser" Output channel; a file of the served
+  folder saved in the editor *or* changed on disk (`fs:changed`) reloads the page the user is on, once per 200 ms burst), created in `runWiring.ts` and given to `RunCodeService.setBrowserHost`; `SecondarySideBarService.view` (`output` | `browser`, a
+  restart always comes back on Output) and `BrowserView.tsx` (address bar, Reload, Open in Your Browser, Console; the frame is `sandbox="allow-scripts
+  allow-same-origin allow-forms allow-modals allow-pointer-lock"` — its own origin 127.0.0.1, not the app's, so it can't reach the app's DOM, and Tauri
+  refuses IPC from origins without a `remote` capability; only messages whose `source` is the frame and `origin` the server are read).
 - `openmind-preview` (Milestone 11) — the backend of the **read-only file previews**, Tauri-agnostic and in-process only: no external program, no network,
   nothing written, no macro or script ever run. `kind::detect` maps an extension to `PreviewKind` (image: png/jpg/jpeg/webp/gif/bmp/svg, pdf, docx, xlsx, csv, markdown,
   html, latex, else `unsupported`) and holds the size limits (image 15 MB, PDF 30 MB, DOCX/XLSX 25 MB, Markdown/HTML/LaTeX 5 MB, a CSV is read only up to its first 8 MB, "Open as
@@ -3096,6 +3112,16 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   app-open refusal, lock refusal, in-use refusal (silent, exit 3 after 15 s), Repair page and silent repair, network layout
   kept, detection through the installations record, `/D=` fresh page, downgrade page and silent downgrade exit 3. Not run:
   MSI install (admin), real multi-PC.
+- [x] **Built-in browser for HTML / JavaScript** (after the installer upgrade work; not committed yet). Run Code on `.html`/`.htm` opens the page in the
+  secondary side bar's **Browser** view beside the editor (VS Code-style tabs Output | Browser), served by `openmind-live-preview` so relative CSS/JS,
+  `fetch` of local files and ES modules work, with the page's console below it; a `.js` file runs there when Node.js is missing (with Node.js it still
+  runs in Node). SCSS/Sass is compiled on request. Saving a file of the served folder, or changing it on disk, reloads the page the user is on.
+  Verified live in a debug build (`C:\ombrowser\Live Test`: index.html + css + js, about.htm + SCSS partial/mixin/nesting + `css/theme.css` from
+  `theme.scss`): styles, a form with localStorage, an image, link navigation, console, disk edits of SCSS/HTML/JS reloading, an SCSS error shown
+  and cleared. Not verified by hand: a save typed in the editor (the test couldn't type into the user's desktop; unit-tested). Remote content (CDNs) loads like in a browser — this is the user's own page.
+  Limits: no back/forward buttons (the page is cross-origin), `target=_blank` links and popups do nothing, the console shows text (no object
+  inspector), the page isn't restored after a restart, the port changes each start (so the page's localStorage doesn't survive a restart), the
+  watcher skips `dist`/`build`/`node_modules` (pages there don't reload on outside changes).
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
