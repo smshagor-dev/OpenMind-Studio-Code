@@ -229,6 +229,18 @@ const EVENT: BrokerEvent = {
 };
 
 describe("NetworkService: the Unified Download Broker", () => {
+  it("a progress subscription that fails is reported, never left as an unhandled rejection", async () => {
+    const fake = broker();
+    fake.onProgress.mockImplementation(() =>
+      Promise.reject(new TypeError("Cannot read properties of undefined (reading 'transformCallback')")),
+    );
+    const r = rig({}, { broker: fake });
+    const detach = await r.service.attachBroker();
+    expect(typeof detach).toBe("function");
+    expect(r.service.getState().error).toContain("Download progress can't be followed");
+    expect(r.service.getState().error).toContain("transformCallback");
+  });
+
   it("progress events build the Downloads list, one row per operation", async () => {
     const fake = broker();
     const r = rig({}, { broker: fake });
