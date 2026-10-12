@@ -31,7 +31,15 @@ fn bytes_of(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
             if path.is_dir() {
                 stack.push(path);
             } else {
-                all.push((path.clone(), std::fs::read(&path).expect("read")));
+                // SQLite removes a database's -wal/-shm when its last connection closes, which can happen between
+                // listing the folder and reading the file; the comparisons ignore those two anyway.
+                let journal = path.to_string_lossy().ends_with("-wal")
+                    || path.to_string_lossy().ends_with("-shm");
+                match std::fs::read(&path) {
+                    Ok(bytes) => all.push((path.clone(), bytes)),
+                    Err(err) if journal && err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(err) => panic!("read {}: {err}", path.display()),
+                }
             }
         }
     }

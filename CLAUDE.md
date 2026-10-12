@@ -3153,8 +3153,18 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   untouched; a per-computer portable copy restores a deleted `data-scope.json` and starts on its remembered scope with a
   damaged one (no setup, same profile, the damaged file left as is). **Still pending**: a real multi-PC pilot
   (`docs/pilot/multi-pc-pilot.md`) and trusted Windows code signing.
-- [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
+- [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. Code is in master (`c5c6d4d`:
+  crates `openmind-collab`, `openmind-collab-net`, `openmind-collab-signal`, migrations 0004/0005; see
+  `docs/collaboration.md`); its physical, cross-network and classroom gates are still pending, so it is a preview.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
+- [ ] **Release 1.0.3** — built locally, **not published**. Windows x64/x86 (NSIS, MSI, portable ZIP) and Linux x64/x86
+  (deb, AppImage, portable tar.gz) built unsigned with updater artifacts off. Blockers: SignPath Foundation requires
+  open source built from the stated public repository (this project's source is private), the updater key's password
+  is not on the build machine (no `.sig`/`latest.json`), the multi-PC pilot is not run, no publishing access. The x86
+  Windows build needs NASM (see `docs/release.md`); tests no longer write the user's HKCU installations record (they had
+  filled it with deleted temp folders, and its default value — the folder the setup checks first — pointed at one); the
+  flaky `a_shared_portable_copy_…` test (a `-wal` deleted between listing and reading, ~1 in 5 runs) is fixed. The
+  release workflow builds x64 + x86 in a matrix with one `collect` job (one `latest.json`) and a Linux x64 job.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).

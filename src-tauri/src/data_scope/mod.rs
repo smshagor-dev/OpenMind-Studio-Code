@@ -313,9 +313,10 @@ fn restore_choice(root: &std::path::Path, scope: DataScope) {
 /// person (one profile) writes nothing outside its folder, as always; a multi-computer copy and an installed one leave
 /// this small record, so a moment when the drive's own file can't be read never brings the setup back.
 pub fn remember_start(runtime: &ScopeRuntime) {
-    // An installed copy tells the setup programs where it is, so the next setup updates this folder in place.
+    // An installed copy tells the setup programs where it is, so the next setup updates this folder in place. Never in
+    // tests: their installer-managed layouts live in temporary folders, and the record is the real user's registry.
     #[cfg(windows)]
-    if runtime.paths.layout.installer_managed() {
+    if runtime.paths.layout.installer_managed() && !cfg!(test) {
         if let Err(err) = crate::commands::integration::remember_installation(
             &runtime.paths.install_dir,
             env!("CARGO_PKG_VERSION"),

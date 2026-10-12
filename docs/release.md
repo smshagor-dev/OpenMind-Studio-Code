@@ -29,6 +29,12 @@ pnpm release:build:x86        # tauri build --target i686-pc-windows-msvc --bund
 pnpm release:collect:all      # collects both, named ...-x64 / ...-x86
 ```
 
+The x86 build needs **NASM on PATH**: `aws-lc-sys` (pulled in by the collaboration crate's DTLS stack, `str0m` →
+`dimpl` → `aws-lc-rs`) has prebuilt assembler objects for x64 only. Without NASM the i686 build stops with "NASM command
+not found". Take `w64devkit/bin/nasm.exe` from the Runtime Manager's pinned w64devkit 1.19.0 archive (its SHA-256 is in
+`crates/runtime-manager/manifests/assembly.json`); the release workflow does the same. The x86 packages carry the same
+x64-only offline bundles (`lsp/`, `python-bundle/`); the app uses them only on 64-bit Windows.
+
 Portable ZIPs per architecture: `package:portable -- --no-build --exe <target>/<triple>/release/OpenMindStudio.exe --out <folder>`
 for each build, then pass them to the collector with `--portable <x64 zip> --portable-x86 <x86 zip>` (the zip's own name
 says `win-x64`; the collector renames it to `OpenMind-Studio-<version>-<arch>-portable.zip`).
