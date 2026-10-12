@@ -48,6 +48,8 @@ pub struct AppState {
     pub runner: RunRegistry,
     /// The PHP built-in server (at most one), its own registry so its events never look like a Run Code run.
     pub php_server: RunRegistry,
+    /// The built-in browser's file servers (Run Code on HTML).
+    pub live_previews: crate::commands::live_preview::LivePreviews,
     /// The running built-in server (URL, port, PHP version) — the one truth both windows read.
     pub php_server_info: std::sync::Mutex<Option<crate::commands::php::PhpServerInfo>>,
     /// MariaDB (a normal child process, never a Windows service).

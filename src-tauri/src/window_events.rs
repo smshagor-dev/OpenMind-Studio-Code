@@ -141,6 +141,7 @@ pub async fn stop_everything(app: &AppHandle) {
     // Nothing a run started may outlive the app.
     state.runner.stop_all();
     state.php_server.stop_all();
+    state.live_previews.stop_all();
     // MariaDB gets a clean shutdown (it flushes its files), then phpMyAdmin
     // and Composer go; the PHP window's geometry is remembered first.
     if let Some(php_window) = app.get_webview_window(crate::commands::php::PHP_WINDOW_LABEL) {

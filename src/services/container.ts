@@ -177,11 +177,7 @@ const fileSync = new FileSyncService(tauriIpcClient, events, documents, explorer
   loadedFolders: () => explorer.loadedFolders(),
 });
 const secondarySideBar = new SecondarySideBarService(tauriIpcClient);
-const {
-  runCode,
-  configs: runConfigs,
-  runArguments,
-} = wireRunCode({
+const { runCode, configs: runConfigs, runArguments, browser } = wireRunCode({
   ipc: tauriIpcClient,
   events,
   commands,
@@ -193,6 +189,7 @@ const {
   settings,
   markers,
   showBeside: (channel) => void secondarySideBar.showOutput(channel),
+  showBrowser: () => void secondarySideBar.showBrowser(),
   confirm: (request) => extensions.prompts.confirm(request),
   inputBox: (request) => extensions.prompts.inputBox(request),
 });
@@ -650,6 +647,7 @@ export const container = {
   lsp,
   welcome,
   secondarySideBar,
+  browser,
   editorWindows,
   startLanguageTools,
   ...debugging,

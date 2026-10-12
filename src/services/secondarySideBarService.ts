@@ -16,13 +16,18 @@ export interface SecondarySideBarState {
   width: number;
   /** The Output channel it shows. */
   channel: string;
+  /** What it shows: an Output channel, or the built-in browser (Run Code on an HTML file). */
+  view: SecondaryView;
 }
+
+export type SecondaryView = "output" | "browser";
 
 const INITIAL: SecondarySideBarState = {
   visible: false,
   half: true,
   width: DEFAULT_WIDTH,
   channel: DEFAULT_CHANNEL,
+  view: "output",
 };
 
 export function clampSecondaryWidth(width: number): number {
@@ -69,7 +74,16 @@ export class SecondarySideBarService {
 
   /** Shows `channel` beside the editor at half the width (Run Code's split). */
   async showOutput(channel: string): Promise<void> {
-    await this.update({ visible: true, half: true, channel });
+    await this.update({ visible: true, half: true, channel, view: "output" });
+  }
+
+  /** Shows the built-in browser beside the editor at half the width (Run Code on an HTML file). */
+  async showBrowser(): Promise<void> {
+    await this.update({ visible: true, half: true, view: "browser" });
+  }
+
+  async setView(view: SecondaryView): Promise<void> {
+    await this.update({ view });
   }
 
   async setChannel(channel: string): Promise<void> {
@@ -117,6 +131,8 @@ function parseSaved(saved: string | null): Partial<SecondarySideBarState> | null
     if (typeof record.channel === "string" && record.channel !== "") {
       patch.channel = record.channel;
     }
+    // The browser's page isn't restored after a restart, so it always comes back on its Output.
+    patch.view = "output";
     return patch;
   } catch {
     return null;
