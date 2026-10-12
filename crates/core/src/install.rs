@@ -74,7 +74,7 @@ impl InstallLayout {
         matches!(self, Self::PerMachine | Self::Network)
     }
 
-    /// Set by an installer: the in-app data-scope choice never appears and can't be changed from the workbench.
+    /// Set by an installer: the first-start data-scope choice never appears.
     pub fn installer_managed(self) -> bool {
         !matches!(self, Self::Portable)
     }
@@ -257,9 +257,27 @@ pub fn local_installations_root() -> Option<PathBuf> {
     }
 }
 
+/// The folder `install_dir` really is: a mapped drive (`Z:\OpenMind Studio`) becomes its `\\server\share` path, a
+/// `subst` drive or a junction its target. The same installation then has one key however it was started — from the
+/// UNC shortcut or from the mapped drive in Explorer. A path that can't be resolved (gone, no access) is used as given.
+pub fn resolved_install_dir(install_dir: &Path) -> PathBuf {
+    std::fs::canonicalize(install_dir).unwrap_or_else(|_| install_dir.to_path_buf())
+}
+
 /// This installation's folder on this computer for this Windows user (see the module text).
 pub fn local_install_dir(install_dir: &Path) -> Option<PathBuf> {
-    local_installations_root().map(|root| root.join(install_key(install_dir)))
+    local_installations_root().map(|root| local_install_dir_in(&root, install_dir))
+}
+
+/// [`local_install_dir`] under `root`. The key is taken from the resolved folder; a folder an earlier version made from
+/// the path as it was started is still used while it is the only one, so nobody's data moves.
+pub fn local_install_dir_in(root: &Path, install_dir: &Path) -> PathBuf {
+    let resolved = root.join(install_key(&resolved_install_dir(install_dir)));
+    let as_started = root.join(install_key(install_dir));
+    if as_started != resolved && !resolved.exists() && as_started.exists() {
+        return as_started;
+    }
+    resolved
 }
 
 /// What this computer remembers about one installation (in its [`local_install_dir`]): the data scope that was chosen

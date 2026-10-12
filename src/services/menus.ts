@@ -103,7 +103,6 @@ function fileMenu(recent: RecentEntries): TopLevelMenu {
       cmd("Auto Save", "file.toggleAutoSave"),
       sub("Preferences", [
         cmd("Profiles", "profiles.manage"),
-        cmd("Data Scope...", "preferences.dataScope"),
         cmd("Settings", "preferences.openSettings"),
         cmd("Workspace Settings", "preferences.openWorkspaceSettings"),
         cmd("Open Settings (JSON)", "preferences.openSettingsJson"),
@@ -482,7 +481,6 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Command Palette...", "workbench.commandPalette"),
   SEPARATOR,
   cmd("Profiles", "profiles.manage"),
-  cmd("Data Scope...", "preferences.dataScope"),
   cmd("Settings", "preferences.openSettings"),
   cmd("Extensions", "view.showExtensions"),
   cmd("Keyboard Shortcuts", "preferences.openKeybindings"),
@@ -536,44 +534,20 @@ const UNBUILT: [RegExp, string][] = [
     /^help\.(documentation|releaseNotes|editorPlayground|videoTutorials|tipsAndTricks|featureRequests|reportIssue|privacy)$/,
     "menu.unbuilt.noOnline",
   ],
-  [
-    /^help\.(toggleDevTools|processExplorer)$/,
-    "menu.unbuilt.devTools",
-  ],
-  [
-    /^tasks\.configureDefaultBuild$/,
-    "menu.unbuilt.defaultBuild",
-  ],
-  [
-    /^workspace\./,
-    "menu.unbuilt.workspaces",
-  ],
-  [
-    /^preferences\.productIconTheme$/,
-    "menu.unbuilt.productIcons",
-  ],
+  [/^help\.(toggleDevTools|processExplorer)$/, "menu.unbuilt.devTools"],
+  [/^tasks\.configureDefaultBuild$/, "menu.unbuilt.defaultBuild"],
+  [/^workspace\./, "menu.unbuilt.workspaces"],
+  [/^preferences\.productIconTheme$/, "menu.unbuilt.productIcons"],
   [/^preferences\.onlineServices$/, "menu.unbuilt.onlineServices"],
-  [
-    /^preferences\.configureSnippets$/,
-    "menu.unbuilt.snippets",
-  ],
+  [/^preferences\.configureSnippets$/, "menu.unbuilt.snippets"],
   [
     /^debug\.(newFunctionBreakpoint|newInlineBreakpoint|newTriggeredBreakpoint)$/,
     "menu.unbuilt.breakpointKinds",
   ],
-  [
-    /^editorLayout\./,
-    "menu.unbuilt.editorLayout",
-  ],
+  [/^editorLayout\./, "menu.unbuilt.editorLayout"],
   [/^go\.(lastEditLocation|nextChange|previousChange)$/, "menu.unbuilt.notBuilt"],
-  [
-    /^go\.(nextUsedEditor|previousUsedEditor)$/,
-    "menu.unbuilt.usedEditors",
-  ],
-  [
-    /^search\.replaceInFiles$/,
-    "menu.unbuilt.replaceInFiles",
-  ],
+  [/^go\.(nextUsedEditor|previousUsedEditor)$/, "menu.unbuilt.usedEditors"],
+  [/^search\.replaceInFiles$/, "menu.unbuilt.replaceInFiles"],
   [/^emmet\./, "menu.unbuilt.emmet"],
   [/^workbench\.openView$/, "menu.unbuilt.openView"],
 ];

@@ -27,6 +27,7 @@ fn runtime(
         failure: None,
         local_dir: None,
         temporary_folder: false,
+        _session: None,
     }
 }
 

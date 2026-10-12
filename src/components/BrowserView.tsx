@@ -22,7 +22,7 @@ const LEVEL_ICON: Record<ConsoleLevel, string> = {
  * storage, `fetch` of its own files); top navigation, popups and downloads stay blocked. Only messages from this
  * frame's window and the server's origin are read.
  */
-export function BrowserView() {
+export function BrowserView({ hidden = false }: { hidden?: boolean }) {
   const state = useSyncExternalStore(
     (listener) => container.browser.subscribe(listener),
     () => container.browser.getState(),
@@ -56,7 +56,7 @@ export function BrowserView() {
   const { errors, warnings } = container.browser.counts();
   const address = state.address || target.path;
   return (
-    <div className="browser-view">
+    <div className="browser-view" hidden={hidden}>
       <div className="browser-view__bar">
         <button
           type="button"

@@ -21,6 +21,10 @@ pub enum DbError {
     /// Bringing a database into place ([`crate::migration`], [`crate::snapshot`]) failed or was refused.
     #[error("the database copy failed: {0}")]
     Copy(String),
+
+    /// Another computer has this database open right now (`openmind_core::session_guard`); it wasn't opened here.
+    #[error("the database is open in OpenMind Studio on another computer")]
+    InUseElsewhere,
 }
 
 /// Why the database couldn't be opened, in terms a start-up error screen can explain. Derived from the error only:
@@ -46,6 +50,8 @@ pub enum FailureKind {
     },
     /// Another program holds the database.
     Locked,
+    /// OpenMind Studio on another computer has this database open (a shared folder).
+    InUseElsewhere,
     /// The file isn't a SQLite database or is damaged.
     Corrupt,
     /// The file or its folder can't be written.
@@ -65,6 +71,7 @@ impl DbError {
         match self {
             DbError::CreateDataDir { .. } => FailureKind::CreateFolder,
             DbError::Copy(_) => FailureKind::Other,
+            DbError::InUseElsewhere => FailureKind::InUseElsewhere,
             DbError::Connect(err) | DbError::Query(err) => sqlx_kind(err),
             DbError::Migrate(err) => match err {
                 M::VersionMismatch(version) => FailureKind::ChecksumMismatch { version: *version },

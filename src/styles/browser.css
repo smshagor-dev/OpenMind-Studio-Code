@@ -42,6 +42,10 @@
   min-height: 0;
 }
 
+.browser-view[hidden] {
+  display: none;
+}
+
 .browser-view__bar {
   flex: 0 0 auto;
   display: flex;

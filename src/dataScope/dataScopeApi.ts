@@ -71,22 +71,22 @@ export const tauriSetupApi: DataScopeApi = {
   exit: () => invoke("data_scope_exit"),
 };
 
-/** The workbench's Data Scope dialog. */
-export const tauriWorkbenchApi: DataScopeApi = {
-  ...tauriSetupApi,
-  apply: (mode, useExisting) => invoke<MigrationOutcome>("data_scope_change", { mode, useExisting }),
-};
-
 /** Must match `data_scope::SETUP_WINDOW_LABEL`. */
 export const DATA_SCOPE_SETUP_WINDOW_LABEL = "data-scope-setup";
 
 /** The profile whose data the other scope could start from: the one in use now, or (during setup) the old one. */
-export function sourceProfile(status: DataScopeStatus, target: DataScopeMode): ExistingDatabase | null {
+export function sourceProfile(
+  status: DataScopeStatus,
+  target: DataScopeMode,
+): ExistingDatabase | null {
   return target === "perMachine" ? status.sharedDatabase : status.machineDatabase;
 }
 
 /** The profile the target scope would use as it is (nothing copied). */
-export function targetProfile(status: DataScopeStatus, target: DataScopeMode): ExistingDatabase | null {
+export function targetProfile(
+  status: DataScopeStatus,
+  target: DataScopeMode,
+): ExistingDatabase | null {
   return target === "perMachine" ? status.machineDatabase : status.sharedDatabase;
 }
 

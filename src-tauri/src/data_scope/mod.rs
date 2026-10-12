@@ -16,7 +16,8 @@
 //! 4. `main` opens the database at [`AppPaths::db_path`] — never anything else.
 //!
 //! Installed copies (the per-user setup, the MSI) and a Linux copy that keeps its data in the user's folder belong to one
-//! computer and keep the one-profile layout without asking; they can still switch from the workbench.
+//! computer and keep the one-profile layout without asking. The choice is made only there, at the first start (or by the
+//! installer): the workbench offers no way to change it.
 
 mod local;
 pub mod migrate;
@@ -30,10 +31,11 @@ use openmind_core::machine_paths::{
     find_own_profile, list_profiles, select_profile, MachineDataPaths, MachineProfileSummary,
 };
 use openmind_core::profile_lock::{ProfileLock, DEFAULT_WAIT};
+use openmind_core::session_guard::{self, Claim, SessionGuard};
 use openmind_core::{AppPaths, CoreError, DataScope, InstallLayout, MachineIdentity};
 use openmind_db::DbError;
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use migrate::ScheduledChange;
 
@@ -79,6 +81,9 @@ pub struct ScopeRuntime {
     pub local_dir: Option<PathBuf>,
     /// The program runs from a temporary folder (a ZIP opened without extracting it): nothing chosen here would last.
     pub temporary_folder: bool,
+    /// This computer's claim on the database for the life of the process (`openmind_core::session_guard`): kept here
+    /// because this state lives until the app exits.
+    pub _session: Option<SessionGuard>,
 }
 
 /// Facts [`decide`] works from.
@@ -224,7 +229,7 @@ pub fn resolve() -> Result<ScopeRuntime, CoreError> {
     };
     // While the user decides, logs and the page's WebView profile go to this computer's folder.
     let scope = decided.unwrap_or(DataScope::PerMachine);
-    let (paths, machine, failure) = match refused {
+    let (mut paths, machine, mut failure) = match refused {
         Some(err) => (failure_paths(&base.root_dir, &identity), None, Some(err)),
         None => match prepare(&base.root_dir, scope, &identity, decided.is_some()) {
             Ok((paths, machine)) => (paths, machine, None),
@@ -238,6 +243,18 @@ pub fn resolve() -> Result<ScopeRuntime, CoreError> {
             }
         },
     };
+    // The data next to the program can be reached by other computers (a shared folder): only one may use it at a time.
+    let session = if decided.is_some() && failure.is_none() {
+        claim_session(&paths, &mut failure)
+    } else {
+        None
+    };
+    if matches!(failure, Some(DbError::InUseElsewhere)) {
+        // The other computer has this profile's WebView and log open: the error window uses this computer's own.
+        let local = machine_identity::local_state_dir().unwrap_or_else(std::env::temp_dir);
+        paths.webview_dir = local.join("startup-error-webview");
+        paths.logs_dir = local.join("logs");
+    }
     let runtime = ScopeRuntime {
         paths: paths.with_layout(layout),
         machine,
@@ -248,11 +265,34 @@ pub fn resolve() -> Result<ScopeRuntime, CoreError> {
         failure,
         local_dir,
         temporary_folder,
+        _session: session,
     };
     if !runtime.needs_setup && runtime.failure.is_none() {
         remember_start(&runtime);
     }
     Ok(runtime)
+}
+
+/// Claims the database's folder for this computer (see `openmind_core::session_guard`); another computer using it right
+/// now becomes the start-up failure.
+fn claim_session(paths: &AppPaths, failure: &mut Option<DbError>) -> Option<SessionGuard> {
+    let dir = paths.db_path.parent()?;
+    match session_guard::claim(dir) {
+        Claim::Owner(guard) => Some(guard),
+        Claim::SameComputer => None,
+        Claim::OtherComputer => {
+            note(format!(
+                "{} is open on another computer; it isn't opened here",
+                paths.db_path.display()
+            ));
+            *failure = Some(DbError::InUseElsewhere);
+            None
+        }
+        Claim::Unguarded(reason) => {
+            note(format!("one-computer guard not available here ({reason})"));
+            None
+        }
+    }
 }
 
 /// Writes the choice back when `data/data-scope.json` went missing (a copied-over folder): the next start, on any
@@ -479,48 +519,14 @@ pub fn data_scope_setup_apply(
     runtime: State<'_, ScopeRuntime>,
 ) -> Result<ScheduledChange, String> {
     if !runtime.needs_setup {
-        return Err("The data scope was already chosen; change it from the workbench.".into());
+        return Err("The data scope was already chosen at the first start.".into());
     }
     migrate::schedule(&runtime, mode, use_existing)
 }
 
-/// A change from the workbench, carried out at the next start. Refused while a server runs (MariaDB's files must not be
-/// copied while it uses them).
+/// Restarts into the scope just chosen (the setup window runs before anything else was started).
 #[tauri::command]
-pub fn data_scope_change(
-    mode: DataScope,
-    use_existing: bool,
-    app: AppHandle,
-    runtime: State<'_, ScopeRuntime>,
-) -> Result<ScheduledChange, String> {
-    if runtime.needs_setup {
-        return Err("Choose the data scope in the setup window first.".into());
-    }
-    if runtime.paths.layout.local_state() {
-        return Err(
-            "This installation keeps each computer's data on that computer; the installer set this and it can't be changed here."
-                .into(),
-        );
-    }
-    if mode == runtime.paths.scope {
-        return Err("That is already the data scope in use.".into());
-    }
-    if crate::tray::servers_running(&app) {
-        return Err(
-            "Stop the PHP and MySQL servers first: their data can't be copied while they run."
-                .into(),
-        );
-    }
-    migrate::schedule(&runtime, mode, use_existing)
-}
-
-/// Restarts into the scope just saved. From the workbench everything OpenMind started is stopped first, as on a
-/// normal close.
-#[tauri::command]
-pub async fn data_scope_restart(app: AppHandle) {
-    if app.try_state::<crate::app_state::AppState>().is_some() {
-        crate::window_events::stop_everything(&app).await;
-    }
+pub fn data_scope_restart(app: AppHandle) {
     app.restart();
 }
 

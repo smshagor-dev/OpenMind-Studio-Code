@@ -11,7 +11,7 @@ export function DataScopeSetupPage({ api }: { api: DataScopeApi }) {
   return (
     <main className="data-scope-setup">
       <h1 className="data-scope-setup__heading">{t("dataScope.title")}</h1>
-      <DataScopePanel api={api} context="setup" />
+      <DataScopePanel api={api} />
     </main>
   );
 }

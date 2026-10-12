@@ -38,7 +38,7 @@ fn main() {
     startup::mark_process_start();
     // The app folder, this computer's (hashed) profile id and the portable data scope decide every machine-specific
     // path; the machine identity never stops the app from starting (see data_scope.rs).
-    let scope = data_scope::resolve().expect("failed to resolve application paths");
+    let mut scope = data_scope::resolve().expect("failed to resolve application paths");
     let app_paths = scope.paths.clone();
     let needs_scope_setup = scope.needs_setup;
     // A folder that can't be created (a read-only install folder, a full disk) gets the start-up error window below
@@ -62,12 +62,13 @@ fn main() {
     }
     // A profile that couldn't be prepared (locked, damaged, an import that failed) gets the start-up error window
     // below instead of the workbench; no database is opened.
+    // The error itself is moved to the window (not its text): its kind decides the page's category and whether "Back Up
+    // and Start Fresh" may be offered (never for a database another computer has open).
     let startup_failure = scope
         .failure
-        .as_ref()
-        .map(|err| {
+        .take()
+        .inspect(|err| {
             tracing::error!(error = %err, "this computer's profile could not be prepared");
-            openmind_db::DbError::Copy(err.to_string())
         })
         .or_else(|| {
             layout_failure.map(|err| {
@@ -346,7 +347,6 @@ fn main() {
             startup_error::startup_error_exit,
             data_scope::data_scope_status,
             data_scope::data_scope_setup_apply,
-            data_scope::data_scope_change,
             data_scope::data_scope_restart,
             data_scope::data_scope_exit,
             commands::profiles::profiles_list,

@@ -104,7 +104,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         ["vscode-html-language-server"],
         [],
-        [Hl, Lsp, Format]
+        [Hl, Lsp, Format, Run]
     ),
     lang!(
         "css",
@@ -1115,7 +1115,7 @@ mod tests {
             .map(|l| l.id)
             .collect();
         assert_eq!(debug, ["javascript", "python"]);
-        // Run Code (a single file) exists for what the runner runs.
+        // Run Code (a single file) exists for what the runner runs, and HTML (the built-in browser).
         let run: Vec<&str> = LANGUAGES
             .iter()
             .filter(|l| l.levels.contains(&Level::Run))
@@ -1124,6 +1124,7 @@ mod tests {
         assert_eq!(
             run,
             [
+                "html",
                 "javascript",
                 "typescript",
                 "python",

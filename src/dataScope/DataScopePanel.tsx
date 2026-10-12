@@ -21,19 +21,11 @@ type Load =
 const MODES: DataScopeMode[] = ["personal", "perMachine"];
 
 /**
- * The portable data scope choice: "Only for me" (one profile) or "Everyone / Multi-computer" (one per computer). Used by
- * the first-run setup window (`setup`) and by File > Preferences > Data Scope... (`workbench`). Nothing changes until
- * the user presses the button, and nothing is ever deleted: an existing profile is copied, never moved.
+ * The portable data scope choice: "Only for me" (one profile) or "Everyone / Multi-computer" (one per computer), made
+ * once in the first-run setup window — it is not offered in the workbench. Nothing changes until the user presses the
+ * button, and nothing is ever deleted: an existing profile is copied, never moved.
  */
-export function DataScopePanel({
-  api,
-  context,
-  onClose,
-}: {
-  api: DataScopeApi;
-  context: "setup" | "workbench";
-  onClose?: () => void;
-}) {
+export function DataScopePanel({ api }: { api: DataScopeApi }) {
   useT();
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [choice, setChoice] = useState<DataScopeMode | null>(null);
@@ -61,16 +53,15 @@ export function DataScopePanel({
     return (
       <>
         <p role="alert">{t("dataScope.loadFailed", { error: load.error })}</p>
-        <Footer context={context} api={api} onClose={onClose} />
+        <Footer api={api} />
       </>
     );
   }
   const status = load.status;
   if (status.managed) {
-    return <ManagedLayout status={status} context={context} api={api} onClose={onClose} />;
+    return <ManagedLayout status={status} api={api} />;
   }
   const selected = choice ?? status.recommended;
-  const unchanged = context === "workbench" && selected === status.mode;
   const target = targetProfile(status, selected);
   const source = target === null ? sourceProfile(status, selected) : null;
 
@@ -102,7 +93,9 @@ export function DataScopePanel({
           {t("dataScope.temporaryFolder", { folder: status.appFolder })}
         </p>
       )}
-      {status.singleComputer && <p className="data-scope__muted">{t("dataScope.singleComputer")}</p>}
+      {status.singleComputer && (
+        <p className="data-scope__muted">{t("dataScope.singleComputer")}</p>
+      )}
       <div className="data-scope__options" role="radiogroup" aria-label={t("dataScope.title")}>
         {MODES.map((mode) => (
           <label
@@ -122,32 +115,37 @@ export function DataScopePanel({
             <span className="data-scope__option-text">
               <strong>{t(`dataScope.${mode}.title`)}</strong>
               {mode === "perMachine" && (
-                <span className="data-scope__badge data-scope__badge--recommended">{t("dataScope.recommended")}</span>
+                <span className="data-scope__badge data-scope__badge--recommended">
+                  {t("dataScope.recommended")}
+                </span>
               )}
-              {mode === status.mode && <span className="data-scope__badge">{t("dataScope.current")}</span>}
+              {mode === status.mode && (
+                <span className="data-scope__badge">{t("dataScope.current")}</span>
+              )}
               <span>{t(`dataScope.${mode}.body`)}</span>
               <span className="data-scope__muted">{t(`dataScope.${mode}.hint`)}</span>
-              {mode === "perMachine" && <span className="data-scope__muted">{t("dataScope.perMachine.shared")}</span>}
+              {mode === "perMachine" && (
+                <span className="data-scope__muted">{t("dataScope.perMachine.shared")}</span>
+              )}
             </span>
           </label>
         ))}
       </div>
-      {unchanged ? (
-        <p className="data-scope__muted">{t("dataScope.alreadyInUse")}</p>
-      ) : (
-        <Consequences
-          status={status}
-          selected={selected}
-          target={target?.path ?? null}
-          source={source}
-          useExisting={useExisting}
-          setUseExisting={setUseExisting}
-          disabled={busy || outcome !== null}
-        />
-      )}
+      <Consequences
+        status={status}
+        selected={selected}
+        target={target?.path ?? null}
+        source={source}
+        useExisting={useExisting}
+        setUseExisting={setUseExisting}
+        disabled={busy || outcome !== null}
+      />
       <p className="data-scope__muted">
-        {t("dataScope.profileId", { id: status.profileId })} · {t(`dataScope.identity.${status.identitySource}`)}
-        {status.profiles.length > 0 && <> · {t("dataScope.profiles", { count: status.profiles.length })}</>}
+        {t("dataScope.profileId", { id: status.profileId })} ·{" "}
+        {t(`dataScope.identity.${status.identitySource}`)}
+        {status.profiles.length > 0 && (
+          <> · {t("dataScope.profiles", { count: status.profiles.length })}</>
+        )}
       </p>
       {error !== null && (
         <p className="data-scope__warning" role="alert">
@@ -155,13 +153,13 @@ export function DataScopePanel({
         </p>
       )}
       {outcome !== null ? (
-        <Done outcome={outcome} context={context} api={api} onClose={onClose} />
+        <Done outcome={outcome} api={api} />
       ) : (
         <div className="data-scope__actions">
-          <button type="button" className="data-scope__primary" disabled={busy || unchanged} onClick={apply}>
-            {busy ? t("dataScope.applying") : t(context === "setup" ? "dataScope.continue" : "dataScope.apply")}
+          <button type="button" className="data-scope__primary" disabled={busy} onClick={apply}>
+            {busy ? t("dataScope.applying") : t("dataScope.continue")}
           </button>
-          <Footer context={context} api={api} onClose={onClose} />
+          <Footer api={api} />
         </div>
       )}
     </div>
@@ -169,27 +167,23 @@ export function DataScopePanel({
 }
 
 /** A per-machine or network installation: the installer decided where each computer's data lives; nothing to choose. */
-function ManagedLayout({
-  status,
-  context,
-  api,
-  onClose,
-}: {
-  status: DataScopeStatus;
-  context: "setup" | "workbench";
-  api: DataScopeApi;
-  onClose?: () => void;
-}) {
+function ManagedLayout({ status, api }: { status: DataScopeStatus; api: DataScopeApi }) {
   return (
     <div className="data-scope">
-      <p className="data-scope__lead">{t(`dataScope.managed.${status.layout === "network" ? "network" : "perMachine"}`)}</p>
-      <p className="data-scope__muted">{t("dataScope.managed.installedAt", { folder: status.appFolder })}</p>
+      <p className="data-scope__lead">
+        {t(`dataScope.managed.${status.layout === "network" ? "network" : "perMachine"}`)}
+      </p>
+      <p className="data-scope__muted">
+        {t("dataScope.managed.installedAt", { folder: status.appFolder })}
+      </p>
       {status.localFolder !== null && (
-        <p className="data-scope__muted">{t("dataScope.managed.localFolder", { folder: status.localFolder })}</p>
+        <p className="data-scope__muted">
+          {t("dataScope.managed.localFolder", { folder: status.localFolder })}
+        </p>
       )}
       <p className="data-scope__muted">{t("dataScope.managed.byInstaller")}</p>
       <div className="data-scope__actions">
-        <Footer context={context} api={api} onClose={onClose} />
+        <Footer api={api} />
       </div>
     </div>
   );
@@ -211,7 +205,9 @@ function Consequences(props: {
         <p>{t("dataScope.targetExists", { path: target })}</p>
       ) : source !== null ? (
         <>
-          <p>{t("dataScope.existingFound", { path: source.path, size: formatBytes(source.bytes) })}</p>
+          <p>
+            {t("dataScope.existingFound", { path: source.path, size: formatBytes(source.bytes) })}
+          </p>
           <label className="data-scope__check">
             <input
               type="checkbox"
@@ -235,17 +231,7 @@ function Consequences(props: {
   );
 }
 
-function Done({
-  outcome,
-  context,
-  api,
-  onClose,
-}: {
-  outcome: MigrationOutcome;
-  context: "setup" | "workbench";
-  api: DataScopeApi;
-  onClose?: () => void;
-}) {
+function Done({ outcome, api }: { outcome: MigrationOutcome; api: DataScopeApi }) {
   const [error, setError] = useState<string | null>(null);
   const text = outcome.willImport
     ? t("dataScope.done.import", { database: outcome.database })
@@ -255,7 +241,6 @@ function Done({
   return (
     <>
       <p role="status">{text}</p>
-      {context === "workbench" && <p>{t("dataScope.done.restart")}</p>}
       {error !== null && <p role="alert">{error}</p>}
       <div className="data-scope__actions">
         <button
@@ -267,34 +252,15 @@ function Done({
             });
           }}
         >
-          {t(context === "setup" ? "dataScope.start" : "dataScope.restart")}
+          {t("dataScope.start")}
         </button>
-        {context === "workbench" && onClose !== undefined && (
-          <button type="button" onClick={onClose}>
-            {t("dataScope.later")}
-          </button>
-        )}
       </div>
     </>
   );
 }
 
-function Footer({
-  context,
-  api,
-  onClose,
-}: {
-  context: "setup" | "workbench";
-  api: DataScopeApi;
-  onClose?: () => void;
-}) {
-  if (context === "workbench") {
-    return onClose === undefined ? null : (
-      <button type="button" onClick={onClose}>
-        {t("dataScope.close")}
-      </button>
-    );
-  }
+/** Exit without choosing (the app can't start without a data scope). */
+function Footer({ api }: { api: DataScopeApi }) {
   return (
     <button
       type="button"

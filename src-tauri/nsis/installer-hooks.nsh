@@ -304,6 +304,23 @@ Function OmDefaults
   ${EndIf}
 FunctionEnd
 
+; After `--integration set-layout` (its exit code in $0): a failure is said, never ignored — without install.json the
+; app would have to guess the installation type (a "Recommended for All Users" folder on this computer's own disk would
+; be taken for "For Me"). The files are in place either way; the command can be run again by hand.
+Function OmCheckLayout
+  ${If} $0 == 0
+    Return
+  ${EndIf}
+  ${If} $OmNetwork == 1
+    StrCpy $1 "network"
+  ${Else}
+    StrCpy $1 "per-user"
+  ${EndIf}
+  StrCpy $2 "OpenMind Studio was installed, but the installation type couldn't be recorded in $INSTDIR\install.json (exit code $0). Until it is, OpenMind Studio may treat this folder as a different installation type. To fix it, run: $\"$INSTDIR\${MAINBINARYNAME}.exe$\" --integration set-layout $1"
+  DetailPrint "$2"
+  MessageBox MB_OK|MB_ICONEXCLAMATION "$2" /SD IDOK
+FunctionEnd
+
 ; Whether FILE (in the installation) is open by a running program anywhere: a program that runs keeps its file open
 ; without write sharing, on this computer and, for a shared folder, on every computer that runs it. Retries $1 times,
 ; a second apart (a program that is closing). Sets $OmProblem.
@@ -687,9 +704,11 @@ FunctionEnd
   Call OmDefaults
   ${If} $OmNetwork == 1
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration set-layout network' $0
+    Call OmCheckLayout
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration desktop-shortcut' $0
   ${Else}
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration set-layout per-user' $0
+    Call OmCheckLayout
   ${EndIf}
   ${If} $OmAddPath == 1
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration add-path' $0

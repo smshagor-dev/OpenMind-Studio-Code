@@ -191,6 +191,7 @@ fn the_university_lab_scenario() {
         failure: None,
         local_dir: None,
         temporary_folder: false,
+        _session: None,
     };
     let scheduled = migrate::schedule(&runtime, DataScope::PerMachine, true).expect("schedule");
     assert!(scheduled.will_import);
@@ -313,6 +314,7 @@ fn two_starts_at_once_on_one_computer_import_once() {
         failure: None,
         local_dir: None,
         temporary_folder: false,
+        _session: None,
     };
     migrate::schedule(&runtime, DataScope::PerMachine, true).expect("schedule");
     let handles: Vec<_> = (0..4)
@@ -367,6 +369,7 @@ fn the_status_never_contains_raw_identifiers() {
         failure: None,
         local_dir: None,
         temporary_folder: false,
+        _session: None,
     };
     let text = serde_json::to_string(&status(&runtime)).expect("json");
     let machine_json =
@@ -401,4 +404,37 @@ pub(super) fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
         }
     }
     found
+}
+
+#[test]
+fn a_profile_another_computer_has_open_is_not_opened_and_the_same_computer_may_start_again() {
+    let app = tempfile::tempdir().expect("tempdir");
+    let paths = AppPaths::from_root(app.path().to_path_buf());
+    let data = paths.db_path.parent().expect("data folder").to_path_buf();
+
+    // Another computer started first and still runs.
+    let other = openmind_core::session_guard::claim_as(&data, "another-computer");
+    assert!(matches!(
+        other,
+        openmind_core::session_guard::Claim::Owner(_)
+    ));
+    let mut failure = None;
+    assert!(claim_session(&paths, &mut failure).is_none());
+    assert_eq!(
+        failure.as_ref().map(DbError::kind),
+        Some(openmind_db::FailureKind::InUseElsewhere)
+    );
+    assert!(!paths.db_path.exists(), "nothing was opened or created");
+    drop(other);
+
+    // It ended (or crashed): this computer owns the data now, and a second start here is still allowed.
+    let mut failure = None;
+    let ours = claim_session(&paths, &mut failure);
+    assert!(ours.is_some() && failure.is_none());
+    let mut again = None;
+    assert!(claim_session(&paths, &mut again).is_none());
+    assert!(
+        again.is_none(),
+        "a second start on the same computer isn't refused"
+    );
 }

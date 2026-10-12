@@ -72,7 +72,8 @@ pub fn describe(err: &DbError, db_path: &Path, data_dir: &Path) -> StartupFailur
         data_dir: data_dir_text,
         error_chain,
         details,
-        can_back_up: db_path.is_file(),
+        // Never offered for a database another computer has open: it must not be moved from under that computer.
+        can_back_up: db_path.is_file() && failure != FailureKind::InUseElsewhere,
     }
 }
 
@@ -143,6 +144,21 @@ fn explain(failure: FailureKind) -> (&'static str, String, String, Vec<String>) 
                  {KEPT}"
             ),
             vec!["Close the other copy of OpenMind Studio, then start it again.".into()],
+        ),
+        FailureKind::InUseElsewhere => (
+            "Database open on another computer",
+            "This data is in use on another computer".into(),
+            format!(
+                "OpenMind Studio on another computer has this database open right now, through a shared folder. Two \
+                 computers using one database at the same time can damage it, so this start didn't open it. {KEPT}"
+            ),
+            vec![
+                "Close OpenMind Studio on the other computer, then start it again.".into(),
+                "If several computers should use this folder at the same time, each needs its own data: install it as \
+                 a network installation (Recommended for All Users), or set up this copy for All users / \
+                 Multi-computer."
+                    .into(),
+            ],
         ),
         FailureKind::Corrupt => (
             "Damaged database",

@@ -28,6 +28,15 @@ pub enum RuntimeError {
 
     /// The version's files are open (a terminal, a run or a server using it, on this computer or another one), so it
     /// can't be removed; nothing was removed.
+    #[error(
+        "{kind} {version} can't be changed: you don't have permission to write to {folder} (in a shared installation,          ask whoever manages it)"
+    )]
+    NoWriteAccess {
+        kind: String,
+        version: String,
+        folder: String,
+    },
+
     #[error("{kind} {version} is in use, so it was not removed")]
     InUse { kind: String, version: String },
 
@@ -123,6 +132,9 @@ impl RuntimeError {
             }
             Self::InUse { .. } => {
                 "Close the terminals, runs and servers that use it — also on other computers sharing this installation — then try again. It still works as before."
+            }
+            Self::NoWriteAccess { .. } => {
+                "Runtimes of a shared installation are managed by whoever may write to its folder (the teacher, IT). You can still use the runtimes that are installed."
             }
             Self::NotInstalled { .. } => "Install it first.",
             Self::Addon(_) => "Refresh the Runtime Manager; the runtime version itself is unchanged.",

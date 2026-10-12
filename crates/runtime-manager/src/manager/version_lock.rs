@@ -37,7 +37,22 @@ impl VersionLock {
         version: &str,
     ) -> Result<Option<Self>, RuntimeError> {
         let file = lock_file(paths, kind, version)?;
-        Self::try_acquire_at(&file)
+        Self::try_acquire_at(&file).map_err(|err| match err {
+            // A shared folder this user may only read (a student on a network installation): say so plainly.
+            RuntimeError::Io { source, .. }
+                if source.kind() == std::io::ErrorKind::PermissionDenied =>
+            {
+                RuntimeError::NoWriteAccess {
+                    kind: kind.into(),
+                    version: version.into(),
+                    folder: file
+                        .parent()
+                        .map(|dir| dir.display().to_string())
+                        .unwrap_or_default(),
+                }
+            }
+            other => other,
+        })
     }
 
     pub fn try_acquire_at(file: &Path) -> Result<Option<Self>, RuntimeError> {
@@ -78,5 +93,53 @@ impl VersionLock {
             Err(TryLockError::WouldBlock) => true,
             Err(TryLockError::Error(_)) => false,
         }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    /// Denies this user writing in `dir` (a shared folder a student may only read), then gives it back.
+    fn deny_write(dir: &Path, deny: bool) -> bool {
+        let user = std::env::var("USERNAME").unwrap_or_default();
+        let mut cmd = std::process::Command::new("icacls");
+        cmd.arg(dir);
+        if deny {
+            cmd.args(["/deny", &format!("{user}:(OI)(CI)(W,AD,WD)")]);
+        } else {
+            cmd.args(["/remove:d", &user]);
+        }
+        cmd.output().is_ok_and(|out| out.status.success())
+    }
+
+    #[test]
+    fn a_folder_this_user_may_only_read_says_so_instead_of_a_raw_file_error() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let paths = RuntimePaths::new(temp.path().join("runtimes"), temp.path().join("cache"));
+        let versions = paths.version_dir("node", "24.0.0").expect("dir");
+        let versions = versions.parent().expect("versions").to_path_buf();
+        std::fs::create_dir_all(&versions).expect("dir");
+        if !deny_write(&versions, true) {
+            eprintln!("skipped: icacls unavailable");
+            return;
+        }
+        let outcome = VersionLock::try_acquire(&paths, "node", "24.0.0");
+        deny_write(&versions, false);
+        match outcome {
+            Err(RuntimeError::NoWriteAccess {
+                kind,
+                version,
+                folder,
+            }) => {
+                assert_eq!((kind.as_str(), version.as_str()), ("node", "24.0.0"));
+                assert!(folder.ends_with("versions"), "{folder}");
+            }
+            other => panic!("expected NoWriteAccess, got {other:?}"),
+        }
+        // With write access back, the lock works as before.
+        assert!(VersionLock::try_acquire(&paths, "node", "24.0.0")
+            .expect("lock")
+            .is_some());
     }
 }

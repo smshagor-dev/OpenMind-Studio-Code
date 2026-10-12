@@ -1,4 +1,4 @@
-/* The portable data scope choice: the first-run setup window and File > Preferences > Data Scope... */
+/* The portable data scope choice: the first-run setup window (the only place it is made). */
 
 .data-scope-setup {
   height: 100%;
@@ -16,12 +16,6 @@
   font-size: 18px;
   font-weight: 600;
   color: var(--fg-strong);
-}
-
-.modal--data-scope {
-  width: min(640px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
-  overflow: auto;
 }
 
 .data-scope p {

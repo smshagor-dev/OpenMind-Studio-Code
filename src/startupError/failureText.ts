@@ -15,6 +15,7 @@ const STEPS: Record<string, string[]> = {
   partialMigration: ["backUp", "reportKept"],
   migrationFailed: ["exitAndUse", "backUp"],
   locked: ["closeOther"],
+  inUseElsewhere: ["closeOtherComputer", "ownDataPerComputer"],
   corrupt: ["backUp", "restoreBackup"],
   readOnly: ["checkWritable"],
   cannotOpen: ["checkWritable"],
