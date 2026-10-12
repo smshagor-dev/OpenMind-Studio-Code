@@ -12,6 +12,8 @@ use std::time::{Duration, Instant};
 
 use openmind_db::InstalledRuntimesRepository;
 
+use super::shared;
+use super::version_lock::VersionLock;
 use super::RuntimeManager;
 use crate::error::RuntimeError;
 
@@ -34,14 +36,18 @@ impl RuntimeManager {
                     }
                 }
             }
+            // Busy here, or being changed by another OpenMind (possibly on another computer sharing this folder).
+            let busy = |version: &str| {
+                in_flight.contains(&(manifest.id.clone(), version.to_string()))
+                    || VersionLock::is_held(&self.paths, &manifest.id, version)
+            };
             // A record whose folder is gone (removed on another computer, or by hand) is dropped.
             for entry in known.iter().filter(|k| k.kind == manifest.id) {
-                let busy = in_flight.contains(&(entry.kind.clone(), entry.version.clone()));
                 let present = self
                     .paths
                     .version_dir(&entry.kind, &entry.version)
                     .is_ok_and(|dir| dir.is_dir());
-                if !present && !busy {
+                if !present && !busy(&entry.version) {
                     repo.remove(&entry.kind, &entry.version).await?;
                 }
             }
@@ -49,11 +55,26 @@ impl RuntimeManager {
                 continue;
             };
             for entry in entries.filter_map(Result::ok) {
+                if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+                    continue; // `<version>.lock` files
+                }
                 let name = entry.file_name().to_string_lossy().into_owned();
+                // A half-installed or half-removed folder is cleared only when nobody is working on that version: on
+                // another computer the install may be running right now.
                 if let Some(version) = name.strip_suffix(".installing") {
-                    if !in_flight.contains(&(manifest.id.clone(), version.to_string())) {
+                    if !busy(version) {
                         let _ = fs::remove_dir_all(entry.path());
                     }
+                    continue;
+                }
+                if shared::is_retired(&name) {
+                    let version = name.split(shared::REMOVING).next().unwrap_or_default();
+                    if !busy(version) {
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                    continue;
+                }
+                if busy(&name) {
                     continue;
                 }
                 let Ok(dir) = self.paths.version_dir(&manifest.id, &name) else {

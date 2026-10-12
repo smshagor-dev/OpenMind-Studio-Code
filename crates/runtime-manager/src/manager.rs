@@ -94,19 +94,6 @@ pub struct RuntimeEnvironment {
     pub vars: Vec<(String, String)>,
 }
 
-struct BusyGuard {
-    busy: Arc<Mutex<HashSet<(String, String)>>>,
-    key: (String, String),
-}
-
-impl Drop for BusyGuard {
-    fn drop(&mut self) {
-        if let Ok(mut set) = self.busy.lock() {
-            set.remove(&self.key);
-        }
-    }
-}
-
 /// Installs, verifies, repairs, switches and removes portable runtimes.
 /// Cheap to clone (everything inside is shared).
 #[derive(Clone)]
@@ -224,9 +211,13 @@ impl RuntimeManager {
         version: Option<&str>,
         progress: ProgressSink,
     ) -> Result<InstalledVersion, RuntimeError> {
-        let manifest = self.registry.get(kind)?;
+        let manifest = self.registry.get(kind)?.clone();
         let version = version.unwrap_or(&manifest.default_version).to_string();
         let _guard = self.acquire(kind, &version)?;
+        // Installed meanwhile by another computer sharing `runtimes/`: use it, never unpack over it.
+        if let Some(installed) = self.adopt_if_healthy(&manifest, kind, &version).await? {
+            return Ok(installed);
+        }
         self.install_inner(kind, &version, progress).await
     }
 
@@ -253,19 +244,25 @@ impl RuntimeManager {
                 version: version.into(),
             });
         }
-        if recorded && is_healthy(&manifest, &dir) {
-            // Files are fine; the only thing that can be missing is a shim.
+        if is_healthy(&manifest, &dir) {
+            // Files are fine (also when another computer installed them and this one has no record yet): the only
+            // things that can be missing are a shim and this computer's record. Nothing is unpacked again.
             let shim_dir = self.paths.shim_dir(kind, version)?;
-            if shims_present(&manifest, version, &shim_dir) {
-                return Ok(false);
+            let shims_ok = shims_present(&manifest, version, &shim_dir);
+            if !shims_ok {
+                write_shims(&manifest, version, &shim_dir)?;
             }
-            write_shims(&manifest, version, &shim_dir)?;
-            return Ok(true);
+            if !recorded {
+                InstalledRuntimesRepository::new(self.db.pool())
+                    .record(kind, version, &dir.to_string_lossy())
+                    .await?;
+            }
+            return Ok(!shims_ok);
         }
         // Rebuilding the version would drop its add-ons (Tcl/Tk for Python, the Assembly x86 toolchain): the ones that
         // were installed are added back afterwards, from the download cache when their archive is still there.
         let addons = addons::recorded_addons(&manifest, version, &dir);
-        remove_dir_if_exists(&dir)?;
+        shared::retire_dir(&dir, kind, version)?;
         remove_dir_if_exists(&self.paths.shim_dir(kind, version)?)?;
         self.install_inner(kind, version, progress.clone()).await?;
         drop(_guard);
@@ -309,8 +306,11 @@ impl RuntimeManager {
                 version: version.into(),
             });
         }
-        remove_dir_if_exists(&dir)?;
-        remove_dir_if_exists(&self.paths.shim_dir(kind, version)?)?;
+        shared::retire_dir(&dir, kind, version)?;
+        if let Err(err) = remove_dir_if_exists(&self.paths.shim_dir(kind, version)?) {
+            // The version is gone; a launcher left behind is removed by the next reconcile.
+            tracing::warn!(kind, version, error = %err, "couldn't remove the runtime's launchers yet");
+        }
         InstalledRuntimesRepository::new(self.db.pool())
             .remove(kind, version)
             .await?;
@@ -427,24 +427,6 @@ impl RuntimeManager {
                 false
             }
         }
-    }
-
-    fn acquire(&self, kind: &str, version: &str) -> Result<BusyGuard, RuntimeError> {
-        let key = (kind.to_string(), version.to_string());
-        let mut set = self.busy.lock().map_err(|_| RuntimeError::Busy {
-            kind: kind.into(),
-            version: version.into(),
-        })?;
-        if !set.insert(key.clone()) {
-            return Err(RuntimeError::Busy {
-                kind: kind.into(),
-                version: version.into(),
-            });
-        }
-        Ok(BusyGuard {
-            busy: self.busy.clone(),
-            key,
-        })
     }
 
     async fn install_inner(
@@ -683,6 +665,8 @@ fn remove_dir_if_exists(dir: &Path) -> Result<(), RuntimeError> {
 
 mod addons;
 mod reconcile;
+mod shared;
+mod version_lock;
 pub use addons::AddonStatus;
 
 #[cfg(test)]

@@ -34,6 +34,9 @@ pub async fn runtime_install(
     {
         return Err(reason);
     }
+    if let Some(reason) = network_unsupported(state.paths.layout, &kind) {
+        return Err(reason.into());
+    }
     let result = state
         .runtime
         .install(&kind, version.as_deref(), progress_sink(app.clone()))
@@ -184,4 +187,59 @@ pub(crate) fn progress_sink(app: AppHandle) -> openmind_runtime_manager::manager
             tracing::error!(?err, "failed to emit runtime progress event");
         }
     })
+}
+
+/// Runtimes that can't work from a network share, with the reason. The Fortran and Assembly toolchains are w64devkit
+/// 1.19.0, whose GNU linker (binutils 2.40) can't open files under a network (UNC) path ("Invalid argument") — also
+/// when the share is reached through a drive letter, because GCC finds its own files by the network path. Measured:
+/// `gfortran hello.f90` from the share fails at the link step; from a local folder it works. Refused in a network
+/// installation instead of installing a toolchain that can't build anything.
+pub(crate) fn network_unsupported(
+    layout: openmind_core::InstallLayout,
+    kind: &str,
+) -> Option<&'static str> {
+    if layout != openmind_core::InstallLayout::Network {
+        return None;
+    }
+    match kind {
+        "fortran" | "assembly" => Some(
+            "This toolchain can't be used from a network share: its GNU linker (binutils 2.40) can't open files on a \
+             network (UNC) path. Install OpenMind Studio on this computer (For Me) to use it here.",
+        ),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod network_tests {
+    use super::*;
+    use openmind_core::InstallLayout;
+
+    #[test]
+    fn gnu_toolchains_are_refused_only_in_a_network_installation() {
+        assert!(network_unsupported(InstallLayout::Network, "fortran").is_some());
+        assert!(network_unsupported(InstallLayout::Network, "assembly").is_some());
+        for kind in [
+            "python",
+            "node",
+            "php",
+            "composer",
+            "llvm-mingw",
+            "jdk",
+            "go",
+            "pascal",
+        ] {
+            assert!(
+                network_unsupported(InstallLayout::Network, kind).is_none(),
+                "{kind}"
+            );
+        }
+        for layout in [
+            InstallLayout::Portable,
+            InstallLayout::PerUser,
+            InstallLayout::PerMachine,
+        ] {
+            assert!(network_unsupported(layout, "fortran").is_none());
+        }
+    }
 }

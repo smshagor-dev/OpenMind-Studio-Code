@@ -145,3 +145,139 @@ async fn the_drive_moving_to_another_letter_keeps_every_runtime() {
         .path
         .starts_with(&moved.to_string_lossy().into_owned()));
 }
+
+fn requests(fx: &Fixture) -> usize {
+    fx.client.requests.lock().expect("lock").len()
+}
+
+/// What another computer's install looks like from here: it holds the version's lock.
+fn held_by_another_pc(fx: &Fixture, version: &str) -> version_lock::VersionLock {
+    version_lock::VersionLock::try_acquire(&fx.manager.paths, "demo", version)
+        .expect("lock file")
+        .expect("free")
+}
+
+#[tokio::test]
+async fn a_version_another_computer_is_installing_is_never_written_twice() {
+    let fx = fixture().await;
+    let pc_b = other_pc(&fx, "pc-b").await;
+    let other = held_by_another_pc(&fx, "1.0.0");
+    // PC-A is half-way: its staging folder exists.
+    fs::create_dir_all(versions_dir(&fx).join("1.0.0.installing")).expect("staging");
+
+    let refused = pc_b.install("demo", Some("1.0.0"), no_progress()).await;
+    assert!(
+        matches!(refused, Err(RuntimeError::BusyElsewhere { .. })),
+        "{refused:?}"
+    );
+    assert_eq!(requests(&fx), 0, "nothing downloaded");
+    // PC-B listing its runtimes (a terminal start does the same) leaves PC-A's install alone.
+    pc_b.list().await.expect("list");
+    assert!(versions_dir(&fx).join("1.0.0.installing").is_dir());
+    // Another version is independent.
+    pc_b.install("demo", Some("2.0.0"), no_progress())
+        .await
+        .expect("2.0.0");
+
+    // PC-A crashed (its lock went with its process): the leftover is cleared and the install works.
+    drop(other);
+    pc_b.list().await.expect("list");
+    assert!(!versions_dir(&fx).join("1.0.0.installing").exists());
+    pc_b.install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("now it installs");
+}
+
+#[tokio::test]
+async fn installing_what_another_computer_installed_adopts_it_without_touching_its_files() {
+    let fx = fixture().await;
+    fx.manager
+        .install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("PC-A");
+    let exe = versions_dir(&fx).join("1.0.0").join("demo.exe");
+    let modified = fs::metadata(&exe).expect("meta").modified().expect("mtime");
+    let downloads = requests(&fx);
+    // PC-A has the program running: its files may not be replaced (before, PC-B deleted and unpacked again).
+    let running = fs::File::open(&exe).expect("open");
+
+    let pc_b = other_pc(&fx, "pc-b").await;
+    let installed = pc_b
+        .install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("adopted");
+    assert!(installed.healthy && installed.active);
+    assert_eq!(requests(&fx), downloads, "no download");
+    assert_eq!(
+        fs::metadata(&exe).expect("meta").modified().expect("mtime"),
+        modified
+    );
+    // Repair on a computer without a record is a check, not a reinstall.
+    let pc_c = other_pc(&fx, "pc-c").await;
+    assert!(!pc_c
+        .repair("demo", "1.0.0", no_progress())
+        .await
+        .expect("repair"));
+    assert!(demo(pc_c.list().await.expect("list")).installed[0].healthy);
+    assert_eq!(
+        fs::metadata(&exe).expect("meta").modified().expect("mtime"),
+        modified
+    );
+    drop(running);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_runtime_in_use_somewhere_is_never_half_removed() {
+    use std::os::windows::fs::OpenOptionsExt;
+    let fx = fixture().await;
+    fx.manager
+        .install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("install");
+    let dir = versions_dir(&fx).join("1.0.0");
+    let before = files_under(&dir);
+    // A running program: Windows keeps its file open without sharing deletion (FILE_SHARE_READ only).
+    let running = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(dir.join("bin").join("tool.exe"))
+        .expect("open");
+
+    let refused = fx.manager.delete("demo", "1.0.0").await;
+    assert!(
+        matches!(refused, Err(RuntimeError::InUse { .. })),
+        "{refused:?}"
+    );
+    assert_eq!(files_under(&dir), before, "nothing was removed");
+    let status = demo(fx.manager.list().await.expect("list"));
+    assert!(status.installed[0].healthy, "it still works");
+
+    drop(running);
+    fx.manager
+        .delete("demo", "1.0.0")
+        .await
+        .expect("closed: removed");
+    assert!(!dir.exists());
+    assert!(demo(fx.manager.list().await.expect("list"))
+        .installed
+        .is_empty());
+}
+
+#[tokio::test]
+async fn a_removal_left_behind_is_cleared_but_not_while_another_computer_works_on_it() {
+    let fx = fixture().await;
+    let leftover = versions_dir(&fx).join("1.0.0.removing-4242");
+    fs::create_dir_all(&leftover).expect("leftover");
+    fs::write(leftover.join("demo.exe"), "x").expect("file");
+    let other = held_by_another_pc(&fx, "1.0.0");
+    fx.manager.list().await.expect("list");
+    assert!(leftover.exists(), "another computer is still removing it");
+    drop(other);
+    let status = demo(fx.manager.list().await.expect("list"));
+    assert!(!leftover.exists());
+    assert!(
+        status.installed.is_empty(),
+        "a removal is never adopted as a version"
+    );
+}
