@@ -3,10 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DataScopePanel } from "./DataScopePanel";
 import { DataScopeSetupPage } from "./DataScopeSetupPage";
-import { DataScopeDialog } from "./DataScopeDialog";
-import { DataScopeDialogService, wireDataScope } from "./dataScopeDialogService";
 import type { DataScopeApi, DataScopeStatus, MigrationOutcome } from "./dataScopeApi";
-import { CommandRegistry } from "../services/commandRegistry";
+import { buildMenuBar, collectCommandIds, MANAGE_MENU } from "../services/menus";
 
 const LEGACY = "G:/OpenMind-Studio/data/openmind-studio.db";
 
@@ -63,8 +61,10 @@ describe("DataScopePanel", () => {
   });
 
   it("offers to copy an existing profile, warns, and applies the copy only when asked", async () => {
-    const api = fakeApi(status({ sharedDatabase: { path: LEGACY, bytes: 2048 } }), { willImport: true });
-    render(<DataScopePanel api={api} context="setup" />);
+    const api = fakeApi(status({ sharedDatabase: { path: LEGACY, bytes: 2048 } }), {
+      willImport: true,
+    });
+    render(<DataScopePanel api={api} />);
     await screen.findByText(`Existing data found: ${LEGACY} (2 KB).`);
     expect(screen.getByText(/The current data is never deleted/)).toBeTruthy();
     const keep = screen.getByRole<HTMLInputElement>("checkbox");
@@ -79,7 +79,7 @@ describe("DataScopePanel", () => {
 
   it("starts fresh when the copy is unticked", async () => {
     const api = fakeApi(status({ sharedDatabase: { path: LEGACY, bytes: 10 } }));
-    render(<DataScopePanel api={api} context="setup" />);
+    render(<DataScopePanel api={api} />);
     fireEvent.click(await screen.findByRole("checkbox"));
     expect(screen.getAllByText(/starts with a new, empty profile/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -92,58 +92,35 @@ describe("DataScopePanel", () => {
     const machine = "G:/OpenMind-Studio/data/machines/42f693bd91a7/openmind-studio.db";
     render(
       <DataScopePanel
-        api={fakeApi(status({ sharedDatabase: { path: LEGACY, bytes: 1 }, machineDatabase: { path: machine, bytes: 1 } }))}
-        context="setup"
+        api={fakeApi(
+          status({
+            sharedDatabase: { path: LEGACY, bytes: 1 },
+            machineDatabase: { path: machine, bytes: 1 },
+          }),
+        )}
       />,
     );
     await screen.findByText(new RegExp(`already exists \\(${machine}\\)`));
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
-  it("in the workbench, the scope in use can't be applied again and a failure is shown", async () => {
-    const api = fakeApi(status({ mode: "perMachine", machineDatabase: { path: "m.db", bytes: 1 } }));
-    api.apply.mockImplementationOnce(() => Promise.reject(new Error("Stop the PHP and MySQL servers first")));
-    render(<DataScopePanel api={api} context="workbench" onClose={() => undefined} />);
-    await screen.findByText("This is the data scope in use.");
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Apply" }).disabled).toBe(true);
-    fireEvent.click(screen.getByRole("radio", { name: /Only for me/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
-    await screen.findByText(/Stop the PHP and MySQL servers first/);
-    expect(api.apply).toHaveBeenCalledWith("personal", true);
-  });
-
   it("shows an unreadable choice and lets the setup exit", async () => {
     const api = fakeApi(status({ unreadable: "expected value at line 1" }));
-    render(<DataScopePanel api={api} context="setup" />);
+    render(<DataScopePanel api={api} />);
     await screen.findByText(/couldn't be read \(expected value at line 1\)/);
     fireEvent.click(screen.getByRole("button", { name: "Exit" }));
     expect(api.exit).toHaveBeenCalled();
   });
 });
 
-describe("Data Scope dialog", () => {
-  it("opens from preferences.dataScope and closes with Escape", async () => {
-    const commands = new CommandRegistry();
-    const service = wireDataScope(commands);
-    render(<DataScopeDialog service={service} api={fakeApi(status({ mode: "personal" }))} />);
-    expect(screen.queryByRole("dialog")).toBeNull();
-    await commands.execute("preferences.dataScope");
-    await screen.findByRole("dialog");
-    fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog")).toBeNull();
-    });
-  });
-
-  it("notifies only on a real change", () => {
-    const service = new DataScopeDialogService();
-    const listener = vi.fn();
-    service.subscribe(listener);
-    service.close();
-    service.show();
-    service.show();
-    expect(listener).toHaveBeenCalledTimes(1);
-    expect(service.isOpen()).toBe(true);
+describe("Data Scope outside the setup", () => {
+  it("is offered in no menu: it is chosen once, at the first start", () => {
+    const ids = [
+      ...collectCommandIds(buildMenuBar({ folders: [], files: [] })),
+      ...collectCommandIds([{ id: "manage", label: "Manage", mnemonic: "", items: MANAGE_MENU }]),
+    ];
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.some((id) => id.toLowerCase().includes("datascope"))).toBe(false);
   });
 
   it("shows an installer-managed installation without any choice to make", async () => {
@@ -156,19 +133,24 @@ describe("Data Scope dialog", () => {
         localFolder: "C:/Users/ana/AppData/Local/OpenMind/Studio/Installations/0123456789abcdef",
       }),
     );
-    render(<DataScopePanel api={api} context="workbench" onClose={vi.fn()} />);
+    render(<DataScopePanel api={api} />);
     await screen.findByText(/network installation for all connected computers/);
     expect(screen.getByText(/lab-server/)).toBeTruthy();
     expect(screen.getByText(/0123456789abcdef/)).toBeTruthy();
     expect(screen.queryAllByRole("radio")).toHaveLength(0);
-    expect(screen.queryByText("Apply")).toBeNull();
+    expect(screen.queryByText("Continue")).toBeNull();
     expect(api.apply).not.toHaveBeenCalled();
   });
 
   it("warns before anything is chosen when the program runs from a temporary folder", async () => {
     render(
       <DataScopeSetupPage
-        api={fakeApi(status({ temporaryFolder: true, appFolder: "C:/Users/x/AppData/Local/Temp/Temp1_om.zip" }))}
+        api={fakeApi(
+          status({
+            temporaryFolder: true,
+            appFolder: "C:/Users/x/AppData/Local/Temp/Temp1_om.zip",
+          }),
+        )}
       />,
     );
     const alert = await screen.findByText(/running from a temporary folder/);

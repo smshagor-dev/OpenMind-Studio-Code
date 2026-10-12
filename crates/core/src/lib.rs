@@ -9,6 +9,7 @@ pub mod machine_signals;
 pub mod path_env;
 pub mod paths;
 pub mod profile_lock;
+pub mod session_guard;
 pub mod vars;
 
 pub use data_scope::DataScope;

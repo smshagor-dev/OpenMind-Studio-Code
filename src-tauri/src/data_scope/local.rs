@@ -1,7 +1,7 @@
 //! Start-up of the installer-managed layouts whose writable state lives on each computer
 //! (`openmind_core::install::InstallLayout::local_state`): the per-machine install in Program Files and a network
 //! installation shared by several computers. There is nothing to choose: the installer decided, so the setup window never
-//! appears, and the workbench's Data Scope page only shows the layout.
+//! appears.
 //!
 //! - **Per-machine** (`C:\Program Files\OpenMind Studio`, read-only for users): every Windows user's whole layout lives
 //!   in their local folder (`AppPaths::per_machine_install`). A database an earlier version kept next to the program
@@ -32,7 +32,10 @@ pub fn paths_for(layout: InstallLayout, exe_dir: &Path, local: &Path) -> AppPath
     match layout {
         InstallLayout::Network => AppPaths::network(
             exe_dir.to_path_buf(),
-            MachineDataPaths::local(local, &install::install_key(exe_dir)),
+            MachineDataPaths::local(
+                local,
+                &install::install_key(&install::resolved_install_dir(exe_dir)),
+            ),
         ),
         _ => AppPaths::per_machine_install(exe_dir.to_path_buf(), local.to_path_buf()),
     }
@@ -127,6 +130,7 @@ pub fn resolve(
         failure,
         local_dir,
         temporary_folder: false,
+        _session: None,
     };
     if runtime.failure.is_none() {
         remember_start(&runtime);
@@ -150,6 +154,7 @@ fn failed(
         failure: Some(err),
         local_dir,
         temporary_folder: false,
+        _session: None,
     }
 }
 

@@ -98,6 +98,8 @@ export class BrowserPreviewService {
       });
       return false;
     }
+    // A save just before this run (Run Code saves first) would reload the page a second time.
+    this.cancelReload();
     this.output.ensureChannel(BROWSER_CHANNEL);
     this.output.clear(BROWSER_CHANNEL);
     this.output.append(BROWSER_CHANNEL, `[Browser] ${target.url}`);
@@ -223,8 +225,13 @@ export class BrowserPreviewService {
     return file === root || file.startsWith(`${root}/`);
   }
 
-  private scheduleReload(): void {
+  private cancelReload(): void {
     if (this.reloadTimer !== null) clearTimeout(this.reloadTimer);
+    this.reloadTimer = null;
+  }
+
+  private scheduleReload(): void {
+    this.cancelReload();
     this.reloadTimer = setTimeout(() => {
       this.reloadTimer = null;
       this.reload();

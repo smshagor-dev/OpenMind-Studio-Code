@@ -1453,7 +1453,7 @@ OpenMind Studio/
 **Portable data scope (after Release 1.0.0).** A portable copy keeps either one profile (`personal`, the layout above) or one per
 computer (`perMachine`, recommended): `data/machines/<profile id>/{machine.json, openmind-studio.db, logs/, cache/, state/{webview,
 search-index,ai,mariadb,mariadb-config,asm-lsp}/, temp/}`, chosen in a pre-database setup window (`data-scope-setup`) on first run
-and saved in `data/data-scope.json`; runtimes, tools, language servers, extensions, settings and downloads stay shared (the
+and saved in `data/data-scope.json` (not changeable from the workbench); runtimes, tools, language servers, extensions, settings and downloads stay shared (the
 Runtime Manager reconciles its per-computer records with the shared `runtimes/` folder, so an install on one PC is on every PC's
 PATH). Installed copies are `personal` without asking. Start-up holds an OS lock (`data/profile.lock`) while it selects the profile
 (the full hash in `machine.json` confirms a folder; a prefix collision moves to a longer id) and prepares the database. A scope
@@ -3045,7 +3045,8 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   and preparation under the lock, setup window + capability, `data_scope_status|setup_apply|change|restart|exit`, `migrate.rs`),
   the Runtime Manager's `reconcile` (drops records whose shared folder is gone; run before `environment()`/`installed_dir()`),
   every hand-built `logs/`/`temp/`/MariaDB/run-builds/asm-lsp/extension-log path moved to `AppState.paths`; frontend
-  `src/dataScope/` (setup page, File > Preferences > Data Scope...). MSRV raised to 1.89 (`File::try_lock`).
+  `src/dataScope/` (the first-start setup page only — the workbench's File > Preferences > Data Scope... dialog and the
+  `data_scope_change` command were removed at the user's request: the choice is made once, at install / first start). MSRV raised to 1.89 (`File::try_lock`).
 - [x] **Installer modes, network deployment and multi-PC isolation** (after Milestone 24; not committed yet). See
   `docs/deployment.md`. Root causes fixed: (1) the MSI (Program Files) wrote `data\` next to the exe and a standard user's
   first start panicked in `ensure_dirs()` (now per-user local layout; `ensure_dirs` failures show the start-up error window
@@ -3122,6 +3123,36 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   Limits: no back/forward buttons (the page is cross-origin), `target=_blank` links and popups do nothing, the console shows text (no object
   inspector), the page isn't restored after a restart, the port changes each start (so the page's localStorage doesn't survive a restart), the
   watcher skips `dist`/`build`/`node_modules` (pages there don't reload on outside changes).
+- [x] **Deployment audit fixes** (after the built-in browser; not committed yet). An audit of the installer, network
+  deployment, per-PC database, shared runtimes, the repeated-setup bug and Windows 11 security found and fixed:
+  (1) the network/per-machine local folder key hashed the program path *as started*, so the UNC shortcut and the mapped
+  drive (`Z:\`) — or `subst`/a junction — gave one user two local profiles (database, settings, history "reset");
+  `install::resolved_install_dir` (canonicalize: mapped drive → `\\server\share`) now feeds the key, and
+  `local_install_dir_in` keeps a folder an earlier version made from the path as started while it is the only one;
+  (2) nothing stopped two *computers* from opening one database through a share while running (an "Only for me" copy
+  started from several PCs, or cloned PCs with identical identity signals): `openmind_core::session_guard` holds an OS
+  lock on `<db folder>/session.lock` for the life of the process (`ScopeRuntime._session`) with a hashed computer name in
+  `session-owner.json`; another computer gets the new start-up category `FailureKind::InUseElsewhere` /
+  `DbError::InUseElsewhere` ("Database open on another computer", no Back Up offered, the error window's WebView and log
+  move to this computer's local folder), the same computer starts as before, no lock possible = unguarded;
+  (3) the NSIS POSTINSTALL ignored a failed `--integration set-layout` (`OmCheckLayout` now reports it with the command
+  to fix it); (4) a student without write access to a shared `runtimes/` got "file system error at …\x.lock" — now
+  `RuntimeError::NoWriteAccess` naming who manages runtimes. Checked and fine: `decide` never re-asks a made choice
+  (remembered state / own profile; `Inaccessible` → Fail, not Ask), version locks, adopt, retire, the manifest (asInvoker,
+  Win10/11, longPathAware — verified embedded in the exe). The NSIS script was compiled (makensis) with the new hooks;
+  the setup itself was not run. **Not fixable in code**: the exe and installers are unsigned — SmartScreen warns on
+  download, and Windows 11 **Smart App Control** (when on) blocks unsigned programs outright; needs a real code-signing
+  certificate (`docs/release.md`).
+  **Pre-commit review** found two more and fixed them: `main.rs` turned every start-up failure into
+  `DbError::Copy(text)`, so the error window showed "Database error" and offered Back Up for a database another computer
+  had open (the failure is now moved to the window unchanged — `scope.failure.take()` — which also gives other profile
+  failures their real category); `session-owner.json` with a UTF-8 BOM was unreadable (now stripped). Verified in a
+  debug build: an older per-user database upgraded with every table/row count, migration, recent folder and setting
+  identical; a second start on the same computer works; a simulated other computer (lock held, foreign owner record) gets
+  "Database open on another computer" with no Back Up, the database byte-identical and the shared WebView profile
+  untouched; a per-computer portable copy restores a deleted `data-scope.json` and starts on its remembered scope with a
+  damaged one (no setup, same profile, the damaged file left as is). **Still pending**: a real multi-PC pilot
+  (`docs/pilot/multi-pc-pilot.md`) and trusted Windows code signing.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

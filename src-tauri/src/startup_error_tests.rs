@@ -66,6 +66,7 @@ fn every_category_has_a_title_an_explanation_and_a_next_step() {
         FailureKind::MigrationFailed { version: Some(2) },
         FailureKind::MigrationFailed { version: None },
         FailureKind::Locked,
+        FailureKind::InUseElsewhere,
         FailureKind::Corrupt,
         FailureKind::ReadOnly,
         FailureKind::CannotOpen,
@@ -179,7 +180,7 @@ fn the_ui_catalog_says_exactly_what_the_backend_says_for_every_kind() {
             .to_string()
     };
     // (kind, the text key the page uses, the step keys it shows)
-    let cases: [(FailureKind, &str, &[&str]); 12] = [
+    let cases: [(FailureKind, &str, &[&str]); 13] = [
         (
             FailureKind::ChecksumMismatch { version: 7 },
             "checksumMismatch",
@@ -206,6 +207,11 @@ fn the_ui_catalog_says_exactly_what_the_backend_says_for_every_kind() {
             &["exitAndUse", "backUp"],
         ),
         (FailureKind::Locked, "locked", &["closeOther"]),
+        (
+            FailureKind::InUseElsewhere,
+            "inUseElsewhere",
+            &["closeOtherComputer", "ownDataPerComputer"],
+        ),
         (
             FailureKind::Corrupt,
             "corrupt",
@@ -274,4 +280,23 @@ fn the_payload_carries_a_stable_code_and_only_fixed_fields() {
             "canBackUp"
         ]
     );
+}
+
+#[test]
+fn a_database_open_on_another_computer_is_named_as_such_and_never_offered_for_back_up() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("openmind-studio.db");
+    write(&db, "the other computer's data");
+    let failure = describe(&DbError::InUseElsewhere, &db, dir.path());
+    assert_eq!(failure.failure, FailureKind::InUseElsewhere);
+    assert_eq!(failure.category, "Database open on another computer");
+    assert!(
+        !failure.can_back_up,
+        "moving a database another computer uses must not be offered"
+    );
+    assert!(failure
+        .details
+        .contains("Category: Database open on another computer"));
+    // Any other failure with the file present still offers it, as before.
+    assert!(describe(&mismatch(), &db, dir.path()).can_back_up);
 }

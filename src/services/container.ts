@@ -41,7 +41,6 @@ import { wireAi } from "./ai/aiWiring";
 import { followIconTheme } from "../components/iconThemes";
 import { createWorkbenchAutoSave } from "./autoSaveService";
 import { wireProfiles } from "./profiles/profilesWiring";
-import { wireDataScope } from "../dataScope/dataScopeDialogService";
 import { wireFormatting } from "./formatting/formattingWiring";
 import { registerMenuFillCommands } from "./menuFillCommands";
 import { connectEditorLanguages, wireLanguage } from "./language/languageWiring";
@@ -177,7 +176,12 @@ const fileSync = new FileSyncService(tauriIpcClient, events, documents, explorer
   loadedFolders: () => explorer.loadedFolders(),
 });
 const secondarySideBar = new SecondarySideBarService(tauriIpcClient);
-const { runCode, configs: runConfigs, runArguments, browser } = wireRunCode({
+const {
+  runCode,
+  configs: runConfigs,
+  runArguments,
+  browser,
+} = wireRunCode({
   ipc: tauriIpcClient,
   events,
   commands,
@@ -519,7 +523,6 @@ const workspaceTasks = wireTasks({
 /** The Explorer's icons follow `workbench.iconTheme` (built-in, or an enabled extension's icon theme). */
 followIconTheme(settings);
 const profiles = wireProfiles({ ipc: tauriIpcClient, events, commands, settings });
-const dataScope = wireDataScope(commands);
 /** Files > Auto Save (afterDelay / onFocusChange / onWindowChange). Only files that already have a path are saved. */
 const autoSave = createWorkbenchAutoSave({ events, settings, documents, workspace });
 registerMenuFillCommands({
@@ -677,7 +680,6 @@ export const container = {
   startLanguage,
   formatting,
   profiles,
-  dataScope,
   network,
   deps,
   dependencies,

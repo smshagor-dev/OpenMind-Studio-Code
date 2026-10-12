@@ -143,9 +143,9 @@ export function SecondarySideBar({ onLeft }: { onLeft: boolean }) {
           <CloseIcon />
         </button>
       </header>
-      {showBrowser ? (
-        <BrowserView />
-      ) : lines.length === 0 ? (
+      {/* Kept mounted (only hidden) while Output is shown, so the page keeps what was typed into it. */}
+      {browser.target !== null && <BrowserView hidden={!showBrowser} />}
+      {showBrowser ? null : lines.length === 0 ? (
         <p className="secondary-sidebar__empty">
           No output in “{state.channel}” yet. Run a file{runKey ? ` (${runKey})` : ""} to see its
           output here and in the panel below.

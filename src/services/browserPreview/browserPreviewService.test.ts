@@ -134,6 +134,17 @@ describe("BrowserPreviewService", () => {
     vi.useRealTimers();
   });
 
+  it("running a file right after its save loads the page once", async () => {
+    vi.useFakeTimers();
+    const r = rig();
+    await r.service.open("C:/Work/My Project/site/index.html");
+    r.events.emit("documentSaved", { id: "d", path: "C:/Work/My Project/site/index.html" });
+    await r.service.open("C:/Work/My Project/site/index.html");
+    vi.advanceTimersByTime(RELOAD_DELAY_MS);
+    expect(r.service.getState().loadToken).toBe(2);
+    vi.useRealTimers();
+  });
+
   it("files changed on disk inside the folder reload the page; outside ones and no page do nothing", async () => {
     vi.useFakeTimers();
     const r = rig();

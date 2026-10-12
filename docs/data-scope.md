@@ -37,8 +37,8 @@ The choice is kept in `data/data-scope.json` (`{"schemaVersion": 1, "mode": "per
   never show this page: the per-user setup keeps the one-profile layout; the per-machine MSI (Program Files) and a
   network installation keep every computer's and Windows user's data in that user's local folder. A Linux copy that
   keeps its data in `~/.local/share` belongs to one computer and is not asked either.
-- **Later**: File > Preferences > Data Scope... (also in the Manage gear menu). It applies at the next start. It is
-  refused while the PHP or MySQL server runs.
+- **Only at the first start**: the choice is made in the setup page (or by the installer) and the workbench offers no
+  way to change it — there is no Data Scope entry in Settings or any menu.
 
 ## Shared vs per computer
 
@@ -87,6 +87,16 @@ a runtime installed on PC-A is on PC-B's PATH at once with no download; an updat
 the others; a drive-letter change changes nothing. Language Tools are found by their files (`language-servers/`,
 `tools/`, `lsp/`); only the *chosen* active tool version is a per-computer preference (it falls back to the newest).
 Changing the data scope never reinstalls anything.
+
+## One computer at a time
+
+Whatever the scope, the folder that holds the database (`data/`, or `data/machines/<id>/`) is claimed by the computer
+that runs OpenMind Studio for as long as it runs (`openmind_core::session_guard`: an OS lock on `session.lock`, and
+`session-owner.json` with a hash of the computer name — never the name). A start on another computer while it is held
+stops with the start-up error "Database open on another computer" (no Back Up and Start Fresh: that database is in
+use) and opens nothing; a start on the same computer goes on. This catches an "Only for me" copy on a share started from
+two computers, and two cloned computers whose identity signals are identical. Where no lock can be taken (a read-only
+folder) the start goes on unguarded, as before.
 
 ## Machine identity
 

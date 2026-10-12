@@ -201,3 +201,73 @@ fn a_missing_file_is_missing_and_a_folder_is_a_failure_not_missing() {
         ReadText::Failed(_)
     ));
 }
+
+/// A second way to reach `target` (a junction on Windows, like a mapped drive or `subst` would give); `None` when the
+/// system can't make one here.
+fn alias_of(target: &Path, alias: &Path) -> Option<()> {
+    #[cfg(windows)]
+    {
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(alias)
+            .arg(target)
+            .output()
+            .ok()?;
+        made.status.success().then_some(())
+    }
+    #[cfg(not(windows))]
+    {
+        std::os::unix::fs::symlink(target, alias).ok()
+    }
+}
+
+#[test]
+fn one_installation_reached_two_ways_has_one_local_folder() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let installs = temp.path().join("Local State");
+    let real = temp.path().join("share").join("OpenMind Studio");
+    std::fs::create_dir_all(&real).expect("dir");
+    let alias = temp.path().join("mapped");
+    if alias_of(&temp.path().join("share"), &alias).is_none() {
+        eprintln!("skipped: no junction/symlink possible here");
+        return;
+    }
+    let through_alias = alias.join("OpenMind Studio");
+    assert_ne!(
+        install_key(&real),
+        install_key(&through_alias),
+        "the spellings differ"
+    );
+    assert_eq!(
+        local_install_dir_in(&installs, &real),
+        local_install_dir_in(&installs, &through_alias)
+    );
+}
+
+#[test]
+fn a_local_folder_made_from_the_path_as_started_keeps_being_used() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let installs = temp.path().join("Local State");
+    let real = temp.path().join("share").join("OpenMind Studio");
+    std::fs::create_dir_all(&real).expect("dir");
+    let alias = temp.path().join("mapped");
+    if alias_of(&temp.path().join("share"), &alias).is_none() {
+        eprintln!("skipped: no junction/symlink possible here");
+        return;
+    }
+    let through_alias = alias.join("OpenMind Studio");
+    // An earlier version keyed the folder by the alias; that data stays where it is.
+    let earlier = installs.join(install_key(&through_alias));
+    std::fs::create_dir_all(&earlier).expect("dir");
+    assert_eq!(local_install_dir_in(&installs, &through_alias), earlier);
+    // Once the resolved folder exists too, it wins.
+    let resolved = installs.join(install_key(&resolved_install_dir(&through_alias)));
+    std::fs::create_dir_all(&resolved).expect("dir");
+    assert_eq!(local_install_dir_in(&installs, &through_alias), resolved);
+    // A path that can't be resolved is used as given.
+    let gone = temp.path().join("gone").join("OpenMind Studio");
+    assert_eq!(
+        local_install_dir_in(&installs, &gone),
+        installs.join(install_key(&gone))
+    );
+}

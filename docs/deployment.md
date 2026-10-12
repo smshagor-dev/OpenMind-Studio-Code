@@ -10,7 +10,11 @@ OpenMind Studio can be installed four ways. The **installer** decides which, wri
 | **Shared network installation** | the setup (`.exe`), "Recommended for All Users" | a shared folder, e.g. `\\fs01\apps\OpenMind Studio` | each computer's and Windows user's `%LOCALAPPDATA%\OpenMind\Studio\Installations\<key>\` | **shared**, in the shared folder |
 | Portable ZIP | nobody (unzip) | anywhere | asked once: one profile, or one per computer (`docs/data-scope.md`) | next to the program |
 
-`<key>` is 16 hex digits derived from the installation folder, so two installations never share a local folder.
+`<key>` is 16 hex digits derived from the installation folder, so two installations never share a local folder. The
+folder is resolved first, so one installation has one key however it is started: from the `\\server\share` shortcut,
+from a mapped drive (`Z:\OpenMind Studio`) in Explorer, through `subst` or a junction. (Only different *names* for the
+same server — `fs01` and `fs01.uni.local` — still count as different folders; use one name in every shortcut.) A local
+folder an earlier version made from the path as it was started stays in use, so nobody's data moves.
 
 ## A network installation ("Recommended for All Users")
 
@@ -123,6 +127,13 @@ installation: they can't install it themselves, so they keep working and keep sh
 ### What is not shared, and limits
 
 - Data is never synchronised between computers: a project opened on PC 1 is in PC 1's recent list only.
+- **One computer per database.** A database that lives in a shared folder (a portable copy set up as "Only for me" and
+  started from several computers, or two cloned computers that look identical) is opened by one computer at a time:
+  while OpenMind Studio runs on one, a start on another shows "Database open on another computer" and opens nothing
+  (two computers writing one SQLite file can damage it). A second start on the *same* computer is allowed as before. A
+  crash or a dropped network releases it (it is an operating-system lock).
+- A student who may only read the share and tries to install or remove a runtime is told they lack write permission
+  (and who manages runtimes), not a file-system error.
 - Extensions installed into the shared folder are shared (their per-extension storage is too).
 - `data\data-scope.json`, `data\machines\` and the shared `data\openmind-studio.db` of an older portable layout are no
   longer used by a network installation (they are left as they were).
@@ -133,8 +144,8 @@ installation: they can't install it themselves, so they keep working and keep sh
 
 - For me / portable: next to the program (`data\`, `settings\`, `logs\` …).
 - Per machine and network: `%LOCALAPPDATA%\OpenMind\Studio\Installations\<key>\`
-  (`openmind-studio.db`, `settings\`, `logs\`, `state\`, `cache\`, `temp\`, `install-state.json`). File > Preferences >
-  Data Scope... shows it.
+  (`openmind-studio.db`, `settings\`, `logs\`, `state\`, `cache\`, `temp\`, `install-state.json`). Help > About >
+  Copy System Info lists the app and logs folders.
 
 Uninstalling removes the program (and `install.json`) but never a user's data folder; delete it by hand to reclaim the
 space.
