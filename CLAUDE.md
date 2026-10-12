@@ -84,6 +84,17 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   app root by hand; take them from `AppPaths` (`AppState.paths`). Identity = `SHA-256("openmind-studio:v1:\n" +
   "os_id=…\nhardware_uuid=…\nhardware_serial=…\n")` from MachineGuid + SMBIOS UUID (serial only without a UUID); never the
   computer name or anything on the drive; raw values never stored or logged.
+  **Install layout** (`install`, see `docs/deployment.md`): `install.json` next to the exe, written **only by the installers**
+  (`OpenMindStudio.exe --integration set-layout portable|per-user|per-machine|network`; the MSI ships it): `Portable` (data
+  scope as above), `PerUser` (NSIS "Me": data next to the program), `PerMachine` (MSI, Program Files: each Windows user's whole
+  layout in `local_install_dir` = `%LOCALAPPDATA%\OpenMind\Studio\Installations\<install key>`, shipped `lsp/`/`python-bundle/`
+  read from `AppPaths::install_dir` via `paths::shipped_dir`), `Network` (NSIS "Recommended for All Users" — internal value `network`: runtimes/tools/language
+  servers/extensions shared in the share, database/settings/logs/WebView/caches per computer and Windows user locally,
+  `AppPaths::network`). Without `install.json`: MSI → per-machine, NSIS on a remote path → network, NSIS → per-user, else
+  portable. Installer-managed layouts never show the data-scope setup. `install-state.json` in the local folder = this
+  computer's durable record (layout, data scope, first/last start) used when `data/data-scope.json` is missing or can't be read
+  (`ScopeChoice::Inaccessible` after retries never asks again; see `data_scope::decide`). `is_remote_path`,
+  `runs_from_temporary_folder` (an unextracted ZIP: the setup page warns).
 - `openmind-db` — SQLite connection pool, WAL setup, embedded migrations (`crates/db/migrations`),
   and thin repository types for each persisted concern. Since Milestone 20.0: `migrations::MIGRATOR` (the embedded
   migrations; `build.rs` + `migration_inputs.rs` print `cargo:rerun-if-changed` for the folder and every `.sql`, so a
@@ -199,6 +210,14 @@ except through well-defined public APIs; no circular crate dependencies (enforce
   PATH. Known limitation: launchers that *other tools* generate later (e.g. `pip install black`
   creates `Scripts/black.exe`) still bake in absolute paths and break after a move — run them as
   `python -m black`; venvs created in a project are likewise not relocatable (Python's own design).
+  **Shared `runtimes/` across computers** (`manager/shared.rs`, `manager/version_lock.rs`): every install/repair/delete/add-on
+  change takes the in-process busy mark *and* an OS lock on `runtimes/<kind>/versions/<version>.lock` (`File::try_lock`, released
+  by the OS on exit/crash; another holder → `RuntimeError::BusyElsewhere`); `reconcile` never clears another computer's
+  `.installing`/`.removing-*` folder or record while that lock is held; install/repair **adopt** a healthy version another
+  computer installed (record + shims, no download, files untouched); delete/repair first **rename** the version folder away
+  (`retire_dir`), so a version whose files are open anywhere is refused with `RuntimeError::InUse` and nothing is half-removed.
+  `RuntimePaths::with_tool_cache` (network layout): `{cache}` tool caches and pip/npm/Composer caches per computer, downloads
+  shared.
   **Add-ons (Milestone 22.5)**: a manifest version may list `addons` — optional parts installed *into* an installed version
   from their own pinned, checksum-verified artifact (`manager/addons.rs`): extracted to a staging folder, then only files the
   install lacks are moved in (the runtime's own files are never overwritten), the list is recorded in
@@ -3011,6 +3030,32 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   the Runtime Manager's `reconcile` (drops records whose shared folder is gone; run before `environment()`/`installed_dir()`),
   every hand-built `logs/`/`temp/`/MariaDB/run-builds/asm-lsp/extension-log path moved to `AppState.paths`; frontend
   `src/dataScope/` (setup page, File > Preferences > Data Scope...). MSRV raised to 1.89 (`File::try_lock`).
+- [x] **Installer modes, network deployment and multi-PC isolation** (after Milestone 24; not committed yet). See
+  `docs/deployment.md`. Root causes fixed: (1) the MSI (Program Files) wrote `data\` next to the exe and a standard user's
+  first start panicked in `ensure_dirs()` (now per-user local layout; `ensure_dirs` failures show the start-up error window
+  instead of panicking); (2) "installed vs portable" was guessed, and an NSIS install in a network folder gave every PC one
+  SQLite file (now `install.json` + remote-path inference); (3) a non-NotFound read error of `data/data-scope.json` brought the
+  setup back and could overwrite the choice (now retries, `Inaccessible`, the local record and own-profile evidence; restored
+  file); (4) runtimes: in-process-only locks — reconcile deleted another PC's `.installing`, install/repair wiped a healthy
+  shared install that this PC's DB didn't record (failing on files in use) — fixed as above; (5) the exe had no
+  `requestedExecutionLevel`/`supportedOS` manifest (`src-tauri/windows-app-manifest.xml`). NSIS Welcome page: Install for
+  For Me / Recommended for All Users (`/NETWORK`, kept on update), `--integration desktop-shortcut` (IShellLink, UNC target, create/
+  repair/keep) and `remove-desktop-shortcut`; `scripts/deploy/Deploy-OpenMindShortcuts.ps1` (WinRM push to the Public Desktop,
+  verified, CSV; AD/list/names; never bypasses permissions). Signing: a real certificate needs `TIMESTAMP_URL` (or
+  `SIGNING_NO_TIMESTAMP=1`), `release.mjs` verifies every signature with `Get-AuthenticodeSignature`
+  (`signatureVerdict`), `scripts/verify-signatures.mjs`, `.github/workflows/release-windows.yml` (SignPath, untested).
+  The repeated-setup report itself was **not reproduced** locally (local and `\\localhost` UNC paths kept the choice); the
+  fixes cover every path by which it can happen. Not physically validated: multiple real PCs, the WinRM push, the NSIS page
+  and MSI install, SignPath.
+- [x] **Stabilization pass** (same uncommitted work). Setup labels **For Me** / **Recommended for All Users** (presentation
+  only; values `per-user`/`network`, `/NETWORK` unchanged; a test pins them). `openmind_lsp::unpack`: per-package OS lock
+  `language-servers/<id>/.lock` (waits up to `LOCK_WAIT`, re-checks after waiting so a finished unpack isn't repeated),
+  unique `.unpacking-<pid>-<n>` staging, publish by rename with the old copy renamed away first (in use → refused, kept),
+  leftovers cleared only under the lock; the npm/pip/native installs take the same lock (`lock_package`). Network layout:
+  `CARGO_HOME` per computer (`run::localize_tool_env`), `RUSTUP_HOME` shared/read-only. `NetworkService.attachBroker` no
+  longer leaves an unhandled rejection (the `tabBarScroll.test.tsx` exit code). A missing/unreadable `install.json` falls back
+  to this computer's recorded layout. `runtime_verify` runs a `.phar` with `OPENMIND_PHP`. Pilot package:
+  `docs/pilot/multi-pc-pilot.md` + `scripts/pilot/Collect-PilotEvidence.ps1`; draft notes `docs/release-notes-next.md`.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
