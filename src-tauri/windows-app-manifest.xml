@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  OpenMind Studio's Windows application manifest (embedded by build.rs through tauri-build).
+
+  - requestedExecutionLevel asInvoker: the editor never asks for administrator rights, and Windows never applies its
+    legacy "file virtualization" (writes into Program Files silently redirected to a per-user VirtualStore) or its
+    installer-detection heuristics to it. Elevation is only ever requested by the installers.
+  - supportedOS Windows 10 / 11: the program is told the real Windows version and gets current behaviour.
+  - longPathAware: paths longer than 260 characters work without the \\?\ prefix (deep node_modules, long project paths).
+  - Common-Controls v6: required by Tauri's native dialogs (the Tauri default manifest only had this).
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <description>OpenMind Studio</description>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 and Windows 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

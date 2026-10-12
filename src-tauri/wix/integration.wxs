@@ -15,6 +15,14 @@
     <Property Id="ADDTOPATH" Secure="yes" />
     <Property Id="EXPLORERMENU" Secure="yes" />
     <DirectoryRef Id="INSTALLDIR">
+      <!--
+        How this copy was installed (read by the app at every start, see openmind_core::install): per machine. Every
+        Windows user then keeps their own data, runtimes and tools in their local application data folder, because the
+        program folder is read-only for them. Always installed; removed with the program.
+      -->
+      <Component Id="OmInstallLayout" Guid="5b0e7c1a-3f4d-4b8e-9a2c-6d1f0e8b7a43">
+        <File Id="OmInstallJson" Source="$(sys.SOURCEFILEDIR)install-per-machine.json" Name="install.json" KeyPath="yes" />
+      </Component>
       <Component Id="OmCliPath" Guid="829da891-04dc-46fc-9fac-e31ee095a1a8">
         <Condition>ADDTOPATH = "1"</Condition>
         <Environment Id="OmCliPathEntry" Name="PATH" Value="[INSTALLDIR]bin" Part="last" Action="set" System="yes" Permanent="no" />

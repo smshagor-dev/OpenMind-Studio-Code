@@ -31,14 +31,27 @@ pub fn run_cli() -> Option<i32> {
     if args.next()? != "--integration" {
         return None;
     }
-    let Some(action) = args
-        .next()
-        .and_then(|a| Action::parse(&a.to_string_lossy()))
+    let words: Vec<String> = args.map(|a| a.to_string_lossy().into_owned()).collect();
+    // Installation and deployment: the install layout and Desktop shortcuts (see `integration::deploy`).
+    if let Some(parsed) = integration::deploy::parse(&words) {
+        let result = parsed.and_then(|action| integration::deploy::run(action, &this_exe()?));
+        return Some(report(result));
+    }
+    let Some(action) = words
+        .first()
+        .filter(|_| words.len() == 1)
+        .and_then(|a| Action::parse(a))
     else {
         eprintln!("usage: OpenMindStudio.exe --integration add-path|remove-path|add-explorer|remove-explorer|remove-all|status");
+        eprintln!("{}", integration::deploy::USAGE);
         return Some(2);
     };
-    Some(match apply(action) {
+    Some(report(apply(action)))
+}
+
+/// Prints the outcome and gives the exit code (0 done, 1 failed).
+fn report(result: Result<String, String>) -> i32 {
+    match result {
         Ok(message) => {
             println!("{message}");
             0
@@ -47,7 +60,7 @@ pub fn run_cli() -> Option<i32> {
             eprintln!("{err}");
             1
         }
-    })
+    }
 }
 
 #[cfg(windows)]
