@@ -71,25 +71,41 @@ pub enum ScopeChoice {
     /// A file that can't be used (damaged, from a newer version): treated as not chosen, and never overwritten
     /// except by a new choice.
     Unreadable(String),
+    /// The file is there but couldn't be read, even after a few tries (a network share that dropped, a file held by a
+    /// scanner). Never taken as "not chosen": start-up must not ask again because of a passing problem.
+    Inaccessible(String),
 }
 
 pub fn scope_file(app_root: &Path) -> PathBuf {
     app_root.join(SCOPE_FILE)
 }
 
-fn read_file(app_root: &Path) -> Result<Option<ScopeFile>, String> {
-    let text = match std::fs::read_to_string(scope_file(app_root)) {
-        Ok(text) => text,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(err) => return Err(err.to_string()),
-    };
+/// Why [`read_file`] gave no file.
+enum ReadError {
+    /// The content can't be used.
+    Damaged(String),
+    /// The file couldn't be read at all.
+    Io(String),
+}
+
+fn read_file(app_root: &Path) -> Result<Option<ScopeFile>, ReadError> {
+    use crate::install::{read_text_retrying, ReadText, START_READ_ATTEMPTS, START_READ_PAUSE};
+    let text =
+        match read_text_retrying(&scope_file(app_root), START_READ_ATTEMPTS, START_READ_PAUSE) {
+            ReadText::Text(text) => text,
+            ReadText::Missing => return Ok(None),
+            ReadText::Failed(err) if err.kind() == std::io::ErrorKind::InvalidData => {
+                return Err(ReadError::Damaged(err.to_string()))
+            }
+            ReadText::Failed(err) => return Err(ReadError::Io(err.to_string())),
+        };
     match serde_json::from_str::<ScopeFile>(&text) {
         Ok(parsed) if parsed.schema_version == SCHEMA_VERSION => Ok(Some(parsed)),
-        Ok(parsed) => Err(format!(
+        Ok(parsed) => Err(ReadError::Damaged(format!(
             "schema version {} is not supported",
             parsed.schema_version
-        )),
-        Err(err) => Err(err.to_string()),
+        ))),
+        Err(err) => Err(ReadError::Damaged(err.to_string())),
     }
 }
 
@@ -97,7 +113,8 @@ pub fn read_choice(app_root: &Path) -> ScopeChoice {
     match read_file(app_root) {
         Ok(Some(file)) => ScopeChoice::Chosen(file.mode),
         Ok(None) => ScopeChoice::NotChosen,
-        Err(reason) => ScopeChoice::Unreadable(reason),
+        Err(ReadError::Damaged(reason)) => ScopeChoice::Unreadable(reason),
+        Err(ReadError::Io(reason)) => ScopeChoice::Inaccessible(reason),
     }
 }
 
@@ -239,6 +256,17 @@ mod tests {
         assert!(matches!(
             read_choice(root.path()),
             ScopeChoice::Unreadable(_)
+        ));
+    }
+
+    #[test]
+    fn a_file_that_cant_be_read_is_inaccessible_not_unchosen() {
+        let root = tempfile::tempdir().expect("tempdir");
+        // Something is there but can't be read as a file (a folder here; a dropped share or a scanner lock in real life).
+        std::fs::create_dir_all(scope_file(root.path())).expect("dir");
+        assert!(matches!(
+            read_choice(root.path()),
+            ScopeChoice::Inaccessible(_)
         ));
     }
 

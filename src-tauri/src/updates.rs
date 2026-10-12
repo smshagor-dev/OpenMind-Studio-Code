@@ -173,6 +173,14 @@ pub async fn update_download(
     if install_kind() == InstallKind::Portable {
         return Err("This portable copy can't update itself: download the new version from the releases page.".into());
     }
+    if app
+        .try_state::<crate::data_scope::ScopeRuntime>()
+        .is_some_and(|scope| scope.paths.layout == openmind_core::InstallLayout::Network)
+    {
+        return Err("This is a shared network installation: other computers are using it, so it is updated by whoever \
+                    installed it (run the new setup on that computer, with the shared folder as the install folder)."
+            .into());
+    }
     let update = state
         .found
         .lock()

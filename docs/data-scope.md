@@ -22,8 +22,21 @@ The choice is kept in `data/data-scope.json` (`{"schemaVersion": 1, "mode": "per
   any database is opened*: "Choose how OpenMind Studio will be used", with **All users / Multi-computer** marked
   **Recommended** and preselected. When an earlier profile exists it offers "Use this existing profile on this computer"
   (ticked). After Continue the app restarts; the copy (if any) happens at that start, before the database is opened.
-- **Installed copies** (the per-user setup, the MSI) and a Linux copy that keeps its data in `~/.local/share` belong to
-  one computer: they keep the one-profile layout and are not asked.
+- **A choice is never asked again.** `data/data-scope.json` is read with a few retries (a network share that drops for
+  a moment, a scanner holding the file). When it is missing, damaged or can't be read, start-up does not ask: this
+  computer's own record of the choice (`install-state.json` in `%LOCALAPPDATA%\OpenMind\Studio\Installations\<install
+  key>\`, written at every start of a multi-computer copy and when a choice is saved) decides, then the presence of this
+  computer's own profile in `data/machines/`. A missing file is written again with that choice. Only a file that exists
+  but can't be read, with nothing on this computer to go on, stops start-up with the reason (the error window) — a
+  second choice would overwrite the first one. A one-profile ("Only for me") portable copy still writes nothing outside
+  its folder.
+- **Run from a temporary folder** (a ZIP opened in Explorer without extracting it: `%TEMP%\Temp1_<name>.zip\`): the
+  setup page says so first — Windows deletes that folder, so every choice and the database would be lost and the
+  question would come back each time.
+- **Installed copies** are set up by their installer (`install.json` next to the program, see `docs/deployment.md`) and
+  never show this page: the per-user setup keeps the one-profile layout; the per-machine MSI (Program Files) and a
+  network installation keep every computer's and Windows user's data in that user's local folder. A Linux copy that
+  keeps its data in `~/.local/share` belongs to one computer and is not asked either.
 - **Later**: File > Preferences > Data Scope... (also in the Manage gear menu). It applies at the next start. It is
   refused while the PHP or MySQL server runs.
 

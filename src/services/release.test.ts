@@ -12,6 +12,7 @@ import {
   checksumsText,
   publicSigningInfo,
   readSigningConfig,
+  signatureVerdict,
   redact,
   releaseName,
   reportText,
@@ -142,6 +143,24 @@ describe("optional PATH and File Explorer integration in the installers", () => 
     expect(checkInstallerHooks(writesRegistry).join(" ")).toContain("must not write");
   });
 
+  it("the setup records how it installed the program: For Me, or Recommended for All Users (a network folder)", () => {
+    // The visible labels, exactly; the stored values stay `per-user` / `network` (older installs keep their choice).
+    expect(hooks).toContain('${NSD_CreateFirstRadioButton} 128u 135u 187u 11u "For Me"');
+    expect(hooks).toContain('${NSD_CreateRadioButton} 128u 147u 187u 11u "Recommended for All Users"');
+    expect(hooks).not.toMatch(/All connected PCs/i);
+    expect(hooks).toContain("--integration set-layout per-user");
+    // "For Me" is the default; the network choice comes from the page, /NETWORK or an earlier network install.
+    expect(hooks).toMatch(/\$\{NSD_Check\} \$OmMeRadio/);
+    expect(hooks).toMatch(/\$\{GetOptions\} \$CMDLINE "\/NETWORK"/);
+    expect(hooks).toMatch(/FileOpen \$0 "\$INSTDIR\\install\.json" r/);
+    const noLayout = hooks.replaceAll("--integration set-layout network", "--integration status");
+    expect(checkInstallerHooks(noLayout).join(" ")).toContain("set-layout network");
+    const noSwitch = hooks.replaceAll('"/NETWORK"', '"/OTHER"');
+    expect(checkInstallerHooks(noSwitch).join(" ")).toContain("/NETWORK");
+    // The record goes with the program on uninstall, never on an update.
+    expect(hooks).toMatch(/\$UpdateMode <> 1[\s\S]*Delete "\$INSTDIR\\install\.json"/);
+  });
+
   it("the MSI changes PATH only through ADDTOPATH and adds Explorer entries only with EXPLORERMENU", () => {
     expect(fragment).toMatch(/<Condition>ADDTOPATH = "1"<\/Condition>/);
     expect(fragment).toMatch(/<Condition>EXPLORERMENU = "1"<\/Condition>/);
@@ -241,10 +260,38 @@ describe("signing configuration", () => {
     ).toBe("misconfigured");
   });
 
+  it("a release certificate needs an RFC 3161 timestamp server unless that is explicitly waived", () => {
+    const pfx = { SIGNING_CERT_PATH: "C:/c.pfx", SIGNING_CERT_PASSWORD: "hunter2" };
+    const store = { SIGNING_CERT_THUMBPRINT: "352ED3665AF5E1E59278F1E7ABF463F9BA4FE8EC" };
+    for (const env of [pfx, store]) {
+      const without = readSigningConfig(env);
+      expect(without.mode).toBe("misconfigured");
+      expect(without.message).toContain("TIMESTAMP_URL");
+      expect(readSigningConfig({ ...env, SIGNING_NO_TIMESTAMP: "1" }).mode).toBe("signed");
+      expect(readSigningConfig({ ...env, TIMESTAMP_URL: "http://ts.example" }).mode).toBe("signed");
+      // A test certificate (development) may go without.
+      expect(readSigningConfig({ ...env, SIGNING_CERT_KIND: "test" }).mode).toBe("test-signed");
+    }
+  });
+
+  it("only a valid, timestamped signature passes for a release; a test one needs to be intact", () => {
+    const valid = { status: "Valid", signer: "CN=OpenMind", timestamped: true, timestamper: "CN=TSA" };
+    expect(signatureVerdict(valid, "signed")).toBeNull();
+    expect(signatureVerdict(valid, "external")).toBeNull();
+    expect(signatureVerdict({ ...valid, timestamped: false }, "signed")).toContain("timestamp");
+    expect(signatureVerdict({ ...valid, timestamped: false }, "signed", { timestampWaived: true })).toBeNull();
+    expect(signatureVerdict({ ...valid, status: "NotTrusted" }, "signed")).toContain("NotTrusted");
+    expect(signatureVerdict({ ...valid, status: "NotTrusted" }, "test-signed")).toBeNull();
+    expect(signatureVerdict({ ...valid, status: "HashMismatch" }, "test-signed")).toContain("changed");
+    expect(signatureVerdict({ ...valid, status: "NotSigned", signer: null }, "signed")).toBe("not signed");
+    expect(signatureVerdict(null, "test-signed")).toBe("not signed");
+  });
+
   it("the password never appears in what is logged or written", () => {
     const config = readSigningConfig({
       SIGNING_CERT_PATH: "C:/secret path/c.pfx",
       SIGNING_CERT_PASSWORD: "hunter2",
+      SIGNING_NO_TIMESTAMP: "1",
     });
     const shown = JSON.stringify(publicSigningInfo(config)) + config.message;
     expect(shown).not.toContain("hunter2");

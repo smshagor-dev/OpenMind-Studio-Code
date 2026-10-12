@@ -86,12 +86,11 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
         std::mem::take(&mut environment.path_prepend),
     );
     // Variables an installed tool needs (absolute paths inside the app folder), for this process only.
-    environment.vars.extend(
-        tools
-            .env
-            .into_iter()
-            .map(|(name, path)| (name, path.display().to_string())),
-    );
+    let local_homes = (state.paths.layout == openmind_core::InstallLayout::Network)
+        .then(|| state.runtime.paths().cache_dir().to_path_buf());
+    environment
+        .vars
+        .extend(localize_tool_env(tools.env, local_homes.as_deref()));
     state.broker.set_tool_dirs(&path_prepend);
     let mut search = path_prepend.clone();
     if let Some(path) = std::env::var_os("PATH") {
@@ -105,6 +104,25 @@ pub(crate) async fn environment(state: &AppState) -> RunEnvironment {
         .extend(crate::commands::network::process_env(state).await);
     environment.vars.extend(composer);
     environment
+}
+
+/// The tools' variables as text. In a network installation (`local_cache` = this computer's tool cache) the folders a
+/// tool **writes** to while it works go to this computer: `CARGO_HOME` (Cargo's registry index and crates, git
+/// checkouts, the package-cache lock, `cargo install` output). What is only read stays shared: `RUSTUP_HOME` (the
+/// installed toolchain) and the programs on PATH. So two computers build Rust at once without writing one cache over the
+/// network, and users who may only read the share can still build. A standalone copy keeps its paths as they were.
+pub(crate) fn localize_tool_env(
+    env: Vec<(String, PathBuf)>,
+    local_cache: Option<&Path>,
+) -> Vec<(String, String)> {
+    env.into_iter()
+        .map(|(name, path)| match local_cache {
+            Some(cache) if name == "CARGO_HOME" => {
+                (name, cache.join("cargo").display().to_string())
+            }
+            _ => (name, path.display().to_string()),
+        })
+        .collect()
 }
 
 /// The folders put in front of a process's inherited PATH, in the order that decides which tool runs: OpenMind's own
@@ -410,5 +428,34 @@ mod path_tests {
             vars.first().map(|(_, value)| value.clone()),
             Some(system_composer.display().to_string())
         );
+    }
+    #[test]
+    fn a_network_installation_gives_cargo_a_home_on_this_computer_and_keeps_the_toolchain_shared() {
+        let shared = PathBuf::from(r"\\fs01\apps\OpenMind Studio\tools\rust-toolchain\stable");
+        let env = vec![
+            ("RUSTUP_HOME".to_string(), shared.join("rustup")),
+            ("CARGO_HOME".to_string(), shared.join("cargo")),
+        ];
+        let local = PathBuf::from(
+            r"C:\Users\ana\AppData\Local\OpenMind\Studio\Installations\k\cache\tools",
+        );
+        let network = localize_tool_env(env.clone(), Some(&local));
+        assert_eq!(
+            network[0],
+            (
+                "RUSTUP_HOME".into(),
+                shared.join("rustup").display().to_string()
+            )
+        );
+        assert_eq!(
+            network[1],
+            (
+                "CARGO_HOME".into(),
+                local.join("cargo").display().to_string()
+            )
+        );
+        // A standalone copy keeps its paths exactly as before (its existing caches stay in use).
+        let standalone = localize_tool_env(env, None);
+        assert_eq!(standalone[1].1, shared.join("cargo").display().to_string());
     }
 }

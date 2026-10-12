@@ -197,11 +197,15 @@ pub async fn runtime_verify(kind: String, state: State<'_, AppState>) -> Result<
         )
     })?;
     let environment = crate::commands::run::environment(&state).await;
-    let program = dir.join(&manifest.version_command.executable);
+    let (program, args) = verify_command(
+        &dir.join(&manifest.version_command.executable),
+        &manifest.version_command.args,
+        &environment.vars,
+    )?;
     tauri::async_runtime::spawn_blocking(move || {
         let mut command = Command::new(&program);
         command
-            .args(&manifest.version_command.args)
+            .args(&args)
             .current_dir(&dir)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -256,4 +260,55 @@ pub async fn runtime_verify(kind: String, state: State<'_, AppState>) -> Result<
     })
     .await
     .map_err(|err| err.to_string())?
+}
+
+/// The program and arguments that print a runtime's version. A PHP archive (`composer.phar`) is not a Windows program:
+/// it is run by OpenMind's active PHP (`OPENMIND_PHP`, set by the PHP runtime), as the `composer` launcher does.
+fn verify_command(
+    program: &std::path::Path,
+    args: &[String],
+    vars: &[(String, String)],
+) -> Result<(std::path::PathBuf, Vec<String>), String> {
+    if !program
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("phar"))
+    {
+        return Ok((program.to_path_buf(), args.to_vec()));
+    }
+    let php = vars
+        .iter()
+        .find(|(name, _)| name == "OPENMIND_PHP")
+        .map(|(_, value)| std::path::PathBuf::from(value))
+        .ok_or("Composer runs on OpenMind's PHP: install PHP in the Runtime Manager first.")?;
+    let mut all = vec![program.display().to_string()];
+    all.extend(args.iter().cloned());
+    Ok((php, all))
+}
+
+#[cfg(test)]
+mod verify_tests {
+    use super::*;
+
+    #[test]
+    fn a_php_archive_is_verified_with_openmind_php_and_a_program_runs_as_itself() {
+        let args = vec!["--version".to_string()];
+        let exe = std::path::Path::new(r"C:\app\runtimes\node\versions\24\node.exe");
+        assert_eq!(
+            verify_command(exe, &args, &[]).expect("program"),
+            (exe.to_path_buf(), args.clone())
+        );
+        let phar = std::path::Path::new(r"C:\app\runtimes\composer\versions\2\composer.phar");
+        let vars = vec![(
+            "OPENMIND_PHP".to_string(),
+            r"C:\app\php\php.exe".to_string(),
+        )];
+        let (program, all) = verify_command(phar, &args, &vars).expect("php");
+        assert_eq!(program, std::path::PathBuf::from(r"C:\app\php\php.exe"));
+        assert_eq!(
+            all,
+            vec![phar.display().to_string(), "--version".to_string()]
+        );
+        let missing = verify_command(phar, &args, &[]).expect_err("no php");
+        assert!(missing.contains("install PHP"), "{missing}");
+    }
 }

@@ -165,6 +165,8 @@ pub fn install(
             "npm was not found next to Node.js. Repair the Node.js runtime.".into(),
         )
     })?;
+    // One install or unpack of this package at a time, on every computer sharing the folder.
+    let _lock = crate::unpack::lock_package(app_root, package.id)?;
     let staging = staging_dir(app_root, package);
     if staging.exists() {
         std::fs::remove_dir_all(&staging).map_err(io_err)?;
@@ -207,6 +209,8 @@ pub fn install_python(
             package.contents
         )));
     };
+    // One install or unpack of this package at a time, on every computer sharing the folder.
+    let _lock = crate::unpack::lock_package(app_root, package.id)?;
     let staging = staging_dir(app_root, package);
     if staging.exists() {
         std::fs::remove_dir_all(&staging).map_err(io_err)?;

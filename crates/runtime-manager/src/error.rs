@@ -21,6 +21,16 @@ pub enum RuntimeError {
     #[error("{kind} {version} is already being changed by another operation")]
     Busy { kind: String, version: String },
 
+    /// Another OpenMind — on this computer or another one sharing the `runtimes/` folder — is installing, repairing or
+    /// removing this version right now.
+    #[error("{kind} {version} is being changed by OpenMind Studio on another computer (or in another window)")]
+    BusyElsewhere { kind: String, version: String },
+
+    /// The version's files are open (a terminal, a run or a server using it, on this computer or another one), so it
+    /// can't be removed; nothing was removed.
+    #[error("{kind} {version} is in use, so it was not removed")]
+    InUse { kind: String, version: String },
+
     #[error("refusing to download over an insecure connection: {0}")]
     InsecureUrl(String),
 
@@ -108,6 +118,12 @@ impl RuntimeError {
                 "Choose another version, or add a definition for this platform under settings/runtime-manifests."
             }
             Self::Busy { .. } => "Wait for the current operation on this runtime to finish.",
+            Self::BusyElsewhere { .. } => {
+                "Wait until it finishes there, then refresh the Runtime Manager: the result is shared with this computer."
+            }
+            Self::InUse { .. } => {
+                "Close the terminals, runs and servers that use it — also on other computers sharing this installation — then try again. It still works as before."
+            }
             Self::NotInstalled { .. } => "Install it first.",
             Self::Addon(_) => "Refresh the Runtime Manager; the runtime version itself is unchanged.",
             Self::Io { .. } => {

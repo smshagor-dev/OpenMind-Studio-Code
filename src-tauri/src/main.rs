@@ -41,14 +41,16 @@ fn main() {
     let scope = data_scope::resolve().expect("failed to resolve application paths");
     let app_paths = scope.paths.clone();
     let needs_scope_setup = scope.needs_setup;
-    app_paths
-        .ensure_dirs()
-        .expect("failed to create application directory layout");
+    // A folder that can't be created (a read-only install folder, a full disk) gets the start-up error window below
+    // instead of a crash with no window.
+    let layout_failure = app_paths.ensure_dirs().err();
     openmind_core::init_logging_to_file(&app_paths.logs_dir);
+    data_scope::log_start_notes();
 
     tracing::info!(
         db_path = %app_paths.db_path.display(),
         data_scope = if needs_scope_setup { "not chosen" } else { app_paths.scope.label() },
+        layout = app_paths.layout.label(),
         profile = scope.machine.as_ref().map(|m| m.machine_id.as_str()).unwrap_or("-"),
         identity = ?scope.identity.source(),
         "starting OpenMind Studio"
@@ -60,10 +62,19 @@ fn main() {
     }
     // A profile that couldn't be prepared (locked, damaged, an import that failed) gets the start-up error window
     // below instead of the workbench; no database is opened.
-    let startup_failure = scope.failure.as_ref().map(|err| {
-        tracing::error!(error = %err, "this computer's profile could not be prepared");
-        openmind_db::DbError::Copy(err.to_string())
-    });
+    let startup_failure = scope
+        .failure
+        .as_ref()
+        .map(|err| {
+            tracing::error!(error = %err, "this computer's profile could not be prepared");
+            openmind_db::DbError::Copy(err.to_string())
+        })
+        .or_else(|| {
+            layout_failure.map(|err| {
+                tracing::error!(error = %err, "the folders of this installation could not be created");
+                openmind_db::DbError::Copy(err.to_string())
+            })
+        });
     // An update installer downloaded by an earlier run is never reused (it is downloaded and verified again).
     updates::clean_stale_downloads(&app_paths.temp_dir);
 
@@ -442,13 +453,18 @@ fn main() {
             window_events::register_close_handler(&window, window_state_service.clone());
 
             let (registry, manifest_warnings) = RuntimeRegistry::builtin()
-                .with_overrides(&app_paths.settings_dir.join("runtime-manifests"));
+                .with_overrides(&app_paths.shared_settings_dir.join("runtime-manifests"));
             for warning in manifest_warnings {
                 tracing::warn!(%warning, "ignoring an invalid runtime definition");
             }
+            let mut runtime_paths = RuntimePaths::new(&app_paths.runtimes_dir, &app_paths.cache_dir);
+            if app_paths.layout == openmind_core::InstallLayout::Network {
+                // Each computer's own tool caches (GOPATH, NuGet, Gradle, pip, npm ...); downloads stay shared.
+                runtime_paths = runtime_paths.with_tool_cache(app_paths.machine_cache_dir.join("tools"));
+            }
             let runtime = RuntimeManager::new(
                 db.clone(),
-                RuntimePaths::new(&app_paths.runtimes_dir, &app_paths.cache_dir),
+                runtime_paths,
                 registry,
                 std::sync::Arc::new(UreqClient::new()),
                 openmind_runtime_manager::current_platform(),

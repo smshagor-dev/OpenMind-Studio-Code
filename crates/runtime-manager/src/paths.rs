@@ -14,28 +14,42 @@ use crate::manifest::is_safe_component;
 #[derive(Debug, Clone)]
 pub struct RuntimePaths {
     runtimes_dir: PathBuf,
-    cache_dir: PathBuf,
+    /// The shared `cache` folder (verified downloads in `downloads/`).
+    shared_cache_dir: PathBuf,
+    /// Where the tools keep their own caches (`{cache}` in a manifest: Go modules, Gradle, NuGet, pub; pip/npm/Composer
+    /// caches). The app's `cache` folder, except in a network installation, where each computer keeps its own.
+    tool_cache_dir: PathBuf,
 }
 
 impl RuntimePaths {
     pub fn new(runtimes_dir: impl Into<PathBuf>, cache_dir: impl Into<PathBuf>) -> Self {
+        let cache_dir = cache_dir.into();
         Self {
             runtimes_dir: runtimes_dir.into(),
-            cache_dir: cache_dir.into(),
+            tool_cache_dir: cache_dir.clone(),
+            shared_cache_dir: cache_dir,
         }
+    }
+
+    /// The same paths with the tools' own caches in `dir` (verified downloads stay in the shared `cache/downloads`): a
+    /// network installation keeps them on each computer, so computers never write one Go/NuGet/Gradle cache over the
+    /// network, and a share users may only read still works.
+    pub fn with_tool_cache(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.tool_cache_dir = dir.into();
+        self
     }
 
     pub fn runtimes_dir(&self) -> &Path {
         &self.runtimes_dir
     }
 
-    /// The app's `cache` folder: tools' own caches (Go modules, Gradle, NuGet, pub) go under it, not the profile.
+    /// Where tools' own caches (Go modules, Gradle, NuGet, pub, pip, npm, Composer) go: never the profile.
     pub fn cache_dir(&self) -> &Path {
-        &self.cache_dir
+        &self.tool_cache_dir
     }
 
     pub fn downloads_dir(&self) -> PathBuf {
-        self.cache_dir.join("downloads")
+        self.shared_cache_dir.join("downloads")
     }
 
     pub fn versions_dir(&self, kind: &str) -> Result<PathBuf, RuntimeError> {
@@ -206,5 +220,15 @@ mod tests {
         let odd = paths.download_path(sha, "https://example.com/a/..%2f..");
         assert!(odd.starts_with(paths.downloads_dir()));
         assert_eq!(odd.file_name().expect("name"), "abcdef0123456789-download");
+    }
+
+    #[test]
+    fn a_network_installation_keeps_tool_caches_per_computer_and_downloads_shared() {
+        let shared = RuntimePaths::new("/share/runtimes", "/share/cache");
+        assert_eq!(shared.cache_dir(), Path::new("/share/cache"));
+        let local = shared.clone().with_tool_cache("/local/cache/tools");
+        assert_eq!(local.cache_dir(), Path::new("/local/cache/tools"));
+        assert_eq!(local.downloads_dir(), shared.downloads_dir());
+        assert_eq!(local.runtimes_dir(), shared.runtimes_dir());
     }
 }

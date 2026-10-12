@@ -1,0 +1,380 @@
+//! **How this copy was installed**, and where each computer's writable state goes.
+//!
+//! The installers own this, never the app's UI: the per-user setup, the per-machine MSI and a shared network installation
+//! write `install.json` next to the executable (`OpenMindStudio.exe --integration set-layout <layout>`, or the MSI's own
+//! file). The app only reads it. A copy without the file is classified from facts that can't drift (see
+//! [`infer_layout`]): an older installer, or the portable ZIP.
+//!
+//! | Layout | Program | Database, logs, WebView, settings ... | Runtimes, tools, language servers, extensions |
+//! | --- | --- | --- | --- |
+//! | [`InstallLayout::Portable`] | its folder | next to it (`data/`, or `data/machines/<id>/` per computer — the data scope) | next to it |
+//! | [`InstallLayout::PerUser`] | `%LOCALAPPDATA%\OpenMind Studio` (or a folder the user chose) | next to it | next to it |
+//! | [`InstallLayout::PerMachine`] | `Program Files` (read-only for users) | this Windows user's local folder | this Windows user's local folder |
+//! | [`InstallLayout::Network`] | a shared folder several computers run | this computer's and Windows user's local folder | the shared folder (installed once) |
+//!
+//! "Local folder" is [`local_install_dir`]: `%LOCALAPPDATA%\OpenMind\Studio\Installations\<install key>`, on the
+//! computer's own disk and per Windows user, so two computers — or two users of one computer — never open the same
+//! SQLite file, and SQLite never runs its WAL over a network file system.
+
+use std::path::{Component, Path, PathBuf};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::data_scope::{rfc3339_now, write_atomic};
+
+/// The metadata file, next to the executable.
+pub const INSTALL_FILE: &str = "install.json";
+/// `install.json`'s `format`.
+pub const INSTALL_FORMAT: &str = "openmind-install";
+const SCHEMA_VERSION: u32 = 1;
+/// The per-install state file inside [`local_install_dir`].
+pub const STATE_FILE: &str = "install-state.json";
+const STATE_FORMAT: &str = "openmind-install-state";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InstallLayout {
+    /// The ZIP: everything next to the program; the data scope decides one profile or one per computer.
+    Portable,
+    /// The per-user setup: one Windows user's copy in a folder they can write.
+    PerUser,
+    /// The MSI in Program Files: the program is read-only for users, so every Windows user keeps their own data.
+    PerMachine,
+    /// One installation in a shared folder for every connected computer: shared runtimes, local per-computer state.
+    Network,
+}
+
+impl InstallLayout {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Portable => "portable",
+            Self::PerUser => "perUser",
+            Self::PerMachine => "perMachine",
+            Self::Network => "network",
+        }
+    }
+
+    /// The names the installers pass (`per-user`, `perUser` ... both spellings).
+    pub fn parse(text: &str) -> Option<Self> {
+        Some(
+            match text.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+                "portable" => Self::Portable,
+                "per-user" | "peruser" => Self::PerUser,
+                "per-machine" | "permachine" => Self::PerMachine,
+                "network" => Self::Network,
+                _ => return None,
+            },
+        )
+    }
+
+    /// Each computer's writable state lives on that computer ([`local_install_dir`]), not next to the program.
+    pub fn local_state(self) -> bool {
+        matches!(self, Self::PerMachine | Self::Network)
+    }
+
+    /// Set by an installer: the in-app data-scope choice never appears and can't be changed from the workbench.
+    pub fn installer_managed(self) -> bool {
+        !matches!(self, Self::Portable)
+    }
+}
+
+/// `install.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallMetadata {
+    pub format: String,
+    pub schema_version: u32,
+    pub layout: InstallLayout,
+    pub installed_at: String,
+    /// The version that wrote the file (an update rewrites it).
+    pub app_version: String,
+}
+
+/// What `install.json` says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallRecord {
+    Missing,
+    Found(InstallMetadata),
+    /// There, but damaged or from a newer version: the layout is inferred instead, and the file is left as it is.
+    Unreadable(String),
+}
+
+pub fn install_file(exe_dir: &Path) -> PathBuf {
+    exe_dir.join(INSTALL_FILE)
+}
+
+/// How a file read ended after [`read_text_retrying`].
+#[derive(Debug)]
+pub enum ReadText {
+    Missing,
+    Text(String),
+    /// It couldn't be read even after a few tries (a network share that dropped, a file locked by a virus scanner).
+    Failed(std::io::Error),
+}
+
+/// Reads a small text file, trying again briefly when it fails for any reason other than "not there": on a shared
+/// network folder a read can fail for a moment (a dropped connection, another computer replacing the file, a scanner
+/// holding it) and a start-up decision must not be taken on such a moment.
+pub fn read_text_retrying(file: &Path, attempts: u32, pause: Duration) -> ReadText {
+    let mut last = None;
+    for attempt in 0..attempts.max(1) {
+        if attempt > 0 {
+            std::thread::sleep(pause);
+        }
+        match std::fs::read_to_string(file) {
+            Ok(text) => return ReadText::Text(text),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return ReadText::Missing,
+            // Not UTF-8 is a damaged file, not a passing problem.
+            Err(err) if err.kind() == std::io::ErrorKind::InvalidData => {
+                return ReadText::Failed(err)
+            }
+            Err(err) => last = Some(err),
+        }
+    }
+    ReadText::Failed(last.unwrap_or_else(|| std::io::Error::other("unknown read failure")))
+}
+
+/// The retry policy of start-up reads (about one second at most).
+pub const START_READ_ATTEMPTS: u32 = 5;
+pub const START_READ_PAUSE: Duration = Duration::from_millis(250);
+
+pub fn read(exe_dir: &Path) -> InstallRecord {
+    match read_text_retrying(
+        &install_file(exe_dir),
+        START_READ_ATTEMPTS,
+        START_READ_PAUSE,
+    ) {
+        ReadText::Missing => InstallRecord::Missing,
+        ReadText::Failed(err) => InstallRecord::Unreadable(err.to_string()),
+        ReadText::Text(text) => match serde_json::from_str::<InstallMetadata>(&text) {
+            Ok(meta) if meta.format != INSTALL_FORMAT => InstallRecord::Unreadable(format!(
+                "format \"{}\" is not {INSTALL_FORMAT}",
+                meta.format
+            )),
+            Ok(meta) if meta.schema_version > SCHEMA_VERSION => InstallRecord::Unreadable(format!(
+                "schema version {} is newer than this version reads ({SCHEMA_VERSION})",
+                meta.schema_version
+            )),
+            Ok(meta) => InstallRecord::Found(meta),
+            Err(err) => InstallRecord::Unreadable(err.to_string()),
+        },
+    }
+}
+
+/// Writes `install.json` (atomically). Only the installers call this, through `--integration set-layout`.
+pub fn write(exe_dir: &Path, layout: InstallLayout, app_version: &str) -> std::io::Result<()> {
+    let installed_at = match read(exe_dir) {
+        InstallRecord::Found(meta) if meta.layout == layout => meta.installed_at,
+        _ => rfc3339_now(),
+    };
+    let meta = InstallMetadata {
+        format: INSTALL_FORMAT.into(),
+        schema_version: SCHEMA_VERSION,
+        layout,
+        installed_at,
+        app_version: app_version.into(),
+    };
+    let text = serde_json::to_string_pretty(&meta).map_err(std::io::Error::other)?;
+    write_atomic(&install_file(exe_dir), text.as_bytes())
+}
+
+/// What the program itself knows about how it was installed, when there is no `install.json`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallerHint {
+    /// `uninstall.exe` next to the program (the per-user setup).
+    Nsis,
+    /// Inside Program Files (the per-machine MSI).
+    Msi,
+    Portable,
+}
+
+/// The layout of a copy without `install.json`. A per-user setup placed in a **network folder** is a network
+/// installation: one database next to the program would be opened by every computer at once.
+pub fn infer_layout(hint: InstallerHint, remote: bool) -> InstallLayout {
+    match hint {
+        InstallerHint::Msi => InstallLayout::PerMachine,
+        InstallerHint::Nsis if remote => InstallLayout::Network,
+        InstallerHint::Nsis => InstallLayout::PerUser,
+        InstallerHint::Portable => InstallLayout::Portable,
+    }
+}
+
+/// A path for comparing and hashing: no `\\?\` prefix, backslashes, no trailing separator, lower case on Windows.
+pub fn normalized_key_path(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('/', "\\");
+    let text = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        text
+    };
+    let trimmed = text.trim_end_matches('\\');
+    let kept = if trimmed.is_empty() || trimmed.ends_with(':') {
+        text.as_str()
+    } else {
+        trimmed
+    };
+    if cfg!(windows) {
+        kept.to_lowercase()
+    } else {
+        kept.replace('\\', "/")
+    }
+}
+
+/// 16 hex digits naming one installation folder on this computer (a hash: never a path).
+pub fn install_key(install_dir: &Path) -> String {
+    let digest = Sha256::digest(format!(
+        "openmind-studio:install:v1\n{}",
+        normalized_key_path(install_dir)
+    ));
+    digest.iter().take(8).map(|b| format!("{b:02x}")).collect()
+}
+
+/// `%LOCALAPPDATA%\OpenMind\Studio\Installations` (Windows), `~/Library/Application Support/OpenMind Studio/Installations`
+/// (macOS), `$XDG_STATE_HOME/openmind-studio/installations` (else `~/.local/state/...`).
+pub fn local_installations_root() -> Option<PathBuf> {
+    let abs = |name: &str| {
+        std::env::var_os(name)
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+    };
+    if cfg!(windows) {
+        abs("LOCALAPPDATA").map(|dir| dir.join("OpenMind").join("Studio").join("Installations"))
+    } else if cfg!(target_os = "macos") {
+        abs("HOME").map(|home| {
+            home.join("Library")
+                .join("Application Support")
+                .join("OpenMind Studio")
+                .join("Installations")
+        })
+    } else {
+        abs("XDG_STATE_HOME")
+            .or_else(|| abs("HOME").map(|home| home.join(".local").join("state")))
+            .map(|dir| dir.join("openmind-studio").join("installations"))
+    }
+}
+
+/// This installation's folder on this computer for this Windows user (see the module text).
+pub fn local_install_dir(install_dir: &Path) -> Option<PathBuf> {
+    local_installations_root().map(|root| root.join(install_key(install_dir)))
+}
+
+/// What this computer remembers about one installation (in its [`local_install_dir`]): the data scope that was chosen
+/// there, so a moment when the shared `data/data-scope.json` can't be read never brings the setup back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallState {
+    pub format: String,
+    pub schema_version: u32,
+    /// The folder this record belongs to, as the program saw it (shown only; the key is what matches).
+    pub install_dir: String,
+    pub layout: InstallLayout,
+    /// The data scope in force (`personal` / `perMachine`), when the copy has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_scope: Option<crate::DataScope>,
+    pub first_started_at: String,
+    pub last_started_at: String,
+    pub app_version: String,
+}
+
+pub fn read_state(local_dir: &Path) -> Option<InstallState> {
+    match read_text_retrying(&local_dir.join(STATE_FILE), 2, Duration::from_millis(50)) {
+        ReadText::Text(text) => serde_json::from_str::<InstallState>(&text)
+            .ok()
+            .filter(|state| state.format == STATE_FORMAT && state.schema_version <= SCHEMA_VERSION),
+        _ => None,
+    }
+}
+
+/// Records a successful start (keeps the first start's date).
+pub fn record_start(
+    local_dir: &Path,
+    install_dir: &Path,
+    layout: InstallLayout,
+    data_scope: Option<crate::DataScope>,
+    app_version: &str,
+) -> std::io::Result<()> {
+    let now = rfc3339_now();
+    let first = read_state(local_dir)
+        .map(|state| state.first_started_at)
+        .unwrap_or_else(|| now.clone());
+    let state = InstallState {
+        format: STATE_FORMAT.into(),
+        schema_version: SCHEMA_VERSION,
+        install_dir: install_dir.display().to_string(),
+        layout,
+        data_scope,
+        first_started_at: first,
+        last_started_at: now,
+        app_version: app_version.into(),
+    };
+    let text = serde_json::to_string_pretty(&state).map_err(std::io::Error::other)?;
+    write_atomic(&local_dir.join(STATE_FILE), text.as_bytes())
+}
+
+/// Whether `path` is on another computer: a UNC path (`\\server\share`), or a drive letter Windows maps to a network
+/// share. A local path, `\\?\C:\...` and `\\.\` device paths are not.
+pub fn is_remote_path(path: &Path) -> bool {
+    let text = path.to_string_lossy().replace('/', "\\");
+    if text.starts_with(r"\\?\UNC\") {
+        return true;
+    }
+    if text.starts_with(r"\\?\") || text.starts_with(r"\\.\") {
+        return drive_is_remote(&text[4..]);
+    }
+    if text.starts_with(r"\\") {
+        return true;
+    }
+    drive_is_remote(&text)
+}
+
+#[cfg(windows)]
+fn drive_is_remote(text: &str) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    let bytes = text.as_bytes();
+    if bytes.len() < 2 || bytes[1] != b':' || !bytes[0].is_ascii_alphabetic() {
+        return false;
+    }
+    let root: Vec<u16> = std::ffi::OsStr::new(&format!("{}:\\", &text[..1]))
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    // SAFETY: `root` is a NUL-terminated UTF-16 string that lives across the call.
+    let kind = unsafe { winapi::um::fileapi::GetDriveTypeW(root.as_ptr()) };
+    kind == winapi::um::winbase::DRIVE_REMOTE
+}
+
+#[cfg(not(windows))]
+fn drive_is_remote(_text: &str) -> bool {
+    false
+}
+
+/// Whether the program runs from a temporary folder — Explorer's "open the ZIP and double-click" extracts it to
+/// `%TEMP%\Temp1_<name>.zip\` and deletes it afterwards, so every choice and the whole database would be lost.
+pub fn runs_from_temporary_folder(exe_dir: &Path, temp_dir: &Path) -> bool {
+    let exe = normalized_key_path(exe_dir);
+    let temp = normalized_key_path(temp_dir);
+    if !temp.is_empty()
+        && (exe == temp
+            || exe.starts_with(&format!("{temp}\\"))
+            || exe.starts_with(&format!("{temp}/")))
+    {
+        return true;
+    }
+    Path::new(&exe)
+        .components()
+        .any(|component| match component {
+            Component::Normal(name) => {
+                let name = name.to_string_lossy().to_lowercase();
+                name.starts_with("temp") && name.contains('_') && name.ends_with(".zip")
+            }
+            _ => false,
+        })
+}
+
+#[cfg(test)]
+#[path = "install_tests.rs"]
+mod tests;

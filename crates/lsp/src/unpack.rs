@@ -62,13 +62,33 @@ pub fn is_current(app_root: &Path, package: &Package, pack: &PackEntry) -> bool 
     unpacked_from(app_root, package).is_none_or(|sha| sha.eq_ignore_ascii_case(&pack.sha256))
 }
 
+/// How long an unpack waits for another one of the same package (on this computer or another one sharing the folder)
+/// before giving up. The biggest packs take well under a minute even over a network share.
+pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
+
 /// Unpacks `pack` for `package`, replacing an older unpacked copy.
+///
+/// Safe when several processes — on one computer or on several sharing `language-servers/` — ask at once:
+/// - one unpack per package at a time, by an operating-system lock on `language-servers/<package>/.lock` (released by
+///   the system when its holder exits, crashes or loses the network, so a dead holder never blocks anyone); the others
+///   **wait** for it instead of failing;
+/// - after the wait the folder is checked again: when the other process already unpacked this very pack, nothing is
+///   done (no second extraction);
+/// - each unpack extracts into its own staging folder (`.unpacking-<pid>-<n>`), verifies it, then publishes it with a
+///   rename. A copy being replaced is first renamed away; if a running server holds its files the rename fails and the
+///   old copy stays in place, untouched (the error says so) — an install another computer is using is never deleted;
+/// - leftovers of an interrupted unpack (staging or set-aside folders) are removed only while holding the lock, i.e.
+///   when provably nobody is using them.
 pub fn unpack(
     app_root: &Path,
     bundle: &Bundle,
     pack: &PackEntry,
     package: &Package,
 ) -> Result<(), LspError> {
+    if unpacked_current(app_root, package, pack) {
+        return Ok(());
+    }
+    // Checked before anything is written (the archive is only read).
     let archive = bundle.pack_path(pack);
     let actual = sha256_file(&archive)?;
     if !actual.eq_ignore_ascii_case(&pack.sha256) {
@@ -78,28 +98,134 @@ pub fn unpack(
         )));
     }
     let base = app_root.join("language-servers").join(package.id);
-    let staging = base.join(".unpacking");
-    if staging.exists() {
-        fs::remove_dir_all(&staging).map_err(|err| io_fail(&staging, err))?;
+    let _lock = PackageLock::acquire(&base, LOCK_WAIT)?;
+    if unpacked_current(app_root, package, pack) {
+        return Ok(()); // another process finished it while this one waited
     }
+    clear_leftovers(&base);
+    let staging = base.join(format!(".unpacking-{}-{}", std::process::id(), unique()));
     fs::create_dir_all(&staging).map_err(|err| io_fail(&staging, err))?;
-    let outcome = extract(&archive, &staging).and_then(|()| check_entries(&staging, package));
+    let outcome = extract(&archive, &staging)
+        .and_then(|()| check_entries(&staging, package))
+        .and_then(|()| {
+            fs::write(
+                staging.join(MARKER),
+                format!("{}\n", pack.sha256.to_ascii_lowercase()),
+            )
+            .map_err(|err| io_fail(&staging, err))
+        })
+        .and_then(|()| publish(&staging, &package_dir(app_root, package)));
     if let Err(err) = outcome {
         let _ = fs::remove_dir_all(&staging);
         return Err(err);
     }
-    fs::write(
-        staging.join(MARKER),
-        format!("{}\n", pack.sha256.to_ascii_lowercase()),
-    )
-    .map_err(|err| io_fail(&staging, err))?;
-    let final_dir = package_dir(app_root, package);
-    if final_dir.exists() {
-        fs::remove_dir_all(&final_dir).map_err(|err| io_fail(&final_dir, err))?;
-    }
-    fs::rename(&staging, &final_dir).map_err(|err| io_fail(&final_dir, err))?;
     remove_other_revisions(&base, package.revision);
     Ok(())
+}
+
+/// The package folder holds exactly `pack`, complete.
+fn unpacked_current(app_root: &Path, package: &Package, pack: &PackEntry) -> bool {
+    unpacked_from(app_root, package).is_some_and(|sha| sha.eq_ignore_ascii_case(&pack.sha256))
+        && check_entries(&package_dir(app_root, package), package).is_ok()
+}
+
+/// Moves a verified staging folder into place. An existing copy is renamed away first and deleted afterwards; when its
+/// files are in use the rename fails and it stays where it was.
+fn publish(staging: &Path, final_dir: &Path) -> Result<(), LspError> {
+    let retired = final_dir.with_file_name(format!(".retired-{}-{}", std::process::id(), unique()));
+    let had_old = final_dir.exists();
+    if had_old {
+        fs::rename(final_dir, &retired).map_err(|err| {
+            fail(format!(
+                "{} is in use (a language server started from it is running, here or on another computer), so it \
+                 was left as it is: {err}",
+                final_dir.display()
+            ))
+        })?;
+    }
+    if let Err(err) = fs::rename(staging, final_dir) {
+        if had_old {
+            let _ = fs::rename(&retired, final_dir);
+        }
+        return Err(io_fail(final_dir, err));
+    }
+    if had_old {
+        let _ = fs::remove_dir_all(&retired);
+    }
+    Ok(())
+}
+
+/// Staging and set-aside folders left by an unpack that stopped (a crash, a pulled cable). Called only while holding
+/// the package's lock: no unpack can be using them.
+fn clear_leftovers(base: &Path) {
+    let Ok(entries) = fs::read_dir(base) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with(".unpacking") || name.starts_with(".retired-") {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+fn unique() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default()
+}
+
+/// Holds `language-servers/<package_id>/.lock` (see [`unpack`]) — also taken by the npm, pip and native installs, so an
+/// install and an unpack of one package (on any computer sharing the folder) never write the same files at once.
+pub(crate) fn lock_package(app_root: &Path, package_id: &str) -> Result<impl Drop, LspError> {
+    PackageLock::acquire(
+        &app_root.join("language-servers").join(package_id),
+        LOCK_WAIT,
+    )
+}
+
+/// The operating-system lock on `language-servers/<package>/.lock` (see [`unpack`]).
+struct PackageLock {
+    _file: File,
+}
+
+impl Drop for PackageLock {
+    fn drop(&mut self) {
+        let _ = self._file.unlock();
+    }
+}
+
+impl PackageLock {
+    fn acquire(base: &Path, wait: std::time::Duration) -> Result<Self, LspError> {
+        fs::create_dir_all(base).map_err(|err| io_fail(base, err))?;
+        let path = base.join(".lock");
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(&path)
+            .map_err(|err| io_fail(&path, err))?;
+        let deadline = std::time::Instant::now() + wait;
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Self { _file: file }),
+                Err(fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                Err(fs::TryLockError::WouldBlock) => {
+                    return Err(fail(format!(
+                        "another OpenMind Studio (here or on another computer) has been preparing {} for more than {} \
+                         seconds; try again when it has finished",
+                        base.display(),
+                        wait.as_secs()
+                    )))
+                }
+                Err(fs::TryLockError::Error(err)) => return Err(io_fail(&path, err)),
+            }
+        }
+    }
 }
 
 fn check_entries(dir: &Path, package: &Package) -> Result<(), LspError> {
@@ -176,7 +302,9 @@ fn remove_other_revisions(base: &Path, revision: &str) {
         return;
     };
     for entry in entries.flatten() {
-        if entry.file_name() != revision {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // Only other revisions: never the lock file or anything in flight (dot-names).
+        if name != revision && !name.starts_with('.') && entry.path().is_dir() {
             let _ = fs::remove_dir_all(entry.path());
         }
     }
@@ -192,7 +320,11 @@ mod tests {
     use std::io::Write;
 
     /// A bundle in `root/lsp` holding one pack made from `files`.
-    fn bundle_with(root: &Path, files: &[(&str, &str)], sha_override: Option<&str>) -> Bundle {
+    pub(super) fn bundle_with(
+        root: &Path,
+        files: &[(&str, &str)],
+        sha_override: Option<&str>,
+    ) -> Bundle {
         let src = root.join("src files");
         for (name, text) in files {
             let path = src.join(name);
@@ -214,7 +346,7 @@ mod tests {
         load(root).expect("ok").expect("bundle")
     }
 
-    fn first_pack(bundle: &Bundle) -> PackEntry {
+    pub(super) fn first_pack(bundle: &Bundle) -> PackEntry {
         bundle.packs.first().expect("pack").clone()
     }
 
@@ -317,3 +449,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "unpack_concurrency_tests.rs"]
+mod concurrency_tests;

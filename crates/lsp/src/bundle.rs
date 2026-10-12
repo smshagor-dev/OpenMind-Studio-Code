@@ -69,9 +69,9 @@ pub struct Bundle {
     pub packs: Vec<PackEntry>,
 }
 
-/// Where the bundle lives for an app folder.
+/// Where the bundle lives for an app folder (next to the program when the data folder is elsewhere).
 pub fn bundle_dir(app_root: &Path) -> PathBuf {
-    app_root.join(BUNDLE_DIR)
+    openmind_core::paths::shipped_dir(app_root, BUNDLE_DIR)
 }
 
 /// A bundle path must stay inside `lsp/`: relative, no `..`, no drive or root.

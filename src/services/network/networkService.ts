@@ -180,9 +180,15 @@ export class NetworkService {
   /** Follows the broker's progress events (the wiring calls this once). */
   async attachBroker(): Promise<() => void> {
     if (this.host.broker === undefined) return () => undefined;
-    return this.host.broker.onProgress((event) => {
-      this.onDownload(event);
-    });
+    try {
+      return await this.host.broker.onProgress((event) => {
+        this.onDownload(event);
+      });
+    } catch (error) {
+      // The wiring starts this without waiting for it: a failed subscription must be reported, never left unhandled.
+      this.set({ error: `Download progress can't be followed: ${String(error)}` });
+      return () => undefined;
+    }
   }
 
   /** One progress event: the list follows it, and a network failure gets the card. */

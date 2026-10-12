@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::data_scope::DataScope;
 use crate::error::CoreError;
+use crate::install::InstallLayout;
 use crate::machine_paths::MachineDataPaths;
 
 const DB_FILENAME: &str = "openmind-studio.db";
@@ -77,6 +78,14 @@ pub struct AppPaths {
     pub settings_file: PathBuf,
     /// The user keybindings file (`settings/keybindings.json`).
     pub keybindings_file: PathBuf,
+    /// How this copy was installed (see [`crate::install`]); decides where the writable state lives.
+    pub layout: InstallLayout,
+    /// The program's own folder: the read-only files shipped with it (`lsp/`, `python-bundle/`, `bin/`). The same as
+    /// `root_dir` except where the program's folder is not where its data goes (the per-machine install).
+    pub install_dir: PathBuf,
+    /// `settings/` of the installation itself: shared definitions an administrator can add for every computer
+    /// (`runtime-manifests/`). The same as `settings_dir` except in a network installation.
+    pub shared_settings_dir: PathBuf,
 }
 
 impl AppPaths {
@@ -118,6 +127,9 @@ impl AppPaths {
         Self {
             scope: DataScope::Personal,
             machine: None,
+            layout: InstallLayout::Portable,
+            install_dir: root_dir.clone(),
+            shared_settings_dir: settings_dir.clone(),
             shared_db_path: db_path.clone(),
             search_index_dir: data_dir.join("search-index"),
             ai_dir: data_dir.join("ai"),
@@ -166,8 +178,53 @@ impl AppPaths {
         }
     }
 
-    /// Create every directory in the layout if it doesn't exist yet (and, per computer, its `machine.json`).
+    /// The same paths, recorded as installed with `layout` (the per-user setup keeps the one-profile layout next to the
+    /// program).
+    pub fn with_layout(mut self, layout: InstallLayout) -> Self {
+        self.layout = layout;
+        self
+    }
+
+    /// The per-machine install (Program Files, read-only for users): every Windows user's whole layout — database,
+    /// settings, runtimes, tools, language servers, extensions — in their own `local_dir`
+    /// ([`crate::install::local_install_dir`]); only the files shipped with the program are read from `install_dir`.
+    pub fn per_machine_install(install_dir: PathBuf, local_dir: PathBuf) -> Self {
+        Self {
+            layout: InstallLayout::PerMachine,
+            install_dir,
+            ..Self::from_root(local_dir)
+        }
+    }
+
+    /// A network installation: the program, runtimes, tools, language servers, extensions and downloads are shared in
+    /// `install_dir` (installed once for every computer); the database, logs, WebView profile, search index, AI history,
+    /// temporary files, MariaDB's folders **and the settings** are this computer's and this Windows user's, in `local`
+    /// (on the computer's own disk — SQLite never runs over the network).
+    pub fn network(install_dir: PathBuf, local: MachineDataPaths) -> Self {
+        let settings_dir = local.root.join("settings");
+        let shared = Self::per_machine(install_dir.clone(), local);
+        Self {
+            layout: InstallLayout::Network,
+            install_dir,
+            settings_file: settings_dir.join(SETTINGS_FILENAME),
+            keybindings_file: settings_dir.join(KEYBINDINGS_FILENAME),
+            settings_dir,
+            ..shared
+        }
+    }
+
+    /// A file or folder shipped with the program (`lsp`, `python-bundle` ...).
+    pub fn shipped(&self, name: &str) -> PathBuf {
+        self.install_dir.join(name)
+    }
+
+    /// Create every directory in the layout if it doesn't exist yet (and, per computer, its `machine.json`). In a
+    /// network installation the shared folders are only created when possible: users often may only read the share,
+    /// and an administrator creates them when installing.
     pub fn ensure_dirs(&self) -> Result<(), CoreError> {
+        if self.layout == InstallLayout::Network {
+            return self.ensure_network_dirs();
+        }
         if let Some(machine) = &self.machine {
             machine
                 .ensure_dirs()
@@ -192,6 +249,53 @@ impl AppPaths {
         }
         Ok(())
     }
+
+    fn ensure_network_dirs(&self) -> Result<(), CoreError> {
+        let machine = self.machine.as_ref().ok_or_else(|| CoreError::CreateDir {
+            path: self.db_path.clone(),
+            source: std::io::Error::other(
+                "a network installation needs this computer's local folder",
+            ),
+        })?;
+        for dir in [
+            &machine.root,
+            &machine.logs,
+            &machine.cache,
+            &machine.state,
+            &machine.temp,
+            &self.settings_dir,
+        ] {
+            std::fs::create_dir_all(dir).map_err(|source| CoreError::CreateDir {
+                path: dir.clone(),
+                source,
+            })?;
+        }
+        for dir in [
+            &self.cache_dir,
+            &self.runtimes_dir,
+            &self.extensions_dir,
+            &self.themes_dir,
+        ] {
+            if let Err(err) = std::fs::create_dir_all(dir) {
+                tracing::warn!(path = %dir.display(), error = %err, "a shared folder of the network installation can't be created here; it is used read-only");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A folder shipped with the program (`lsp`, `python-bundle`): `<app_root>/<name>` when it is there, else next to the
+/// running program — where the per-machine install keeps it while each user's data folder is elsewhere.
+pub fn shipped_dir(app_root: &Path, name: &str) -> PathBuf {
+    let in_root = app_root.join(name);
+    if in_root.exists() {
+        return in_root;
+    }
+    std::env::current_exe()
+        .ok()
+        .map(|exe| exe_dir_of(&exe).join(name))
+        .filter(|beside| beside.exists())
+        .unwrap_or(in_root)
 }
 
 /// The folder holding the executable (`.` when it has none).
@@ -542,3 +646,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "paths_layout_tests.rs"]
+mod layout_tests;

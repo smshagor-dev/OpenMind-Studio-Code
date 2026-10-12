@@ -55,8 +55,22 @@ On Windows 11 these appear under **Show more options** (the classic menu). The n
 
 ## NSIS (per user)
 
-The Welcome page has two check boxes, both unchecked on a first install. On a reinstall or update they start with the
-earlier choice.
+**Installation type.** The Welcome page asks first (the labels are presentation only; the stored values are `per-user` and `network`):
+
+- **For Me** — the default: this Windows user on this computer. No administrator rights. The data lives next to the program
+  (`%LOCALAPPDATA%\OpenMind Studio` or the folder chosen on the next page).
+- **Recommended for All Users** — one installation in a shared network folder that several computers run: install into a shared folder such as `\\server\apps\OpenMind Studio`
+  (you need permission to write there). Runtimes and tools installed into that folder are shared by every computer;
+  each computer and Windows user keeps their own database, settings and logs on their own disk. See
+  `docs/deployment.md` for shortcuts on the other computers.
+
+After copying the files the installer runs `OpenMindStudio.exe --integration set-layout per-user` or `... network`,
+which writes `install.json` next to the program; the app reads it at every start and never shows the data-scope setup.
+A network install also runs `--integration desktop-shortcut` (the installing user's Desktop, pointing at the UNC path).
+Silent: `/NETWORK`. An update keeps the earlier choice (read from `install.json`); the uninstaller removes
+`install.json` with the program (each computer's local data is kept).
+
+Then two check boxes, both unchecked on a first install. On a reinstall or update they start with the earlier choice.
 
 - **Checked:** after copying the files, the installer runs `OpenMindStudio.exe --integration add-path` and/or
   `add-explorer`.
@@ -98,6 +112,14 @@ msiexec /i OpenMind-Studio-0.1.0-x64.msi ADDTOPATH=1 EXPLORERMENU=1
 
 Both are components of `src-tauri/wix/integration.wxs`. Windows Installer removes exactly these on uninstall. The MSI's
 wizard has no check boxes for them; they are command-line properties.
+
+The MSI always installs `install.json` with the layout `perMachine` (component `OmInstallLayout`). The program folder is
+read-only for users, so every Windows user keeps their whole layout — database, settings, logs, runtimes, tools,
+language servers, extensions — in `%LOCALAPPDATA%\OpenMind\Studio\Installations\<install key>\`; the offline language
+server and Python bundles are read from the program folder. A database an earlier version left next to the program
+(possible only when it ran as administrator) is copied into the first user's folder once and left where it was. Before
+this, a standard user's first start of an MSI install stopped before any window appeared, because the app tried to
+create `data\` inside Program Files.
 
 **Not tested:** the MSI install/uninstall. It needs administrator rights, which the development machine's session
 doesn't have. The MSI build and the WiX source checks (`release.mjs`) run on every release build.

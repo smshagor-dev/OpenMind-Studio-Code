@@ -17,5 +17,11 @@ fn main() {
     // The compiler version, for Help > About and "Copy system info". Only read at build time.
     let rustc = first_line("rustc", &["--version"], "unknown");
     println!("cargo:rustc-env=OPENMIND_RUSTC={rustc}");
-    tauri_build::build()
+    // Our own Windows application manifest (asInvoker, supported OS, long paths; see the file) instead of Tauri's
+    // default, which only declares Common-Controls.
+    println!("cargo:rerun-if-changed=windows-app-manifest.xml");
+    let windows = tauri_build::WindowsAttributes::new()
+        .app_manifest(include_str!("windows-app-manifest.xml"));
+    tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+        .expect("failed to run the Tauri build script");
 }

@@ -2,10 +2,14 @@
 //!
 //! [`resolve`] runs first in `main`, before logging, the database, the WebView or any service:
 //!
-//! 1. the app folder ([`AppPaths::resolve`]) and this computer's identity (`machine_identity::resolve`: read from the
-//!    computer itself, never from the drive);
-//! 2. the saved choice (`data/data-scope.json`); a portable copy that never chose opens the **setup window**
-//!    ([`SETUP_WINDOW_LABEL`]) instead of the workbench;
+//! 1. the app folder ([`AppPaths::resolve`]), **how it was installed** (`install.json`, written only by the installers;
+//!    see `openmind_core::install`) and this computer's identity (`machine_identity::resolve`: read from the computer
+//!    itself, never from the drive). The per-machine install (Program Files) and a network installation keep every
+//!    computer's and Windows user's state on that computer ([`local`]) and never show the setup window;
+//! 2. the saved choice (`data/data-scope.json`, read with retries); a portable copy that never chose opens the **setup
+//!    window** ([`SETUP_WINDOW_LABEL`]) instead of the workbench. A choice once made is never asked again: when the
+//!    file is missing or can't be read, this computer's record of it (`install-state.json` in its local folder), then
+//!    its own per-computer profile on the drive decide ([`decide`]);
 //! 3. under the OS profile lock (`openmind_core::profile_lock`): this computer's folder (`select_profile`, which checks
 //!    `machine.json`'s hash and steps around a prefix collision) and the database's preparation (`migrate::prepare_at_start`:
 //!    an import the user asked for, or the recovery of an interrupted one);
@@ -14,17 +18,19 @@
 //! Installed copies (the per-user setup, the MSI) and a Linux copy that keeps its data in the user's folder belong to one
 //! computer and keep the one-profile layout without asking; they can still switch from the workbench.
 
+mod local;
 pub mod migrate;
 
 use std::path::PathBuf;
 
 use openmind_core::data_scope::{read_choice, read_pending_import, ScopeChoice};
+use openmind_core::install;
 use openmind_core::machine_identity::{self, IdentitySource};
 use openmind_core::machine_paths::{
-    list_profiles, select_profile, MachineDataPaths, MachineProfileSummary,
+    find_own_profile, list_profiles, select_profile, MachineDataPaths, MachineProfileSummary,
 };
 use openmind_core::profile_lock::{ProfileLock, DEFAULT_WAIT};
-use openmind_core::{AppPaths, CoreError, DataScope, MachineIdentity};
+use openmind_core::{AppPaths, CoreError, DataScope, InstallLayout, MachineIdentity};
 use openmind_db::DbError;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -33,6 +39,27 @@ use migrate::ScheduledChange;
 
 /// The setup window's label; `main.tsx` shows the data-scope page for it.
 pub const SETUP_WINDOW_LABEL: &str = "data-scope-setup";
+
+/// What start-up decided, kept until the log file exists ([`resolve`] runs before logging starts; `main` writes these
+/// with [`log_start_notes`]).
+static START_NOTES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+pub(crate) fn note(text: impl Into<String>) {
+    if let Ok(mut notes) = START_NOTES.lock() {
+        notes.push(text.into());
+    }
+}
+
+/// Writes the notes [`resolve`] collected into the (now open) log.
+pub fn log_start_notes() {
+    let notes = START_NOTES
+        .lock()
+        .map(|mut notes| std::mem::take(&mut *notes))
+        .unwrap_or_default();
+    for text in notes {
+        tracing::info!(target: "openmind_studio::data_scope", "{text}");
+    }
+}
 
 /// What start-up decided, kept as managed state for the commands below.
 pub struct ScopeRuntime {
@@ -48,6 +75,10 @@ pub struct ScopeRuntime {
     pub single_computer: bool,
     /// The profile couldn't be prepared: `main` shows the start-up error window and opens no database.
     pub failure: Option<DbError>,
+    /// This installation's folder on this computer (its start record; the whole profile in the installer-managed layouts).
+    pub local_dir: Option<PathBuf>,
+    /// The program runs from a temporary folder (a ZIP opened without extracting it): nothing chosen here would last.
+    pub temporary_folder: bool,
 }
 
 /// Facts [`decide`] works from.
@@ -58,44 +89,144 @@ pub struct ScopeFacts {
     pub portable_root: bool,
     /// Installed by the per-user setup or the MSI.
     pub installed: bool,
+    /// The scope this computer recorded for this folder the last time it started (`install-state.json`, on this
+    /// computer's own disk).
+    pub remembered: Option<DataScope>,
+    /// This computer's own profile with a database exists in `data/machines/` (an earlier per-computer choice).
+    pub own_profile: bool,
 }
 
-/// The scope to start in, and whether the user must be asked first (`None`).
-pub fn decide(facts: &ScopeFacts) -> Option<DataScope> {
-    match facts.choice {
-        ScopeChoice::Chosen(scope) => Some(scope),
-        _ if !facts.portable_root || facts.installed => Some(DataScope::Personal),
-        _ => None,
+/// What start-up does about the data scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Decision {
+    /// Start in this scope. `restore`: `data/data-scope.json` was missing and is written again with it.
+    Use { scope: DataScope, restore: bool },
+    /// Nothing says which scope was chosen: the setup window asks.
+    Ask,
+    /// The saved choice couldn't be read and nothing else says what it was: start-up stops with this reason instead
+    /// of asking again (a second choice would overwrite the first one).
+    Fail(String),
+}
+
+/// The scope to start in. A completed choice is never asked again: when `data/data-scope.json` is missing, damaged or
+/// can't be read for a moment, this computer's own record of it, then the presence of its per-computer profile, decide.
+pub fn decide(facts: &ScopeFacts) -> Decision {
+    let evidence = facts
+        .remembered
+        .or(facts.own_profile.then_some(DataScope::PerMachine));
+    match (&facts.choice, evidence) {
+        (ScopeChoice::Chosen(scope), _) => Decision::Use {
+            scope: *scope,
+            restore: false,
+        },
+        _ if !facts.portable_root || facts.installed => Decision::Use {
+            scope: DataScope::Personal,
+            restore: false,
+        },
+        (ScopeChoice::NotChosen, Some(scope)) => Decision::Use { scope, restore: true },
+        (ScopeChoice::Unreadable(_) | ScopeChoice::Inaccessible(_), Some(scope)) => Decision::Use {
+            scope,
+            restore: false,
+        },
+        (ScopeChoice::NotChosen | ScopeChoice::Unreadable(_), None) => Decision::Ask,
+        (ScopeChoice::Inaccessible(reason), None) => Decision::Fail(format!(
+            "The saved data scope ({}) couldn't be read: {reason}. Nothing was changed. If OpenMind Studio runs from a \
+             network folder or a USB drive, check that it is reachable and start it again.",
+            openmind_core::data_scope::SCOPE_FILE
+        )),
     }
+}
+
+/// The program's own folder.
+fn exe_dir_or(fallback: &std::path::Path) -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(PathBuf::from))
+        .unwrap_or_else(|| fallback.to_path_buf())
+}
+
+/// How this copy was installed: `install.json` (written by the installers), else inferred (see
+/// `openmind_core::install::infer_layout`).
+fn layout_of(exe_dir: &std::path::Path) -> InstallLayout {
+    match install::read(exe_dir) {
+        install::InstallRecord::Found(meta) => return meta.layout,
+        install::InstallRecord::Unreadable(reason) => {
+            note(format!(
+                "install.json can't be used ({reason}); the installation layout is inferred"
+            ));
+        }
+        install::InstallRecord::Missing => {}
+    }
+    // This computer started this installation before: the layout the installer set then still holds (a missing or
+    // unreadable install.json must never turn a network installation into a portable copy that asks again).
+    if let Some(remembered) = install::local_install_dir(exe_dir)
+        .as_deref()
+        .and_then(install::read_state)
+        .map(|state| state.layout)
+        .filter(|layout| layout.installer_managed())
+    {
+        note(format!(
+            "install.json is missing or unreadable; the layout this computer recorded ({}) is used",
+            remembered.label()
+        ));
+        return remembered;
+    }
+    let hint = match crate::updates::install_kind() {
+        crate::updates::InstallKind::Nsis => install::InstallerHint::Nsis,
+        crate::updates::InstallKind::Msi => install::InstallerHint::Msi,
+        crate::updates::InstallKind::Portable => install::InstallerHint::Portable,
+    };
+    install::infer_layout(hint, install::is_remote_path(exe_dir))
 }
 
 /// Resolves the app folder, this computer's profile and the scope, and prepares the database. Fails only when the app
 /// folder itself can't be found; every other problem becomes [`ScopeRuntime::failure`].
 pub fn resolve() -> Result<ScopeRuntime, CoreError> {
     let base = AppPaths::resolve()?;
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(PathBuf::from));
-    let installed = !matches!(
-        crate::updates::install_kind(),
-        crate::updates::InstallKind::Portable
-    );
+    let exe_dir = exe_dir_or(&base.root_dir);
+    let layout = layout_of(&exe_dir);
+    let identity = machine_identity::resolve(&base.root_dir);
+    let local_dir = install::local_install_dir(&exe_dir);
+    let temporary_folder = install::runs_from_temporary_folder(&exe_dir, &std::env::temp_dir());
+    if temporary_folder {
+        note(format!("OpenMind Studio runs from a temporary folder ({}): a ZIP that wasn't extracted? Its data won't last", exe_dir.display()));
+    }
+    if layout.local_state() {
+        return Ok(local::resolve(layout, exe_dir, identity, local_dir));
+    }
+    let portable_root = exe_dir == base.root_dir;
     let facts = ScopeFacts {
         choice: read_choice(&base.root_dir),
-        portable_root: exe_dir.as_deref() == Some(base.root_dir.as_path()),
-        installed,
+        portable_root,
+        installed: layout != InstallLayout::Portable,
+        remembered: local_dir
+            .as_deref()
+            .and_then(install::read_state)
+            .and_then(|state| state.data_scope),
+        own_profile: portable_root && find_own_profile(&base.root_dir, &identity).is_some(),
     };
-    let identity = machine_identity::resolve(&base.root_dir);
     let unreadable = match &facts.choice {
-        ScopeChoice::Unreadable(reason) => Some(reason.clone()),
+        ScopeChoice::Unreadable(reason) | ScopeChoice::Inaccessible(reason) => Some(reason.clone()),
         _ => None,
     };
-    let decided = decide(&facts);
+    let decision = decide(&facts);
+    note(format!("layout {}; data scope decided: {decision:?} (saved choice {:?}, this computer remembers {:?}, own profile on the drive: {})", layout.label(), facts.choice, facts.remembered, facts.own_profile));
     let single_computer = !facts.portable_root || facts.installed;
+    let (decided, refused) = match &decision {
+        Decision::Use { scope, restore } => {
+            if *restore {
+                restore_choice(&base.root_dir, *scope);
+            }
+            (Some(*scope), None)
+        }
+        Decision::Ask => (None, None),
+        Decision::Fail(reason) => (None, Some(DbError::Copy(reason.clone()))),
+    };
     // While the user decides, logs and the page's WebView profile go to this computer's folder.
     let scope = decided.unwrap_or(DataScope::PerMachine);
-    let (paths, machine, failure) =
-        match prepare(&base.root_dir, scope, &identity, decided.is_some()) {
+    let (paths, machine, failure) = match refused {
+        Some(err) => (failure_paths(&base.root_dir, &identity), None, Some(err)),
+        None => match prepare(&base.root_dir, scope, &identity, decided.is_some()) {
             Ok((paths, machine)) => (paths, machine, None),
             // The database step failed: the error window names (and can only back up) this profile's own database.
             Err(Failure::Database(failed)) => {
@@ -105,16 +236,61 @@ pub fn resolve() -> Result<ScopeRuntime, CoreError> {
             Err(Failure::Profile(err)) => {
                 (failure_paths(&base.root_dir, &identity), None, Some(err))
             }
-        };
-    Ok(ScopeRuntime {
-        paths,
+        },
+    };
+    let runtime = ScopeRuntime {
+        paths: paths.with_layout(layout),
         machine,
         identity,
-        needs_setup: decided.is_none(),
+        needs_setup: decided.is_none() && failure.is_none(),
         unreadable,
         single_computer,
         failure,
-    })
+        local_dir,
+        temporary_folder,
+    };
+    if !runtime.needs_setup && runtime.failure.is_none() {
+        remember_start(&runtime);
+    }
+    Ok(runtime)
+}
+
+/// Writes the choice back when `data/data-scope.json` went missing (a copied-over folder): the next start, on any
+/// computer, finds it again. A failure only means this computer's record decides again next time.
+fn restore_choice(root: &std::path::Path, scope: DataScope) {
+    match openmind_core::data_scope::write_choice(root, scope, None) {
+        Ok(()) => note(format!(
+            "data/data-scope.json was missing; the earlier choice ({}) was restored",
+            scope.label()
+        )),
+        Err(err) => note(format!(
+            "couldn't restore data/data-scope.json ({err}); this computer's record is used"
+        )),
+    }
+}
+
+/// Records this start on this computer (see `openmind_core::install::InstallState`). A portable copy used by one
+/// person (one profile) writes nothing outside its folder, as always; a multi-computer copy and an installed one leave
+/// this small record, so a moment when the drive's own file can't be read never brings the setup back.
+pub fn remember_start(runtime: &ScopeRuntime) {
+    let Some(local) = &runtime.local_dir else {
+        return;
+    };
+    let scope = (!runtime.needs_setup).then_some(runtime.paths.scope);
+    if !runtime.paths.layout.installer_managed() && scope != Some(DataScope::PerMachine) {
+        return;
+    }
+    if let Err(err) = install::record_start(
+        local,
+        &runtime.paths.install_dir,
+        runtime.paths.layout,
+        scope,
+        env!("CARGO_PKG_VERSION"),
+    ) {
+        note(format!(
+            "couldn't record this start on this computer: {err}"
+        ));
+    }
 }
 
 /// Why [`prepare`] stopped.
@@ -166,7 +342,7 @@ fn prepare(
 /// The paths of the start-up error window when no profile folder could be prepared: its WebView profile and log in a
 /// folder of this computer (never the drive's shared `data/webview`), and as "the database" this computer's own
 /// would-be database, never the one-profile `data/openmind-studio.db` (the window can offer to back it up).
-fn failure_paths(root: &std::path::Path, identity: &MachineIdentity) -> AppPaths {
+pub(super) fn failure_paths(root: &std::path::Path, identity: &MachineIdentity) -> AppPaths {
     let machine = MachineDataPaths::new(root, identity.profile_id());
     let mut paths = AppPaths::per_machine(root.to_path_buf(), machine);
     let local = machine_identity::local_state_dir().unwrap_or_else(std::env::temp_dir);
@@ -209,6 +385,14 @@ pub struct ScopeStatus {
     pub profiles: Vec<MachineProfileSummary>,
     pub unreadable: Option<String>,
     pub single_computer: bool,
+    /// How this copy was installed (`portable`, `perUser`, `perMachine`, `network`).
+    pub layout: InstallLayout,
+    /// Set by the installer: shown, not changeable here.
+    pub managed: bool,
+    /// This computer's local folder for this installation (the managed layouts keep their data there).
+    pub local_folder: Option<String>,
+    /// The program runs from a temporary folder (a ZIP opened without extracting it).
+    pub temporary_folder: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -253,10 +437,18 @@ pub fn status(runtime: &ScopeRuntime) -> ScopeStatus {
         profiles: list_profiles(root),
         unreadable: runtime.unreadable.clone(),
         single_computer: runtime.single_computer,
+        layout: runtime.paths.layout,
+        managed: runtime.paths.layout.local_state(),
+        local_folder: runtime
+            .local_dir
+            .as_ref()
+            .filter(|_| runtime.paths.layout.local_state())
+            .map(|dir| dir.display().to_string()),
+        temporary_folder: runtime.temporary_folder,
     }
 }
 
-fn now_secs() -> u64 {
+pub(super) fn now_secs() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -293,6 +485,12 @@ pub fn data_scope_change(
 ) -> Result<ScheduledChange, String> {
     if runtime.needs_setup {
         return Err("Choose the data scope in the setup window first.".into());
+    }
+    if runtime.paths.layout.local_state() {
+        return Err(
+            "This installation keeps each computer's data on that computer; the installer set this and it can't be changed here."
+                .into(),
+        );
     }
     if mode == runtime.paths.scope {
         return Err("That is already the data scope in use.".into());

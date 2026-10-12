@@ -85,11 +85,8 @@ async fn project_of(
 
 /// pip's download cache for installs OpenMind starts: `<app>/cache/pip`, never the user's own pip cache.
 pub(crate) fn pip_cache_dir(state: &AppState) -> PathBuf {
-    let downloads = state.runtime.paths().downloads_dir();
-    downloads
-        .parent()
-        .map_or(downloads.clone(), Path::to_path_buf)
-        .join("pip")
+    // The tools' cache root: `<app>/cache`, or this computer's own in a network installation.
+    state.runtime.paths().cache_dir().join("pip")
 }
 
 /// Package-manager download caches for the processes OpenMind starts: inside `<app>/cache`, like pip's, instead of the

@@ -53,7 +53,7 @@
       "wix": {
         "language": "en-US",
         "fragmentPaths": ["wix/product-icon.wxs", "wix/integration.wxs"],
-        "componentRefs": ["OmCliPath", "OmExplorerMenu"],
+        "componentRefs": ["OmCliPath", "OmExplorerMenu", "OmInstallLayout"],
         "bannerPath": "icons/installer/wix-banner.bmp",
         "dialogImagePath": "icons/installer/wix-dialog.bmp"
       }

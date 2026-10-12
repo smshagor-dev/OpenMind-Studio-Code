@@ -7,8 +7,11 @@
 //! deletes), and removal takes away only that: a PATH entry that was already there is never recorded and never
 //! removed, and an Explorer entry pointing at another OpenMind copy is left alone.
 
+pub mod deploy;
 #[cfg(windows)]
 pub mod registry;
+#[cfg(windows)]
+pub mod shortcut;
 
 use std::fs;
 use std::path::Path;

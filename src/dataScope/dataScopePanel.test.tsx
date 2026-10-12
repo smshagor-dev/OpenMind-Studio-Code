@@ -22,6 +22,10 @@ function status(overrides: Partial<DataScopeStatus> = {}): DataScopeStatus {
     profiles: [],
     unreadable: null,
     singleComputer: false,
+    layout: "portable",
+    managed: false,
+    localFolder: null,
+    temporaryFolder: false,
     ...overrides,
   };
 }
@@ -140,5 +144,35 @@ describe("Data Scope dialog", () => {
     service.show();
     expect(listener).toHaveBeenCalledTimes(1);
     expect(service.isOpen()).toBe(true);
+  });
+
+  it("shows an installer-managed installation without any choice to make", async () => {
+    const api = fakeApi(
+      status({
+        mode: "perMachine",
+        layout: "network",
+        managed: true,
+        appFolder: "//lab-server/apps/OpenMind Studio",
+        localFolder: "C:/Users/ana/AppData/Local/OpenMind/Studio/Installations/0123456789abcdef",
+      }),
+    );
+    render(<DataScopePanel api={api} context="workbench" onClose={vi.fn()} />);
+    await screen.findByText(/network installation for all connected computers/);
+    expect(screen.getByText(/lab-server/)).toBeTruthy();
+    expect(screen.getByText(/0123456789abcdef/)).toBeTruthy();
+    expect(screen.queryAllByRole("radio")).toHaveLength(0);
+    expect(screen.queryByText("Apply")).toBeNull();
+    expect(api.apply).not.toHaveBeenCalled();
+  });
+
+  it("warns before anything is chosen when the program runs from a temporary folder", async () => {
+    render(
+      <DataScopeSetupPage
+        api={fakeApi(status({ temporaryFolder: true, appFolder: "C:/Users/x/AppData/Local/Temp/Temp1_om.zip" }))}
+      />,
+    );
+    const alert = await screen.findByText(/running from a temporary folder/);
+    expect(alert.textContent).toContain("Temp1_om.zip");
+    expect(alert.textContent).toContain("extract the ZIP");
   });
 });
