@@ -1,4 +1,7 @@
-// usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--portable-x86 <zip>] [--no-sign]
+// usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--portable-x86 <zip>] [--no-sign] [--notes <file>]
+//
+// Also writes release/latest.json, the update feed installed copies read (scripts/updateFeed.mjs): upload it with the
+// files and their .sig. OPENMIND_MINIMUM_VERSION=<x.y.z> makes older copies update (mandatory).
 //
 // `--targets` collects cross-target builds (`tauri build --target <triple>`), e.g.
 // `x86_64-pc-windows-msvc,i686-pc-windows-msvc`; without it the host build in `<target dir>/release` is collected as x64.
@@ -33,6 +36,7 @@ import {
   signatureVerdict,
 } from "./releaseTools.mjs";
 import { hasSignature, inspectSignature, signFile } from "./signtool.mjs";
+import { writeUpdateFeed } from "./updateFeed.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -160,7 +164,13 @@ for (const entry of present) {
       }
     }
   }
-  artifacts.push({ name, kind: entry.kind, size: statSync(target).size, sha256: sha256(target) });
+  artifacts.push({
+    name,
+    kind: entry.kind,
+    arch: entry.arch,
+    size: statSync(target).size,
+    sha256: sha256(target),
+  });
 }
 
 // A build is only "signed" when every signable file was signed — and Windows itself confirms each signature (trusted
@@ -194,6 +204,17 @@ const buildType =
       : config.mode
     : "unsigned";
 
+// The update feed (latest.json) for the files just collected; signed builds only (the signatures are what installed
+// copies check, and signing an installer after its .sig was made would break it).
+const feed = writeUpdateFeed({
+  out,
+  version,
+  artifacts,
+  notesFile: option("--notes") ?? null,
+  minimumVersion: process.env.OPENMIND_MINIMUM_VERSION?.trim() || null,
+});
+for (const line of feed.notes) console.log(line);
+
 writeFileSync(join(out, "SHA256SUMS.txt"), checksumsText(artifacts));
 writeFileSync(
   join(out, "RELEASE-REPORT.md"),
@@ -203,7 +224,7 @@ writeFileSync(
     buildType,
     date: new Date().toISOString(),
     artifacts,
-    notes: [`Signing: ${JSON.stringify(publicSigningInfo(config))}`, ...signatureNotes],
+    notes: [`Signing: ${JSON.stringify(publicSigningInfo(config))}`, ...signatureNotes, "", ...feed.notes],
   }),
 );
 console.log(`Wrote ${artifacts.length} artifact(s) to ${out} (${buildType}).`);

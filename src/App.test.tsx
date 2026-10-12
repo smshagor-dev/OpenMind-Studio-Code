@@ -241,11 +241,11 @@ describe("App", () => {
       "About OpenMind Studio",
     ]);
     // The ones with no service behind them are disabled and say why.
-    for (const label of ["Documentation", "Report Issue", "Check for Updates..."]) {
+    for (const label of ["Documentation", "Report Issue"]) {
       const row = within(menu).getByText(label).closest("[role=menuitem]");
       expect(row, label).toHaveAttribute("aria-disabled", "true");
     }
-    for (const label of ["Keyboard Shortcuts Reference", "View License", "Show Logs"]) {
+    for (const label of ["Keyboard Shortcuts Reference", "View License", "Show Logs", "Check for Updates..."]) {
       const row = within(menu).getByText(label).closest("[role=menuitem]");
       expect(row, label).not.toHaveAttribute("aria-disabled", "true");
     }

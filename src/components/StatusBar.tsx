@@ -9,6 +9,7 @@ import { DebugStatusItem } from "./DebugStatusItem";
 import { IndexStatusItem } from "./IndexStatusItem";
 import { FormatterStatusItem } from "./formatting/FormatterStatusItem";
 import { ProfileStatusItem } from "./profiles/ProfileStatusItem";
+import { UpdateStatusItem } from "./updates/UpdateStatusItem";
 import { LanguageStatusItem } from "./language/LanguageStatusItem";
 import { GitBranchIndicator } from "./GitBranchIndicator";
 import { LspStatusItem } from "./LspStatusItem";
@@ -89,6 +90,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
         <LanguageStatusItem />
         <FormatterStatusItem />
         <ProfileStatusItem />
+        <UpdateStatusItem />
         {showBranch ? (
           <GitBranchIndicator
             className="statusbar__item"

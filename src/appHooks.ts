@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { container } from "./services/container";
 import { StartupTimings } from "./services/startupTimings";
+import { startUpdates } from "./services/updates";
 import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./services/ipc";
 
 const TOAST_LIFETIME_MS = 6000;
@@ -92,6 +93,8 @@ export function useAppStartup(): boolean {
         container.startLanguageTools(),
         container.startDebugTools(),
         container.git.initialize(),
+        // Follows the backend's update schedule (nothing is checked or downloaded from here).
+        startUpdates(),
         // Reads the open folder's manifests (nothing runs, nothing installs).
         container.dependencies.initialize(),
         // A joined room's shared tree and remote documents follow `collab:remote` (nothing is fetched here).

@@ -218,7 +218,7 @@ describe("menus and settings text", () => {
       "Настроить модуль форматирования по умолчанию",
     );
     expect(submenuLabel("PowerShell")).toBe("PowerShell");
-    expect(unbuiltReason("help.checkForUpdates")).toContain("OpenMind Studio");
+    expect(unbuiltReason("help.reportIssue")).toContain("OpenMind Studio");
     expect(unbuiltReason("nothing.known")).toBe("Эта функция пока не реализована.");
   });
 

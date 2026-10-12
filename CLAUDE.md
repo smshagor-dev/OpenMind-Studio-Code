@@ -3056,6 +3056,23 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   longer leaves an unhandled rejection (the `tabBarScroll.test.tsx` exit code). A missing/unreadable `install.json` falls back
   to this computer's recorded layout. `runtime_verify` runs a `.phar` with `OPENMIND_PHP`. Pilot package:
   `docs/pilot/multi-pc-pilot.md` + `scripts/pilot/Collect-PilotEvidence.ps1`; draft notes `docs/release-notes-next.md`.
+- [x] **Automatic updates from GitHub Releases** (after the stabilization pass). Root causes: no release ever had
+  `latest.json` or `.sig` assets (the endpoint answered 404; `latestJson()` existed but nothing called it), and nothing in
+  the frontend ever called `update_check` (only the backend commands existed). Now: `src-tauri/src/updates/` (`policy` pure
+  rules — stable-only, no downgrade, `openmind.minimumVersion` mandatory, `SelfUpdate` installer/portable/managed, backoff,
+  failure kinds; `flow` check → download+verify (SHA-256 of the verified bytes rechecked before install) → install now /
+  at exit under an OS install lock, refused while any window has unsaved editors or without confirmation when terminals
+  or runs are busy (`install_blocker`); `scheduler` first check 45 s after start, then 6 h, backoff after failures;
+  `portable` signed archive (minisign, built-in key, signed version required), safe unpack via the Runtime Manager's
+  extractor, all-or-nothing swap of `REPLACEABLE` program items with rollback, `finish_previous_update` at start).
+  `plugins.updater.requireSignedVersion` on. Setting `updates.automatic` (default on). Frontend `src/services/updates/`
+  (`UpdateService`, pure `updateModel`, module-level instance because container.ts is at its limit) + status bar item,
+  dialog, `MandatoryUpdateOverlay` (blocks only when ready and installable; Continue for Now after a failed install);
+  commands `help.checkForUpdates`, `update.restart`, `update.showDetails`. Release: `scripts/updateFeed.mjs` signs the
+  portable ZIP and writes `release/latest.json` (x64/x86, -nsis/-msi/plain, portable section, `OPENMIND_MINIMUM_VERSION`);
+  workflow binds `--app-version`. E2E verified locally with a throwaway key and a localhost feed (installer on close,
+  mandatory overlay + Restart, portable swap, bad signature refused, network client only notified). Copies ≤ 1.0.2 must
+  install the next release once by hand.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. **Not started**; not scoped in detail yet.
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,

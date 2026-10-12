@@ -169,6 +169,50 @@ Integration` are gone. Every other PATH entry is as before.
    - MSI, only with administrator rights: `msiexec /i ... ADDTOPATH=1 EXPLORERMENU=1`, then uninstall and check the
      machine PATH and `HKLM\Software\Classes`.
 
+## Automatic updates (GitHub Releases)
+
+Every installed or portable copy checks
+`https://github.com/smshagor-dev/OpenMind-Studio/releases/latest/download/latest.json` 45 seconds after start-up and
+then every 6 hours (after a failure sooner, 1 → 2 → 4 … minutes, at most an hour; offline is just a failed check).
+GitHub resolves `releases/latest` to the newest **published, non-pre-release** release, which is the stable channel.
+
+**What a release must contain** — or no copy can update to it:
+
+1. Each installer **with its update signature**: `OpenMind-Studio-Setup-<v>-x64.exe` + `.exe.sig`,
+   `OpenMind-Studio-<v>-x64.msi` + `.msi.sig` (and the `x86` ones). `tauri build` makes the `.sig` files when the updater
+   key is in the environment (`pnpm release:build` does it through `scripts/tauri-signed.mjs`; CI uses the
+   `TAURI_UPDATER_KEY` secret). Each signature carries the version (`version:<v>` in its trusted comment) and the app
+   requires that (`plugins.updater.requireSignedVersion`), so a tampered feed can't pair a new number with an old file.
+2. The portable archive `OpenMind-Studio-<v>-x64-portable.zip` + `.zip.sig` — `release.mjs` signs it with the same key,
+   bound to the version.
+3. **`latest.json`**, written by `release.mjs` from exactly those files (`scripts/updateFeed.mjs`): `windows-x86_64`,
+   `-nsis`, `-msi` (and `windows-i686…`) with the release's own download addresses, plus an `openmind` section (`channel`,
+   the signed portable archives, and `minimumVersion` when set). It is not written when an installer has no `.sig`.
+
+Upload all of them as assets of the release `v<version>`; publish it as a normal (not pre-) release last.
+
+**Mandatory update**: run `release.mjs` with `OPENMIND_MINIMUM_VERSION=<x.y.z>` (CI: the repository variable of that
+name). Copies older than it show "Update required" — only once the update is downloaded, verified and can be installed
+on that computer; a computer that can't (offline, no permission, a shared installation) keeps working. Leave it unset
+for an ordinary release.
+
+**How each copy takes it** (`src-tauri/src/updates/`):
+
+| Copy | Behaviour |
+| --- | --- |
+| Per-user setup ("For Me") | downloads and verifies in the background; installs when the app is closed, or at once with Restart to Update; no administrator rights |
+| MSI (Program Files) | the same; Windows asks for administrator approval when the installer runs (never bypassed) |
+| Portable ZIP | downloads the signed portable archive, verifies it, and at Restart to Update replaces only the program's own files (`OpenMindStudio.exe`, `lsp/`, `python-bundle/`, `bin/`, `README.txt`), all or nothing; data, settings, runtimes, tools and extensions stay |
+| Shared network installation ("Recommended for All Users") | only shows "Version x is available": it is updated by whoever installed it (run the new setup on that computer with the shared folder, while nobody uses it); no client ever writes the share |
+
+Never automatic: closing the app, stopping a running build or terminal without asking, saving or discarding an editor.
+Restart to Update is refused while any window has unsaved editors, and asks before stopping running terminals or Run
+Code programs. Settings > Workbench > **Automatic Updates** (`updates.automatic`, on by default) off = only notify.
+
+**Copies of 1.0.2 and older don't update themselves**: they contain no code that checks (only the backend command
+existed) and 1.0.0–1.0.2 were published without `latest.json`. Each needs the first release with automatic updates to be
+installed once by hand; every later release then arrives automatically.
+
 ## Release gate
 
 A release is published only when all of these hold; otherwise it is **PILOT-READY** (everything but the real-hardware

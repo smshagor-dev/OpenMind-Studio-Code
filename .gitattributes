@@ -5,3 +5,6 @@ crates/db/migrations/*.sql text eol=lf
 # Command-line launchers shipped in <install>\bin: batch files need CRLF, the Git Bash script LF.
 src-tauri/cli/*.cmd text eol=crlf
 src-tauri/cli/openmind text eol=lf
+
+# Signed test fixtures: the signatures cover these exact bytes, so line endings must never be converted.
+src-tauri/src/updates/fixtures/* -text
