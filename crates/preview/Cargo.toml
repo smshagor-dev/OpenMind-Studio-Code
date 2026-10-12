@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-openmind-fs = { version = "1.0.2", path = "../fs" }
+openmind-fs = { version = "1.0.3", path = "../fs" }
 roxmltree = "0.21"
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
