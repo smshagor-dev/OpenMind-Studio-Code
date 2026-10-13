@@ -1,95 +1,86 @@
 # OpenMind Studio
 
-A portable, native desktop code editor built with Rust, Tauri 2, React, and Monaco Editor.
-Not a web app — everything runs from the application's own directory, with no admin rights and
-no dependency on globally installed software.
+A portable, native desktop code editor built with Rust, Tauri 2, React and Monaco Editor. It runs from its own folder:
+no administrator rights, no dependency on globally installed software, and nothing written to the Registry, `PATH` or
+`AppData` unless you choose an installer option that says so.
 
-OpenMind Studio is the desktop IDE in the OpenMind ecosystem:
-
-- **OpenMind Studio** — Desktop IDE (this project)
-- **OpenMind AI** — AI Assistant (future)
-- **OpenMind Runtime** — Portable Runtime Manager (built in: Node.js, Python, Git, PHP, Composer, MariaDB, phpMyAdmin)
-- **OpenMind Extensions** — extension ecosystem (future)
-- **OpenMind Sync** / **OpenMind Cloud** — future
+- **Downloads:** [github.com/smshagor-dev/OpenMind-Studio/releases](https://github.com/smshagor-dev/OpenMind-Studio/releases)
+- **Source:** this repository · **Licence:** [Apache-2.0](LICENSE) · **Third-party licences:** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- **Security reports:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Privacy:** [docs/PRIVACY.md](docs/PRIVACY.md)
 
 ## What it does
 
-Explorer, Monaco editor with tabs and split editors, integrated terminal, Run Code, a Git client,
-language servers (LSP) with a Problems panel, a debugger for Python and Node.js (DAP), a portable PHP
-stack with a control panel, and Settings, Keyboard Shortcuts and themes (Dark, Light, High Contrast,
-System) you can edit from a page or as JSON.
+- Explorer, Monaco editor with tabs and split editors, Markdown and file previews (images, PDF, DOCX, XLSX, CSV).
+- Integrated terminal (PowerShell, cmd, Git Bash, WSL), Run Code for Python, JavaScript/TypeScript, PHP, C, C++, Java,
+  Rust and assembly, and a built-in browser for HTML.
+- Git client: changes, staging, commits, diffs, branches, clone, history, blame, stash.
+- Language servers (LSP) and a Problems panel; an offline bundle of language servers and formatters ships with the
+  Windows packages.
+- Debugger for Python and Node.js (DAP), tasks (`tasks.json`) and notebooks.
+- Runtime Manager: portable Node.js, Python, Git, PHP, Composer, MariaDB/phpMyAdmin, JDK, Go, .NET and more, installed
+  into the app's folder on request; a PHP/MySQL control panel.
+- A VS Code-compatible extension subset (local `.vsix` and Open VSX), AI chat with providers you configure, and
+  local-first collaboration (preview).
+- Settings, keyboard shortcuts, themes and profiles; English and Russian.
 
-## Portable edition
+## Platforms
 
-Download `OpenMindStudio-<version>-portable-win-x64.zip`, unzip it anywhere (a USB drive, a path with
-spaces) and run `OpenMindStudio.exe`. Nothing is installed; no administrator rights are needed; your
-Registry, `AppData` and `PATH` are never touched. Everything the app keeps is next to the executable:
+| Platform | Packages |
+| --- | --- |
+| Windows 10/11, x64 and x86 | NSIS setup (per user, or a shared network folder), MSI (per machine), portable ZIP |
+| Linux x64 and x86 | `.deb`, AppImage, portable `.tar.gz` (needs WebKitGTK 4.1, GTK 3) |
 
-```text
-OpenMind Studio/
-    OpenMindStudio.exe
-    data/openmind-studio.db   SQLite (WAL)
-    settings/                 settings.json, keybindings.json
-    runtimes/                 portable Node.js, Python, Git, PHP ... (installed from the Runtime Manager)
-    cache/  logs/  language-servers/
-```
+The offline language-server and Python bundles and the Runtime Manager's downloads are Windows-only. Linux copies are
+told about new versions but update through their package (see [docs/release.md](docs/release.md)).
 
-A folder's own settings live inside the project, in `.openmind/settings.json`.
+## Building from source
 
-## Settings and shortcuts
-
-`Ctrl+,` opens Settings (User and Workspace, searchable, with Reset per setting); "Open Settings (JSON)"
-edits the same file by hand and saving it applies it. Keyboard Shortcuts lists every command, lets you
-change, remove and reset a key, warns about conflicts, and stores your changes in `keybindings.json`.
-
-## Tech stack
-
-Rust · Tokio · Tauri 2 · SQLite (WAL, via `sqlx`) · React 19 · TypeScript (strict) · Vite · pnpm ·
-Monaco Editor.
-
-## Getting started (development)
-
-Prerequisites: a stable Rust toolchain (pinned in `rust-toolchain.toml`), Node.js, and pnpm.
+Prerequisites: Rust (the version CI uses is in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)), Node.js 24 and
+pnpm 11. On Linux also the WebKitGTK 4.1 development packages (listed in the same workflow).
 
 ```sh
-pnpm install     # frontend dependencies
-pnpm tauri dev   # run the app in development mode
-```
+pnpm install --frozen-lockfile
+pnpm tauri dev                 # run the app in development mode
 
-Other useful commands:
-
-```sh
-cargo build --workspace   # build all Rust crates
-cargo test --workspace    # run Rust tests
+cargo fmt --all -- --check     # the checks CI runs on every pull request
 cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --check
-
-pnpm build   # type-check and build the frontend
-pnpm lint    # ESLint
-pnpm test    # Vitest
+cargo test --workspace
+pnpm lint && pnpm exec tsc --noEmit -p . && pnpm test && pnpm build
 ```
 
-## Packaging
+Release packages are built by the [Release workflow](.github/workflows/release-windows.yml) on GitHub-hosted runners
+from this repository; [docs/release.md](docs/release.md) describes the same steps locally (offline bundles, x86 builds,
+the Linux script, verification). Release files are written to `release/v<version>/` and are never committed.
 
-```sh
-pnpm package:portable      # release build + dist-portable/OpenMindStudio-<version>-portable-win-x64.zip (+ .sha256)
-pnpm package:installer     # per-user NSIS installer (tauri build --bundles nsis)
-```
+## Code signing policy
 
-Neither is code-signed. The installer installs for the current user (no administrator rights); the
-app is exe-relative either way, so an installed copy keeps its data next to the installed executable.
+**Status: applied for, not yet approved.** Until approval, Windows releases are **not** Authenticode-signed and Windows
+SmartScreen will warn about them. Update packages are always signed with OpenMind Studio's own updater key and checked
+by the app before installing.
+
+When approved: free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org). Only files built by the Release workflow from this repository's `main`
+branch are submitted for signing, and every release is approved by hand.
+
+| Role | Members |
+| --- | --- |
+| Committers and reviewers | [Md Shahanur Islam Shagor (@smshagor-dev)](https://github.com/smshagor-dev) |
+| Approvers | [Md Shahanur Islam Shagor (@smshagor-dev)](https://github.com/smshagor-dev) |
+
+Privacy policy: see [docs/PRIVACY.md](docs/PRIVACY.md). This program will not transfer any information to other
+networked systems unless specifically requested by the user or the person installing or operating it, except the two
+automatic requests described there: the update check (GitHub) and, while the Extensions view is shown, the Open VSX
+marketplace list (can be turned off).
 
 ## Project layout
 
-See [`CLAUDE.md`](CLAUDE.md) for the full architecture (clean-architecture crate boundaries,
-persistence model, coding rules) and the milestone roadmap. In short:
+- `crates/*` — domain crates (core, database, settings, file system, workspace, terminal, runtime manager, runner, Git,
+  LSP, DAP, search, extensions, AI, network, collaboration …).
+- `src-tauri/` — the Tauri application (the executable is `OpenMindStudio.exe`).
+- `src/` — the React/TypeScript user interface.
+- `docs/` — design notes and operating guides; [`CLAUDE.md`](CLAUDE.md) is the detailed architecture and milestone log.
 
-- `crates/*` — domain crates (`openmind-core`, `-db`, `-settings`, `-fs`, `-workspace`, `-terminal`,
-  `-runtime-manager`, `-runner`, `-git`, `-lsp`, `-dap`, `-search`, `-file-watch`, `-process`).
-- `src-tauri` — the Tauri application (composition root, Cargo package `openmind-studio`; the built
-  executable is `OpenMindStudio.exe`).
-- `src/` — the React/TypeScript frontend.
+## Licence
 
-## License
-
-Apache License 2.0 (`Apache-2.0`).
+OpenMind Studio is licensed under the Apache License 2.0 ([LICENSE](LICENSE)). Third-party components keep their own
+licences; the packages ship them in `THIRD-PARTY-LICENSES.txt` (generated by `pnpm licenses:generate`).

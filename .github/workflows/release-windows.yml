@@ -29,6 +29,12 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      signing:
+        description: "Windows Authenticode signing: required (production; fails when SignPath isn't set up) or test-unsigned"
+        type: choice
+        options: [required, test-unsigned]
+        default: required
 
 permissions:
   contents: read
@@ -41,7 +47,24 @@ env:
   TAURI_CLI_VERSION: "2.11.5"
 
 jobs:
+  signing-gate:
+    # Fails closed: a production run can't silently produce unsigned Windows files.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: SignPath must be set up for a production run
+        env:
+          SIGNING: ${{ inputs.signing }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          if [ "$SIGNING" = "required" ] && [ -z "$SIGNPATH_ORGANIZATION_ID" ]; then
+            echo "::error::Signing is required, but SignPath is not set up (repository variable SIGNPATH_ORGANIZATION_ID). Nothing was built."
+            exit 1
+          fi
+          echo "Signing: $SIGNING"
+
   checks:
+    needs: signing-gate
     uses: ./.github/workflows/ci.yml
 
   windows:
@@ -70,7 +93,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Rust ${{ env.RUSTUP_TOOLCHAIN }} for ${{ matrix.triple }}
         run: rustup toolchain install ${{ env.RUSTUP_TOOLCHAIN }} --profile minimal --target ${{ matrix.triple }}
@@ -122,7 +144,7 @@ jobs:
 
       - name: Sign the program (SignPath)
         if: env.SIGNPATH_ENABLED == 'true'
-        uses: signpath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1.3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -160,7 +182,7 @@ jobs:
 
       - name: Sign the installers (SignPath)
         if: env.SIGNPATH_ENABLED == 'true'
-        uses: signpath/github-action-submit-signing-request@ced31329c0317e779dad2eec2a7c3bb46ea1343e # v1.3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -232,7 +254,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Frontend (dist/, used by both architectures)
         run: |
@@ -299,7 +320,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -369,10 +389,30 @@ jobs:
           node scripts/verify-updater-signatures.mjs --require-all
           exit $LASTEXITCODE
 
+      - name: Verify the Authenticode signatures (installers, and the program inside each portable ZIP)
+        # release.mjs already checked the setups and MSIs (SIGNING_EXTERNAL); this adds the portable program and asks
+        # Windows again for every file: a trusted chain, unchanged bytes and an RFC 3161 timestamp.
+        if: inputs.signing == 'required'
+        shell: pwsh
+        run: |
+          $dir = Get-ChildItem release -Directory -Filter 'v*' | Select-Object -First 1
+          $files = @(Get-ChildItem "$($dir.FullName)/windows" -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object FullName)
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          foreach ($zip in Get-ChildItem "$($dir.FullName)/windows/*_portable.zip") {
+            $archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+            $entry = $archive.Entries | Where-Object { $_.FullName -like '*/OpenMindStudio.exe' } | Select-Object -First 1
+            $exe = Join-Path $env:RUNNER_TEMP ("portable-" + $zip.BaseName + ".exe")
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $exe, $true)
+            $archive.Dispose()
+            $files += $exe
+          }
+          node scripts/verify-signatures.mjs --mode external @files
+          exit $LASTEXITCODE
+
       - name: Keep the release files
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: openmind-studio-release
+          name: ${{ inputs.signing == 'required' && 'openmind-studio-release' || 'openmind-studio-release-UNSIGNED-TEST-ONLY' }}
           # release/v<version>/ (windows/, linux/, SHA256SUMS.txt, latest.json, RELEASE-REPORT.md); not release/staging/.
           path: release/v*/
           if-no-files-found: error

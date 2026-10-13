@@ -362,6 +362,12 @@ export function checkInstallerConfig(tauri, licenseText) {
       'bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).',
     );
   }
+  // MIT/Apache/BSD components require their notices in a binary distribution (scripts/third-party-licenses.mjs).
+  if (bundle.resources?.["../licenses/THIRD-PARTY-LICENSES.txt"] !== "THIRD-PARTY-LICENSES.txt") {
+    problems.push(
+      'bundle.resources must copy "../licenses/THIRD-PARTY-LICENSES.txt" to "THIRD-PARTY-LICENSES.txt" (third-party licences).',
+    );
+  }
   return problems;
 }
 

@@ -9,9 +9,12 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gunzipSync, inflateRawSync } from "node:zlib";
+import { gunzipSync } from "node:zlib";
 
 import { releaseDir, releaseKindOf } from "./releaseTools.mjs";
+import { zipEntry } from "./zipRead.mjs";
+
+export { zipEntry };
 
 const PE = { 0x8664: "x64", 0x14c: "x86" };
 const ELF = { 0x3e: "x64", 0x03: "x86" };
@@ -60,31 +63,6 @@ export function arEntries(ar) {
     offset += 60 + size + (size % 2);
   }
   return entries;
-}
-
-/** One file out of a ZIP, found through the central directory (stored or deflated). */
-export function zipEntry(zip, wanted) {
-  let end = zip.length - 22;
-  while (end >= 0 && zip.readUInt32LE(end) !== 0x06054b50) end -= 1;
-  if (end < 0) throw new Error("not a ZIP archive");
-  let offset = zip.readUInt32LE(end + 16);
-  const count = zip.readUInt16LE(end + 10);
-  for (let i = 0; i < count; i += 1) {
-    const method = zip.readUInt16LE(offset + 10);
-    const compressed = zip.readUInt32LE(offset + 20);
-    const nameLength = zip.readUInt16LE(offset + 28);
-    const extra = zip.readUInt16LE(offset + 30);
-    const comment = zip.readUInt16LE(offset + 32);
-    const local = zip.readUInt32LE(offset + 42);
-    const name = zip.subarray(offset + 46, offset + 46 + nameLength).toString("utf8").replace(/\\/g, "/");
-    if (wanted(name)) {
-      const start = local + 30 + zip.readUInt16LE(local + 26) + zip.readUInt16LE(local + 28);
-      const data = zip.subarray(start, start + compressed);
-      return { name, data: method === 0 ? data : inflateRawSync(data) };
-    }
-    offset += 46 + nameLength + extra + comment;
-  }
-  return null;
 }
 
 function debArch(bytes) {

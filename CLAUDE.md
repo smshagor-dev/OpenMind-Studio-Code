@@ -3172,7 +3172,18 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   (push/PR, pinned actions/toolchains, contents: read; Linux job is `cargo check` until its 37 cfg warnings are cleaned)
   and `release-windows.yml` ("Release": checks → Windows x64/x86 + Linux x64/x86 → collect + verify; never publishes).
   pnpm/action-setup needs an explicit `version` (no `packageManager` field). Installer upgrade test: Windows Sandbox kit
-  `scripts/upgrade-test/` (not run: Sandbox isn't enabled on the dev PC). The x86
+  `scripts/upgrade-test/` (not run: Sandbox isn't enabled on the dev PC).
+- [ ] **Open-source publication + SignPath Foundation (prepared, not done).** The source repository is still private;
+  making it public and applying to SignPath are owner decisions. Prepared: full-history secret audit (gitleaks + own
+  patterns: no secret; commit e-mail `smshagor.ru@gmail.com` would become public), licence audit, generated
+  `licenses/THIRD-PARTY-LICENSES.txt` (`scripts/third-party-licenses.mjs`, `pnpm licenses:generate`, run by `pnpm build`;
+  Rust crates for the release targets via `cargo metadata --filter-platform`, npm prod packages, Python wheels, LSP
+  notices; SPDX fallback texts in `licenses/spdx/`; `--check` fails on a component without a licence) shipped in every
+  package (Tauri resource; portable ZIP and tar.gz too; `checkInstallerConfig` requires it), README with a pending
+  "Code signing policy", `docs/PRIVACY.md`, SECURITY/CONTRIBUTING/CODE_OF_CONDUCT, `docs/signpath/` (requirements with
+  sources, setup, artifact configurations, policy text for the release repo, application draft). Release workflow:
+  `signing` input (`required` fails closed), SignPath action v3.0, no build caches, portable program's signature
+  verified. Note: the update check runs even with Automatic Updates off (only the download is optional). The x86
   Windows build needs NASM (see `docs/release.md`); tests no longer write the user's HKCU installations record (they had
   filled it with deleted temp folders, and its default value — the folder the setup checks first — pointed at one); the
   flaky `a_shared_portable_copy_…` test (a `-wal` deleted between listing and reading, ~1 in 5 runs) is fixed. The

@@ -53,6 +53,9 @@ stage="$CARGO_TARGET_DIR/portable-stage"
 rm -rf "$stage"
 mkdir -p "$stage/OpenMind Studio"
 install -m 755 "$built/OpenMindStudio" "$stage/OpenMind Studio/OpenMindStudio"
+[ -f "$root/licenses/THIRD-PARTY-LICENSES.txt" ] || { echo "licenses/THIRD-PARTY-LICENSES.txt is missing: run 'pnpm build'." >&2; exit 1; }
+install -m 644 "$root/LICENSE" "$stage/OpenMind Studio/LICENSE"
+install -m 644 "$root/licenses/THIRD-PARTY-LICENSES.txt" "$stage/OpenMind Studio/THIRD-PARTY-LICENSES.txt"
 label=$([ "$arch" = x64 ] && echo "x86_64" || echo "x86, 32-bit")
 cat > "$stage/OpenMind Studio/README.txt" <<README
 OpenMind Studio $version - portable (Linux $label)

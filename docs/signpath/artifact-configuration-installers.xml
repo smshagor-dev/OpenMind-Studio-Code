@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "openmind-installers" (variable SIGNPATH_INSTALLER_CONFIG_SLUG).
+     The Release workflow uploads target/<triple>/release/bundle/nsis/*.exe and .../bundle/msi/*.msi in one artifact;
+     its ZIP root is bundle/, so the files are nsis/<setup>.exe and msi/<package>.msi. OpenMindStudio.exe inside them was
+     signed by the "openmind-exe" request before they were built, so only the outer files are signed here.
+     Syntax: https://docs.signpath.io/artifact-configuration/syntax -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <!-- Tauri's name: "OpenMind Studio_<version>_<arch>-setup.exe" -->
+    <pe-file path="nsis/*-setup.exe">
+      <authenticode-sign/>
+    </pe-file>
+    <msi-file path="msi/*.msi">
+      <authenticode-sign/>
+    </msi-file>
+  </zip-file>
+</artifact-configuration>

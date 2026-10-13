@@ -186,19 +186,18 @@ installers built around the signed program, then the update signatures (`.sig`) 
 `verify-signatures.mjs` and `release.mjs` (with `SIGNING_EXTERNAL=true`: verify only). Nothing is published; the files
 are kept as a workflow artifact.
 
-Setting it up (SignPath Foundation offers free signing to eligible open-source projects; that approval is SignPath's
-decision, not something this repository can arrange):
+Eligibility, the requirements with their sources, the SignPath and GitHub settings, the two artifact configurations
+and the application draft are in [docs/signpath/](signpath/README.md). SignPath Foundation's approval is SignPath's
+decision; it needs the source repository to be public.
 
-1. In SignPath: a project, a signing policy (e.g. `release-signing`) and two artifact configurations — one for a single
-   `OpenMindStudio.exe`, one for a ZIP with the NSIS `.exe` and the `.msi` (Authenticode, SHA-256, with SignPath's
-   timestamping).
-2. In the GitHub repository: variables `SIGNPATH_ORGANIZATION_ID`, `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_POLICY_SLUG`,
-   `SIGNPATH_EXE_CONFIG_SLUG`, `SIGNPATH_INSTALLER_CONFIG_SLUG`; secrets `SIGNPATH_API_TOKEN`, `TAURI_UPDATER_KEY` (the
-   minisign private key text) and `TAURI_UPDATER_KEY_PASSWORD`.
-3. Without `SIGNPATH_ORGANIZATION_ID` the workflow builds an unsigned release (reported as such).
+The run's `signing` input is `required` by default: the workflow then fails before building unless SignPath is set up
+(repository variable `SIGNPATH_ORGANIZATION_ID`), and verifies every Authenticode signature — the setups, the MSIs and
+the program inside each portable ZIP — before keeping the files. `test-unsigned` builds without signing and names the
+artifact `openmind-studio-release-UNSIGNED-TEST-ONLY`. The SignPath action is `v3.0` (pinned by commit); the release
+jobs use no build cache (SignPath's origin verification wants builds fully determined by the repository).
 
-The workflow has **not been run yet** (no SignPath project exists for this repository at the time of writing); expect
-to adjust artifact configuration slugs and file patterns on the first run.
+The workflow has **not been run yet** (no SignPath project exists at the time of writing); expect to adjust slugs and
+file patterns on the first run.
 
 A path without a password (or the reverse) is reported as a misconfiguration and the build stays unsigned. A test
 certificate for a local check: `New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=OpenMind Studio Test" -CertStoreLocation Cert:\CurrentUser\My`

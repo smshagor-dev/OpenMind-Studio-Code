@@ -71,6 +71,7 @@
     "resources": {
       "../lsp-bundle/": "lsp/",
       "../python-bundle/": "python-bundle/",
+      "../licenses/THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt",
       "cli/openmind.cmd": "bin/openmind.cmd",
       "cli/openmind": "bin/openmind"
     },

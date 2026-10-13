@@ -61,6 +61,13 @@ rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 copyFileSync(exe, join(staging, PACKAGE_EXE));
 writeFileSync(join(staging, "README.txt"), readmeText(version));
+// The licence (Apache-2.0) and every third-party notice the program's components require (scripts/third-party-licenses.mjs).
+const notices = join(root, "licenses", "THIRD-PARTY-LICENSES.txt");
+if (!existsSync(notices)) {
+  throw new Error("licenses/THIRD-PARTY-LICENSES.txt is missing: run `pnpm licenses:generate` (pnpm build does it).");
+}
+copyFileSync(join(root, "LICENSE"), join(staging, "LICENSE.txt"));
+copyFileSync(notices, join(staging, "THIRD-PARTY-LICENSES.txt"));
 
 // Optional, developer-populated tool bundle (see docs/toolchains.md). Nothing is downloaded here: the folder must
 // already hold the programs, and it is refused unless its manifest checks out.

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SignPath artifact configuration "openmind-exe" (variable SIGNPATH_EXE_CONFIG_SLUG).
+     The Release workflow uploads target/<triple>/release/OpenMindStudio.exe with actions/upload-artifact, which wraps it
+     in a ZIP; SignPath signs the program inside and returns the ZIP. Syntax:
+     https://docs.signpath.io/artifact-configuration/syntax -->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file path="OpenMindStudio.exe">
+      <authenticode-sign/>
+    </pe-file>
+  </zip-file>
+</artifact-configuration>

@@ -1,0 +1,1 @@
+﻿Licence texts from the SPDX License List (https://github.com/spdx/license-list-data, tag v3.29.0, text/<id>.txt). Used only as the text of a licence a component declares but whose own licence file is not in its published package. Apache-2.0 is the project's LICENSE file.
