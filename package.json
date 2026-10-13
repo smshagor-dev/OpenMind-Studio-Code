@@ -21,7 +21,9 @@
     "release:collect": "node scripts/release.mjs",
     "release:build:x64": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && node scripts/tauri-signed.mjs build --target x86_64-pc-windows-msvc --bundles nsis,msi",
     "release:build:x86": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && node scripts/tauri-signed.mjs build --target i686-pc-windows-msvc --bundles nsis,msi",
-    "release:collect:all": "node scripts/release.mjs --targets x86_64-pc-windows-msvc,i686-pc-windows-msvc"
+    "release:collect:all": "node scripts/release.mjs --targets x86_64-pc-windows-msvc,i686-pc-windows-msvc",
+    "release:checksums": "node scripts/release-checksums.mjs",
+    "release:verify": "node scripts/release-checksums.mjs --verify"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

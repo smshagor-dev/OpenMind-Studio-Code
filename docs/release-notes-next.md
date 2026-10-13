@@ -101,7 +101,8 @@ no longer holds; a database opened by 1.0.3 needs the pre-upgrade copy.
 
 - [ ] `pnpm release:build` (or the `Release (Windows)` workflow) finished without errors: NSIS setup, MSI, portable ZIP.
 - [ ] `RELEASE-REPORT.md` says **signed**, every installer "verified", "timestamped".
-- [ ] `node scripts/verify-signatures.mjs release\*.exe release\*.msi` exits 0.
+- [ ] `node scripts/verify-signatures.mjs release\v1.0.3\windows\*.exe release\v1.0.3\windows\*.msi` and
+      `pnpm release:verify` exit 0.
 - [ ] `SHA256SUMS.txt` matches the files (`Get-FileHash -Algorithm SHA256`).
 - [ ] Update signatures (`.sig`) present for the setup and the MSI; `latest.json` points at this version.
 - [ ] Setup's first page shows **For Me** / **Recommended for All Users**; a silent `/NETWORK` install writes

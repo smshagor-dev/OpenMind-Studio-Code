@@ -180,7 +180,7 @@ jobs:
           }
 
       - name: Portable archive
-        run: pnpm package:portable -- --no-build --exe ${{ env.RELEASE_DIR }}/OpenMindStudio.exe --out target/portable-${{ matrix.arch }}
+        run: pnpm package:portable -- --no-build --exe ${{ env.RELEASE_DIR }}/OpenMindStudio.exe --out release/staging/portable-${{ matrix.arch }}
 
       - name: Keep the architecture's files
         uses: actions/upload-artifact@v4
@@ -191,7 +191,7 @@ jobs:
             ${{ env.RELEASE_DIR }}/bundle/nsis/*.sig
             ${{ env.RELEASE_DIR }}/bundle/msi/*.msi
             ${{ env.RELEASE_DIR }}/bundle/msi/*.sig
-            target/portable-${{ matrix.arch }}/*.zip
+            release/staging/portable-${{ matrix.arch }}/*.zip
           if-no-files-found: error
 
   collect:
@@ -261,7 +261,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openmind-studio-windows
-          path: release/
+          # release/v<version>/ (windows/, SHA256SUMS.txt, latest.json, RELEASE-REPORT.md); not release/staging/.
+          path: release/v*/
           if-no-files-found: error
 
   linux-x64:
@@ -286,29 +287,24 @@ jobs:
           sudo apt-get install -y build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev patchelf squashfs-tools xdg-utils
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies and build the frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
 
-      - name: Build deb and AppImage
+      - name: Tauri CLI (the project's version)
+        run: cargo install tauri-cli --version "$(node -p "require('./node_modules/@tauri-apps/cli/package.json').version")" --locked
+
+      - name: Build deb, AppImage and portable tar.gz into release/v<version>/linux/
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_KEY_PASSWORD }}
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-        run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            pnpm tauri build --bundles deb,appimage --config '{"bundle":{"createUpdaterArtifacts":false}}'
-          else
-            pnpm tauri build --bundles deb,appimage
-          fi
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-linux
+        run: bash scripts/linux-release.sh
 
       - name: Keep the Linux files
         uses: actions/upload-artifact@v4
         with:
           name: openmind-studio-linux-x64
-          path: |
-            target/release/bundle/deb/*.deb
-            target/release/bundle/deb/*.sig
-            target/release/bundle/appimage/*.AppImage
-            target/release/bundle/appimage/*.sig
-            target/release/OpenMindStudio
+          path: release/v*/linux/
           if-no-files-found: error

@@ -14,7 +14,10 @@ import {
   readSigningConfig,
   signatureVerdict,
   redact,
+  releaseDir,
+  releaseKindOf,
   releaseName,
+  releasePlatform,
   reportText,
   signtoolArgs,
 } from "../../scripts/releaseTools.mjs";
@@ -373,22 +376,41 @@ describe("signing configuration", () => {
 
 describe("release artifacts", () => {
   it("uses the release names", () => {
-    expect(releaseName("setup", "0.1.0")).toBe("OpenMind-Studio-Setup-0.1.0-x64.exe");
-    expect(releaseName("msi", "0.1.0")).toBe("OpenMind-Studio-0.1.0-x64.msi");
-    expect(releaseName("portable", "0.1.0")).toBe("OpenMind-Studio-0.1.0-x64-portable.zip");
-    expect(releaseName("deb", "0.1.0", "amd64")).toBe("OpenMind-Studio-0.1.0-amd64.deb");
-    expect(releaseName("appimage", "0.1.0", "x86_64")).toBe("OpenMind-Studio-0.1.0-x86_64.AppImage");
-    expect(releaseName("linux-portable", "0.1.0", "x86_64")).toBe(
-      "OpenMind-Studio-0.1.0-linux-x86_64-portable.tar.gz",
+    expect(releaseName("setup", "1.0.3")).toBe("OpenMind-Studio_1.0.3_windows_x64_setup.exe");
+    expect(releaseName("msi", "1.0.3")).toBe("OpenMind-Studio_1.0.3_windows_x64.msi");
+    expect(releaseName("portable", "1.0.3")).toBe("OpenMind-Studio_1.0.3_windows_x64_portable.zip");
+    expect(releaseName("setup", "1.0.3", "x86")).toBe("OpenMind-Studio_1.0.3_windows_x86_setup.exe");
+    // Debian/Rust spellings of the architecture give the same names.
+    expect(releaseName("deb", "1.0.3", "amd64")).toBe("OpenMind-Studio_1.0.3_linux_x64.deb");
+    expect(releaseName("appimage", "1.0.3", "x86_64")).toBe("OpenMind-Studio_1.0.3_linux_x64.AppImage");
+    expect(releaseName("deb", "1.0.3", "i386")).toBe("OpenMind-Studio_1.0.3_linux_x86.deb");
+    expect(releaseName("linux-portable", "1.0.3", "i686")).toBe(
+      "OpenMind-Studio_1.0.3_linux_x86_portable.tar.gz",
     );
-    expect(releaseName("setup", "0.1.0", "x86")).toBe("OpenMind-Studio-Setup-0.1.0-x86.exe");
     expect(() => releaseName("setup", "v1")).toThrow();
+    expect(() => releaseName("setup", "1.0.3", "arm64")).toThrow();
+    // @ts-expect-error -- an unknown kind is refused at run time too
+    expect(() => releaseName("installer", "1.0.3")).toThrow();
+  });
+
+  it("puts each kind into its platform folder of the project's release folder, and reads kinds back from names", () => {
+    expect(releaseDir("E:/Code Editor", "1.0.3")).toBe("E:/Code Editor/release/v1.0.3");
+    expect(releaseDir("E:/Code Editor/", "1.0.3")).toBe("E:/Code Editor/release/v1.0.3");
+    expect(() => releaseDir("E:/Code Editor", "../x")).toThrow();
+    for (const kind of ["setup", "msi", "portable"]) expect(releasePlatform(kind)).toBe("windows");
+    for (const kind of ["deb", "appimage", "linux-portable"]) expect(releasePlatform(kind)).toBe("linux");
+    for (const kind of ["setup", "msi", "portable", "deb", "appimage", "linux-portable"] as const) {
+      for (const arch of ["x64", "x86"]) expect(releaseKindOf(releaseName(kind, "1.0.3", arch))).toBe(kind);
+    }
+    expect(releaseKindOf("OpenMind-Studio_1.0.3_windows_x64_setup.exe.sig")).toBeNull();
+    expect(releaseKindOf("RELEASE-NOTES-1.0.3-DRAFT.md")).toBeNull();
+    expect(releaseKindOf("OpenMindStudio-1.0.3-portable-win-x64.zip")).toBeNull();
   });
 
   it("the report lists only the files it was given, with type, size and SHA256; an empty list says so", () => {
     const artifacts = [
       {
-        name: "OpenMind-Studio-Setup-0.1.0-x64.exe",
+        name: "OpenMind-Studio_0.1.0_windows_x64_setup.exe",
         kind: "setup",
         size: 7_500_000,
         sha256: "ab".repeat(32),
@@ -401,13 +423,22 @@ describe("release artifacts", () => {
       date: "2026-09-30T00:00:00Z",
       artifacts,
     });
-    expect(report).toContain("Setup-0.1.0-x64.exe");
+    expect(report).toContain("_0.1.0_windows_x64_setup.exe");
     expect(report).toContain("7.2 MB");
     expect(report).toContain("ab".repeat(32));
     expect(report).toContain("**unsigned**");
     expect(report).not.toContain(".msi");
-    expect(checksumsText(artifacts)).toBe(
-      `${"ab".repeat(32)}  OpenMind-Studio-Setup-0.1.0-x64.exe\n`,
+    // Paths relative to release/v<version>/, sorted, so `sha256sum -c` works from that folder.
+    expect(
+      checksumsText([
+        { name: "OpenMind-Studio_0.1.0_windows_x64.msi", kind: "msi", size: 1, sha256: "cd".repeat(32) },
+        ...artifacts,
+        { name: "OpenMind-Studio_0.1.0_linux_x64.deb", kind: "deb", size: 1, sha256: "ef".repeat(32) },
+      ]),
+    ).toBe(
+      `${"ef".repeat(32)}  linux/OpenMind-Studio_0.1.0_linux_x64.deb\n` +
+        `${"cd".repeat(32)}  windows/OpenMind-Studio_0.1.0_windows_x64.msi\n` +
+        `${"ab".repeat(32)}  windows/OpenMind-Studio_0.1.0_windows_x64_setup.exe\n`,
     );
     expect(
       reportText({

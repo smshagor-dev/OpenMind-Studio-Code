@@ -2468,7 +2468,7 @@ without explicit approval.
   and start functions for anything that belongs to a click (marketplace, AI requests, tool verification, server starts, installs, extension host start, external URLs) and pins the phase order. Measured (release build, installed by the NSIS setup):
   main window shown after 642 ms, editor usable 74 ms of front-end work later (process clock 1.06 s), app process 42 MB, ~546 MB with all WebView2 helpers, the only outside connections were WebView2's usual Microsoft ones (none from the app itself).
   **Installers** (`pnpm release:build` = `tauri build --bundles nsis,msi`; `pnpm release:collect`): `bundle.license = "Apache-2.0"`, `bundle.licenseFile = "../LICENSE"`; `scripts/releaseTools.mjs` + `release.mjs` check the configuration and LICENSE
-  (and the generated WiX for a PATH change, licence page and launch option), copy the installers that exist to `release/` under the release names (`OpenMind-Studio-Setup-<v>-x64.exe`, `OpenMind-Studio-<v>-x64.msi`, `OpenMind-Studio-Portable-<v>-x64.zip`),
+  (and the generated WiX for a PATH change, licence page and launch option), copy the installers that exist to the release folder under the release names (since 1.0.3: `release/v<v>/windows/OpenMind-Studio_<v>_windows_x64_setup.exe`, `…_x64.msi`, `…_x64_portable.zip`),
   sign them when configured, and write `SHA256SUMS.txt` and `RELEASE-REPORT.md` (version, arch, **build type unsigned / test-signed / signed**, date, size, SHA256; only existing files). **Signing** is optional and env-only (`SIGNING_CERT_PATH`,
   `SIGNING_CERT_PASSWORD`, `TIMESTAMP_URL`, `SIGNING_CERT_KIND=test`): nothing configured = unsigned with a clear message, a half-configured pair = skipped with a message, the password is never printed or written (tests, incl. one that fails on a tracked
   certificate/key file or a committed password); `signtool` signs the installer files only (the exe inside is not signed yet). **Verified by hand**: the NSIS setup (UI driven through UI Automation) — Welcome, **licence page with the full Apache text and
@@ -3165,6 +3165,12 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   filled it with deleted temp folders, and its default value — the folder the setup checks first — pointed at one); the
   flaky `a_shared_portable_copy_…` test (a `-wal` deleted between listing and reading, ~1 in 5 runs) is fixed. The
   release workflow builds x64 + x86 in a matrix with one `collect` job (one `latest.json`) and a Linux x64 job.
+  **Release files live only in `<project>/release/v<version>/`** (`windows/`, `linux/`, `SHA256SUMS.txt` with relative
+  paths, `latest.json`, report; git-ignored): `releaseTools.releaseDir`/`releasePlatform`, names
+  `OpenMind-Studio_<v>_<windows|linux>_<x64|x86>…` (`releaseName`), `scripts/releaseManifest.mjs` +
+  `pnpm release:checksums|release:verify`, portable staging in `release/staging/`, and `scripts/linux-release.sh` builds
+  Linux from this checkout (no clone; cargo target in an external cache). Never write release files, worktrees, clones or
+  project copies elsewhere; build caches may be external. The 12 v1.0.3 files are in `release/v1.0.3/`.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).

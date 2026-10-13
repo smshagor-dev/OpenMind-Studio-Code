@@ -1,13 +1,18 @@
 // usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--portable-x86 <zip>] [--no-sign] [--notes <file>]
 //
-// Also writes release/latest.json, the update feed installed copies read (scripts/updateFeed.mjs): upload it with the
-// files and their .sig. OPENMIND_MINIMUM_VERSION=<x.y.z> makes older copies update (mandatory).
+// Output always goes to the project's own release folder, `release/v<version>/` (git-ignored; releaseTools.releaseDir):
+// the Windows files in `windows/`, and `SHA256SUMS.txt` (every release file in `windows/` and `linux/`, so Linux files
+// collected there by scripts/linux-release.sh are kept), `RELEASE-REPORT.md` and `latest.json` next to them.
+//
+// latest.json is the update feed installed copies read (scripts/updateFeed.mjs): upload it with the files and their
+// .sig. OPENMIND_MINIMUM_VERSION=<x.y.z> makes older copies update (mandatory).
 //
 // `--targets` collects cross-target builds (`tauri build --target <triple>`), e.g.
 // `x86_64-pc-windows-msvc,i686-pc-windows-msvc`; without it the host build in `<target dir>/release` is collected as x64.
+// The cargo target folder may be anywhere (an external cache); only the collected files must be in the project.
 //
-// After `pnpm release:build` (tauri build --bundles nsis,msi): copies the installers that exist into `release/` under
-// their release names (with their updater `.sig` files), signs those `tauri build` didn't already sign when a
+// After `pnpm release:build` (tauri build --bundles nsis,msi): copies the installers that exist into the release folder
+// under their release names (with their updater `.sig` files), signs those `tauri build` didn't already sign when a
 // certificate is configured through the environment (SIGNING_CERT_THUMBPRINT, or SIGNING_CERT_PATH +
 // SIGNING_CERT_PASSWORD; optional TIMESTAMP_URL and SIGNING_CERT_KIND=test), and writes SHA256SUMS.txt and
 // RELEASE-REPORT.md for the files that exist. Nothing is uploaded and no secret is printed or written.
@@ -28,13 +33,15 @@ import {
   checkInstallerConfig,
   checkInstallerHooks,
   checkWixSource,
-  checksumsText,
   publicSigningInfo,
   readSigningConfig,
+  releaseDir,
   releaseName,
+  releasePlatform,
   reportText,
   signatureVerdict,
 } from "./releaseTools.mjs";
+import { writeManifest } from "./releaseManifest.mjs";
 import { hasSignature, inspectSignature, signFile } from "./signtool.mjs";
 import { writeUpdateFeed } from "./updateFeed.mjs";
 
@@ -127,8 +134,8 @@ if (option("--portable")) found.push({ kind: "portable", arch: "x64", from: opti
 if (option("--portable-x86"))
   found.push({ kind: "portable", arch: "x86", from: option("--portable-x86") });
 const present = found.filter((entry) => entry.from !== null && existsSync(entry.from));
-const out = join(root, "release");
-mkdirSync(out, { recursive: true });
+const out = releaseDir(root, version);
+mkdirSync(join(out, "windows"), { recursive: true });
 const config = readSigningConfig(process.env);
 console.log(config.message);
 let signedCount = 0;
@@ -136,7 +143,7 @@ const artifacts = [];
 
 for (const entry of present) {
   const name = releaseName(entry.kind, version, entry.arch);
-  const target = join(out, name);
+  const target = join(out, releasePlatform(entry.kind), name);
   copyFileSync(entry.from, target);
   // The updater signature (`.sig`, made by `tauri build`) belongs to these exact bytes.
   if (existsSync(`${entry.from}.sig`)) copyFileSync(`${entry.from}.sig`, `${target}.sig`);
@@ -184,7 +191,7 @@ const verifyMode = external ? "external" : config.mode;
 if (external) signedCount = signable;
 if (verifyMode === "signed" || verifyMode === "test-signed" || verifyMode === "external") {
   for (const a of artifacts.filter((entry) => entry.kind !== "portable")) {
-    const info = inspectSignature(join(out, a.name));
+    const info = inspectSignature(join(out, releasePlatform(a.kind), a.name));
     const problem = signatureVerdict(info, verifyMode, {
       timestampWaived: process.env.SIGNING_NO_TIMESTAMP === "1",
     });
@@ -215,7 +222,8 @@ const feed = writeUpdateFeed({
 });
 for (const line of feed.notes) console.log(line);
 
-writeFileSync(join(out, "SHA256SUMS.txt"), checksumsText(artifacts));
+// Over every release file in the folder (windows/ and linux/), not only the ones collected now.
+const listed = writeManifest(out);
 writeFileSync(
   join(out, "RELEASE-REPORT.md"),
   reportText({
@@ -227,7 +235,9 @@ writeFileSync(
     notes: [`Signing: ${JSON.stringify(publicSigningInfo(config))}`, ...signatureNotes, "", ...feed.notes],
   }),
 );
-console.log(`Wrote ${artifacts.length} artifact(s) to ${out} (${buildType}).`);
+console.log(
+  `Wrote ${artifacts.length} artifact(s) to ${out} (${buildType}); SHA256SUMS.txt lists ${listed.length}.`,
+);
 for (const a of artifacts) console.log(`  ${a.name}  ${a.size} bytes  ${a.sha256}`);
 if (verifyFailures > 0) {
   console.error(`${verifyFailures} signature(s) could not be verified: the build is reported UNSIGNED.`);

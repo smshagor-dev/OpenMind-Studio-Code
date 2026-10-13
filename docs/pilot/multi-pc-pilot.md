@@ -9,7 +9,7 @@ Status: **PENDING** — to be run on real, independent Windows computers. A run 
 - An SMB share they can all reach, e.g. `\\fs01\apps`. The tester on PC 1 may write to it; for case 15 a standard
   user who may only **read** it.
 - Two Windows accounts on one of the computers (case 4), at least one of them a standard user (case 15).
-- The setup `OpenMind-Studio-Setup-<version>-x64.exe` of the build under test, and the previous release's setup
+- The setup `OpenMind-Studio_<version>_windows_x64_setup.exe` of the build under test, and the previous release's setup
   (case 14).
 - `scripts\pilot\Collect-PilotEvidence.ps1` copied to each computer. After each case, on each computer involved:
 
