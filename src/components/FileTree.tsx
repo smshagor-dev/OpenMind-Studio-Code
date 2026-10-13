@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
 import { visibleTreeRows, withDraft } from "../services/explorerTree";
+import { pathKey } from "../services/textSync";
 import { FileTypeIcon, FolderTypeIcon } from "./fileIcons";
 import { ChevronIcon } from "./icons";
 import { InlineNameInput } from "./InlineNameInput";
@@ -53,7 +54,8 @@ export function FileTree(props: FileTreeProps) {
     if (focusToken > 0) treeRef.current?.focus();
   }, [focusToken]);
 
-  // Keep the selected row visible after keyboard navigation / reveal.
+  // Keep the selected row visible after keyboard navigation and after every reveal (revealSeq), also when the selection
+  // didn't change — in a long tree the row may have been scrolled out of view since.
   useEffect(() => {
     const selected = snapshot.selectedPath;
     if (!selected || !treeRef.current) return;
@@ -63,7 +65,7 @@ export function FileTree(props: FileTreeProps) {
         break;
       }
     }
-  }, [snapshot.selectedPath]);
+  }, [snapshot.selectedPath, snapshot.revealSeq]);
 
   if (!snapshot.rootPath) {
     return null;
@@ -232,7 +234,10 @@ function TreeRow(props: TreeRowProps) {
   const rowClass = [
     "tree-row",
     isSelected ? "tree-row--selected" : "",
-    props.activeDocPath === path ? "tree-row--active" : "",
+    // The editor's spelling of a path can differ from the tree's (`\` or `/`, letter case on Windows).
+    props.activeDocPath !== null && pathKey(props.activeDocPath) === pathKey(path)
+      ? "tree-row--active"
+      : "",
     inDropTarget ? "tree-row--drop-target" : "",
   ]
     .filter(Boolean)

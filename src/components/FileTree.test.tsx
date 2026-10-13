@@ -122,4 +122,44 @@ describe("FileTree", () => {
     expect(nestedRow?.querySelectorAll(".tree-row__guide")).toHaveLength(1);
     expect(nestedRow).toHaveAttribute("aria-level", "2");
   });
+
+  it("marks the active editor's file even when the editor spells its path differently", () => {
+    renderTree({ activeDocPath: "\\r\\README.md" });
+
+    expect(screen.getByText("README.md").closest("[role=treeitem]")).toHaveClass(
+      "tree-row--active",
+    );
+    expect(screen.getByText("src").closest("[role=treeitem]")).not.toHaveClass("tree-row--active");
+  });
+
+  it("scrolls the selected row into view on every reveal, also when the selection didn't change", () => {
+    const scroll = vi.spyOn(Element.prototype, "scrollIntoView");
+    const props = (revealSeq: number) => ({
+      snapshot: snapshot({ selectedPath: "/r/README.md", revealSeq }),
+      dirtyPaths: new Set<string>(),
+      activeDocPath: null,
+      editingPath: null,
+      editingInitialValue: "",
+      focusToken: 0,
+      onToggleExpand: vi.fn(),
+      onSelect: vi.fn(),
+      onOpenFile: vi.fn(),
+      onContextMenu: vi.fn(),
+      onCommitEdit: vi.fn(),
+      onCancelEdit: vi.fn(),
+      onRename: vi.fn(),
+      onDelete: vi.fn(),
+      onMove: vi.fn(),
+    });
+    const { rerender } = render(<FileTree {...props(1)} />);
+    expect(scroll).toHaveBeenCalledTimes(1);
+
+    rerender(<FileTree {...props(1)} />); // an unrelated re-render: no scroll
+    expect(scroll).toHaveBeenCalledTimes(1);
+
+    rerender(<FileTree {...props(2)} />); // the same file revealed again
+    expect(scroll).toHaveBeenCalledTimes(2);
+    expect(scroll.mock.instances[1]).toBe(screen.getByText("README.md").closest("[data-path]"));
+    scroll.mockRestore();
+  });
 });
