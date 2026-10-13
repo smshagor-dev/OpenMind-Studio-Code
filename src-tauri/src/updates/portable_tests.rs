@@ -200,6 +200,103 @@ fn a_package_without_the_program_is_not_staged() {
     assert!(!staged.exists(), "removed");
 }
 
+/// The release check: `OPENMIND_RELEASE_DIR=<project>/release/v<version> cargo test -p openmind-studio --bin
+/// openmind-studio real_release -- --ignored`. Every release file with a `.sig` passes this program's own update check
+/// (the real key, the version from tauri.conf.json), a changed byte or another version is refused, and latest.json names
+/// only files that exist, with exactly their `.sig`, in a form `Request::from_feed` accepts.
+#[test]
+#[ignore = "needs OPENMIND_RELEASE_DIR (a built release folder)"]
+fn real_release_files_pass_the_update_check_and_tampered_ones_fail() {
+    let dir = PathBuf::from(std::env::var("OPENMIND_RELEASE_DIR").expect("OPENMIND_RELEASE_DIR"));
+    let conf: serde_json::Value =
+        serde_json::from_str(include_str!("../../tauri.conf.json")).expect("tauri.conf.json");
+    assert_eq!(
+        conf["plugins"]["updater"]["pubkey"].as_str(),
+        Some(RELEASE_KEY),
+        "the constant above is the configured key"
+    );
+    let version = conf["version"].as_str().expect("version");
+    let mut checked = 0;
+    for platform in ["windows", "linux"] {
+        for entry in std::fs::read_dir(dir.join(platform)).expect("platform folder") {
+            let path = entry.expect("entry").path();
+            if path.extension().is_some_and(|ext| ext == "sig") {
+                continue;
+            }
+            let sig = std::fs::read_to_string(path.with_file_name(format!(
+                "{}.sig",
+                path.file_name().expect("name").to_string_lossy()
+            )))
+            .unwrap_or_else(|err| panic!("{}: no .sig ({err})", path.display()));
+            let mut data = std::fs::read(&path).expect("read");
+            verify(&data, sig.trim(), RELEASE_KEY, version)
+                .unwrap_or_else(|err| panic!("{}: {err}", path.display()));
+            assert!(
+                verify(&data, sig.trim(), RELEASE_KEY, "0.0.1").is_err(),
+                "{}: another version",
+                path.display()
+            );
+            let middle = data.len() / 2;
+            data[middle] ^= 0x01;
+            assert!(
+                verify(&data, sig.trim(), RELEASE_KEY, version).is_err(),
+                "{}: one changed byte",
+                path.display()
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 12, "six Windows and six Linux files");
+
+    let feed: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("latest.json")).expect("latest.json"),
+    )
+    .expect("valid JSON");
+    assert_eq!(feed["version"].as_str(), Some(version));
+    let mut entries: Vec<(String, &serde_json::Value)> = Vec::new();
+    for (map, label) in [
+        (&feed["platforms"], "platforms"),
+        (&feed["openmind"]["portable"], "portable"),
+    ] {
+        for (key, value) in map.as_object().expect(label) {
+            entries.push((format!("{label}.{key}"), value));
+        }
+    }
+    assert_eq!(
+        entries.len(),
+        14,
+        "Windows x64/x86 × (plain, -nsis, -msi), Linux x64/x86 × (plain, -deb, -appimage), two portable entries"
+    );
+    for (key, value) in entries {
+        let url = value["url"].as_str().expect("url");
+        let prefix = format!(
+            "https://github.com/smshagor-dev/OpenMind-Studio/releases/download/v{version}/"
+        );
+        let name = url
+            .strip_prefix(&prefix)
+            .unwrap_or_else(|| panic!("{key}: {url}"));
+        let platform = if name.contains("_linux_") {
+            "linux"
+        } else {
+            "windows"
+        };
+        let file = dir.join(platform).join(name);
+        let sig = std::fs::read_to_string(format!("{}.sig", file.display()))
+            .unwrap_or_else(|err| panic!("{key}: {name} has no .sig ({err})"));
+        assert_eq!(value["signature"].as_str(), Some(sig.trim()), "{key}");
+    }
+    let request = Request::from_feed(&feed, version, dir.clone(), dir.clone(), RELEASE_KEY.into())
+        .expect("the portable updater accepts the feed");
+    assert!(request.url.ends_with(&format!(
+        "_windows_{}_portable.zip",
+        if target() == "windows-i686" {
+            "x86"
+        } else {
+            "x64"
+        }
+    )));
+}
+
 #[test]
 fn a_fresh_staging_folder_is_kept_at_start_up() {
     let dir = tempfile::tempdir().expect("tmp");

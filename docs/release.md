@@ -75,6 +75,45 @@ release/staging/         intermediate files (portable ZIPs before they are renam
   file and that nothing is missing from the list (exit code 1 otherwise). Run `sha256sum -c SHA256SUMS.txt` in the folder
   for the same check on Linux.
 
+### Verifying a release folder
+
+| Command | Checks |
+| --- | --- |
+| `pnpm release:verify` | every file in `SHA256SUMS.txt` exists and matches; no release file is missing from it |
+| `node scripts/verify-architecture.mjs` | the program inside each portable ZIP/tar.gz, AppImage and deb is for the architecture in its name (PE/ELF machine; the deb's `Architecture:` too). The NSIS setup (always a 32-bit stub) and the MSI are not inspected — use `msiexec /a <msi> /qn TARGETDIR=<empty folder>` and check `OpenMindStudio.exe` |
+| `node scripts/verify-updater-signatures.mjs --require-all` | every file's `.sig` against `plugins.updater.pubkey`, bound to the version; `latest.json` names only files of the folder, each with exactly its `.sig` |
+| `OPENMIND_RELEASE_DIR=<folder> cargo test -p openmind-studio --bin openmind-studio real_release -- --ignored` | the app's own update check (`updates::portable::verify`, minisign_verify as in the Tauri updater) accepts each file, refuses a changed byte and another version, and accepts `latest.json` |
+
+The release workflow runs the first three on the collected files before it uploads them.
+
+### Updater feed and Linux
+
+`latest.json` lists the Windows setups/MSIs (Tauri's `windows-<arch>[-nsis|-msi]`), the portable ZIPs
+(`openmind.portable`) and — so Linux copies hear of a release — the deb and AppImage (`linux-<arch>[-deb|-appimage]`).
+Linux copies never update themselves (`updates::policy::self_update_on`: managed): without that rule a Linux copy (no
+`uninstall.exe`, so "portable") would take the Windows portable archive. Linux packages built before that rule must not
+be released; the 1.0.3 Linux files were rebuilt with it.
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push/pull request to `main` (and as the first job of the release workflow):
+fmt, clippy `-D warnings`, `cargo test --workspace`, eslint, `tsc`, vitest and the frontend build on Windows, and a Linux
+build check. Actions are pinned by commit, Rust (`RUSTUP_TOOLCHAIN`), Node and pnpm by version; permissions are
+`contents: read`. `release-windows.yml` (workflow "Release", manual) needs those checks, builds Windows x64/x86 and
+Linux x64/x86 (x86 in a `debian:trixie` i386 container), collects and verifies everything and keeps it as one artifact;
+it never writes to a repository. Publishing to the public release repository is a separate step with its own
+fine-grained token (contents: write on that repository only) — the default `GITHUB_TOKEN` can't.
+
+### Installer upgrade test (Windows Sandbox)
+
+`scripts/upgrade-test/New-UpgradeTestSandbox.ps1 -Start` opens a disposable Windows Sandbox (network off) with the
+previous and new release folders mapped read-only and runs `Invoke-UpgradeTest.ps1`: 1.0.2 → 1.0.3 for the x64 and x86
+setups (same folder, version, one uninstall entry, database, settings and a runtime marker kept, repair run), a network
+installation's layout kept on update, and the MSI 1.0.2 → 1.0.3. Results: `release/v<version>/upgrade-test/results/`.
+Windows Sandbox must be enabled once (administrator, then restart):
+`Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All`. Never run
+`Invoke-UpgradeTest.ps1` outside the sandbox.
+
 The tools needed (NSIS and WiX 3) are downloaded by Tauri's bundler the first time (into `%LOCALAPPDATA%\tauri`); that is
 build tooling, not something the app does.
 

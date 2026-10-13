@@ -58,7 +58,7 @@ export const RELEASE_REPO: string;
 export const UPDATE_ENDPOINT: string;
 export function releaseDownloadUrl(version: string, name: string): string;
 export interface SignedFile {
-  kind: "setup" | "msi" | "portable";
+  kind: "setup" | "msi" | "portable" | "deb" | "appimage";
   arch: "x64" | "x86";
   name: string;
   signature: string;

@@ -3161,8 +3161,18 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   (deb, AppImage, portable tar.gz) built unsigned with updater artifacts off. Blockers: SignPath Foundation requires
   open source built from the stated public repository (this project's source is private), the multi-PC pilot is not
   run, no publishing access. Updater signatures exist: all 12 files have version-bound `.sig` files (key 7A590C4E7142F2CF,
-  verified independently) and `release/v1.0.3/latest.json` lists the six Windows installers/portables; they cover the
-  current *unsigned* bytes, so Authenticode signing the installers later means signing the `.sig`s and the feed again. The x86
+  verified independently) and `release/v1.0.3/latest.json` lists Windows (setup/MSI/portable) and Linux (deb/AppImage)
+  entries; they cover the current *unsigned* bytes, so Authenticode signing the installers later means signing the
+  `.sig`s and the feed again. **Linux copies never update themselves** (`updates::policy::self_update_on`: Managed off
+  Windows) — without it a Linux copy (no uninstall.exe = "portable") would have taken the Windows portable archive; the
+  six Linux files were rebuilt with it from the canonical tree by `scripts/linux-release.sh` (WSL x64, debian:trixie
+  i386 container x86) and the first Linux build is kept in `release/v1.0.3/superseded/` (never publish it). Verifiers:
+  `pnpm release:verify`, `scripts/verify-architecture.mjs`, `scripts/verify-updater-signatures.mjs --require-all` and
+  the opt-in `real_release_files_pass_the_update_check…` test (`OPENMIND_RELEASE_DIR`). CI: `.github/workflows/ci.yml`
+  (push/PR, pinned actions/toolchains, contents: read; Linux job is `cargo check` until its 37 cfg warnings are cleaned)
+  and `release-windows.yml` ("Release": checks → Windows x64/x86 + Linux x64/x86 → collect + verify; never publishes).
+  pnpm/action-setup needs an explicit `version` (no `packageManager` field). Installer upgrade test: Windows Sandbox kit
+  `scripts/upgrade-test/` (not run: Sandbox isn't enabled on the dev PC). The x86
   Windows build needs NASM (see `docs/release.md`); tests no longer write the user's HKCU installations record (they had
   filled it with deleted temp folders, and its default value — the folder the setup checks first — pointed at one); the
   flaky `a_shared_portable_copy_…` test (a `-wal` deleted between listing and reading, ~1 in 5 runs) is fixed. The
