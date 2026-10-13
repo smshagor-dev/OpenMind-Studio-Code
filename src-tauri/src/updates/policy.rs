@@ -77,11 +77,14 @@ pub fn self_update(kind: InstallKind, layout: InstallLayout) -> SelfUpdate {
 /// tar.gz) would otherwise take the Windows portable archive as its own update.
 pub fn self_update_on(windows: bool, kind: InstallKind, layout: InstallLayout) -> SelfUpdate {
     if !windows {
-        return SelfUpdate::Managed(
+        let how = if cfg!(target_os = "macos") {
+            "On macOS, OpenMind Studio doesn't update itself: download the new disk image (.dmg) or app ZIP from the \
+             releases page and replace the app."
+        } else {
             "On Linux, OpenMind Studio doesn't update itself: install the new .deb, AppImage or tar.gz from the \
              releases page (a .deb also through your package manager)."
-                .into(),
-        );
+        };
+        return SelfUpdate::Managed(how.into());
     }
     if layout == InstallLayout::Network {
         return SelfUpdate::Managed(

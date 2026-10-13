@@ -138,10 +138,29 @@ function checkVersion(version) {
   if (!VERSION.test(version)) throw new Error(`"${version}" is not a version number.`);
 }
 
-/** Debian/Linux/Rust spellings of the two architectures -> the release names' `x64` / `x86`. */
-const ARCH_ALIASES = { x64: "x64", amd64: "x64", x86_64: "x64", x86: "x86", i386: "x86", i686: "x86" };
+/** Debian/Linux/Rust/Apple spellings of the architectures -> the release names' `x64` / `x86` / `arm64`. */
+const ARCH_ALIASES = {
+  x64: "x64",
+  amd64: "x64",
+  x86_64: "x64",
+  x86: "x86",
+  i386: "x86",
+  i686: "x86",
+  arm64: "arm64",
+  aarch64: "arm64",
+};
 
-/** `windows` or `linux`: the release folder's subfolder an artifact kind goes into. */
+/** The architectures each platform is released for. */
+export const RELEASE_ARCHES = { windows: ["x64", "x86"], linux: ["x64", "x86"], macos: ["arm64", "x64"] };
+
+/** The release architecture name of `arch` (any spelling in ARCH_ALIASES); throws for an unknown one. */
+export function releaseArch(arch) {
+  const normalized = ARCH_ALIASES[arch];
+  if (normalized === undefined) throw new Error(`Unknown architecture "${arch}".`);
+  return normalized;
+}
+
+/** `windows`, `linux` or `macos`: the release folder's platform an artifact kind goes into. */
 export function releasePlatform(kind) {
   switch (kind) {
     case "setup":
@@ -152,6 +171,9 @@ export function releasePlatform(kind) {
     case "appimage":
     case "linux-portable":
       return "linux";
+    case "dmg":
+    case "macos-app":
+      return "macos";
     default:
       throw new Error(`Unknown artifact kind "${kind}".`);
   }
@@ -163,8 +185,11 @@ export function releasePlatform(kind) {
  */
 export function releaseName(kind, version, arch = "x64") {
   checkVersion(version);
-  const normalized = ARCH_ALIASES[arch];
-  if (normalized === undefined) throw new Error(`Unknown architecture "${arch}".`);
+  const normalized = releaseArch(arch);
+  const platform = releasePlatform(kind);
+  if (!RELEASE_ARCHES[platform].includes(normalized)) {
+    throw new Error(`${platform} is not released for ${normalized}.`);
+  }
   const suffix = {
     setup: "_setup.exe",
     msi: ".msi",
@@ -172,13 +197,32 @@ export function releaseName(kind, version, arch = "x64") {
     deb: ".deb",
     appimage: ".AppImage",
     "linux-portable": "_portable.tar.gz",
+    dmg: ".dmg",
+    "macos-app": ".app.zip",
   }[kind];
-  return `OpenMind-Studio_${version}_${releasePlatform(kind)}_${normalized}${suffix}`;
+  return `OpenMind-Studio_${version}_${platform}_${normalized}${suffix}`;
 }
+
+/** The architecture in a release file name (`..._windows_x86_setup.exe` -> `x86`), or null. */
+export function releaseArchOf(name) {
+  return /_(?:windows|linux|macos)_(x64|x86|arm64)[._]/.exec(name)?.[1] ?? null;
+}
+
+/** A release file's folder inside the release folder: `<platform>/<arch>` (e.g. `windows/x64`). */
+export function releaseSubdir(kind, arch) {
+  return `${releasePlatform(kind)}/${releaseArch(arch)}`;
+}
+
+/** Where the release folder keeps latest.json, SHA256SUMS.txt, the notes and the legal texts. */
+export const METADATA_DIR = "metadata";
+/** Where the release folder keeps build and verification reports. */
+export const REPORTS_DIR = "validation/reports";
 
 /**
  * A version's release folder, always inside the project: `<project>/release/v<version>` (git-ignored), with the
- * artifacts in `windows/` and `linux/` and SHA256SUMS.txt, latest.json and the report next to them.
+ * artifacts in `<platform>/<arch>/` (windows/x64, windows/x86, linux/x64, linux/x86, macos/arm64, macos/x64),
+ * launchers in `launchers/<platform>/`, latest.json, SHA256SUMS.txt, notes and legal texts in `metadata/` and reports
+ * in `validation/reports/`.
  */
 export function releaseDir(root, version) {
   checkVersion(version);
@@ -231,12 +275,13 @@ export function reportText({ version, arch, buildType, date, artifacts, notes })
 }
 
 /**
- * SHA256SUMS.txt in the `sha256sum` format (hash, two spaces, path), the path relative to the release folder
- * (`windows/<name>`, `linux/<name>`), so `sha256sum -c SHA256SUMS.txt` works from that folder. Sorted by path.
+ * SHA256SUMS.txt in the `sha256sum` format (hash, two spaces, file name). Bare names (each one already names its
+ * platform and architecture), so `sha256sum -c SHA256SUMS.txt` works in a folder of files downloaded from the GitHub
+ * release, whose assets have no folders. Sorted by name.
  */
 export function checksumsText(artifacts) {
   const lines = artifacts
-    .map((a) => `${a.sha256}  ${releasePlatform(a.kind)}/${a.name}`)
+    .map((a) => `${a.sha256}  ${a.name}`)
     .sort((x, y) => (x.slice(66) < y.slice(66) ? -1 : x.slice(66) > y.slice(66) ? 1 : 0));
   return `${lines.join("\n")}\n`;
 }
@@ -249,6 +294,8 @@ export function releaseKindOf(name) {
   if (/_linux_(x64|x86)\.deb$/.test(name)) return "deb";
   if (/_linux_(x64|x86)\.AppImage$/.test(name)) return "appimage";
   if (/_linux_(x64|x86)_portable\.tar\.gz$/.test(name)) return "linux-portable";
+  if (/_macos_(arm64|x64)\.dmg$/.test(name)) return "dmg";
+  if (/_macos_(arm64|x64)\.app\.zip$/.test(name)) return "macos-app";
   return null;
 }
 
@@ -299,7 +346,11 @@ export function checkWixSource(wxs) {
 export function checkInstallerConfig(tauri, licenseText) {
   const problems = [];
   const bundle = tauri.bundle ?? {};
-  if (bundle.licenseFile !== "../LICENSE") problems.push("bundle.licenseFile must be ../LICENSE.");
+  if (bundle.licenseFile !== "../licenses/legal/LICENSE-AGREEMENT.txt") {
+    problems.push(
+      "bundle.licenseFile must be ../licenses/legal/LICENSE-AGREEMENT.txt (License Agreement + Privacy Policy + Apache-2.0).",
+    );
+  }
   if (bundle.license !== "Apache-2.0") problems.push("bundle.license must be Apache-2.0.");
   for (const target of ["nsis", "msi"]) {
     if (!(bundle.targets ?? []).includes(target))
@@ -321,9 +372,15 @@ export function checkInstallerConfig(tauri, licenseText) {
     problems.push("The MSI must include wix/product-icon.wxs for the product icon.");
   }
   if (!/Apache License\s+Version 2\.0, January 2004/.test(licenseText)) {
-    problems.push("LICENSE is not the Apache License 2.0 text.");
+    problems.push("The license agreement doesn't contain the Apache License 2.0 text.");
   }
-  if (!licenseText.includes("END OF TERMS AND CONDITIONS")) problems.push("LICENSE is incomplete.");
+  if (!licenseText.includes("END OF TERMS AND CONDITIONS")) problems.push("The license agreement is incomplete.");
+  if (
+    !licenseText.includes("OPENMIND STUDIO LICENSE AGREEMENT") ||
+    !licenseText.includes("OPENMIND STUDIO PRIVACY POLICY")
+  ) {
+    problems.push("The license agreement must contain the OpenMind Studio License Agreement and Privacy Policy.");
+  }
   const nsis = bundle.windows?.nsis ?? {};
   const wix = bundle.windows?.wix ?? {};
   if (nsis.installerHooks !== "nsis/installer-hooks.nsh") {
@@ -363,6 +420,11 @@ export function checkInstallerConfig(tauri, licenseText) {
     );
   }
   // MIT/Apache/BSD components require their notices in a binary distribution (scripts/third-party-licenses.mjs).
+  if (bundle.resources?.["../licenses/legal/"] !== "legal/") {
+    problems.push(
+      'bundle.resources must copy "../licenses/legal/" to "legal/" (License Agreement, Privacy Policy, Terms of Use).',
+    );
+  }
   if (bundle.resources?.["../licenses/THIRD-PARTY-LICENSES.txt"] !== "THIRD-PARTY-LICENSES.txt") {
     problems.push(
       'bundle.resources must copy "../licenses/THIRD-PARTY-LICENSES.txt" to "THIRD-PARTY-LICENSES.txt" (third-party licences).',
@@ -378,6 +440,13 @@ export function checkInstallerConfig(tauri, licenseText) {
  */
 export function checkInstallerHooks(nsh) {
   const problems = [];
+  // The license agreement must be accepted actively: MUI's check box mode starts unchecked and keeps Install disabled.
+  if (!/^!define MUI_LICENSEPAGE_CHECKBOX$/m.test(nsh)) {
+    problems.push("The license page must ask for acceptance with an unchecked check box (MUI_LICENSEPAGE_CHECKBOX).");
+  }
+  if (/MUI_LICENSEPAGE_RADIOBUTTONS/.test(nsh)) {
+    problems.push("The license page must not use radio buttons (one of them would start selected).");
+  }
   if (!/StrCpy \$OmAddPath 0/.test(nsh) || !/StrCpy \$OmAddMenu 0/.test(nsh)) {
     problems.push("The PATH and File Explorer options must start unchecked.");
   }
@@ -446,8 +515,8 @@ export function releaseDownloadUrl(version, name) {
   return `https://github.com/${RELEASE_REPO}/releases/download/v${version}/${name}`;
 }
 
-/** Windows architecture names: release file names use x64/x86, the updater uses Rust's x86_64/i686. */
-const UPDATER_ARCH = { x64: "x86_64", x86: "i686" };
+/** Architecture names: release file names use x64/x86/arm64, the updater uses Rust's x86_64/i686/aarch64. */
+const UPDATER_ARCH = { x64: "x86_64", x86: "i686", arm64: "aarch64" };
 
 /** -1, 0 or 1, comparing plain x.y.z versions. */
 export function compareVersions(a, b) {
@@ -472,6 +541,7 @@ export function compareVersions(a, b) {
  *  - `linux-<arch>-deb`, `linux-<arch>-appimage` and `linux-<arch>` (the AppImage): so a Linux copy's check succeeds and
  *    it is told about the release. Linux copies never update themselves (`policy::self_update`: managed by the user's
  *    package manager or a new download), so these entries are only read, never downloaded by the app;
+ *  - `darwin-<arch>` (the app ZIP), for the same reason: macOS copies only tell the user about a new version;
  *  - `openmind.minimumVersion`: copies older than it must update (mandatory), only when given;
  *  - `openmind.channel` = "stable".
  * A pre-release version, a minimum newer than the release, or a file without a signature is refused: nothing unsigned
@@ -510,9 +580,11 @@ export function latestJson({ version, notes, pubDate, minimumVersion = null, fil
     } else if (file.kind === "appimage") {
       platforms[`linux-${arch}-appimage`] = entry;
       platforms[`linux-${arch}`] = entry;
+    } else if (file.kind === "macos-app") {
+      platforms[`darwin-${arch}`] = entry;
     } else {
       throw new Error(
-        `${file.name}: only setups, MSIs, portable ZIPs, debs and AppImages go into the update feed.`,
+        `${file.name}: only setups, MSIs, portable ZIPs, debs, AppImages and macOS app ZIPs go into the update feed.`,
       );
     }
   }

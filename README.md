@@ -6,7 +6,7 @@ no administrator rights, no dependency on globally installed software, and nothi
 
 - **Downloads:** [github.com/smshagor-dev/OpenMind-Studio/releases](https://github.com/smshagor-dev/OpenMind-Studio/releases)
 - **Source:** this repository · **Licence:** [Apache-2.0](LICENSE) · **Third-party licences:** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-- **Security reports:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Privacy:** [docs/PRIVACY.md](docs/PRIVACY.md)
+- **Security reports:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Privacy:** [docs/legal/privacy-policy.md](docs/legal/privacy-policy.md)
 
 ## What it does
 
@@ -54,20 +54,22 @@ the Linux script, verification). Release files are written to `release/v<version
 
 ## Code signing policy
 
-**Status: applied for, not yet approved.** Until approval, Windows releases are **not** Authenticode-signed and Windows
-SmartScreen will warn about them. Update packages are always signed with OpenMind Studio's own updater key and checked
-by the app before installing.
+**Status: not signed.** Windows releases are **not** Authenticode-signed and Windows SmartScreen (and Smart App
+Control, where it is on) will warn about or block them; macOS releases are not Developer ID-signed or notarized.
+Update packages are always signed with OpenMind Studio's own updater key and checked by the app before installing.
 
-When approved: free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org). Only files built by the Release workflow from this repository's `main`
-branch are submitted for signing, and every release is approved by hand.
+Free signing through [SignPath Foundation](https://signpath.org/terms) requires OSI-licensed source and builds that
+can be traced to a known source repository ("binaries based on source code that nobody knows" can't be signed). This
+project's source repository is private, so it is **not eligible** as long as that stays so; no other free, trusted
+provider was found (Certum's open-source certificate and Azure Artifact Signing are paid). The workflow integration
+(`.github/workflows/release-windows.yml`, `docs/signpath/`) is kept ready in case that changes.
 
 | Role | Members |
 | --- | --- |
 | Committers and reviewers | [Md Shahanur Islam Shagor (@smshagor-dev)](https://github.com/smshagor-dev) |
 | Approvers | [Md Shahanur Islam Shagor (@smshagor-dev)](https://github.com/smshagor-dev) |
 
-Privacy policy: see [docs/PRIVACY.md](docs/PRIVACY.md). This program will not transfer any information to other
+Privacy policy: see [docs/legal/privacy-policy.md](docs/legal/privacy-policy.md). This program will not transfer any information to other
 networked systems unless specifically requested by the user or the person installing or operating it, except the two
 automatic requests described there: the update check (GitHub) and, while the Extensions view is shown, the Open VSX
 marketplace list (can be turned off).

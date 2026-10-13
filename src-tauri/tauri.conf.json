@@ -67,11 +67,12 @@
       "icons/icon.ico"
     ],
     "license": "Apache-2.0",
-    "licenseFile": "../LICENSE",
+    "licenseFile": "../licenses/legal/LICENSE-AGREEMENT.txt",
     "resources": {
       "../lsp-bundle/": "lsp/",
       "../python-bundle/": "python-bundle/",
       "../licenses/THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt",
+      "../licenses/legal/": "legal/",
       "cli/openmind.cmd": "bin/openmind.cmd",
       "cli/openmind": "bin/openmind"
     },

@@ -321,11 +321,35 @@ pub struct RootFacts {
 /// The per-user data folder's name under `$XDG_DATA_HOME`.
 const USER_DATA_FOLDER: &str = "openmind-studio";
 
+/// Whether `exe_dir` is a macOS app bundle's `<name>.app/Contents/MacOS` folder.
+pub fn is_macos_bundle_dir(exe_dir: &Path) -> bool {
+    let mut parts = exe_dir.components().rev().map(|part| part.as_os_str());
+    parts.next() == Some("MacOS".as_ref())
+        && parts.next() == Some("Contents".as_ref())
+        && parts
+            .next()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.to_ascii_lowercase().ends_with(".app"))
+}
+
 /// The folder the app keeps its data in: the exe's folder on Windows, and elsewhere whenever the app can write there
 /// (a portable copy); otherwise `$XDG_DATA_HOME/openmind-studio` (an absolute value only), else
 /// `$HOME/.local/share/openmind-studio`. With neither variable it stays with the exe's folder (and start-up then reports
 /// that the folder can't be created).
+///
+/// A macOS app bundle is never the data folder, even when it is writable: writing into `*.app` invalidates its code
+/// signature and macOS may run it from a read-only, randomized location (App Translocation). Its data goes to
+/// `~/Library/Application Support/OpenMind Studio/Data` (beside the `Installations` folder kept there).
 pub fn choose_root(exe_dir: &Path, facts: RootFacts) -> PathBuf {
+    if !facts.windows && is_macos_bundle_dir(exe_dir) {
+        if let Some(home) = facts.home.as_ref().filter(|dir| dir.is_absolute()) {
+            return home
+                .join("Library")
+                .join("Application Support")
+                .join("OpenMind Studio")
+                .join("Data");
+        }
+    }
     if facts.windows || (facts.writable && !facts.appimage) {
         return exe_dir.to_path_buf();
     }
@@ -452,6 +476,32 @@ mod tests {
                 exe_dir
             );
         }
+    }
+
+    #[test]
+    fn a_macos_app_bundle_keeps_its_data_in_application_support_never_inside_the_bundle() {
+        let bundle = Path::new("/Applications/OpenMind Studio.app/Contents/MacOS");
+        assert!(is_macos_bundle_dir(bundle));
+        let expected = abs("home/ann")
+            .join("Library")
+            .join("Application Support")
+            .join("OpenMind Studio")
+            .join("Data");
+        for writable in [true, false] {
+            assert_eq!(choose_root(bundle, facts(false, false, writable)), expected);
+        }
+        // Not a bundle: a bare binary or a folder merely named MacOS keeps the usual rules.
+        assert!(!is_macos_bundle_dir(Path::new("/Users/ann/OpenMind/MacOS")));
+        assert!(!is_macos_bundle_dir(Path::new(
+            "/Users/ann/OpenMind Studio"
+        )));
+        assert_eq!(
+            choose_root(
+                Path::new("/Users/ann/OpenMind Studio"),
+                facts(false, false, true)
+            ),
+            Path::new("/Users/ann/OpenMind Studio")
+        );
     }
 
     #[test]

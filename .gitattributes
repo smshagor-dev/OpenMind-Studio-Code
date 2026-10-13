@@ -8,5 +8,10 @@ src-tauri/cli/openmind text eol=lf
 # Shell scripts run in WSL and Linux containers straight from this checkout: LF, or bash stops at the first CR.
 *.sh text eol=lf
 
+# Launchers shipped with the portable packages: the batch file needs CRLF, the macOS/Linux scripts LF.
+scripts/launchers/**/*.bat text eol=crlf
+scripts/launchers/**/*.command text eol=lf
+scripts/launchers/**/*.sh text eol=lf
+
 # Signed test fixtures: the signatures cover these exact bytes, so line endings must never be converted.
 src-tauri/src/updates/fixtures/* -text

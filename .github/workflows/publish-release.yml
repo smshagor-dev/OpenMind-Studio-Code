@@ -1,0 +1,121 @@
+# Publishes a finished Release run (release-windows.yml) to the PUBLIC release repository, smshagor-dev/OpenMind-Studio.
+# This private repository's source is never uploaded: only the release files (installers, packages, their update .sig
+# files) and metadata/ (latest.json, SHA256SUMS.txt, notes, legal texts, licences) of the Release run's artifact.
+#
+# Started by hand only, and it waits for approval in the `public-release` environment (Settings > Environments: add the
+# owner as a required reviewer). Every gate is checked again here; any failure stops before anything is uploaded:
+#   - the artifact is the signed one (`openmind-studio-release`, never the `...-UNSIGNED-TEST-ONLY` one) and its report says
+#     "signed";
+#   - all six platform/architecture folders are present (windows x64/x86, linux x64/x86, macos arm64/x64);
+#   - checksums, architectures and every update signature verify (the same scripts as the Release run);
+#   - the person confirms the multi-PC pilot and the installer upgrade test with a reference to their results;
+#   - the tag doesn't exist yet in the public repository (no duplicate assets; an existing release is never changed).
+# The release is created as a DRAFT unless `draft` is false; a draft is published by hand on GitHub.
+#
+# Secret: PUBLIC_RELEASE_TOKEN — a fine-grained token with access to smshagor-dev/OpenMind-Studio ONLY and the single
+# permission "Contents: Read and write". The default GITHUB_TOKEN can't write to another repository.
+
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: "Run ID of a successful Release workflow run (Actions > Release > the run's URL ends in /runs/<id>)"
+        required: true
+        type: string
+      confirm:
+        description: 'Type "publish v<version>" (e.g. publish v1.0.3)'
+        required: true
+        type: string
+      gates:
+        description: "Reference to the passed multi-PC pilot and installer upgrade test results (link or report name)"
+        required: true
+        type: string
+      draft:
+        description: "Create the GitHub release as a draft (publish it by hand after checking)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  NODE_VERSION: "24.16.0"
+  PNPM_VERSION: "11.10.0"
+  PUBLIC_REPO: smshagor-dev/OpenMind-Studio
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    environment: public-release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Inputs
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          GATES: ${{ inputs.gates }}
+        run: |
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$CONFIRM" != "publish v$version" ]; then echo "::error::Type exactly: publish v$version"; exit 1; fi
+          if [ "${#GATES}" -lt 8 ]; then echo "::error::Give a reference to the pilot and upgrade-test results."; exit 1; fi
+
+      - name: The signed release artifact of that run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: openmind-studio-release
+          path: release
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Release gates
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          dir="release/v$VERSION"
+          test -d "$dir" || { echo "::error::$dir is not in the artifact"; exit 1; }
+          for sub in windows/x64 windows/x86 linux/x64 linux/x86 macos/arm64 macos/x64; do
+            test -n "$(ls -A "$dir/$sub" 2>/dev/null)" || { echo "::error::$sub is missing"; exit 1; }
+          done
+          grep -q 'Build type: \*\*signed\*\*' "$dir/validation/reports/RELEASE-REPORT.md" \
+            || { echo "::error::The Windows files are not Authenticode-signed."; exit 1; }
+          node scripts/release-checksums.mjs --verify --version "$VERSION"
+          node scripts/verify-architecture.mjs "$dir"
+          node scripts/verify-updater-signatures.mjs --require-all "$dir"
+
+      - name: The files to upload (release files, their .sig, metadata) — nothing else
+        run: |
+          dir="release/v$VERSION"
+          mkdir upload
+          find "$dir/windows" "$dir/linux" "$dir/macos" -type f \
+            \( -name '*.exe' -o -name '*.msi' -o -name '*.zip' -o -name '*.deb' -o -name '*.AppImage' -o -name '*.tar.gz' \
+               -o -name '*.dmg' -o -name '*.sig' \) -exec cp {} upload/ \;
+          cp "$dir"/metadata/{latest.json,SHA256SUMS.txt,RELEASE-NOTES.md,PRIVACY-POLICY.md,TERMS-OF-USE.md,EULA.md,LICENSE.txt,THIRD-PARTY-LICENSES.txt} upload/
+          ls -la upload
+          # Defence in depth: no source, no keys.
+          if ls upload | grep -Eiq '\.(rs|ts|tsx|mjs|js|key|pem|pfx|p12)$'; then echo "::error::Unexpected file type in upload/"; exit 1; fi
+
+      - name: Create the release in the public repository
+        env:
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::error::PUBLIC_RELEASE_TOKEN is not set."; exit 1; fi
+          if gh release view "v$VERSION" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
+            echo "::error::v$VERSION already exists in $PUBLIC_REPO: an existing release is never changed here."; exit 1
+          fi
+          flags=()
+          if [ "$DRAFT" = "true" ]; then flags+=(--draft); fi
+          gh release create "v$VERSION" upload/* --repo "$PUBLIC_REPO" --title "OpenMind Studio $VERSION" \
+            --notes-file upload/RELEASE-NOTES.md "${flags[@]}"

@@ -7,3 +7,4 @@ export function inspectFile(
   path: string,
   name: string,
 ): { name: string; expected: string | null; found: string | null; ok: boolean; note: string };
+export function machoArches(bytes: Buffer): ("x64" | "x86" | "arm64")[];

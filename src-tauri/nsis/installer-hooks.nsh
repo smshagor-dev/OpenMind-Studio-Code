@@ -655,6 +655,15 @@ Function OmWelcomeLeave
   ${EndIf}
 FunctionEnd
 
+; The license page (the template inserts it after the Welcome page) shows licenses/legal/LICENSE-AGREEMENT.txt: the
+; License Agreement, the Privacy Policy (for information) and the Apache License 2.0. Install is enabled only after the
+; user ticks the box, which starts unchecked; Cancel declines. An update skips the page (accepted at the first install),
+; and a silent/passive install accepts it by running setup with /S or /P, as the template already does.
+!define MUI_LICENSEPAGE_CHECKBOX
+!define MUI_LICENSEPAGE_CHECKBOX_TEXT "I accept the OpenMind Studio License Agreement"
+!define MUI_LICENSEPAGE_TEXT_TOP "Read the License Agreement (Part 1). The Privacy Policy (Part 2) is for your information."
+!define MUI_LICENSEPAGE_TEXT_BOTTOM "Accepting the License Agreement does not turn on any optional feature and sends nothing. The Privacy Policy is also installed as legal\PRIVACY-POLICY.md and published at https://github.com/smshagor-dev/OpenMind-Studio."
+
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW OmWelcomeShow
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE OmWelcomeLeave
 

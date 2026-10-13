@@ -1,5 +1,8 @@
 import type { Artifact } from "./releaseTools.mjs";
 
-export function releaseFiles(dir: string): Artifact[];
-export function writeManifest(dir: string): Artifact[];
+export type ManifestFile = Artifact & { arch: string; path: string };
+export const manifestPath: (dir: string) => string;
+export function releaseFiles(dir: string): ManifestFile[];
+export function misplacedFiles(dir: string): string[];
+export function writeManifest(dir: string): ManifestFile[];
 export function verifyManifest(dir: string): string[];

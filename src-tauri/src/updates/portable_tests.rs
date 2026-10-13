@@ -216,9 +216,23 @@ fn real_release_files_pass_the_update_check_and_tampered_ones_fail() {
         "the constant above is the configured key"
     );
     let version = conf["version"].as_str().expect("version");
+    // The release folder's per-architecture folders (scripts/releaseTools.mjs RELEASE_ARCHES); macOS only once built.
+    let folders = [
+        "windows/x64",
+        "windows/x86",
+        "linux/x64",
+        "linux/x86",
+        "macos/arm64",
+        "macos/x64",
+    ];
     let mut checked = 0;
-    for platform in ["windows", "linux"] {
-        for entry in std::fs::read_dir(dir.join(platform)).expect("platform folder") {
+    let mut macos = 0;
+    for folder in folders {
+        let Ok(entries) = std::fs::read_dir(dir.join(folder)) else {
+            assert!(folder.starts_with("macos/"), "{folder} is missing");
+            continue;
+        };
+        for entry in entries {
             let path = entry.expect("entry").path();
             if path.extension().is_some_and(|ext| ext == "sig") {
                 continue;
@@ -244,12 +258,19 @@ fn real_release_files_pass_the_update_check_and_tampered_ones_fail() {
                 path.display()
             );
             checked += 1;
+            if folder.starts_with("macos/") {
+                macos += 1;
+            }
         }
     }
-    assert_eq!(checked, 12, "six Windows and six Linux files");
+    assert_eq!(
+        checked - macos,
+        12,
+        "six Windows and six Linux files (plus the macOS ones once built)"
+    );
 
     let feed: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("latest.json")).expect("latest.json"),
+        &std::fs::read_to_string(dir.join("metadata").join("latest.json")).expect("latest.json"),
     )
     .expect("valid JSON");
     assert_eq!(feed["version"].as_str(), Some(version));
@@ -262,10 +283,12 @@ fn real_release_files_pass_the_update_check_and_tampered_ones_fail() {
             entries.push((format!("{label}.{key}"), value));
         }
     }
+    let darwin = if macos > 0 { 2 } else { 0 };
     assert_eq!(
         entries.len(),
-        14,
-        "Windows x64/x86 × (plain, -nsis, -msi), Linux x64/x86 × (plain, -deb, -appimage), two portable entries"
+        14 + darwin,
+        "Windows x64/x86 × (plain, -nsis, -msi), Linux x64/x86 × (plain, -deb, -appimage), two portable entries \
+         (and darwin-aarch64/x86_64 once macOS is built)"
     );
     for (key, value) in entries {
         let url = value["url"].as_str().expect("url");
@@ -275,12 +298,11 @@ fn real_release_files_pass_the_update_check_and_tampered_ones_fail() {
         let name = url
             .strip_prefix(&prefix)
             .unwrap_or_else(|| panic!("{key}: {url}"));
-        let platform = if name.contains("_linux_") {
-            "linux"
-        } else {
-            "windows"
-        };
-        let file = dir.join(platform).join(name);
+        let file = folders
+            .iter()
+            .map(|folder| dir.join(folder).join(name))
+            .find(|file| file.is_file())
+            .unwrap_or_else(|| panic!("{key}: {name} is not in the release folder"));
         let sig = std::fs::read_to_string(format!("{}.sig", file.display()))
             .unwrap_or_else(|err| panic!("{key}: {name} has no .sig ({err})"));
         assert_eq!(value["signature"].as_str(), Some(sig.trim()), "{key}");

@@ -4,14 +4,19 @@
 //   .AppImage        -> its ELF header (the AppImage runtime): x86-64 / i386
 //   _portable.tar.gz -> OpenMindStudio inside: ELF machine
 //   .deb             -> control file `Architecture: amd64 | i386` and the packaged usr/bin binary's ELF machine
+//   .app.zip         -> OpenMind Studio.app/Contents/MacOS/OpenMindStudio inside: Mach-O CPU type (thin or universal;
+//                       a universal binary must contain the named architecture)
+// Each file must also be in the folder its name names (windows/x64/, macos/arm64/ ...).
 // The NSIS setup and the MSI are reported as not inspected: the NSIS stub is a 32-bit program for both architectures and
-// the MSI's cabinet needs Windows Installer (check them with `msiexec /a`, see docs/release.md). Uses only node:zlib.
-import { readdirSync, readFileSync } from "node:fs";
+// the MSI's cabinet needs Windows Installer (check them with `msiexec /a`, see docs/release.md); a .dmg is a compressed
+// disk image (check it with `hdiutil attach` on macOS). Uses only node:zlib.
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
-import { releaseDir, releaseKindOf } from "./releaseTools.mjs";
+import { misplacedFiles } from "./releaseManifest.mjs";
+import { RELEASE_ARCHES, releaseArchOf, releaseDir, releaseKindOf } from "./releaseTools.mjs";
 import { zipEntry } from "./zipRead.mjs";
 
 export { zipEntry };
@@ -23,6 +28,27 @@ export function peArch(bytes) {
   if (bytes.readUInt16LE(0) !== 0x5a4d) return null;
   const pe = bytes.readUInt32LE(0x3c);
   return PE[bytes.readUInt16LE(pe + 4)] ?? null;
+}
+
+const MACHO_CPU = { 0x01000007: "x64", 0x0100000c: "arm64", 7: "x86" };
+
+/** The architectures of a Mach-O program: one for a thin binary, several for a universal (fat) one; [] if not Mach-O. */
+export function machoArches(bytes) {
+  const magic = bytes.readUInt32BE(0);
+  if (magic === 0xcafebabe || magic === 0xcafebabf) {
+    const entrySize = magic === 0xcafebabf ? 32 : 20;
+    const arches = [];
+    for (let i = 0; i < bytes.readUInt32BE(4); i += 1) {
+      const cpu = MACHO_CPU[bytes.readUInt32BE(8 + i * entrySize)];
+      if (cpu) arches.push(cpu);
+    }
+    return arches;
+  }
+  if (magic === 0xcffaedfe || magic === 0xcefaedfe) {
+    const cpu = MACHO_CPU[bytes.readUInt32LE(4)];
+    return cpu ? [cpu] : [];
+  }
+  return [];
 }
 
 export function elfArch(bytes) {
@@ -81,9 +107,12 @@ function debArch(bytes) {
 /** `{ name, expected, found, ok, note }` for one release file. */
 export function inspectFile(path, name) {
   const kind = releaseKindOf(name);
-  const expected = /_(x64|x86)[._]/.exec(name)?.[1] ?? null;
+  const expected = releaseArchOf(name);
   if (kind === "setup" || kind === "msi") {
     return { name, expected, found: null, ok: true, note: "not inspected (installer; see docs/release.md)" };
+  }
+  if (kind === "dmg") {
+    return { name, expected, found: null, ok: true, note: "not inspected (disk image; check it with hdiutil on macOS)" };
   }
   const bytes = readFileSync(path);
   let found = null;
@@ -103,6 +132,11 @@ export function inspectFile(path, name) {
     const { declared, binary } = debArch(bytes);
     found = declared === binary ? declared : null;
     note = `Architecture ${declared ?? "?"}, usr/bin binary ${binary ?? "?"}`;
+  } else if (kind === "macos-app") {
+    const program = zipEntry(bytes, (n) => n.endsWith(".app/Contents/MacOS/OpenMindStudio"));
+    const arches = program ? machoArches(program.data) : [];
+    found = arches.includes(expected) ? expected : (arches[0] ?? null);
+    note = program ? `${program.name}: ${arches.join(" + ") || "not Mach-O"}` : "OpenMindStudio missing";
   }
   return { name, expected, found, ok: found !== null && found === expected, note };
 }
@@ -113,12 +147,20 @@ if (isMain) {
   const version = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")).version;
   const dir = resolve(process.argv[2] ?? releaseDir(root, version));
   let failures = 0;
-  for (const platform of ["windows", "linux"]) {
-    for (const name of readdirSync(join(dir, platform)).sort()) {
-      if (releaseKindOf(name) === null) continue;
-      const result = inspectFile(join(dir, platform, name), name);
-      if (!result.ok) failures += 1;
-      console.log(`${result.ok ? "OK  " : "FAIL"} ${platform}/${name}: ${result.found ?? "-"} (${result.note})`);
+  for (const path of misplacedFiles(dir)) {
+    failures += 1;
+    console.log(`FAIL ${path}: in the wrong folder for its name`);
+  }
+  for (const [platform, arches] of Object.entries(RELEASE_ARCHES)) {
+    for (const arch of arches) {
+      const sub = join(dir, platform, arch);
+      if (!existsSync(sub)) continue;
+      for (const name of readdirSync(sub).sort()) {
+        if (releaseKindOf(name) === null || releaseArchOf(name) !== arch) continue;
+        const result = inspectFile(join(sub, name), name);
+        if (!result.ok) failures += 1;
+        console.log(`${result.ok ? "OK  " : "FAIL"} ${platform}/${arch}/${name}: ${result.found ?? "-"} (${result.note})`);
+      }
     }
   }
   process.exit(failures === 0 ? 0 : 1);

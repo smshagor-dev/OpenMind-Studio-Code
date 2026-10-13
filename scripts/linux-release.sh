@@ -2,7 +2,7 @@
 # usage: bash scripts/linux-release.sh
 #
 # Builds the Linux release (deb, AppImage, portable tar.gz) of this checkout for the machine's architecture and puts it
-# into the project's own release folder, `release/v<version>/linux/` (git-ignored), under the release names
+# into the project's own release folder, `release/v<version>/linux/<arch>/` (git-ignored), under the release names
 # (scripts/releaseTools.mjs releaseName). Run it on the project itself — no clone or copy of the source:
 #
 #   x64: in WSL, `cd "/mnt/e/Code Editor" && bash scripts/linux-release.sh`
@@ -38,7 +38,7 @@ rm -rf "$CARGO_TARGET_DIR/release/bundle"
 cargo tauri build --bundles deb,appimage --config "$config" -- --locked
 
 built="$CARGO_TARGET_DIR/release"
-out="$root/release/v$version/linux"
+out="$root/release/v$version/linux/$arch"
 mkdir -p "$out"
 name="OpenMind-Studio_${version}_linux_${arch}"
 copy_with_sig() { # <source> <destination>
@@ -56,11 +56,17 @@ install -m 755 "$built/OpenMindStudio" "$stage/OpenMind Studio/OpenMindStudio"
 [ -f "$root/licenses/THIRD-PARTY-LICENSES.txt" ] || { echo "licenses/THIRD-PARTY-LICENSES.txt is missing: run 'pnpm build'." >&2; exit 1; }
 install -m 644 "$root/LICENSE" "$stage/OpenMind Studio/LICENSE"
 install -m 644 "$root/licenses/THIRD-PARTY-LICENSES.txt" "$stage/OpenMind Studio/THIRD-PARTY-LICENSES.txt"
+[ -f "$root/licenses/legal/PRIVACY-POLICY.md" ] || { echo "licenses/legal/ is missing: run 'pnpm build'." >&2; exit 1; }
+mkdir -p "$stage/OpenMind Studio/legal"
+install -m 644 "$root"/licenses/legal/* "$stage/OpenMind Studio/legal/"
+install -m 755 "$root/scripts/launchers/linux/openmind-studio.sh" "$stage/OpenMind Studio/openmind-studio.sh"
 label=$([ "$arch" = x64 ] && echo "x86_64" || echo "x86, 32-bit")
 cat > "$stage/OpenMind Studio/README.txt" <<README
 OpenMind Studio $version - portable (Linux $label)
 
-Run: ./OpenMindStudio  (from this folder)
+Run: ./openmind-studio.sh  (from this folder; it checks the architecture and the system libraries first)
+  or ./OpenMindStudio
+License Agreement, Privacy Policy and Terms of Use: legal/
 Data is kept next to the program when this folder is writable, otherwise in ~/.local/share/openmind-studio.
 Needs the system libraries WebKitGTK 4.1, GTK 3, libsoup 3, librsvg2 and libayatana-appindicator3
 (Debian/Ubuntu: sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libayatana-appindicator3-1 librsvg2-2).
@@ -71,4 +77,4 @@ rm -rf "$stage"
 
 echo "Linux $arch release files in $out:"
 ls -l "$out"
-echo "Then, on Windows: node scripts/release-checksums.mjs   (rewrites release/v$version/SHA256SUMS.txt)"
+echo "Then, on Windows: node scripts/release-checksums.mjs   (rewrites release/v$version/metadata/SHA256SUMS.txt)"

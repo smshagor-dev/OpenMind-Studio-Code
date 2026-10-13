@@ -27,9 +27,24 @@ export function signatureVerdict(
   mode: "signed" | "test-signed" | "external",
   options?: { timestampWaived?: boolean },
 ): string | null;
-export type ReleaseKind = "setup" | "msi" | "portable" | "deb" | "appimage" | "linux-portable";
+export type ReleaseKind =
+  | "setup"
+  | "msi"
+  | "portable"
+  | "deb"
+  | "appimage"
+  | "linux-portable"
+  | "dmg"
+  | "macos-app";
+export type ReleaseArch = "x64" | "x86" | "arm64";
+export const RELEASE_ARCHES: Record<"windows" | "linux" | "macos", ReleaseArch[]>;
+export function releaseArch(arch: string): ReleaseArch;
+export function releaseArchOf(name: string): ReleaseArch | null;
+export function releaseSubdir(kind: string, arch: string): string;
+export const METADATA_DIR: string;
+export const REPORTS_DIR: string;
 export function releaseName(kind: ReleaseKind, version: string, arch?: string): string;
-export function releasePlatform(kind: string): "windows" | "linux";
+export function releasePlatform(kind: string): "windows" | "linux" | "macos";
 export function releaseDir(root: string, version: string): string;
 export function releaseKindOf(name: string): ReleaseKind | null;
 export function formatSize(bytes: number): string;
@@ -58,8 +73,8 @@ export const RELEASE_REPO: string;
 export const UPDATE_ENDPOINT: string;
 export function releaseDownloadUrl(version: string, name: string): string;
 export interface SignedFile {
-  kind: "setup" | "msi" | "portable" | "deb" | "appimage";
-  arch: "x64" | "x86";
+  kind: "setup" | "msi" | "portable" | "deb" | "appimage" | "macos-app";
+  arch: "x64" | "x86" | "arm64";
   name: string;
   signature: string;
 }

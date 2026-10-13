@@ -3194,6 +3194,40 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   `pnpm release:checksums|release:verify`, portable staging in `release/staging/`, and `scripts/linux-release.sh` builds
   Linux from this checkout (no clone; cargo target in an external cache). Never write release files, worktrees, clones or
   project copies elsewhere; build caches may be external. The 12 v1.0.3 files are in `release/v1.0.3/`.
+- [ ] **Release 1.0.3 final pass** (branch `release-1.0.3-final`; staged, **not published**). The source repository stays
+  private and the public repository gets only release files; the two are never merged.
+  - **Release folder** `release/v<v>/`: `<platform>/<arch>/` (windows x64/x86, linux x64/x86, macos arm64/x64),
+    `launchers/`, `metadata/` (latest.json, SHA256SUMS.txt with **bare names** so `sha256sum -c` works on a flat GitHub
+    download, notes, legal, licences), `validation/` (reports, upgrade-test). `releaseTools`: `releaseArch`,
+    `releaseArchOf`, `releaseSubdir`, `RELEASE_ARCHES`, kinds `dmg`/`macos-app` (`.app.zip`). `releaseManifest`:
+    `misplacedFiles` (a file in another architecture's folder fails verification). Feed: `darwin-<arch>` entries (app ZIP;
+    read only — macOS never updates itself, `policy::self_update_on` now names the platform). `scripts/sign-release.mjs`
+    (`pnpm release:sign`) signs every release file, bound to the version and checked independently, then writes the feed
+    and checksums. `release-metadata.mjs` fills `metadata/` and `launchers/`. Notes: `docs/release-notes-1.0.3.md`.
+  - **Legal**: `docs/legal/{privacy-policy,terms-of-use,eula}.md` (owner/legal review points in `REVIEW-NOTES.md`, not
+    shipped; the EULA adds nothing to Apache-2.0). `scripts/legal-texts.mjs` (prebuild) → `licenses/legal/` (git-ignored):
+    `LICENSE-AGREEMENT.txt` = License Agreement + Privacy Policy (for information) + Apache text, shown by both
+    installers (`bundle.licenseFile`); shipped as `legal/` in every package. NSIS license page: **unchecked** "I accept"
+    box (`MUI_LICENSEPAGE_CHECKBOX` in the hooks; `checkInstallerHooks` refuses radio buttons). `docs/PRIVACY.md` points
+    to the policy. No first-run dialog on Linux/macOS (Apache licence; packages carry `legal/`).
+  - **Launchers** `scripts/launchers/`: `Start OpenMind Studio.bat` (portable ZIP), `openmind-studio.sh` (tar.gz; arch +
+    `ldd` check), `Start OpenMind Studio.command` (macOS app ZIP; `lipo`, Rosetta, never touches quarantine). Portable
+    updates also replace `legal/`, the launcher, `LICENSE.txt`, `THIRD-PARTY-LICENSES.txt` (`REPLACEABLE`).
+  - **macOS**: `tauri.macos.conf.json` (app + dmg, ad-hoc `signingIdentity "-"`, min 11.0), `scripts/macos-release.sh`,
+    Release workflow jobs on `macos-15` / `macos-15-intel` with a 15 s start check. `AppPaths::choose_root`: a
+    `*.app/Contents/MacOS` exe keeps data in `~/Library/Application Support/OpenMind Studio/Data`, never in the bundle.
+    **Not built or run yet** (needs a Mac runner); only `openmind-core` was type-checked for darwin.
+  - **CI**: `release-windows.yml` gains macOS + metadata; `publish-release.yml` (manual, `public-release` environment
+    approval, `PUBLIC_RELEASE_TOKEN` fine-grained to the public repo only) re-runs every gate, refuses an unsigned
+    artifact, a missing platform or an existing tag, uploads only release files + metadata, creates a draft.
+  - **Fixes**: portable ZIPs now made by Windows' `tar.exe` (Compress-Archive wrote backslash names and failed on a
+    fresh copy while Defender scanned the copied `lsp/packs/*.zip`); collab LAN test ports from 20000-29999 (an
+    ephemeral discovery port could be shared with another test's `SO_REUSEADDR` query socket; Linux's ephemeral range
+    contains the production port 47731 — documented); Windows Sandbox kit writes to `validation/upgrade-test/`.
+  - **Signing status**: Windows **not** Authenticode-signed — SignPath Foundation needs OSI source traceable to a known
+    repository, so a private source repo is ineligible; no other free trusted provider. macOS not Developer ID-signed or
+    notarized. Updater signing needs the key's password (DPAPI file or env); until then the rebuilt files have no `.sig`
+    and no `latest.json`.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).
