@@ -139,6 +139,16 @@ two-computer LAN.
   report showed only the stale address's "refused": discovery found nothing, and **a discovery query that couldn't search
   (no socket, no nonce, nothing sent) returned an empty list silently**. That is now an error (`broadcast::query` returns
   `Result`), logged, and listed in `RouteReport.discoveryProblems`; the test prints the whole route report if it fails.
+  Release 1.0.3 pass (another 70 runs, no failure) found one mechanism that fits the report and that the port-collision
+  measurement above missed: the harness took each test's discovery port from the **ephemeral** range (bind port 0, read
+  it, close it). Discovery *query* sockets also bind port 0, so a parallel test's query socket could be handed that port
+  before the Owner's responder bound it — both with `SO_REUSEADDR`, both binds succeed, and Windows delivers each unicast
+  query to only one of the two sockets: when that is the querier, the Owner never hears it and discovery finds nothing.
+  `tests/common/lan.rs` `free_udp_port` now hands out ports from 20000-29999 (below every OS's ephemeral range, never the
+  same twice in a process, checked with a plain bind), so a port-0 socket can't take one. Production: the real discovery
+  port (47731) is below the Windows and macOS ephemeral range (49152+), but **inside Linux's default range**
+  (32768-60999), so on Linux a port-0 socket on the same computer could, rarely, be handed 47731 while no Owner holds
+  it. Not changed in this release (moving the port breaks discovery between versions); noted as a known limitation.
 - **Signaling relay alive but not listening** (Phase 8): the relay ran in its own hidden console, so Ctrl+C from the test
   shell couldn't reach it, and tokio's `ctrl_c` only reacts to that event. No code path stops its listener without a stop
   request; a stress of 500 connections (valid, malformed, floods, abrupt) and topic expiry didn't reproduce it. Fixed

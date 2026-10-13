@@ -1,7 +1,7 @@
 # Runs INSIDE Windows Sandbox (started by New-UpgradeTestSandbox.ps1): installs the previous release, uses it once,
 # upgrades it with the new release, and records what changed. Never run it on a real computer: it installs and starts
 # OpenMind Studio for the sandbox's user. Results: C:\results\upgrade-test.json (+ copies of each database) — the host
-# folder release\v<version>\upgrade-test\results.
+# folder release\v<version>\validation\upgrade-test\results.
 param(
   [string]$Old = "C:\old",          # release\<previous version> (read-only)
   [string]$New = "C:\new",          # release\v<version> (read-only)

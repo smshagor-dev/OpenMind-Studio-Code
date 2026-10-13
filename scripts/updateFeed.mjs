@@ -1,5 +1,5 @@
-// The update feed of a release (`release/v<version>/latest.json`), written by release.mjs after the installers are
-// collected into `release/v<version>/windows/`.
+// The update feed of a release (`release/v<version>/metadata/latest.json`), written by release.mjs after the
+// installers are collected into `release/v<version>/windows/<arch>/`.
 //
 // - Installers: their `.sig` comes from `tauri build` (createUpdaterArtifacts, the release key in the environment).
 // - Portable archives: signed here with the same key and bound to the version (`tauri signer sign --app-version`), so a
@@ -9,10 +9,10 @@
 // - No feed is written when an installer has no signature: an incomplete feed would leave some copies without updates
 //   and others with an error.
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { latestJson, releasePlatform, signedVersion } from "./releaseTools.mjs";
+import { latestJson, METADATA_DIR, releaseSubdir, signedVersion } from "./releaseTools.mjs";
 import { updaterSigningEnv } from "./updaterKey.mjs";
 
 function signPortable(file, version) {
@@ -31,7 +31,7 @@ function signPortable(file, version) {
 }
 
 /**
- * `artifacts` = `{ name, kind, arch }` in `out/<platform>/` (the release folder). Returns `{ written, notes }`: `notes` are lines for RELEASE-REPORT.md.
+ * `artifacts` = `{ name, kind, arch }` in `out/<platform>/<arch>/` (the release folder). Returns `{ written, notes }`: `notes` are lines for RELEASE-REPORT.md.
  * `minimumVersion` (OPENMIND_MINIMUM_VERSION) makes older copies update (mandatory); `notes` text comes from
  * `notesFile` when given.
  */
@@ -39,8 +39,8 @@ export function writeUpdateFeed({ out, version, artifacts, notesFile = null, min
   const lines = [];
   const files = [];
   for (const artifact of artifacts) {
-    if (!["setup", "msi", "portable", "deb", "appimage"].includes(artifact.kind)) continue;
-    const file = join(out, releasePlatform(artifact.kind), artifact.name);
+    if (!["setup", "msi", "portable", "deb", "appimage", "macos-app"].includes(artifact.kind)) continue;
+    const file = join(out, releaseSubdir(artifact.kind, artifact.arch), artifact.name);
     const sigFile = `${file}.sig`;
     if (!existsSync(sigFile) && artifact.kind === "portable") {
       const problem = signPortable(file, version);
@@ -72,7 +72,8 @@ export function writeUpdateFeed({ out, version, artifacts, notesFile = null, min
       minimumVersion,
       files,
     });
-    writeFileSync(join(out, "latest.json"), `${JSON.stringify(feed, null, 2)}\n`);
+    mkdirSync(join(out, METADATA_DIR), { recursive: true });
+    writeFileSync(join(out, METADATA_DIR, "latest.json"), `${JSON.stringify(feed, null, 2)}\n`);
     const mandatory = minimumVersion ? `; copies older than ${minimumVersion} must update` : "";
     return {
       written: true,

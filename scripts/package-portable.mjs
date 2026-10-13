@@ -68,6 +68,17 @@ if (!existsSync(notices)) {
 }
 copyFileSync(join(root, "LICENSE"), join(staging, "LICENSE.txt"));
 copyFileSync(notices, join(staging, "THIRD-PARTY-LICENSES.txt"));
+// The License Agreement, Privacy Policy and Terms of Use (scripts/legal-texts.mjs, run by pnpm build).
+const legal = join(root, "licenses", "legal");
+if (!existsSync(join(legal, "PRIVACY-POLICY.md"))) {
+  throw new Error("licenses/legal/ is missing: run `node scripts/legal-texts.mjs` (pnpm build does it).");
+}
+cpSync(legal, join(staging, "legal"), { recursive: true });
+// The launcher (resolves the program next to itself; spaces and non-English folder names are fine).
+copyFileSync(
+  join(root, "scripts", "launchers", "windows", "Start OpenMind Studio.bat"),
+  join(staging, "Start OpenMind Studio.bat"),
+);
 
 // Optional, developer-populated tool bundle (see docs/toolchains.md). Nothing is downloaded here: the folder must
 // already hold the programs, and it is refused unless its manifest checks out.
@@ -118,15 +129,12 @@ if (existsSync(join(pythonBundle, "bundle.json"))) {
 
 const zip = join(outDir, zipName(version));
 rmSync(zip, { force: true });
-execFileSync(
-  "powershell",
-  [
-    "-NoProfile",
-    "-Command",
-    `Compress-Archive -LiteralPath '${staging}' -DestinationPath '${zip}' -CompressionLevel Optimal`,
-  ],
-  { stdio: "inherit" },
-);
+// Windows' own tar.exe (bsdtar; `-a` picks ZIP from the extension). Not PowerShell's Compress-Archive: it wrote entry
+// names with backslashes (not allowed in a ZIP; other unzip tools then show "OpenMind Studio\lsp\..." as one file name),
+// and it failed on a fresh copy whenever the virus scanner still held one of the just-copied archives (lsp/packs/*.zip:
+// "being used by another process"), so only a second run worked. Not Git's tar on PATH (GNU tar can't write ZIP).
+const systemTar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+execFileSync(systemTar, ["-a", "-c", "-f", zip, "-C", outDir, PACKAGE_FOLDER], { stdio: "inherit" });
 
 const sha = createHash("sha256").update(readFileSync(zip)).digest("hex");
 writeFileSync(`${zip}.sha256`, `${sha}  ${zipName(version)}\n`);

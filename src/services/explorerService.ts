@@ -30,6 +30,11 @@ export interface ExplorerSnapshot {
   selectedPath: string | null;
   /** The name box shown in the tree, if any. */
   pendingCreate?: PendingCreate | null;
+  /**
+   * Counts `revealPath` calls: the tree scrolls the selected row into view whenever it changes, also when the selection
+   * stayed the same (the user scrolled away and came back to the same tab).
+   */
+  revealSeq?: number;
 }
 
 /**
@@ -187,7 +192,8 @@ export class ExplorerService {
       currentDir = match;
       expandedPaths.add(currentDir);
     }
-    this.snapshot = { ...this.snapshot, expandedPaths, selectedPath: target };
+    const revealSeq = (this.snapshot.revealSeq ?? 0) + 1;
+    this.snapshot = { ...this.snapshot, expandedPaths, selectedPath: target, revealSeq };
     this.emitChanged();
     await this.persistState();
   }

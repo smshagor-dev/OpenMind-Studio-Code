@@ -7,8 +7,8 @@
   "scripts": {
     "predev": "node scripts/copy-monaco-workers.mjs && node scripts/copy-pdf-assets.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/copy-monaco-workers.mjs && node scripts/copy-pdf-assets.mjs && node scripts/third-party-licenses.mjs --check",
-    "licenses:generate": "node scripts/third-party-licenses.mjs --check",
+    "prebuild": "node scripts/copy-monaco-workers.mjs && node scripts/copy-pdf-assets.mjs && node scripts/third-party-licenses.mjs --check && node scripts/legal-texts.mjs --check",
+    "licenses:generate": "node scripts/third-party-licenses.mjs --check && node scripts/legal-texts.mjs --check",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -23,6 +23,8 @@
     "release:build:x64": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && node scripts/tauri-signed.mjs build --target x86_64-pc-windows-msvc --bundles nsis,msi",
     "release:build:x86": "node scripts/prepare-lsp-bundle.mjs --check && node scripts/prepare-python-bundle.mjs --check && node scripts/tauri-signed.mjs build --target i686-pc-windows-msvc --bundles nsis,msi",
     "release:collect:all": "node scripts/release.mjs --targets x86_64-pc-windows-msvc,i686-pc-windows-msvc",
+    "release:sign": "node scripts/sign-release.mjs",
+    "release:metadata": "node scripts/release-metadata.mjs",
     "release:checksums": "node scripts/release-checksums.mjs",
     "release:verify": "node scripts/release-checksums.mjs --verify"
   },

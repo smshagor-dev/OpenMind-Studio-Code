@@ -1,5 +1,5 @@
-# Builds the release on GitHub Actions — Windows x64/x86 (NSIS, MSI, portable ZIP) and Linux x64/x86 (deb, AppImage,
-# portable tar.gz) — after the CI checks pass, and, when SignPath is set up, has every Windows binary signed by SignPath
+# Builds the release on GitHub Actions — Windows x64/x86 (NSIS, MSI, portable ZIP), Linux x64/x86 (deb, AppImage,
+# portable tar.gz) and macOS arm64/x64 (disk image, app ZIP; ad-hoc signed, not notarized) — after the CI checks pass, and, when SignPath is set up, has every Windows binary signed by SignPath
 # (Authenticode, RFC 3161 timestamp) before the installers and update signatures are made. Nothing is published: the
 # finished, verified files are kept as one workflow artifact for a person to check and release.
 #
@@ -12,9 +12,9 @@
 #   2. bundle the NSIS setup and the MSI around the *signed* exe     -> SignPath signs the installers
 #   3. updater signatures (.sig, minisign) of the *signed* installers
 #   4. verify-signatures.mjs asks Windows to confirm every signature (trusted chain, unchanged, timestamped)
-# `collect` then puts everything into release/v<version>/ (windows/, linux/): release.mjs signs the portable ZIPs for
-# updates and writes SHA256SUMS.txt, RELEASE-REPORT.md and latest.json; then checksums, architectures and every update
-# signature are verified.
+# `collect` then puts everything into release/v<version>/ (<platform>/<arch>/, launchers/, metadata/): release.mjs signs
+# the portable ZIPs for updates and writes metadata/SHA256SUMS.txt, metadata/latest.json and
+# validation/reports/RELEASE-REPORT.md; then checksums, architectures and every update signature are verified.
 #
 # Repository settings (docs/release.md, "SignPath"):
 #   variables  SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG (e.g. release-signing),
@@ -304,8 +304,75 @@ jobs:
           path: release/v*/linux/
           if-no-files-found: error
 
+  macos:
+    # scripts/macos-release.sh builds the disk image and the app ZIP on a native Mac runner (no cross-compiling):
+    # macos-15 is Apple silicon (arm64), macos-15-intel is Intel (x64). The app is ad-hoc signed only (no Developer ID,
+    # no notarization) unless APPLE_SIGNING_IDENTITY and its certificate are provided; nothing here claims otherwise.
+    needs: checks
+    name: macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            triple: aarch64-apple-darwin
+          - arch: x64
+            runner: macos-15-intel
+            triple: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Frontend (dist/, licences, legal texts)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Rust ${{ env.RUSTUP_TOOLCHAIN }} for ${{ matrix.triple }}
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --target ${{ matrix.triple }}
+          cargo install tauri-cli --version "$TAURI_CLI_VERSION" --locked
+
+      - name: Build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_KEY_PASSWORD }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-macos
+        run: bash scripts/macos-release.sh ${{ matrix.triple }}
+
+      - name: Start the built app once (it must stay up for 15 seconds)
+        run: |
+          app="$(ls -d "$RUNNER_TEMP"/target-macos/${{ matrix.triple }}/release/bundle/macos/*.app | head -1)"
+          touch "$RUNNER_TEMP/launch-marker"
+          sleep 1
+          "$app/Contents/MacOS/OpenMindStudio" &
+          pid=$!
+          sleep 15
+          if ! kill -0 "$pid" 2>/dev/null; then echo "::error::The app exited within 15 seconds."; exit 1; fi
+          kill "$pid"
+          test -d "$HOME/Library/Application Support/OpenMind Studio/Data" || { echo "::error::No data folder in Application Support."; exit 1; }
+          if find "$app" -newer "$RUNNER_TEMP/launch-marker" | grep -q .; then echo "::error::The app wrote into its own bundle."; exit 1; fi
+          codesign --verify --deep --strict "$app"
+
+      - name: Keep the macOS files
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-${{ matrix.arch }}
+          path: release/v*/macos/
+          if-no-files-found: error
+
   collect:
-    needs: [windows, linux]
+    needs: [windows, linux, macos]
     runs-on: windows-latest
     timeout-minutes: 30
     env:
@@ -344,6 +411,22 @@ jobs:
         with:
           name: linux-x86
           path: release
+
+      # The same for macOS: v<version>/macos/<arch>/...
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-arm64
+          path: release
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: macos-x64
+          path: release
+
+      - name: Legal texts, notes and launchers into the release folder
+        run: |
+          node scripts/legal-texts.mjs --check
+          node scripts/release-metadata.mjs
 
       - name: Collect the release files and write the update feed
         shell: pwsh
@@ -396,9 +479,9 @@ jobs:
         shell: pwsh
         run: |
           $dir = Get-ChildItem release -Directory -Filter 'v*' | Select-Object -First 1
-          $files = @(Get-ChildItem "$($dir.FullName)/windows" -File | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object FullName)
+          $files = @(Get-ChildItem "$($dir.FullName)/windows" -File -Recurse | Where-Object { $_.Extension -in '.exe', '.msi' } | ForEach-Object FullName)
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          foreach ($zip in Get-ChildItem "$($dir.FullName)/windows/*_portable.zip") {
+          foreach ($zip in Get-ChildItem "$($dir.FullName)/windows" -Recurse -Filter '*_portable.zip') {
             $archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
             $entry = $archive.Entries | Where-Object { $_.FullName -like '*/OpenMindStudio.exe' } | Select-Object -First 1
             $exe = Join-Path $env:RUNNER_TEMP ("portable-" + $zip.BaseName + ".exe")
@@ -413,6 +496,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ inputs.signing == 'required' && 'openmind-studio-release' || 'openmind-studio-release-UNSIGNED-TEST-ONLY' }}
-          # release/v<version>/ (windows/, linux/, SHA256SUMS.txt, latest.json, RELEASE-REPORT.md); not release/staging/.
+          # release/v<version>/ (windows/, linux/, macos/ per architecture, launchers/, metadata/, validation/); not
+          # release/staging/. Publishing it is the separate, approval-gated Publish Release workflow.
           path: release/v*/
           if-no-files-found: error

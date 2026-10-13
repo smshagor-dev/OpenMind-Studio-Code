@@ -31,6 +31,10 @@ pub const REPLACEABLE: &[&str] = &[
     "python-bundle",
     "bin",
     "README.txt",
+    "LICENSE.txt",
+    "THIRD-PARTY-LICENSES.txt",
+    "legal",
+    "Start OpenMind Studio.bat",
 ];
 const STAGED_DIR: &str = ".update-staged";
 const OLD_MARK: &str = ".old-";

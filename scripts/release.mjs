@@ -1,8 +1,9 @@
 // usage: node scripts/release.mjs [--target-dir <cargo target dir>] [--targets <triple,...>] [--portable <zip>] [--portable-x86 <zip>] [--no-sign] [--notes <file>]
 //
 // Output always goes to the project's own release folder, `release/v<version>/` (git-ignored; releaseTools.releaseDir):
-// the Windows files in `windows/`, and `SHA256SUMS.txt` (every release file in `windows/` and `linux/`, so Linux files
-// collected there by scripts/linux-release.sh are kept), `RELEASE-REPORT.md` and `latest.json` next to them.
+// the Windows files in `windows/<arch>/`, and in `metadata/`: `SHA256SUMS.txt` (every release file of every platform
+// folder, so Linux and macOS files collected there by scripts/linux-release.sh / scripts/macos-release.sh are kept) and
+// `latest.json`; the report goes to `validation/reports/RELEASE-REPORT.md`.
 //
 // latest.json is the update feed installed copies read (scripts/updateFeed.mjs): upload it with the files and their
 // .sig. OPENMIND_MINIMUM_VERSION=<x.y.z> makes older copies update (mandatory).
@@ -35,9 +36,11 @@ import {
   checkWixSource,
   publicSigningInfo,
   readSigningConfig,
+  METADATA_DIR,
   releaseDir,
   releaseName,
-  releasePlatform,
+  releaseSubdir,
+  REPORTS_DIR,
   reportText,
   signatureVerdict,
 } from "./releaseTools.mjs";
@@ -77,7 +80,7 @@ const sha256 = (file) => createHash("sha256").update(readFileSync(file)).digest(
 const tauri = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
 const version = tauri.version;
 const problems = [
-  ...checkInstallerConfig(tauri, readFileSync(join(root, "LICENSE"), "utf8")),
+  ...checkInstallerConfig(tauri, readFileSync(join(root, "licenses", "legal", "LICENSE-AGREEMENT.txt"), "utf8")),
   ...checkInstallerHooks(
     readFileSync(join(root, "src-tauri", "nsis", "installer-hooks.nsh"), "utf8"),
   ),
@@ -135,7 +138,9 @@ if (option("--portable-x86"))
   found.push({ kind: "portable", arch: "x86", from: option("--portable-x86") });
 const present = found.filter((entry) => entry.from !== null && existsSync(entry.from));
 const out = releaseDir(root, version);
-mkdirSync(join(out, "windows"), { recursive: true });
+for (const arch of new Set(present.map((entry) => entry.arch))) {
+  mkdirSync(join(out, "windows", arch), { recursive: true });
+}
 const config = readSigningConfig(process.env);
 console.log(config.message);
 let signedCount = 0;
@@ -143,7 +148,7 @@ const artifacts = [];
 
 for (const entry of present) {
   const name = releaseName(entry.kind, version, entry.arch);
-  const target = join(out, releasePlatform(entry.kind), name);
+  const target = join(out, releaseSubdir(entry.kind, entry.arch), name);
   copyFileSync(entry.from, target);
   // The updater signature (`.sig`, made by `tauri build`) belongs to these exact bytes.
   if (existsSync(`${entry.from}.sig`)) copyFileSync(`${entry.from}.sig`, `${target}.sig`);
@@ -191,7 +196,7 @@ const verifyMode = external ? "external" : config.mode;
 if (external) signedCount = signable;
 if (verifyMode === "signed" || verifyMode === "test-signed" || verifyMode === "external") {
   for (const a of artifacts.filter((entry) => entry.kind !== "portable")) {
-    const info = inspectSignature(join(out, releasePlatform(a.kind), a.name));
+    const info = inspectSignature(join(out, releaseSubdir(a.kind, a.arch), a.name));
     const problem = signatureVerdict(info, verifyMode, {
       timestampWaived: process.env.SIGNING_NO_TIMESTAMP === "1",
     });
@@ -213,24 +218,26 @@ const buildType =
 
 // The update feed (latest.json) for the files just collected; signed builds only (the signatures are what installed
 // copies check, and signing an installer after its .sig was made would break it).
-// The Linux deb and AppImage already in linux/ (scripts/linux-release.sh) go into the feed too: Linux copies are only
-// told about the release (they never update themselves, policy::self_update).
-const linuxFeedFiles = releaseFiles(out)
-  .filter((file) => file.kind === "deb" || file.kind === "appimage")
-  .map((file) => ({ ...file, arch: /_(x64|x86)\./.exec(file.name)?.[1] ?? "x64" }));
+// The Linux deb and AppImage (scripts/linux-release.sh) and the macOS app ZIPs (scripts/macos-release.sh) already in
+// the folder go into the feed too: those copies are only told about the release (they never update themselves,
+// policy::self_update).
+const otherFeedFiles = releaseFiles(out).filter((file) =>
+  ["deb", "appimage", "macos-app"].includes(file.kind),
+);
 const feed = writeUpdateFeed({
   out,
   version,
-  artifacts: [...artifacts, ...linuxFeedFiles],
+  artifacts: [...artifacts, ...otherFeedFiles],
   notesFile: option("--notes") ?? null,
   minimumVersion: process.env.OPENMIND_MINIMUM_VERSION?.trim() || null,
 });
 for (const line of feed.notes) console.log(line);
 
-// Over every release file in the folder (windows/ and linux/), not only the ones collected now.
+// Over every release file in the folder (every platform and architecture), not only the ones collected now.
 const listed = writeManifest(out);
+mkdirSync(join(out, REPORTS_DIR), { recursive: true });
 writeFileSync(
-  join(out, "RELEASE-REPORT.md"),
+  join(out, REPORTS_DIR, "RELEASE-REPORT.md"),
   reportText({
     version,
     arch: [...new Set(present.map((entry) => entry.arch))].join(", ") || "x64",
@@ -241,7 +248,7 @@ writeFileSync(
   }),
 );
 console.log(
-  `Wrote ${artifacts.length} artifact(s) to ${out} (${buildType}); SHA256SUMS.txt lists ${listed.length}.`,
+  `Wrote ${artifacts.length} artifact(s) to ${out} (${buildType}); ${METADATA_DIR}/SHA256SUMS.txt lists ${listed.length}.`,
 );
 for (const a of artifacts) console.log(`  ${a.name}  ${a.size} bytes  ${a.sha256}`);
 if (verifyFailures > 0) {

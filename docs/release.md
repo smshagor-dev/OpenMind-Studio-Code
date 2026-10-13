@@ -60,20 +60,34 @@ finished files must be in the project.
 
 ```text
 release/v<version>/
-    windows/   OpenMind-Studio_<version>_windows_<x64|x86>_setup.exe, _<arch>.msi, _<arch>_portable.zip (+ .sig)
-    linux/     OpenMind-Studio_<version>_linux_<x64|x86>.deb, .AppImage, _portable.tar.gz (+ .sig)
-    SHA256SUMS.txt       sha256sum format, paths relative to this folder (windows/<name>, linux/<name>)
-    latest.json          the update feed (only when every installer has its .sig)
-    RELEASE-REPORT.md    version, architectures, build type, date, each file's size and SHA256
-release/staging/         intermediate files (portable ZIPs before they are renamed)
+    windows/x64/, windows/x86/   OpenMind-Studio_<version>_windows_<arch>_setup.exe, _<arch>.msi, _<arch>_portable.zip (+ .sig)
+    linux/x64/, linux/x86/       OpenMind-Studio_<version>_linux_<arch>.deb, .AppImage, _portable.tar.gz (+ .sig)
+    macos/arm64/, macos/x64/     OpenMind-Studio_<version>_macos_<arch>.dmg, .app.zip (+ .sig for the app ZIP)
+    launchers/windows|linux|macos/   the launcher scripts (also inside each portable package)
+    metadata/
+        latest.json              the update feed (only when every installer has its .sig)
+        SHA256SUMS.txt           sha256sum format, bare file names (works on a flat download of the GitHub release)
+        RELEASE-NOTES.md, PRIVACY-POLICY.md, TERMS-OF-USE.md, EULA.md, LICENSE.txt, THIRD-PARTY-LICENSES.txt
+    validation/
+        reports/RELEASE-REPORT.md    version, architectures, build type, date, each file's size and SHA256
+        upgrade-test/                the Windows Sandbox upgrade test and its results
+release/staging/                 intermediate files (portable ZIPs before they are renamed)
 ```
 
-- `release:collect` / `release:collect:all` copy the Windows files into `windows/` (only those that exist) and rewrite
-  `SHA256SUMS.txt` over everything in `windows/` and `linux/`.
-- `scripts/linux-release.sh` (below) puts the Linux files into `linux/`.
-- `pnpm release:checksums` rewrites `SHA256SUMS.txt` from the files present; `pnpm release:verify` checks every listed
-  file and that nothing is missing from the list (exit code 1 otherwise). Run `sha256sum -c SHA256SUMS.txt` in the folder
-  for the same check on Linux.
+- `release:collect` / `release:collect:all` copy the Windows files into `windows/<arch>/` (only those that exist) and
+  rewrite `metadata/SHA256SUMS.txt` over every platform folder.
+- `scripts/linux-release.sh` (below) puts the Linux files into `linux/<arch>/`, `scripts/macos-release.sh <triple>` the
+  macOS files into `macos/<arch>/` (on a Mac only).
+- `pnpm release:sign` (`scripts/sign-release.mjs`) makes the updater `.sig` of every release file that has no valid one
+  (`--force`: all), with `~/.tauri/openmind-studio.key` and its password (`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, or the
+  DPAPI file `~/.tauri/openmind-updater.password.dpapi`), bound to the version, checks each one independently, then
+  writes `metadata/latest.json` and `metadata/SHA256SUMS.txt`. Run it on the final bytes, after any Authenticode signing.
+  Builds made without the key (`--config '{"bundle":{"createUpdaterArtifacts":false}}'`) are signed this way afterwards.
+- `node scripts/release-metadata.mjs` copies the notes (`docs/release-notes-<version>.md`), the legal texts, the licences
+  and the launchers into `metadata/` and `launchers/`.
+- `pnpm release:checksums` rewrites `metadata/SHA256SUMS.txt` from the files present; `pnpm release:verify` checks every
+  listed file, that nothing is missing from the list and that no file sits in the folder of another architecture (exit
+  code 1 otherwise). On Linux/macOS: put the files in one folder with `SHA256SUMS.txt` and run `sha256sum -c`.
 
 ### Verifying a release folder
 
@@ -86,13 +100,26 @@ release/staging/         intermediate files (portable ZIPs before they are renam
 
 The release workflow runs the first three on the collected files before it uploads them.
 
-### Updater feed and Linux
+### Updater feed, Linux and macOS
 
 `latest.json` lists the Windows setups/MSIs (Tauri's `windows-<arch>[-nsis|-msi]`), the portable ZIPs
-(`openmind.portable`) and — so Linux copies hear of a release — the deb and AppImage (`linux-<arch>[-deb|-appimage]`).
-Linux copies never update themselves (`updates::policy::self_update_on`: managed): without that rule a Linux copy (no
-`uninstall.exe`, so "portable") would take the Windows portable archive. Linux packages built before that rule must not
-be released; the 1.0.3 Linux files were rebuilt with it.
+(`openmind.portable`) and — so Linux and macOS copies hear of a release — the deb and AppImage
+(`linux-<arch>[-deb|-appimage]`) and the macOS app ZIP (`darwin-<aarch64|x86_64>`). Linux and macOS copies never update
+themselves (`updates::policy::self_update_on`: managed, with a platform-specific message); their entries are read, never
+downloaded. Without that rule a Linux copy (no `uninstall.exe`, so "portable") would take the Windows portable archive.
+
+### macOS
+
+`scripts/macos-release.sh aarch64-apple-darwin|x86_64-apple-darwin` builds on a Mac (the Release workflow uses GitHub's
+`macos-15` and `macos-15-intel` runners) with `src-tauri/tauri.macos.conf.json`: the app and disk image, **ad-hoc
+signed** (`signingIdentity "-"`, needed for Apple silicon to run it at all). That is not Developer ID signing and not
+notarization: Gatekeeper asks the user to confirm the first start, and nothing in OpenMind tells the user to disable
+it. Trusted macOS distribution needs an Apple Developer Program membership, a Developer ID Application certificate
+(`APPLE_SIGNING_IDENTITY`, `APPLE_CERTIFICATE`/`APPLE_CERTIFICATE_PASSWORD` for CI), hardened runtime, and notarization
+(`APPLE_ID`/`APPLE_PASSWORD`/`APPLE_TEAM_ID` or an App Store Connect API key), confirmed by `xcrun stapler validate`. A
+macOS app keeps its data in `~/Library/Application Support/OpenMind Studio/Data`, never inside the bundle (writing there
+would break the signature). Not available on macOS: the offline Windows bundles (`lsp/`, `python-bundle/`), the
+Runtime Manager's downloads (Windows artifacts) and DPAPI encryption of secrets.
 
 ### CI
 
@@ -109,7 +136,7 @@ fine-grained token (contents: write on that repository only) — the default `GI
 `scripts/upgrade-test/New-UpgradeTestSandbox.ps1 -Start` opens a disposable Windows Sandbox (network off) with the
 previous and new release folders mapped read-only and runs `Invoke-UpgradeTest.ps1`: 1.0.2 → 1.0.3 for the x64 and x86
 setups (same folder, version, one uninstall entry, database, settings and a runtime marker kept, repair run), a network
-installation's layout kept on update, and the MSI 1.0.2 → 1.0.3. Results: `release/v<version>/upgrade-test/results/`.
+installation's layout kept on update, and the MSI 1.0.2 → 1.0.3. Results: `release/v<version>/validation/upgrade-test/results/`.
 Windows Sandbox must be enabled once (administrator, then restart):
 `Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All`. Never run
 `Invoke-UpgradeTest.ps1` outside the sandbox.
@@ -117,20 +144,33 @@ Windows Sandbox must be enabled once (administrator, then restart):
 The tools needed (NSIS and WiX 3) are downloaded by Tauri's bundler the first time (into `%LOCALAPPDATA%\tauri`); that is
 build tooling, not something the app does.
 
-## The Apache-2.0 licence agreement
+## License Agreement and Privacy Policy in the installers
 
-`src-tauri/tauri.conf.json` sets `bundle.license = "Apache-2.0"` and `bundle.licenseFile = "../LICENSE"`, so **the root
-`LICENSE` is packaged and shown by both installers as the licence page**:
+The legal texts are written in `docs/legal/` (`eula.md`, `privacy-policy.md`, `terms-of-use.md`; owner/legal review
+points in `REVIEW-NOTES.md`, not shipped). `scripts/legal-texts.mjs` (run by `pnpm build`) generates `licenses/legal/`
+(git-ignored): `LICENSE-AGREEMENT.txt` = Part 1 the OpenMind Studio License Agreement (to accept), Part 2 the Privacy
+Policy (for information — accepting the agreement turns nothing on), Part 3 the full Apache License 2.0; plus the three
+documents and `LICENSE.txt`. `bundle.licenseFile` is that agreement and `bundle.resources` ships the folder as `legal/`
+in every package (portable ZIP, tar.gz and macOS app ZIP too). `bundle.license` stays `Apache-2.0`.
 
-1. Welcome
-2. **Licence agreement** — the NSIS installer's _Next/Install_ is blocked until the agreement is accepted; the MSI shows
-   the licence and its _Next_ is blocked until the "I accept" box is ticked
+1. Welcome (installation type) — or, over an existing installation, the Update/Repair page, which skips the agreement
+   (accepted at the first install)
+2. **License agreement** — NSIS: an **unchecked** "I accept the OpenMind Studio License Agreement" box
+   (`MUI_LICENSEPAGE_CHECKBOX` in `nsis/installer-hooks.nsh`); _Install/Next_ stays disabled until it is ticked, Cancel
+   declines. MSI: WiX's license dialog, _Next_ disabled until "I accept" is ticked. Silent/passive installs (`/S`, `/P`,
+   `msiexec /qn`) skip the page as before — whoever runs them accepts on the users' behalf.
 3. Install location
 4. Install
 5. Finish, with a **Launch OpenMind Studio** checkbox
 
-`release:collect` refuses to run (and a unit test fails) if `LICENSE` is not the full Apache 2.0 text or the installer
-configuration stops referencing it. Never ship an installer that skips the agreement.
+Linux and macOS have no custom installer UI (a .deb is installed by the package manager, a disk image by dragging the
+app): their packages carry `legal/` and the release page links the documents; no first-run agreement dialog was added
+(the program is Apache-2.0 licensed and needs no click-through). The installers are English-only (NSIS `languages:
+["English"]`); the legal texts have no Russian translation yet.
+
+`release:collect` refuses to run (and unit tests fail) if the agreement lacks the EULA, the Privacy Policy or the full
+Apache 2.0 text, the installer configuration stops referencing it, or the NSIS page loses its check box. Never ship an
+installer that skips the agreement.
 
 ## Installer icons
 
@@ -264,7 +304,7 @@ for an ordinary release.
 | --- | --- |
 | Per-user setup ("For Me") | downloads and verifies in the background; installs when the app is closed, or at once with Restart to Update; no administrator rights |
 | MSI (Program Files) | the same; Windows asks for administrator approval when the installer runs (never bypassed) |
-| Portable ZIP | downloads the signed portable archive, verifies it, and at Restart to Update replaces only the program's own files (`OpenMindStudio.exe`, `lsp/`, `python-bundle/`, `bin/`, `README.txt`), all or nothing; data, settings, runtimes, tools and extensions stay |
+| Portable ZIP | downloads the signed portable archive, verifies it, and at Restart to Update replaces only the program's own files (`OpenMindStudio.exe`, `lsp/`, `python-bundle/`, `bin/`, `README.txt`, `LICENSE.txt`, `THIRD-PARTY-LICENSES.txt`, `legal/`, the launcher), all or nothing; data, settings, runtimes, tools and extensions stay |
 | Shared network installation ("Recommended for All Users") | only shows "Version x is available": it is updated by whoever installed it (run the new setup on that computer with the shared folder, while nobody uses it); no client ever writes the share |
 
 Never automatic: closing the app, stopping a running build or terminal without asking, saving or discarding an editor.
@@ -295,8 +335,8 @@ Version bump, commit, tag and publishing need the maintainer's approval.
 ## SHA256
 
 ```powershell
-Get-FileHash .\release\v1.0.3\windows\OpenMind-Studio_1.0.3_windows_x64_setup.exe -Algorithm SHA256
-pnpm release:verify    # every file listed in release\v<version>\SHA256SUMS.txt
+Get-FileHash .\release\v1.0.3\windows\x64\OpenMind-Studio_1.0.3_windows_x64_setup.exe -Algorithm SHA256
+pnpm release:verify    # every file listed in release\v<version>\metadata\SHA256SUMS.txt
 ```
 
 or read `SHA256SUMS.txt`. Publish the checksums next to the download.
@@ -304,7 +344,7 @@ or read `SHA256SUMS.txt`. Publish the checksums next to the download.
 ## Linux (x64 in WSL, x86 in a Debian i386 container)
 
 Linux editions: `.deb`, AppImage and a portable `.tar.gz`, for x64 and x86. `scripts/linux-release.sh` builds them **from
-this project folder itself** — no clone or copy of the source — and writes them to `release/v<version>/linux/`. The
+this project folder itself** — no clone or copy of the source — and writes them to `release/v<version>/linux/<arch>/`. The
 cargo target folder is an external cache (`CARGO_TARGET_DIR`, default `~/.cache/openmind-studio/target-linux-<arch>`),
 `--locked` leaves `Cargo.lock` untouched, and the frontend comes from the `dist/` built on Windows (`pnpm build`), so the
 Windows `node_modules` is never replaced. Then rewrite the manifest on Windows with `pnpm release:checksums`.

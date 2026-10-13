@@ -43,6 +43,6 @@ requests per release: four (program and installers, two architectures). Third-pa
 **Security practices:** dependencies locked (Cargo.lock, pnpm-lock.yaml, npm lockfiles for bundled servers, hashed
 Python requirements, SHA-256-pinned downloads); secret scanning of the full history (gitleaks) before publication;
 updates verified against the project's signature before installation; private vulnerability reporting (SECURITY.md);
-no telemetry (docs/PRIVACY.md).
+no telemetry (docs/legal/privacy-policy.md).
 
 **Signing certificate:** none yet; this is the first application.

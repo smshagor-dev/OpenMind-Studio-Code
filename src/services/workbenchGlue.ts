@@ -4,6 +4,7 @@ import type { EditorService } from "./editorService";
 import type { EditorWindowService } from "./editorWindowService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
+import { ExplorerFollowService } from "./explorerFollow";
 import type { ExplorerService } from "./explorerService";
 import type { FileSyncService } from "./fileSyncService";
 import { hasActiveTab } from "./fileCommands";
@@ -71,6 +72,18 @@ export function connectWorkbench(deps: WorkbenchGlueDeps): void {
       explorer.clear();
     }
   });
+
+  // The tree follows the active editor tab: its file is revealed (folders opened, row selected and scrolled to).
+  new ExplorerFollowService({
+    activePath: () => {
+      const state = workspace.getState();
+      return state.tabs.find((tab) => tab.id === state.activeId)?.path ?? null;
+    },
+    onActiveChanged: (listener) => workspace.subscribe(listener),
+    rootPath: () => explorer.getSnapshot().rootPath,
+    onExplorerChanged: (listener) => explorer.subscribe(listener),
+    reveal: (path) => explorer.revealPath(path),
+  }).start();
 }
 
 export interface WindowCommandDeps {

@@ -17,7 +17,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fixture = (name: string) => readFileSync(join(root, "src-tauri", "src", "updates", "fixtures", name), "utf8");
 const tauri = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")) as Record<string, unknown>;
 
-const signed = (kind: "setup" | "msi" | "portable" | "deb" | "appimage", arch: "x64" | "x86", name: string) => ({
+const signed = (
+  kind: "setup" | "msi" | "portable" | "deb" | "appimage" | "macos-app",
+  arch: "x64" | "x86" | "arm64",
+  name: string,
+) => ({
   kind,
   arch,
   name,
@@ -83,6 +87,27 @@ describe("the update feed (latest.json)", () => {
     expect(() =>
       latestJson({ version: "1.1.0", notes: "", pubDate: "", files: [signed("deb", "x64", "a.deb")] }),
     ).toThrow(/Windows installer/);
+  });
+
+  it("lists the macOS app ZIPs as darwin entries so macOS copies hear of the release (they never update themselves)", () => {
+    const feed = latestJson({
+      version: "1.1.0",
+      notes: "",
+      pubDate: "",
+      files: [
+        ...files,
+        signed("macos-app", "arm64", "OpenMind-Studio_1.1.0_macos_arm64.app.zip"),
+        signed("macos-app", "x64", "OpenMind-Studio_1.1.0_macos_x64.app.zip"),
+      ],
+    });
+    expect(Object.keys(feed.platforms).filter((key) => key.startsWith("darwin-")).sort()).toEqual([
+      "darwin-aarch64",
+      "darwin-x86_64",
+    ]);
+    expect(feed.platforms["darwin-aarch64"]?.url).toBe(
+      releaseDownloadUrl("1.1.0", "OpenMind-Studio_1.1.0_macos_arm64.app.zip"),
+    );
+    expect(feed.openmind.portable["darwin-aarch64"]).toBeUndefined();
   });
 
   it("an architecture with only an MSI still answers copies that aren't installers", () => {

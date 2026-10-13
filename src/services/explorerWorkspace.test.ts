@@ -342,4 +342,33 @@ describe("no folder open", () => {
     const id = await r.documents.openFromPath(`${ROOT}/a.py`);
     expect(await r.documents.openFromPath("c:\\Projects\\Demo\\a.py")).toBe(id);
   });
+
+  it("a file deep in a large, collapsed tree is revealed: folders opened, row selected, scrolled each time", async () => {
+    const r = rig();
+    // 3 levels of folders, 400 files in each: the target row is collapsed away and far down the list.
+    let dir = ROOT;
+    for (const name of ["src", "features", "editor"]) {
+      for (let i = 0; i < 400; i += 1) r.disk.entries.set(`${dir}/file${String(i).padStart(3, "0")}.txt`, "");
+      dir = `${dir}/${name}`;
+      r.disk.entries.set(dir, null);
+    }
+    r.disk.entries.set(`${dir}/Target.py`, "");
+    await r.explorer.setRoot(ROOT, "Demo");
+    expect(r.explorer.getSnapshot().expandedPaths.size).toBe(0);
+
+    // The editor spells the path differently from the tree (backslashes, drive-letter case, file-name case).
+    await r.explorer.revealPath("c:\\Projects\\Demo\\src\\features\\editor\\target.py");
+    const snapshot = r.explorer.getSnapshot();
+    expect([...snapshot.expandedPaths].sort()).toEqual([
+      `${ROOT}/src`,
+      `${ROOT}/src/features`,
+      `${ROOT}/src/features/editor`,
+    ]);
+    expect(snapshot.selectedPath).toBe(`${ROOT}/src/features/editor/Target.py`); // the tree's own spelling
+    const seq = snapshot.revealSeq ?? 0;
+
+    // Revealing the same file again (the user scrolled away, then came back to its tab) still asks for a scroll.
+    await r.explorer.revealPath(`${ROOT}/src/features/editor/Target.py`);
+    expect(r.explorer.getSnapshot().revealSeq).toBe(seq + 1);
+  });
 });

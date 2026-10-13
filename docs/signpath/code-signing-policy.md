@@ -26,4 +26,4 @@ release is approved by hand before it is signed.
 **Privacy policy:** This program will not transfer any information to other networked systems unless specifically
 requested by the user or the person installing or operating it, except two automatic requests: the update check to
 GitHub, and the Open VSX marketplace list while the Extensions view is shown (can be turned off). Details:
-[PRIVACY.md](https://github.com/smshagor-dev/OpenMind-Studio-Code/blob/main/docs/PRIVACY.md).
+[PRIVACY.md](https://github.com/smshagor-dev/OpenMind-Studio-Code/blob/main/docs/legal/privacy-policy.md).

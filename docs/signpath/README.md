@@ -24,7 +24,7 @@ Sources: [signpath.org/terms](https://signpath.org/terms) (conditions for free O
 | Functionality documented on the download page | Owner to keep the release page/README of `OpenMind-Studio` describing the program (README "What it does" can be reused). |
 | Product name and version metadata | `OpenMindStudio.exe` ProductName "OpenMind Studio", version = the release (checked by the release scripts). |
 | "Code signing policy" on the home and download pages: SignPath.io / SignPath Foundation wording, roles, privacy policy | In this repository's README (marked pending). **Owner to add the same section to the public release repository's README** — text: [code-signing-policy.md](code-signing-policy.md). |
-| Privacy policy; data transfers disclosed | [docs/PRIVACY.md](../PRIVACY.md): no telemetry; two automatic requests (update check to GitHub, Open VSX list while the Extensions view is shown — the latter can be turned off). |
+| Privacy policy; data transfers disclosed | [docs/legal/privacy-policy.md](../legal/privacy-policy.md): no telemetry; two automatic requests (update check to GitHub, Open VSX list while the Extensions view is shown — the latter can be turned off). |
 | No malware/PUP, no security circumvention; system changes announced, uninstall provided | Installers show their options (PATH, Explorer menu: off by default) and uninstall what they added. |
 | Upstream binaries | Unsigned upstream OSS binaries may be included (node.exe, language servers, Python wheels' DLLs, tcltk.msi); only OpenMind Studio's own files are submitted for signing. |
 

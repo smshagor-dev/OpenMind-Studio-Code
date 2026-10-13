@@ -27,7 +27,13 @@ fn both_installers_package_the_licence_and_the_metadata_agrees() {
     let conf: serde_json::Value =
         serde_json::from_str(&read("src-tauri/tauri.conf.json")).expect("tauri.conf.json");
     let bundle = &conf["bundle"];
-    assert_eq!(bundle["licenseFile"], "../LICENSE");
+    // The agreement both installers show: License Agreement + Privacy Policy + the full Apache text
+    // (scripts/legal-texts.mjs builds it from docs/legal/ and LICENSE; the frontend tests check its content).
+    assert_eq!(
+        bundle["licenseFile"],
+        "../licenses/legal/LICENSE-AGREEMENT.txt"
+    );
+    assert_eq!(bundle["resources"]["../licenses/legal/"], "legal/");
     assert_eq!(bundle["license"], "Apache-2.0");
     let targets: Vec<&str> = bundle["targets"]
         .as_array()

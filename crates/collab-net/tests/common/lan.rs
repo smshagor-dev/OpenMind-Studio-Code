@@ -32,12 +32,37 @@ use super::{config, wait_for, MemoryAuthority};
 
 pub const LOOPBACK: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
-/// A UDP port nothing listens on right now (each test gets its own discovery port).
+/// The test discovery ports: below every OS's ephemeral range (Windows/macOS 49152+, Linux 32768+).
+const TEST_PORTS: std::ops::Range<u16> = 20_000..30_000;
+
+/// A UDP port nothing listens on right now (each test gets its own discovery port), never an ephemeral one.
+///
+/// An ephemeral port (bind to port 0, read it, close it) could be handed by the OS to another test's discovery *query*
+/// socket before this test's Owner binds it. Both sockets use `SO_REUSEADDR`, so both binds succeed, and Windows then
+/// delivers each unicast query to only one of them: when that is the querier's socket, the Owner never hears the query
+/// and discovery silently finds nothing (the intermittent "dropped connection comes back" failure). Query sockets bind
+/// port 0, which is always in the ephemeral range, so a port from [`TEST_PORTS`] can't be taken that way. Each call in a
+/// process gets the next port (never the same twice), starting at an offset from the process id so test binaries
+/// running at once don't start in the same place, and a port is used only if a plain bind of `0.0.0.0:<port>` (what the
+/// Owner's responder binds) succeeds now.
 pub fn free_udp_port() -> u16 {
-    std::net::UdpSocket::bind("127.0.0.1:0")
-        .and_then(|s| s.local_addr())
-        .map(|a| a.port())
-        .expect("port")
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static NEXT: AtomicU32 = AtomicU32::new(u32::MAX);
+    let span = u32::from(TEST_PORTS.end - TEST_PORTS.start);
+    let _ = NEXT.compare_exchange(
+        u32::MAX,
+        std::process::id().wrapping_mul(7919) % span,
+        Ordering::SeqCst,
+        Ordering::SeqCst,
+    );
+    for _ in 0..span {
+        let offset = NEXT.fetch_add(1, Ordering::SeqCst) % span;
+        let port = TEST_PORTS.start + u16::try_from(offset).expect("offset fits");
+        if std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).is_ok() {
+            return port;
+        }
+    }
+    panic!("no free UDP port in {TEST_PORTS:?}");
 }
 
 pub fn host_config(discovery_port: u16, mdns: bool) -> LanHostConfig {

@@ -17,21 +17,34 @@ import {
   releaseDir,
   releaseKindOf,
   releaseName,
+  releaseArch,
+  releaseArchOf,
   releasePlatform,
+  releaseSubdir,
   reportText,
   signtoolArgs,
 } from "../../scripts/releaseTools.mjs";
+import { agreementText } from "../../scripts/legalTexts.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const text = (path: string) => readFileSync(join(root, path), "utf8");
 const tauri = JSON.parse(text("src-tauri/tauri.conf.json")) as Record<string, unknown>;
+/** The installers' agreement as scripts/legal-texts.mjs builds it (the generated file may not exist before pnpm build). */
+const agreement = () =>
+  agreementText({
+    eula: text("docs/legal/eula.md"),
+    privacy: text("docs/legal/privacy-policy.md"),
+    license: text("LICENSE"),
+  });
 
 describe("installer and the Apache licence agreement", () => {
-  it("the root LICENSE is the full Apache 2.0 text and the installers package it", () => {
+  it("the installers show the License Agreement, the Privacy Policy and the full Apache 2.0 text", () => {
     expect(existsSync(join(root, "LICENSE"))).toBe(true);
-    expect(checkInstallerConfig(tauri, text("LICENSE"))).toEqual([]);
+    expect(checkInstallerConfig(tauri, agreement())).toEqual([]);
+    // The bare Apache text alone is no longer enough: the agreement must carry the EULA and the Privacy Policy.
+    expect(checkInstallerConfig(tauri, text("LICENSE")).join(" ")).toContain("Privacy Policy");
     const bundle = tauri.bundle as { licenseFile: string; license: string };
-    expect(bundle.licenseFile).toBe("../LICENSE");
+    expect(bundle.licenseFile).toBe("../licenses/legal/LICENSE-AGREEMENT.txt");
     expect(bundle.license).toBe("Apache-2.0");
   });
 
@@ -41,7 +54,7 @@ describe("installer and the Apache licence agreement", () => {
     expect(problems.join(" ")).toContain("licenseFile");
     expect(problems.join(" ")).toContain("msi");
     expect(problems.join(" ")).toContain("administrator");
-    expect(problems.join(" ")).toContain("not the Apache");
+    expect(problems.join(" ")).toContain("Apache License 2.0 text");
     expect(problems.join(" ")).toContain("lsp-bundle");
   });
 
@@ -112,7 +125,7 @@ describe("installer and the Apache licence agreement", () => {
 });
 
 describe("optional PATH and File Explorer integration in the installers", () => {
-  const license = text("LICENSE");
+  const license = agreement();
   const hooks = text("src-tauri/nsis/installer-hooks.nsh");
   const fragment = text("src-tauri/wix/integration.wxs");
 
@@ -133,6 +146,16 @@ describe("optional PATH and File Explorer integration in the installers", () => 
     const problems = checkInstallerConfig(without, license).join(" ");
     expect(problems).toContain("installer-hooks.nsh");
     expect(problems).toContain("bin/openmind.cmd");
+  });
+
+  it("the license agreement must be accepted with an unchecked check box, never radio buttons", () => {
+    expect(hooks).toMatch(/^!define MUI_LICENSEPAGE_CHECKBOX$/m);
+    expect(hooks).toMatch(/MUI_LICENSEPAGE_CHECKBOX_TEXT "I accept the OpenMind Studio License Agreement"/);
+    const without = hooks.replace(/^!define MUI_LICENSEPAGE_CHECKBOX$/m, "");
+    expect(checkInstallerHooks(without).join(" ")).toContain("unchecked check box");
+    expect(checkInstallerHooks(`${hooks}\n!define MUI_LICENSEPAGE_RADIOBUTTONS`).join(" ")).toContain(
+      "radio buttons",
+    );
   });
 
   it("the NSIS check boxes start unchecked, run the app's --integration actions and are undone on uninstall", () => {
@@ -407,6 +430,25 @@ describe("release artifacts", () => {
     expect(releaseKindOf("OpenMindStudio-1.0.3-portable-win-x64.zip")).toBeNull();
   });
 
+  it("macOS is released for arm64 and x64, and every file goes into <platform>/<arch>/", () => {
+    for (const kind of ["dmg", "macos-app"] as const) {
+      expect(releasePlatform(kind)).toBe("macos");
+      for (const arch of ["arm64", "aarch64", "x64", "x86_64"]) {
+        const name = releaseName(kind, "1.0.3", arch);
+        expect(releaseKindOf(name)).toBe(kind);
+        expect(releaseSubdir(kind, releaseArchOf(name) ?? "?")).toBe(`macos/${releaseArch(arch)}`);
+      }
+      expect(() => releaseName(kind, "1.0.3", "x86")).toThrow("not released for x86");
+    }
+    expect(releaseName("dmg", "1.0.3", "aarch64")).toBe("OpenMind-Studio_1.0.3_macos_arm64.dmg");
+    expect(releaseName("macos-app", "1.0.3", "x64")).toBe("OpenMind-Studio_1.0.3_macos_x64.app.zip");
+    expect(releaseSubdir("portable", "i686")).toBe("windows/x86");
+    expect(releaseSubdir("appimage", "amd64")).toBe("linux/x64");
+    expect(releaseArchOf("OpenMind-Studio_1.0.3_linux_x86_portable.tar.gz")).toBe("x86");
+    expect(releaseArchOf("notes.md")).toBeNull();
+    expect(() => releaseArch("sparc")).toThrow();
+  });
+
   it("the report lists only the files it was given, with type, size and SHA256; an empty list says so", () => {
     const artifacts = [
       {
@@ -428,7 +470,7 @@ describe("release artifacts", () => {
     expect(report).toContain("ab".repeat(32));
     expect(report).toContain("**unsigned**");
     expect(report).not.toContain(".msi");
-    // Paths relative to release/v<version>/, sorted, so `sha256sum -c` works from that folder.
+    // Bare names, sorted, so `sha256sum -c` works on a flat download of the GitHub release.
     expect(
       checksumsText([
         { name: "OpenMind-Studio_0.1.0_windows_x64.msi", kind: "msi", size: 1, sha256: "cd".repeat(32) },
@@ -436,9 +478,9 @@ describe("release artifacts", () => {
         { name: "OpenMind-Studio_0.1.0_linux_x64.deb", kind: "deb", size: 1, sha256: "ef".repeat(32) },
       ]),
     ).toBe(
-      `${"ef".repeat(32)}  linux/OpenMind-Studio_0.1.0_linux_x64.deb\n` +
-        `${"cd".repeat(32)}  windows/OpenMind-Studio_0.1.0_windows_x64.msi\n` +
-        `${"ab".repeat(32)}  windows/OpenMind-Studio_0.1.0_windows_x64_setup.exe\n`,
+      `${"ef".repeat(32)}  OpenMind-Studio_0.1.0_linux_x64.deb\n` +
+        `${"cd".repeat(32)}  OpenMind-Studio_0.1.0_windows_x64.msi\n` +
+        `${"ab".repeat(32)}  OpenMind-Studio_0.1.0_windows_x64_setup.exe\n`,
     );
     expect(
       reportText({
