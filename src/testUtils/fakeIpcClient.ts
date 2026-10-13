@@ -275,6 +275,8 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
       explorerOtherCopy: null,
     }),
     integrationApply: vi.fn().mockResolvedValue("done"),
+    integrationDesktopShortcut: vi.fn().mockResolvedValue("Created"),
+    integrationCheck: vi.fn().mockResolvedValue("OpenMind Studio deployment check"),
     pythonPackagesStatus: vi
       .fn()
       .mockResolvedValue({ present: false, problem: null, python: null, packages: [], stdlib: [] }),

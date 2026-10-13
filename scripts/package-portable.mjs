@@ -80,6 +80,13 @@ copyFileSync(
   join(staging, "Start OpenMind Studio.bat"),
 );
 
+// The deployment package for a copy placed on a shared folder (shortcut launchers, logon script, push script, README).
+cpSync(join(root, "src-tauri", "deploy"), join(staging, "deploy"), { recursive: true });
+copyFileSync(
+  join(root, "scripts", "deploy", "Deploy-OpenMindShortcuts.ps1"),
+  join(staging, "deploy", "Deploy-OpenMindShortcuts.ps1"),
+);
+
 // Optional, developer-populated tool bundle (see docs/toolchains.md). Nothing is downloaded here: the folder must
 // already hold the programs, and it is refused unless its manifest checks out.
 const bundle = join(root, "tools-bundle");

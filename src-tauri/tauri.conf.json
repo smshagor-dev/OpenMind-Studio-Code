@@ -74,7 +74,9 @@
       "../licenses/THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt",
       "../licenses/legal/": "legal/",
       "cli/openmind.cmd": "bin/openmind.cmd",
-      "cli/openmind": "bin/openmind"
+      "cli/openmind": "bin/openmind",
+      "deploy/": "deploy/",
+      "../scripts/deploy/Deploy-OpenMindShortcuts.ps1": "deploy/Deploy-OpenMindShortcuts.ps1"
     },
     "createUpdaterArtifacts": true
   },

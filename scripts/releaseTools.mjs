@@ -409,6 +409,19 @@ export function checkInstallerConfig(tauri, licenseText) {
       );
     }
   }
+  // The deployment package for shared installations (launchers, logon script, push script, README for IT).
+  if (bundle.resources?.["deploy/"] !== "deploy/") {
+    problems.push(
+      'bundle.resources must copy "deploy/" to "deploy/" (the shared-installation shortcut launchers and logon script).',
+    );
+  }
+  if (
+    bundle.resources?.["../scripts/deploy/Deploy-OpenMindShortcuts.ps1"] !== "deploy/Deploy-OpenMindShortcuts.ps1"
+  ) {
+    problems.push(
+      'bundle.resources must copy "../scripts/deploy/Deploy-OpenMindShortcuts.ps1" to "deploy/Deploy-OpenMindShortcuts.ps1".',
+    );
+  }
   if (bundle.resources?.["../python-bundle/"] !== "python-bundle/") {
     problems.push(
       'bundle.resources must copy "../python-bundle/" to "python-bundle/" (the offline Python packages).',

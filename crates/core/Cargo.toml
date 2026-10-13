@@ -17,7 +17,7 @@ getrandom = "0.3"
 
 [target."cfg(windows)".dependencies]
 # Read-only: MachineGuid (Registry) and the SMBIOS table (GetSystemFirmwareTable), see machine_signals.rs.
-winapi = { version = "0.3", features = ["winreg", "minwindef", "winerror", "sysinfoapi", "fileapi", "winbase"] }
+winapi = { version = "0.3", features = ["winreg", "minwindef", "winerror", "sysinfoapi", "fileapi", "winbase", "winnetwk"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

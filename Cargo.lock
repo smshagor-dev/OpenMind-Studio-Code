@@ -3803,6 +3803,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "openmind-deploy"
+version = "1.0.3"
+dependencies = [
+ "getrandom 0.3.4",
+ "netdev",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "socket2",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "openmind-deps"
 version = "1.0.3"
 dependencies = [
@@ -4033,6 +4048,7 @@ name = "openmind-studio"
 version = "1.0.3"
 dependencies = [
  "base64 0.23.1",
+ "ed25519-dalek",
  "getrandom 0.3.4",
  "hex",
  "minisign-verify",
@@ -4044,6 +4060,7 @@ dependencies = [
  "openmind-core",
  "openmind-dap",
  "openmind-db",
+ "openmind-deploy",
  "openmind-deps",
  "openmind-extensions",
  "openmind-file-watch",
@@ -4082,6 +4099,7 @@ dependencies = [
  "tracing",
  "ureq",
  "winapi",
+ "zip 7.2.0",
 ]
 
 [[package]]

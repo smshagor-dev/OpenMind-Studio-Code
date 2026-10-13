@@ -35,6 +35,7 @@ pub const REPLACEABLE: &[&str] = &[
     "THIRD-PARTY-LICENSES.txt",
     "legal",
     "Start OpenMind Studio.bat",
+    "deploy",
 ];
 const STAGED_DIR: &str = ".update-staged";
 const OLD_MARK: &str = ".old-";

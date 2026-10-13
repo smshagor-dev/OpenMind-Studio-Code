@@ -90,6 +90,19 @@ pub struct InstallMetadata {
     pub installed_at: String,
     /// The version that wrote the file (an update rewrites it).
     pub app_version: String,
+    /// A network installation gives each Windows user a Desktop shortcut the first time they start it on a computer
+    /// (`None` = the layout's default: on for [`InstallLayout::Network`], off otherwise). Set by the installer
+    /// (`/NOUSERSHORTCUTS`) or `--integration user-desktop-shortcuts on|off`; kept when the layout is rewritten.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_desktop_shortcuts: Option<bool>,
+}
+
+impl InstallMetadata {
+    /// Whether each Windows user gets a Desktop shortcut at their first start (see the field).
+    pub fn gives_user_desktop_shortcuts(&self) -> bool {
+        self.user_desktop_shortcuts
+            .unwrap_or(self.layout == InstallLayout::Network)
+    }
 }
 
 /// What `install.json` says.
@@ -165,18 +178,50 @@ pub fn read(exe_dir: &Path) -> InstallRecord {
 
 /// Writes `install.json` (atomically). Only the installers call this, through `--integration set-layout`.
 pub fn write(exe_dir: &Path, layout: InstallLayout, app_version: &str) -> std::io::Result<()> {
-    let installed_at = match read(exe_dir) {
-        InstallRecord::Found(meta) if meta.layout == layout => meta.installed_at,
-        _ => rfc3339_now(),
+    let earlier = match read(exe_dir) {
+        InstallRecord::Found(meta) => Some(meta),
+        _ => None,
     };
+    let installed_at = earlier
+        .as_ref()
+        .filter(|meta| meta.layout == layout)
+        .map(|meta| meta.installed_at.clone())
+        .unwrap_or_else(rfc3339_now);
     let meta = InstallMetadata {
         format: INSTALL_FORMAT.into(),
         schema_version: SCHEMA_VERSION,
         layout,
         installed_at,
         app_version: app_version.into(),
+        // An update rewrites the layout; the administrator's shortcut choice stays.
+        user_desktop_shortcuts: earlier.and_then(|meta| meta.user_desktop_shortcuts),
     };
-    let text = serde_json::to_string_pretty(&meta).map_err(std::io::Error::other)?;
+    write_metadata(exe_dir, &meta)
+}
+
+/// Records whether each Windows user gets a Desktop shortcut at their first start. Only for a copy whose installer
+/// wrote `install.json` (the layout is never guessed here).
+pub fn set_user_desktop_shortcuts(exe_dir: &Path, on: bool) -> std::io::Result<InstallMetadata> {
+    let mut meta =
+        match read(exe_dir) {
+            InstallRecord::Found(meta) => meta,
+            InstallRecord::Missing => return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "there is no install.json: set the layout first (--integration set-layout network)",
+            )),
+            InstallRecord::Unreadable(reason) => {
+                return Err(std::io::Error::other(format!(
+                    "install.json can't be used: {reason}"
+                )))
+            }
+        };
+    meta.user_desktop_shortcuts = Some(on);
+    write_metadata(exe_dir, &meta)?;
+    Ok(meta)
+}
+
+fn write_metadata(exe_dir: &Path, meta: &InstallMetadata) -> std::io::Result<()> {
+    let text = serde_json::to_string_pretty(meta).map_err(std::io::Error::other)?;
     write_atomic(&install_file(exe_dir), text.as_bytes())
 }
 
@@ -259,9 +304,55 @@ pub fn local_installations_root() -> Option<PathBuf> {
 
 /// The folder `install_dir` really is: a mapped drive (`Z:\OpenMind Studio`) becomes its `\\server\share` path, a
 /// `subst` drive or a junction its target. The same installation then has one key however it was started — from the
-/// UNC shortcut or from the mapped drive in Explorer. A path that can't be resolved (gone, no access) is used as given.
+/// UNC shortcut or from the mapped drive in Explorer. When the folder can't be resolved for a moment (a network blip
+/// while the computer starts the program), a mapped drive is still named by its `\\server\share` path
+/// ([`universal_path`]): resolving it as typed would give that start another key — an empty profile, "my settings are
+/// gone". Anything else that can't be resolved is used as given.
 pub fn resolved_install_dir(install_dir: &Path) -> PathBuf {
-    std::fs::canonicalize(install_dir).unwrap_or_else(|_| install_dir.to_path_buf())
+    std::fs::canonicalize(install_dir).unwrap_or_else(|_| universal_path(install_dir))
+}
+
+/// `Z:\dir` -> `\\server\share\dir` when `Z:` is a network drive (Windows asks its own record of the mapping, so this
+/// works while the share is unreachable); any other path as it is.
+#[cfg(windows)]
+pub fn universal_path(path: &Path) -> PathBuf {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    use winapi::um::winnetwk::{
+        WNetGetUniversalNameW, UNIVERSAL_NAME_INFOW, UNIVERSAL_NAME_INFO_LEVEL,
+    };
+    if !is_remote_path(path) || path.to_string_lossy().starts_with(r"\\") {
+        return path.to_path_buf();
+    }
+    let local: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut size: u32 = 2048;
+    let mut buffer = vec![0u8; size as usize];
+    // SAFETY: `local` is NUL-terminated; `buffer` holds `size` bytes, and on success starts with a UNIVERSAL_NAME_INFOW
+    // whose pointer refers into the same buffer.
+    let universal = unsafe {
+        let status = WNetGetUniversalNameW(
+            local.as_ptr(),
+            UNIVERSAL_NAME_INFO_LEVEL,
+            buffer.as_mut_ptr().cast(),
+            &mut size,
+        );
+        if status != 0 {
+            return path.to_path_buf();
+        }
+        let info = &*(buffer.as_ptr() as *const UNIVERSAL_NAME_INFOW);
+        if info.lpUniversalName.is_null() {
+            return path.to_path_buf();
+        }
+        let len = (0..)
+            .take_while(|&i| *info.lpUniversalName.add(i) != 0)
+            .count();
+        std::slice::from_raw_parts(info.lpUniversalName, len).to_vec()
+    };
+    PathBuf::from(std::ffi::OsString::from_wide(&universal))
+}
+
+#[cfg(not(windows))]
+pub fn universal_path(path: &Path) -> PathBuf {
+    path.to_path_buf()
 }
 
 /// This installation's folder on this computer for this Windows user (see the module text).

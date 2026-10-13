@@ -5,6 +5,7 @@ pub mod broker;
 pub mod collab;
 pub mod database;
 pub mod debug;
+pub mod deploy;
 pub mod deps;
 pub mod document;
 pub mod extension_api;

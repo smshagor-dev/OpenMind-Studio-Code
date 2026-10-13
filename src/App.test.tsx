@@ -237,6 +237,7 @@ describe("App", () => {
       "Open Logs Folder",
       "Toggle Developer Tools",
       "Open Process Explorer",
+      "Network Deployment...",
       "Check for Updates...",
       "About OpenMind Studio",
     ]);

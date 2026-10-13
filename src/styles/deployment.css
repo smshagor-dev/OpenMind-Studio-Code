@@ -1,0 +1,139 @@
+/* Help > Network Deployment. Colours are theme tokens. */
+
+.deploy-dialog {
+  width: min(820px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.deploy-dialog h3 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+}
+
+.deploy-dialog__section {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
+}
+
+.deploy-dialog__fact {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.deploy-dialog__label {
+  flex: 0 0 140px;
+  color: var(--fg-muted);
+}
+
+.deploy-dialog__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deploy-dialog__muted {
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.deploy-dialog__error {
+  color: var(--error-fg);
+  overflow-wrap: anywhere;
+}
+
+.deploy-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.deploy-dialog__field input {
+  background: var(--input-bg);
+  color: inherit;
+  border: 1px solid var(--border);
+  padding: 4px 6px;
+}
+
+.deploy-dialog__check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.deploy-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin: 8px 0;
+}
+
+.deploy-dialog__primary {
+  background: var(--button-bg);
+  color: var(--button-fg);
+}
+
+.deploy-dialog__deployments {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.deploy-dialog__deployment {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 6px 0;
+}
+
+.deploy-dialog__search--found {
+  color: var(--success-fg);
+}
+
+.deploy-dialog__search--nothingFound,
+.deploy-dialog__search--protocolIncompatible {
+  color: var(--warning-fg);
+}
+
+.deploy-dialog__search--networkBlocked,
+.deploy-dialog__search--discoveryUnavailable {
+  color: var(--error-fg);
+}
+
+.deploy-dialog__checks {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.deploy-dialog__checks td {
+  padding: 2px 6px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.deploy-dialog__detail {
+  overflow-wrap: anywhere;
+  color: var(--fg-muted);
+}
+
+.deploy-dialog__status {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.deploy-dialog__status--pass {
+  color: var(--success-fg);
+}
+
+.deploy-dialog__status--fail {
+  color: var(--error-fg);
+}
+
+.deploy-dialog__status--blocked {
+  color: var(--warning-fg);
+}

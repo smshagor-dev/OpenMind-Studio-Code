@@ -18,6 +18,8 @@ use crate::shims::{shims_present, write_shims};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum InstallPhase {
+    /// Another computer sharing `runtimes/` is installing this version; its result is used when it ends.
+    Waiting,
     Download,
     Verify,
     Extract,
@@ -106,6 +108,8 @@ pub struct RuntimeManager {
     busy: Arc<Mutex<HashSet<(String, String)>>>,
     /// When the records were last brought in line with the shared `runtimes/` folder (see `manager/reconcile.rs`).
     reconciled: Arc<Mutex<Option<std::time::Instant>>>,
+    /// How long an install waits for another computer's install of the same version (see `manager/shared.rs`).
+    shared_wait: std::time::Duration,
 }
 
 impl RuntimeManager {
@@ -124,7 +128,14 @@ impl RuntimeManager {
             platform: platform.to_string(),
             busy: Arc::default(),
             reconciled: Arc::default(),
+            shared_wait: shared::SHARED_INSTALL_WAIT,
         }
+    }
+
+    /// Changes how long an install waits for another computer's install of the same version (zero: refuse at once).
+    pub fn with_shared_wait(mut self, wait: std::time::Duration) -> Self {
+        self.shared_wait = wait;
+        self
     }
 
     pub fn registry(&self) -> &RuntimeRegistry {
@@ -213,7 +224,9 @@ impl RuntimeManager {
     ) -> Result<InstalledVersion, RuntimeError> {
         let manifest = self.registry.get(kind)?.clone();
         let version = version.unwrap_or(&manifest.default_version).to_string();
-        let _guard = self.acquire(kind, &version)?;
+        // Another computer installing this version right now: wait for it (its lock ends with its process, so a crash
+        // ends the wait too), then use what it installed or take over.
+        let _guard = self.acquire_waiting(kind, &version, &progress).await?;
         // Installed meanwhile by another computer sharing `runtimes/`: use it, never unpack over it.
         if let Some(installed) = self.adopt_if_healthy(&manifest, kind, &version).await? {
             return Ok(installed);

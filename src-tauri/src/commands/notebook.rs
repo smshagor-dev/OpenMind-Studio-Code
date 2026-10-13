@@ -227,7 +227,8 @@ pub async fn notebook_kernel_start(
         cwd: file
             .parent()
             .map_or_else(|| state.app_root.clone(), Path::to_path_buf),
-        runner_dir: state.app_root.join("cache").join("notebook"),
+        // Written at every kernel start: this computer's cache, never a shared folder another computer writes too.
+        runner_dir: state.paths.machine_cache_dir.join("notebook"),
         path_prepend: runtime.path_prepend,
         vars: runtime.vars,
     };

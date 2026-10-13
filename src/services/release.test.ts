@@ -148,6 +148,43 @@ describe("optional PATH and File Explorer integration in the installers", () => 
     expect(problems).toContain("bin/openmind.cmd");
   });
 
+  it("every package ships the shared-installation deployment package next to the program", () => {
+    const bundle = tauri.bundle as { resources: Record<string, string> };
+    expect(bundle.resources["deploy/"]).toBe("deploy/");
+    const without = { ...tauri, bundle: { ...bundle, resources: { ...bundle.resources, "deploy/": undefined } } };
+    expect(checkInstallerConfig(without, license).join(" ")).toContain('"deploy/"');
+    expect(text("scripts/package-portable.mjs")).toContain('join(root, "src-tauri", "deploy")');
+    const files = readdirSync(join(root, "src-tauri", "deploy")).sort();
+    expect(files).toEqual([
+      "Check Installation.cmd",
+      "Create Desktop Shortcut.cmd",
+      "OpenMindStudio-Logon.cmd",
+      "README.txt",
+      "Remove Desktop Shortcut.cmd",
+    ]);
+    const actions: Record<string, string> = {
+      "Check Installation.cmd": "--integration check",
+      "Create Desktop Shortcut.cmd": "--integration desktop-shortcut",
+      "Remove Desktop Shortcut.cmd": "--integration remove-desktop-shortcut",
+      "OpenMindStudio-Logon.cmd": "--integration %OM_ACTION%",
+    };
+    for (const [name, action] of Object.entries(actions)) {
+      const script = text(`src-tauri/deploy/${name}`);
+      // Batch files with LF endings mis-jump to labels; the program is found next to the deploy folder, never by PATH.
+      expect(script.replace(/\r\n/g, "").includes("\n"), name).toBe(false);
+      expect(script, name).toContain('set "OM_EXE=%~dp0..\\OpenMindStudio.exe"');
+      expect(script, name).toContain(action);
+      // A ")" in a path (Program Files (x86)) would end a parenthesised block: paths are echoed outside blocks only.
+      expect(/\([^)]*%OM_EXE%/.test(script), name).toBe(false);
+      // Nothing is elevated, installed system-wide or forced past a policy.
+      expect(script.toLowerCase(), name).not.toMatch(/runas|--all-users|reg add|set-executionpolicy|bypass/);
+    }
+    const logon = text("src-tauri/deploy/OpenMindStudio-Logon.cmd");
+    expect(logon).toContain('if /i "%~1"=="remove" set "OM_ACTION=remove-desktop-shortcut"');
+    expect(logon.match(/exit \/b (\d+)/g)).toEqual(["exit /b 0", "exit /b 0"]);
+    expect(logon).not.toContain("pause");
+  });
+
   it("the license agreement must be accepted with an unchecked check box, never radio buttons", () => {
     expect(hooks).toMatch(/^!define MUI_LICENSEPAGE_CHECKBOX$/m);
     expect(hooks).toMatch(/MUI_LICENSEPAGE_CHECKBOX_TEXT "I accept the OpenMind Studio License Agreement"/);
@@ -185,6 +222,21 @@ describe("optional PATH and File Explorer integration in the installers", () => 
     expect(checkInstallerHooks(noSwitch).join(" ")).toContain("/NETWORK");
     // The record goes with the program on uninstall, never on an update.
     expect(hooks).toMatch(/\$UpdateMode <> 1[\s\S]*Delete "\$INSTDIR\\install\.json"/);
+  });
+
+  it("a network installation's Desktop shortcuts: per-user at first start unless declined, never re-added on update", () => {
+    const post = hooks.slice(hooks.indexOf("!macro NSIS_HOOK_POSTINSTALL"), hooks.indexOf("!macro NSIS_HOOK_PREUNINSTALL"));
+    // On by default; /NOUSERSHORTCUTS or "No" on the page turns it off, recorded once, on a fresh install only.
+    expect(hooks).toContain("StrCpy $OmUserShortcuts 1");
+    expect(hooks).toMatch(/\$\{GetOptions\} \$CMDLINE "\/NOUSERSHORTCUTS" \$0\s+\$\{IfNot\} \$\{Errors\}\s+StrCpy \$OmUserShortcuts 0/);
+    expect(hooks).toMatch(/MessageBox MB_YESNO\|MB_ICONQUESTION "Recommended for All Users[^"]*Desktop[^"]*" IDYES/);
+    expect(post).toMatch(/\$OmState == "fresh"\s+\$\{AndIf\} \$OmUserShortcuts == 0\s+ExecWait '[^']*--integration user-desktop-shortcuts off'/);
+    // The installing user's own shortcut: the finish page decides; silent/passive installs get the network path, but
+    // never on an update or with /NS, so a deleted shortcut stays deleted.
+    expect(post).toMatch(
+      /\$UpdateMode <> 1\s+\$\{AndIf\} \$NoShortcutMode <> 1\s+\$\{If\} \$\{Silent\}\s+\$\{OrIf\} \$PassiveMode = 1\s+ExecWait '[^']*--integration desktop-shortcut'/,
+    );
+    expect(post.match(/--integration desktop-shortcut'/g)).toHaveLength(1);
   });
 
   it("an existing installation is updated in place: no second install, no downgrade, never while in use", () => {

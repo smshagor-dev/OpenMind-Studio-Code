@@ -471,6 +471,7 @@ const HELP_MENU: TopLevelMenu = {
     cmd("Toggle Developer Tools", "help.toggleDevTools"),
     cmd("Open Process Explorer", "help.processExplorer"),
     SEPARATOR,
+    cmd("Network Deployment...", "help.networkDeployment"),
     cmd("Check for Updates...", "help.checkForUpdates"),
     cmd("About OpenMind Studio", "help.about"),
   ],

@@ -6,7 +6,9 @@ import type { AppEvents } from "./events";
 import type { IntegrationStatus } from "./ipc";
 import {
   changeDetails,
+  DESKTOP_SHORTCUT_COMMANDS,
   nothingToDo,
+  parseCheckReport,
   registerShellIntegrationCommands,
   SHELL_INTEGRATION_COMMANDS,
 } from "./shellIntegrationCommands";
@@ -20,6 +22,16 @@ const STATUS: IntegrationStatus = {
   explorerOtherCopy: null,
 };
 
+const REPORT = [
+  "OpenMind Studio deployment check",
+  "  Program:            Z:\\OpenMind Studio\\OpenMindStudio.exe",
+  "  Network path:       \\\\fs01\\apps\\OpenMind Studio\\OpenMindStudio.exe",
+  "  Desktop shortcut:   none on your Desktop",
+  "",
+  "What to do:",
+  "  - To get a Desktop shortcut, run Create Desktop Shortcut.",
+].join("\r\n");
+
 function rig(status: IntegrationStatus = STATUS, answer: string | null = "Apply") {
   const commands = new CommandRegistry();
   const events = new EventBus<AppEvents>();
@@ -30,6 +42,9 @@ function rig(status: IntegrationStatus = STATUS, answer: string | null = "Apply"
   const ipc = {
     integrationStatus: vi.fn().mockResolvedValue(status),
     integrationApply: vi.fn().mockResolvedValue("Added D:\\Portable\\OpenMind Studio\\bin to your PATH."),
+    integrationDesktopShortcut: vi.fn().mockResolvedValue("Created C:\\Users\\s\\Desktop\\OpenMind Studio.lnk"),
+    integrationCheck: vi.fn().mockResolvedValue(REPORT),
+    clipboardWriteText: vi.fn().mockResolvedValue(undefined),
   };
   const setAppActions = vi.fn();
   const confirm = vi.fn().mockResolvedValue(answer);
@@ -42,7 +57,10 @@ describe("shell integration commands", () => {
     const r = rig();
     const [actions, owner] = r.setAppActions.mock.calls[0] as [{ command: string; label: string }[], string];
     expect(owner).toBe("integration");
-    expect(actions.map((a) => a.command)).toEqual(SHELL_INTEGRATION_COMMANDS.map(([id]) => id));
+    expect(actions.map((a) => a.command)).toEqual([
+      ...SHELL_INTEGRATION_COMMANDS.map(([id]) => id),
+      ...DESKTOP_SHORTCUT_COMMANDS.map(([id]) => id),
+    ]);
     expect(actions[0]?.label).toBe("Shell Integration: Add OpenMind Studio to PATH (this user)");
   });
 
@@ -84,5 +102,32 @@ describe("shell integration commands", () => {
     failing.ipc.integrationStatus.mockRejectedValue(new Error("access denied"));
     await failing.commands.execute("integration.addToPath");
     expect(failing.errors[0]).toContain("access denied");
+  });
+
+  it("create or repair the Desktop shortcut without asking, and pass on the manual steps when Windows refuses", async () => {
+    const r = rig();
+    await r.commands.execute("integration.desktopShortcut");
+    expect(r.confirm).not.toHaveBeenCalled();
+    expect(r.notices[0]).toContain("OpenMind Studio.lnk");
+    r.ipc.integrationDesktopShortcut.mockRejectedValue("access denied. To add it by hand: right-click the Desktop");
+    await r.commands.execute("integration.desktopShortcut");
+    expect(r.errors[0]).toContain("To add it by hand");
+  });
+
+  it("show the installation check as facts and advice, and copy the report on request", async () => {
+    expect(parseCheckReport(REPORT)).toEqual({
+      details: [
+        { label: "Program", value: "Z:\\OpenMind Studio\\OpenMindStudio.exe" },
+        { label: "Network path", value: "\\\\fs01\\apps\\OpenMind Studio\\OpenMindStudio.exe" },
+        { label: "Desktop shortcut", value: "none on your Desktop" },
+      ],
+      notes: ["To get a Desktop shortcut, run Create Desktop Shortcut."],
+    });
+    const r = rig(STATUS, "Copy Report");
+    await r.commands.execute("integration.checkInstallation");
+    const request = r.confirm.mock.calls[0]?.[0] as { details: unknown[]; buttons: string[] };
+    expect(request.details).toHaveLength(3);
+    expect(request.buttons).toEqual(["Copy Report"]);
+    expect(r.ipc.clipboardWriteText).toHaveBeenCalledWith(REPORT);
   });
 });

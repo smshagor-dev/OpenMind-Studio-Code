@@ -14,10 +14,19 @@ export const SHELL_INTEGRATION_COMMANDS: [string, IntegrationAction, string][] =
   ["integration.unregisterExplorer", "remove-explorer", "integration.palette.unregisterExplorer"],
 ];
 
+/** Desktop shortcut commands (any copy; a shared network installation gives each user one at first start). */
+export const DESKTOP_SHORTCUT_COMMANDS: [string, string][] = [
+  ["integration.desktopShortcut", "integration.palette.desktopShortcut"],
+  ["integration.checkInstallation", "integration.palette.checkInstallation"],
+];
+
 export interface ShellIntegrationDeps {
   commands: CommandRegistry;
   events: EventBus<AppEvents>;
-  ipc: Pick<IpcClient, "integrationStatus" | "integrationApply">;
+  ipc: Pick<
+    IpcClient,
+    "integrationStatus" | "integrationApply" | "integrationDesktopShortcut" | "integrationCheck" | "clipboardWriteText"
+  >;
   editor: Pick<EditorService, "setAppActions">;
   /** The confirmation dialog; resolves with the chosen button, `null` when cancelled. */
   confirm: (request: Omit<ConfirmPrompt, "kind" | "id">) => Promise<string | null>;
@@ -52,6 +61,24 @@ export function nothingToDo(action: IntegrationAction, status: IntegrationStatus
     case "remove-explorer":
       return status.explorerThisCopy ? null : t("integration.notOurs.explorer");
   }
+}
+
+/** The check's text (`integration::check::render`): its facts as labelled lines, its advice as notes. */
+export function parseCheckReport(report: string): { details: { label: string; value: string }[]; notes: string[] } {
+  const details: { label: string; value: string }[] = [];
+  const notes: string[] = [];
+  let advice = false;
+  for (const line of report.split(/\r?\n/)) {
+    if (line.trim() === "What to do:") {
+      advice = true;
+    } else if (advice && line.trim().startsWith("- ")) {
+      notes.push(line.trim().slice(2));
+    } else if (!advice && line.startsWith("  ")) {
+      const match = /^\s+([^:]+:)\s+(.*)$/.exec(line);
+      if (match?.[1] && match[2] !== undefined) details.push({ label: match[1].slice(0, -1), value: match[2] });
+    }
+  }
+  return { details, notes };
 }
 
 /**
@@ -91,8 +118,36 @@ export function registerShellIntegrationCommands(deps: ShellIntegrationDeps): vo
   for (const [id, action, titleKey] of SHELL_INTEGRATION_COMMANDS) {
     deps.commands.register(id, () => run(action, titleKey));
   }
-  const actions = () =>
-    SHELL_INTEGRATION_COMMANDS.map(([command, , key]) => ({ command, label: t(key), inContextMenu: false }));
+  // Creating a shortcut on the user's own Desktop needs no confirmation (it adds one file and can be deleted); a
+  // refusal carries the manual steps from the backend.
+  deps.commands.register("integration.desktopShortcut", async () => {
+    try {
+      deps.events.emit("appNotice", { message: await deps.ipc.integrationDesktopShortcut() });
+    } catch (error) {
+      deps.events.emit("appError", { message: t("integration.shortcutFailed", { error: String(error) }) });
+    }
+  });
+  deps.commands.register("integration.checkInstallation", async () => {
+    try {
+      const report = await deps.ipc.integrationCheck();
+      const { details, notes } = parseCheckReport(report);
+      const copy = t("integration.check.copy");
+      const answer = await deps.confirm({
+        extension: "OpenMind Studio",
+        title: t("integration.check.title"),
+        details,
+        notes: notes.length > 0 ? notes : [t("integration.check.allGood")],
+        buttons: [copy],
+      });
+      if (answer === copy) await deps.ipc.clipboardWriteText(report);
+    } catch (error) {
+      deps.events.emit("appError", { message: t("integration.failed", { error: String(error) }) });
+    }
+  });
+  const actions = () => [
+    ...SHELL_INTEGRATION_COMMANDS.map(([command, , key]) => ({ command, label: t(key), inContextMenu: false })),
+    ...DESKTOP_SHORTCUT_COMMANDS.map(([command, key]) => ({ command, label: t(key), inContextMenu: false })),
+  ];
   deps.editor.setAppActions(actions(), "integration");
   i18n.subscribe(() => {
     deps.editor.setAppActions(actions(), "integration");

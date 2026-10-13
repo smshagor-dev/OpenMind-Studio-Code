@@ -5,6 +5,9 @@ crates/db/migrations/*.sql text eol=lf
 # Command-line launchers shipped in <install>\bin: batch files need CRLF, the Git Bash script LF.
 src-tauri/cli/*.cmd text eol=crlf
 src-tauri/cli/openmind text eol=lf
+# The deployment package shipped in <install>\deploy (launchers, logon script): batch files need CRLF.
+src-tauri/deploy/*.cmd text eol=crlf
+src-tauri/deploy/*.txt text eol=crlf
 # Shell scripts run in WSL and Linux containers straight from this checkout: LF, or bash stops at the first CR.
 *.sh text eol=lf
 

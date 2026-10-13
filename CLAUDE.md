@@ -887,6 +887,28 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   npm names, `vendor/package`, script and preset names); for a `.cmd`/`.bat` program any argument with `" % ^ & | < > !` or a line break is refused. No `--user`, `-g`,
   `--global`, `global` anywhere (tests check).
 
+- `openmind-deploy` (multi-PC deployment) — **deployment on a local network**, Tauri-agnostic; separate from collaboration
+  (own UDP port `DISCOVERY_PORT` 47741, own packets) and from execution. `advert` (`Advert` in a discovery answer,
+  `Manifest` from the package server, `PackageEntry` = a release file name exactly `release_name(version, platform, arch,
+  kind)` + size + SHA-256 + its updater signature; every field validated, `deny_unknown_fields`, nothing secret),
+  `packet` (JSON datagrams marked `openmind-deploy`, nonce-matched; foreign / malformed / other-protocol told apart),
+  `responder` (answers queries only to the sender, rate-limited, `SO_REUSEADDR`), `discover` (limited + subnet
+  broadcasts + typed addresses, 3 rounds; `Outcome` Found / NothingFound / ProtocolIncompatible / NetworkBlocked /
+  DiscoveryUnavailable), `registry` (grouped by deployment id: a share's id is a hash of its UNC path, a source's of
+  the computer token + folder; restart = new instance at the same address:port; TTL expiry), `server`/`client` (plain
+  HTTP GET of the manifest and catalog-named packages only; `.part` + SHA-256 while downloading), `package` (offer only
+  files whose `.sig` passes an injected `Verifier`; `verify_file`), `provision` (pure plan: `UseShare` / `Install` /
+  `Upgrade` / `Repair` or a `Refusal`: platform, architecture (`Arch::runs`), downgrade, folder not ours, kind
+  mismatch). App side `src-tauri/src/deploy/`: `local` (`ThisCopy` from `AppPaths`; `build_offer` from
+  `<program>\deploy\packages`), `service` (`DeployService`, Tauri-managed: offering while `deployment.advertiseOnLan`
+  is on, searches, manifests), `inspect` (destination state, exe version resource, running check), `exec`
+  (provisioning: lock next to the folder, download, real release-key check, silent setup `/S /D=` or portable unpack /
+  the updater's swap, Desktop shortcut — effects injected), `checks` (the 20-check Network Deployment Test, PASS / FAIL /
+  BLOCKED), `cli` (`--deploy status|discover|test|serve|provision`, before anything starts), `release_key()` (the
+  embedded `plugins.updater.pubkey`). Commands `deploy_status|apply_offering|search|test|provision|launch`. Frontend
+  `src/services/deployment/` + `components/deployment/` (Help > Network Deployment). See `docs/deployment.md`,
+  `docs/multi-pc-isolation.md`, `docs/pilot/university-network-deployment.md`.
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
@@ -3153,6 +3175,41 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   untouched; a per-computer portable copy restores a deleted `data-scope.json` and starts on its remembered scope with a
   damaged one (no setup, same profile, the damaged file left as is). **Still pending**: a real multi-PC pilot
   (`docs/pilot/multi-pc-pilot.md`) and trusted Windows code signing.
+- [x] **Shared network desktop integration** (branch `release-1.0.3-final`; see `docs/deployment.md`, `src-tauri/deploy/README.txt`).
+  - **Per-user shortcut at first start** (`integration/provision.rs`): a network installation gives each Windows user
+    `OpenMind Studio.lnk` (UNC target) once per computer, recorded as `desktop-shortcut.json` in the user's local folder.
+    Skipped when any shortcut on the user's or Public Desktop starts the program; a deleted one stays deleted; another
+    copy's shortcut is never replaced; later starts only point this program's drive-letter shortcut at the UNC path.
+    Runs in a thread after logging (`data_scope::provision_desktop_shortcut`).
+  - `install.json` `userDesktopShortcuts` (default on for network, kept by `write`): `--integration
+    user-desktop-shortcuts on|off`, the setup's Yes/No after choosing Recommended for All Users, `/NOUSERSHORTCUTS`.
+    `set-layout network` marks the installing user as offered (their shortcut is the finish page's).
+  - `--integration check` (`integration/check.rs`): paths, UNC path, layout, local data folder (and whether it is on
+    a network drive), elevation, share/Desktop writability, shortcut state, advice. Shortcut failures carry the manual
+    steps. `--integration` output attaches to the calling console.
+  - `deploy\` shipped with every Windows package (resource + portable ZIP + portable updater `REPLACEABLE`): Create /
+    Remove Desktop Shortcut, Check Installation (`.cmd`, CRLF), `OpenMindStudio-Logon.cmd` (silent, exit 0, `remove`),
+    `Deploy-OpenMindShortcuts.ps1`, `README.txt`. Palette: Create or Repair Desktop Shortcut, Check Installation.
+  - NSIS: the network desktop-shortcut call runs only for silent/passive installs, not on update or `/NS`.
+  - `install::resolved_install_dir` falls back to `install::universal_path` (moved from `shortcut.rs`) when the folder
+    can't be canonicalized, so a network blip can't give a mapped-drive start another local profile.
+- [ ] **Multi-PC network deployment** (branch `fix/multi-pc-deployment`; physical university test **pending**). Audit of
+  the code found: install layouts, per-computer data, the database session lock, versioned runtime locks/adopt/retire
+  and any-drive installs already real; **missing**: LAN deployment discovery and provisioning, a deployment test;
+  **partial**: a second computer asking for a runtime being installed elsewhere failed (`BusyElsewhere`) instead of
+  reusing it; Language Tools' `tools\` installs had only an in-process lock (two computers could write
+  `tools\installed.json` with one fixed temp name); notebook runner, extension downloads and Composer home/cache were
+  written into the shared folder; extension staging named only by pid. Built: `openmind-deploy` + `src-tauri/src/deploy/`
+  (above), `RuntimeManager::acquire_waiting` (phase `waiting`, ≤ 1 h, crash takeover), `tools\.install.lock`, per-computer
+  caches (`commands::database::composer_dirs`, `machine_cache_dir`), setting `deployment.advertiseOnLan` (default off).
+  Tests: deploy crate 44 (18 over real sockets), runtime concurrency 4, tool lock 2, app deploy 23 (real signature with a
+  throwaway key, every writable drive found at run time), multi-PC harness 6 (`src-tauri/tests/multi_pc.rs`: 3 logical
+  "Student" PCs, concurrent WAL databases, 30 ConPTY terminals, shared-binary processes). Verified by hand with the debug
+  exe: `--deploy serve` with the real signed v1.0.3 x64 packages (both verified against the release key), a second process
+  found it by broadcast, `--deploy test` 18 PASS / 1 FAIL (shortcut: the Desktop's points at the installed copy, correctly)
+  / 1 BLOCKED, `--deploy provision --kind portable` to `G:\OMDeployTest\Apps With Spaces\Программы বাংলা\...` (270 MB,
+  verified, unpacked), again = repair, setup into it = kind mismatch. **Not run**: the real setup silently (it would replace
+  the dev PC's per-user installation's registration — use Windows Sandbox or the lab), physical multi-PC.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. Code is in master (`c5c6d4d`:
   crates `openmind-collab`, `openmind-collab-net`, `openmind-collab-signal`, migrations 0004/0005; see
   `docs/collaboration.md`); its physical, cross-network and classroom gates are still pending, so it is a preview.

@@ -22,7 +22,26 @@ use crate::commands::run::environment;
 /// npm, pip and go finish in minutes; the Rust toolchain downloads a few hundred MB.
 const STEP_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
-/// One tool install or removal at a time (they all write `tools/installed.json`).
+/// How long an install waits for another computer's tool install (a network installation shares `tools/`).
+const SHARED_WAIT: Duration = Duration::from_secs(60 * 60);
+/// The cross-computer lock file of `tools/` (see [`shared_lock`]).
+const SHARED_LOCK: &str = ".install.lock";
+
+/// The operating-system lock on `tools/.install.lock`, held for a whole install or removal: on a network installation
+/// every computer shares `tools/` and its `installed.json`, so two computers must never stage, rename or record at the
+/// same time. The OS releases it when the process ends (also after a crash or a lost network), so it never outlives
+/// its owner; a computer that finds it held waits, then reuses what the other one installed.
+fn shared_lock(root: &Path) -> Result<openmind_core::profile_lock::ProfileLock, String> {
+    let file = root.join("tools").join(SHARED_LOCK);
+    openmind_core::profile_lock::ProfileLock::acquire_file(&file, SHARED_WAIT).map_err(|err| {
+        format!(
+            "Another computer is installing a tool into {} and didn't finish in time, or the folder can't be locked: {err}",
+            file.parent().map(Path::display).map(|d| d.to_string()).unwrap_or_default()
+        )
+    })
+}
+
+/// One tool install or removal at a time in this process (the shared lock covers other processes and computers).
 fn lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
     LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
@@ -80,6 +99,8 @@ pub(crate) fn fetch_verified(cache: &Path, url: &str, sha256: &str) -> Result<Pa
 /// Where the installer takes its tools from.
 struct Context {
     root: PathBuf,
+    /// Mutable caches (pip, npm, Go): this computer's own cache folder.
+    cache_root: PathBuf,
     /// The PATH folders and variables of a process OpenMind starts (portable runtimes, gateway settings).
     path_prepend: Vec<PathBuf>,
     vars: Vec<(String, String)>,
@@ -106,8 +127,9 @@ impl Context {
         }
     }
 
+    /// A tool's own cache: this computer's (never the shared folder another computer writes at the same time).
     fn cache(&self, name: &str) -> String {
-        self.root.join("cache").join(name).display().to_string()
+        self.cache_root.join(name).display().to_string()
     }
 
     /// The first `name.exe` in the PATH OpenMind gives its processes (portable runtimes first), then the system PATH.
@@ -154,7 +176,7 @@ fn install_pip(ctx: &Context, staging: &Path, requirement: &str) -> Result<(), S
     let python = ctx.python.as_ref().map_err(Clone::clone)?;
     let requirements = staging.join("requirements.txt");
     std::fs::write(&requirements, format!("{requirement}\n")).map_err(|err| err.to_string())?;
-    let cache = ctx.root.join("cache").join("pip");
+    let cache = ctx.cache_root.join("pip");
     let args =
         openmind_lsp::install::pip_args(&requirements, &staging.join("lib"), &cache, &ctx.vars);
     let mut spec = ctx.spec(
@@ -286,7 +308,12 @@ fn read_installed(root: &Path) -> Manifest {
 fn write_installed(root: &Path, installed: &Manifest) -> Result<(), String> {
     let path = openmind_toolchains::packs::installed_path(root);
     let text = serde_json::to_string_pretty(installed).map_err(|err| err.to_string())?;
-    let temp = path.with_extension("json.tmp");
+    // A name of its own: a fixed temporary name could be written by two writers at once.
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let temp = path.with_extension(format!("json.{}-{unique}.tmp", std::process::id()));
     std::fs::write(&temp, text).map_err(|err| err.to_string())?;
     std::fs::rename(&temp, &path).map_err(|err| err.to_string())
 }
@@ -321,7 +348,28 @@ fn record(root: &Path, recipe: &Recipe, command: &str) -> Result<(), String> {
     write_installed(root, &installed)
 }
 
+/// Whether `recipe` is installed and its program is there (e.g. another computer installed it while this one waited).
+fn already_installed(root: &Path, recipe: &Recipe, command: &str) -> bool {
+    read_installed(root).tools.iter().any(|tool| {
+        tool.id == recipe.tool
+            && tool
+                .versions
+                .iter()
+                .any(|version| version.version == recipe.version)
+    }) && root.join(program_path(recipe, command)).is_file()
+}
+
 fn install_blocking(ctx: &Context, recipe: &Recipe, command: &str) -> Result<(), String> {
+    std::fs::create_dir_all(ctx.root.join("tools")).map_err(|err| err.to_string())?;
+    let _shared = shared_lock(&ctx.root)?;
+    if already_installed(&ctx.root, recipe, command) {
+        tracing::info!(
+            tool = recipe.tool,
+            version = recipe.version,
+            "the tool is already installed in the shared folder; using it"
+        );
+        return Ok(());
+    }
     let tool_root = ctx.root.join("tools").join(recipe.tool);
     let staging = tool_root.join(".installing");
     if staging.exists() {
@@ -368,6 +416,7 @@ pub async fn toolchains_install(
     let (node, python) = crate::commands::lsp::installers(&state).await;
     let ctx = Context {
         root: state.app_root.clone(),
+        cache_root: state.runtime.paths().cache_dir().to_path_buf(),
         path_prepend: environment.path_prepend,
         vars: environment.vars,
         node,
@@ -392,28 +441,46 @@ pub async fn toolchains_remove(
         recipe(&id).ok_or_else(|| format!("{id} wasn't installed from Language Tools."))?;
     let _guard = lock().lock().await;
     let root = state.app_root.clone();
-    let mut installed = read_installed(&root);
+    tokio::task::spawn_blocking(move || remove_blocking(&root, recipe, &id))
+        .await
+        .map_err(|err| err.to_string())??;
+    crate::sync::announce_now(&app, crate::sync::Topic::Tools).await;
+    Ok(crate::commands::toolchains::packs(&state).await)
+}
+
+/// Removes a tool under the shared lock: its folder (all at once: renamed away first, so a program another computer is
+/// running from it refuses the removal instead of half-deleting it) and then its record.
+fn remove_blocking(root: &Path, recipe: &Recipe, id: &str) -> Result<(), String> {
+    let _shared = shared_lock(root)?;
+    let mut installed = read_installed(root);
     if !installed.tools.iter().any(|tool| tool.id == recipe.tool) {
         return Err(format!("{id} wasn't installed from Language Tools."));
     }
     let dir = root.join("tools").join(recipe.tool);
-    tokio::task::spawn_blocking(move || match std::fs::symlink_metadata(&dir) {
+    match std::fs::symlink_metadata(&dir) {
         Ok(meta) if meta.is_dir() && !meta.file_type().is_symlink() => {
-            std::fs::remove_dir_all(&dir)
-                .map_err(|err| format!("Couldn't remove {}: {err}", dir.display()))
+            let aside =
+                dir.with_file_name(format!("{}.removing-{}", recipe.tool, std::process::id()));
+            std::fs::rename(&dir, &aside).map_err(|err| {
+                format!(
+                    "Couldn't remove {} — it is in use (perhaps on another computer): {err}",
+                    dir.display()
+                )
+            })?;
+            if let Err(err) = std::fs::remove_dir_all(&aside) {
+                tracing::warn!(error = %err, "a removed tool's folder couldn't be deleted completely yet");
+            }
         }
-        Ok(_) => Err(format!(
-            "{} is not a folder OpenMind created; it was left alone.",
-            dir.display()
-        )),
-        Err(_) => Ok(()),
-    })
-    .await
-    .map_err(|err| err.to_string())??;
+        Ok(_) => {
+            return Err(format!(
+                "{} is not a folder OpenMind created; it was left alone.",
+                dir.display()
+            ))
+        }
+        Err(_) => {}
+    }
     installed.tools.retain(|tool| tool.id != recipe.tool);
-    write_installed(&root, &installed)?;
-    crate::sync::announce_now(&app, crate::sync::Topic::Tools).await;
-    Ok(crate::commands::toolchains::packs(&state).await)
+    write_installed(root, &installed)
 }
 
 #[cfg(test)]
@@ -465,6 +532,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tmp");
         let ctx = Context {
             root: tmp.path().to_path_buf(),
+            cache_root: tmp.path().join("pc-cache"),
             path_prepend: vec![],
             vars: vec![],
             node: Err("Node.js runtime is not installed yet.".into()),
@@ -476,5 +544,73 @@ mod tests {
         assert!(!tmp.path().join("tools/prettier/.installing").exists());
         assert!(!tmp.path().join("tools/prettier/3.9.9").exists());
         assert!(read_installed(tmp.path()).tools.is_empty());
+    }
+
+    fn no_tools_ctx(root: &Path) -> Context {
+        Context {
+            root: root.to_path_buf(),
+            cache_root: root.join("pc-cache"),
+            path_prepend: vec![],
+            vars: vec![],
+            node: Err("Node.js runtime is not installed yet.".into()),
+            python: Err("Python was not found.".into()),
+        }
+    }
+
+    #[test]
+    fn a_tool_another_computer_installs_meanwhile_is_reused_not_installed_again() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir_all(root.join("tools")).expect("tools");
+        let ruff = recipe("ruff").expect("ruff");
+        // "PC-A" holds the shared lock and finishes its install while "PC-B" waits.
+        let held = shared_lock(&root).expect("lock");
+        let pc_b = std::thread::spawn({
+            let root = root.clone();
+            move || {
+                let started = std::time::Instant::now();
+                // PC-B has no Python: had it installed anything itself, this would fail.
+                let outcome = install_blocking(&no_tools_ctx(&root), ruff, "ruff");
+                (outcome, started.elapsed())
+            }
+        });
+        std::thread::sleep(Duration::from_millis(400));
+        let program = root.join(program_path(ruff, "ruff"));
+        std::fs::create_dir_all(program.parent().expect("parent")).expect("dir");
+        std::fs::write(&program, b"@echo ruff").expect("program");
+        record(&root, ruff, "ruff").expect("record");
+        drop(held);
+        let (outcome, waited) = pc_b.join().expect("thread");
+        outcome.expect("reused");
+        assert!(waited >= Duration::from_millis(400), "{waited:?}");
+        assert_eq!(read_installed(&root).tools.len(), 1);
+        assert!(!root.join("tools/ruff/.installing").exists());
+    }
+
+    #[test]
+    fn writers_under_the_shared_lock_leave_no_temporary_files() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        std::fs::create_dir_all(tmp.path().join("tools")).expect("tools");
+        let writers: Vec<_> = (0..8)
+            .map(|_| {
+                let root = tmp.path().to_path_buf();
+                std::thread::spawn(move || {
+                    for _ in 0..20 {
+                        // Real writers always hold the shared lock (several computers, one folder).
+                        let _shared = shared_lock(&root).expect("lock");
+                        write_installed(&root, &Manifest::default()).expect("write");
+                    }
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().expect("writer");
+        }
+        let leftovers = std::fs::read_dir(tmp.path().join("tools"))
+            .expect("dir")
+            .filter_map(Result::ok)
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .count();
+        assert_eq!(leftovers, 0);
     }
 }

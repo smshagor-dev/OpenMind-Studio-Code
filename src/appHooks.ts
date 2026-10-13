@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { container } from "./services/container";
 import { StartupTimings } from "./services/startupTimings";
+import { startDeployment } from "./services/deployment";
 import { startUpdates } from "./services/updates";
 import type { PinnedFolderEntry, RecentFileInfo, WorkspaceInfo } from "./services/ipc";
 
@@ -95,6 +96,8 @@ export function useAppStartup(): boolean {
         container.git.initialize(),
         // Follows the backend's update schedule (nothing is checked or downloaded from here).
         startUpdates(),
+        // Help > Network Deployment and the "offer on the local network" setting (nothing is searched or sent).
+        startDeployment(),
         // Reads the open folder's manifests (nothing runs, nothing installs).
         container.dependencies.initialize(),
         // A joined room's shared tree and remote documents follow `collab:remote` (nothing is fetched here).
