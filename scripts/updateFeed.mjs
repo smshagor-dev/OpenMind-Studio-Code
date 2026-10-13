@@ -1,4 +1,5 @@
-// The update feed of a release (`release/latest.json`), written by release.mjs after the installers are collected.
+// The update feed of a release (`release/v<version>/latest.json`), written by release.mjs after the installers are
+// collected into `release/v<version>/windows/`.
 //
 // - Installers: their `.sig` comes from `tauri build` (createUpdaterArtifacts, the release key in the environment).
 // - Portable archives: signed here with the same key and bound to the version (`tauri signer sign --app-version`), so a
@@ -11,7 +12,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { latestJson, signedVersion } from "./releaseTools.mjs";
+import { latestJson, releasePlatform, signedVersion } from "./releaseTools.mjs";
 import { updaterSigningEnv } from "./updaterKey.mjs";
 
 function signPortable(file, version) {
@@ -30,7 +31,7 @@ function signPortable(file, version) {
 }
 
 /**
- * `artifacts` = `{ name, kind, arch }` in `out`. Returns `{ written, notes }`: `notes` are lines for RELEASE-REPORT.md.
+ * `artifacts` = `{ name, kind, arch }` in `out/<platform>/` (the release folder). Returns `{ written, notes }`: `notes` are lines for RELEASE-REPORT.md.
  * `minimumVersion` (OPENMIND_MINIMUM_VERSION) makes older copies update (mandatory); `notes` text comes from
  * `notesFile` when given.
  */
@@ -39,7 +40,7 @@ export function writeUpdateFeed({ out, version, artifacts, notesFile = null, min
   const files = [];
   for (const artifact of artifacts) {
     if (!["setup", "msi", "portable"].includes(artifact.kind)) continue;
-    const file = join(out, artifact.name);
+    const file = join(out, releasePlatform(artifact.kind), artifact.name);
     const sigFile = `${file}.sig`;
     if (!existsSync(sigFile) && artifact.kind === "portable") {
       const problem = signPortable(file, version);

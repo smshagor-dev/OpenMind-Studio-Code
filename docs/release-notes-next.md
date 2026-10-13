@@ -78,8 +78,10 @@ real computers and the installers are signed for the intended channel (see "Rele
 
 ## Rollback
 
-Nothing in this release changes the database schema (no new migration), so the previous version opens the same
-databases.
+This release **adds database migrations** (`0004_collaboration.sql`, `0005_collab_doc_baselines.sql`, from the
+collaborative workspace). Once 1.0.3 has opened a database, 1.0.2 refuses it at start-up ("migration from a newer
+build"; nothing is deleted). Keep a copy of the data folder from before the upgrade to roll back with your data, or use
+*Back Up and Start Fresh* in the older version's error window.
 
 1. Close OpenMind Studio everywhere.
 2. Reinstall the previous setup (same folder) or unzip the previous portable copy over this one. A setup from this
@@ -92,14 +94,15 @@ databases.
      version. Nothing is deleted; reinstalling this version finds it again.
 4. Runtimes installed by this version are ordinary runtime folders and remain usable.
 
-Validated: steps 1–3 for a portable copy (old build reopened the new database). The MSI and network rollbacks follow from
-the above but were not run on installed copies.
+The earlier validation of steps 1–3 (an old build reopening the new database) predates the collaboration migrations and
+no longer holds; a database opened by 1.0.3 needs the pre-upgrade copy.
 
 ## Release artifact checklist
 
 - [ ] `pnpm release:build` (or the `Release (Windows)` workflow) finished without errors: NSIS setup, MSI, portable ZIP.
 - [ ] `RELEASE-REPORT.md` says **signed**, every installer "verified", "timestamped".
-- [ ] `node scripts/verify-signatures.mjs release\*.exe release\*.msi` exits 0.
+- [ ] `node scripts/verify-signatures.mjs release\v1.0.3\windows\*.exe release\v1.0.3\windows\*.msi` and
+      `pnpm release:verify` exit 0.
 - [ ] `SHA256SUMS.txt` matches the files (`Get-FileHash -Algorithm SHA256`).
 - [ ] Update signatures (`.sig`) present for the setup and the MSI; `latest.json` points at this version.
 - [ ] Setup's first page shows **For Me** / **Recommended for All Users**; a silent `/NETWORK` install writes

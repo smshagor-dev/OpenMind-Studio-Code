@@ -5,8 +5,8 @@ user asks. Both options below are **off by default**, can be undone, and remove 
 
 | Edition | Installs to | Admin rights | PATH option | "Open with OpenMind Studio" option |
 | --- | --- | --- | --- | --- |
-| NSIS setup (`OpenMind-Studio-Setup-<v>-x64.exe`) | `%LOCALAPPDATA%\Programs\OpenMind Studio` (per user) | no | check box on the Welcome page, or `/ADDTOPATH` | check box on the Welcome page, or `/EXPLORERMENU` |
-| MSI (`OpenMind-Studio-<v>-x64.msi`) | `Program Files\OpenMind Studio` (per machine) | **yes** | `ADDTOPATH=1` (machine PATH) | `EXPLORERMENU=1` (all users) |
+| NSIS setup (`OpenMind-Studio_<v>_windows_x64_setup.exe`) | `%LOCALAPPDATA%\Programs\OpenMind Studio` (per user) | no | check box on the Welcome page, or `/ADDTOPATH` | check box on the Welcome page, or `/EXPLORERMENU` |
+| MSI (`OpenMind-Studio_<v>_windows_x64.msi`) | `Program Files\OpenMind Studio` (per machine) | **yes** | `ADDTOPATH=1` (machine PATH) | `EXPLORERMENU=1` (all users) |
 | Portable ZIP | wherever you unzip it | no | command palette (per user) | command palette (per user) |
 
 ## What the options do
@@ -80,7 +80,7 @@ Then two check boxes, both unchecked on a first install. On a reinstall or updat
 Silent installs choose with switches:
 
 ```powershell
-"OpenMind-Studio-Setup-0.1.0-x64.exe" /S /ADDTOPATH /EXPLORERMENU
+"OpenMind-Studio_1.0.3_windows_x64_setup.exe" /S /ADDTOPATH /EXPLORERMENU
 ```
 
 **How it is done.** The app itself does the work, not the NSIS script. NSIS would truncate a long PATH at its

@@ -49,6 +49,8 @@ pnpm-debug.log*
 !/lsp-bundle/README.txt
 /.lsp-bundle-cache/
 /release/
+# Release outputs are written only into /release/v<version>/ (windows/, linux/); the portable packer used to write here:
+/dist-portable/
 /python-bundle/*
 !/python-bundle/README.txt
 /.python-bundle-cache/

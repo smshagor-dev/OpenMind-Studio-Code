@@ -40,7 +40,7 @@ folder an earlier version made from the path as it was started stays in use, so 
 
 ### Install
 
-1. On a computer that can write to the share, run `OpenMind-Studio-Setup-<version>-x64.exe`.
+1. On a computer that can write to the share, run `OpenMind-Studio_<version>_windows_x64_setup.exe`.
 2. **Installation type: Recommended for All Users**, then choose the shared folder as the install folder
    (`\\fs01\apps\OpenMind Studio`; a mapped drive letter works too — shortcuts are always made with the `\\server\share`
    path).
@@ -48,7 +48,7 @@ folder an earlier version made from the path as it was started stays in use, so 
 4. Start OpenMind Studio once from there and install the runtimes the class needs (Terminal > Manage Runtimes, or the
    Workloads tab). They land in the shared folder.
 
-Silent: `OpenMind-Studio-Setup-<version>-x64.exe /S /NETWORK /D=\\fs01\apps\OpenMind Studio` (`/D=` must be last and
+Silent: `OpenMind-Studio_<version>_windows_x64_setup.exe /S /NETWORK /D=\\fs01\apps\OpenMind Studio` (`/D=` must be last and
 unquoted).
 
 To turn an existing **portable copy** on a share into a network installation (keeping each computer's history): run

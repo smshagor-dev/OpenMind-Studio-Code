@@ -37,7 +37,9 @@ const option = (name, fallback) => {
 };
 
 const profile = option("--profile", "release");
-const outDir = resolve(root, option("--out", "dist-portable"));
+// Inside the project's git-ignored release folder; `release.mjs --portable <zip>` then copies it into
+// `release/v<version>/windows/` under its release name.
+const outDir = resolve(root, option("--out", join("release", "staging", "portable")));
 const targetDir = process.env.CARGO_TARGET_DIR ?? join(root, "target");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 

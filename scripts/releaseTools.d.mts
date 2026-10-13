@@ -27,7 +27,11 @@ export function signatureVerdict(
   mode: "signed" | "test-signed" | "external",
   options?: { timestampWaived?: boolean },
 ): string | null;
-export function releaseName(kind: "setup" | "msi" | "portable" | "deb" | "appimage" | "linux-portable", version: string, arch?: string): string;
+export type ReleaseKind = "setup" | "msi" | "portable" | "deb" | "appimage" | "linux-portable";
+export function releaseName(kind: ReleaseKind, version: string, arch?: string): string;
+export function releasePlatform(kind: string): "windows" | "linux";
+export function releaseDir(root: string, version: string): string;
+export function releaseKindOf(name: string): ReleaseKind | null;
 export function formatSize(bytes: number): string;
 
 export interface Artifact {

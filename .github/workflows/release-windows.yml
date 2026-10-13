@@ -1,14 +1,17 @@
-# Builds the Windows x64 release on GitHub Actions and, when SignPath is set up, has every Windows binary signed by
-# SignPath (Authenticode, RFC 3161 timestamp) before the installers and update signatures are made. Nothing is published:
-# the finished files are kept as a workflow artifact for a person to check and release.
+# Builds the Windows x64 and x86 releases (and Linux x64) on GitHub Actions and, when SignPath is set up, has every
+# Windows binary signed by SignPath (Authenticode, RFC 3161 timestamp) before the installers and update signatures are
+# made. Nothing is published: the finished files are kept as workflow artifacts for a person to check and release.
 #
-# Started by hand only (Actions > Release (Windows) > Run workflow).
+# Started by hand only (Actions > Release (Windows) > Run workflow). It must run in the repository that holds the
+# source; the public release repository holds only release files.
 #
-# Order matters, because signing changes a file's bytes:
+# Order matters, because signing changes a file's bytes (per architecture):
 #   1. build OpenMindStudio.exe (no installers)                      -> SignPath signs the exe
 #   2. bundle the NSIS setup and the MSI around the *signed* exe     -> SignPath signs the installers
-#   3. updater signatures (.sig, minisign) of the *signed* installers -> release.mjs collects, checks, writes SHA256SUMS
+#   3. updater signatures (.sig, minisign) of the *signed* installers
 #   4. verify-signatures.mjs asks Windows to confirm every signature (trusted chain, unchanged, timestamped)
+# Then one `collect` job puts both architectures together: release.mjs checks them, signs the portable archives for
+# updates and writes SHA256SUMS.txt, RELEASE-REPORT.md and one latest.json for x64 and x86.
 #
 # Repository settings (docs/release.md, "SignPath"):
 #   variables  SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG, SIGNPATH_POLICY_SLUG (e.g. release-signing),
@@ -27,11 +30,21 @@ permissions:
   actions: read
 
 jobs:
-  windows-x64:
+  windows:
+    name: windows-${{ matrix.arch }}
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            triple: x86_64-pc-windows-msvc
+          - arch: x86
+            triple: i686-pc-windows-msvc
     env:
       SIGNPATH_ENABLED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+      RELEASE_DIR: target/${{ matrix.triple }}/release
     steps:
       - uses: actions/checkout@v4
 
@@ -43,11 +56,32 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
           architecture: x64
+
+      - name: NASM (32-bit aws-lc-sys)
+        # aws-lc-sys (collaboration's DTLS stack) needs NASM for i686; x64 uses its prebuilt objects. NASM comes from the
+        # same pinned, checksum-verified w64devkit the Runtime Manager's `assembly` manifest uses.
+        if: matrix.arch == 'x86'
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "w64devkit-1.19.0.zip"
+          Invoke-WebRequest "https://github.com/skeeto/w64devkit/releases/download/v1.19.0/w64devkit-1.19.0.zip" -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne "2862f388e1720b40026f2fd95c6100a9932e3b14fb13aac4f225a02b11e31ca9") { throw "w64devkit checksum mismatch: $hash" }
+          $dir = Join-Path $env:RUNNER_TEMP "nasm"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead($zip)
+          $entry = $archive.Entries | Where-Object { $_.FullName -eq "w64devkit/bin/nasm.exe" }
+          [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, (Join-Path $dir "nasm.exe"), $true)
+          $archive.Dispose()
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $dir
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -59,15 +93,15 @@ jobs:
           pnpm python:bundle -- --python "$env:pythonLocation\python.exe"
 
       - name: Build the program (no installers yet)
-        run: pnpm tauri build --no-bundle
+        run: pnpm tauri build --no-bundle --target ${{ matrix.triple }}
 
       - name: Upload the unsigned program for signing
         id: unsigned-exe
         if: env.SIGNPATH_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: unsigned-exe
-          path: target/release/OpenMindStudio.exe
+          name: unsigned-exe-${{ matrix.arch }}
+          path: ${{ env.RELEASE_DIR }}/OpenMindStudio.exe
           if-no-files-found: error
 
       - name: Sign the program (SignPath)
@@ -87,25 +121,25 @@ jobs:
         if: env.SIGNPATH_ENABLED == 'true'
         shell: pwsh
         run: |
-          Copy-Item -LiteralPath signed-exe/OpenMindStudio.exe -Destination target/release/OpenMindStudio.exe -Force
-          node scripts/verify-signatures.mjs --mode external target/release/OpenMindStudio.exe
+          Copy-Item -LiteralPath signed-exe/OpenMindStudio.exe -Destination "$env:RELEASE_DIR/OpenMindStudio.exe" -Force
+          node scripts/verify-signatures.mjs --mode external "$env:RELEASE_DIR/OpenMindStudio.exe"
 
       - name: Build the installers around the program
         # Without SignPath the installers are final here, so tauri makes their update signatures (bound to the version).
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ env.SIGNPATH_ENABLED != 'true' && secrets.TAURI_UPDATER_KEY || '' }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_KEY_PASSWORD }}
-        run: pnpm tauri bundle --bundles nsis,msi
+        run: pnpm tauri bundle --bundles nsis,msi --target ${{ matrix.triple }}
 
       - name: Upload the unsigned installers for signing
         id: unsigned-installers
         if: env.SIGNPATH_ENABLED == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: unsigned-installers
+          name: unsigned-installers-${{ matrix.arch }}
           path: |
-            target/release/bundle/nsis/*.exe
-            target/release/bundle/msi/*.msi
+            ${{ env.RELEASE_DIR }}/bundle/nsis/*.exe
+            ${{ env.RELEASE_DIR }}/bundle/msi/*.msi
           if-no-files-found: error
 
       - name: Sign the installers (SignPath)
@@ -125,9 +159,9 @@ jobs:
         if: env.SIGNPATH_ENABLED == 'true'
         shell: pwsh
         run: |
-          Get-ChildItem signed-installers -Recurse -Include *.exe | Copy-Item -Destination target/release/bundle/nsis -Force
-          Get-ChildItem signed-installers -Recurse -Include *.msi | Copy-Item -Destination target/release/bundle/msi -Force
-          $files = @(Get-ChildItem target/release/bundle/nsis/*.exe, target/release/bundle/msi/*.msi | ForEach-Object FullName)
+          Get-ChildItem signed-installers -Recurse -Include *.exe | Copy-Item -Destination "$env:RELEASE_DIR/bundle/nsis" -Force
+          Get-ChildItem signed-installers -Recurse -Include *.msi | Copy-Item -Destination "$env:RELEASE_DIR/bundle/msi" -Force
+          $files = @(Get-ChildItem "$env:RELEASE_DIR/bundle/nsis/*.exe", "$env:RELEASE_DIR/bundle/msi/*.msi" | ForEach-Object FullName)
           node scripts/verify-signatures.mjs --mode external @files
 
       - name: Update signatures of the final installers
@@ -139,14 +173,55 @@ jobs:
         run: |
           if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { Write-Warning "TAURI_UPDATER_KEY is not set: no update signatures."; exit 0 }
           $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          Get-ChildItem target/release/bundle/nsis/*.exe, target/release/bundle/msi/*.msi | ForEach-Object {
+          Get-ChildItem "$env:RELEASE_DIR/bundle/nsis/*.exe", "$env:RELEASE_DIR/bundle/msi/*.msi" | ForEach-Object {
             # Bound to the version: the app requires it (plugins.updater.requireSignedVersion).
             pnpm tauri signer sign --app-version $version $_.FullName
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
       - name: Portable archive
-        run: pnpm package:portable -- --no-build --exe target/release/OpenMindStudio.exe --out target/portable
+        run: pnpm package:portable -- --no-build --exe ${{ env.RELEASE_DIR }}/OpenMindStudio.exe --out release/staging/portable-${{ matrix.arch }}
+
+      - name: Keep the architecture's files
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            ${{ env.RELEASE_DIR }}/bundle/nsis/*.exe
+            ${{ env.RELEASE_DIR }}/bundle/nsis/*.sig
+            ${{ env.RELEASE_DIR }}/bundle/msi/*.msi
+            ${{ env.RELEASE_DIR }}/bundle/msi/*.sig
+            release/staging/portable-${{ matrix.arch }}/*.zip
+          if-no-files-found: error
+
+  collect:
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      SIGNPATH_ENABLED: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: built/x64
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x86
+          path: built/x86
 
       - name: Collect the release files and write the update feed
         shell: pwsh
@@ -158,19 +233,78 @@ jobs:
           # Set (e.g. 1.1.0) only for a release that older versions must install (mandatory update).
           OPENMIND_MINIMUM_VERSION: ${{ vars.OPENMIND_MINIMUM_VERSION }}
         run: |
-          # release.mjs signs the portable archive with the updater key (scripts/updaterKey.mjs reads it from a file).
+          # Lay the files out as `tauri build --target` leaves them, which is where release.mjs looks.
+          foreach ($pair in @(@("x64", "x86_64-pc-windows-msvc"), @("x86", "i686-pc-windows-msvc"))) {
+            $arch, $triple = $pair
+            foreach ($kind in "nsis", "msi") {
+              $dest = "target/$triple/release/bundle/$kind"
+              New-Item -ItemType Directory -Force $dest | Out-Null
+              Get-ChildItem "built/$arch" -Recurse -File | Where-Object { $_.FullName -match "[\\/]$kind[\\/]" } |
+                Copy-Item -Destination $dest
+            }
+          }
+          # release.mjs signs the portable archives with the updater key (scripts/updaterKey.mjs reads it from a file).
           if ($env:TAURI_UPDATER_KEY) {
             $key = Join-Path $env:RUNNER_TEMP "openmind-updater.key"
             Set-Content -LiteralPath $key -Value $env:TAURI_UPDATER_KEY -NoNewline
             $env:OPENMIND_UPDATER_KEY = $key
           }
-          $zip = Get-ChildItem target/portable/*.zip | Select-Object -First 1
-          node scripts/release.mjs --no-sign --portable $zip.FullName
+          $zip64 = Get-ChildItem built/x64 -Recurse -Filter *.zip | Select-Object -First 1
+          $zip86 = Get-ChildItem built/x86 -Recurse -Filter *.zip | Select-Object -First 1
+          node scripts/release.mjs --no-sign --target-dir target --targets x86_64-pc-windows-msvc,i686-pc-windows-msvc `
+            --portable $zip64.FullName --portable-x86 $zip86.FullName
+          $code = $LASTEXITCODE
           if ($env:OPENMIND_UPDATER_KEY) { Remove-Item -LiteralPath $env:OPENMIND_UPDATER_KEY -Force }
+          exit $code
 
       - name: Keep the release files
         uses: actions/upload-artifact@v4
         with:
-          name: openmind-studio-windows-x64
-          path: release/
+          name: openmind-studio-windows
+          # release/v<version>/ (windows/, SHA256SUMS.txt, latest.json, RELEASE-REPORT.md); not release/staging/.
+          path: release/v*/
+          if-no-files-found: error
+
+  linux-x64:
+    # deb + AppImage (docs/release.md, "Linux"). 32-bit Linux needs a Debian i386 container and is built by hand.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev libxdo-dev patchelf squashfs-tools xdg-utils
+
+      - name: Install dependencies and build the frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Tauri CLI (the project's version)
+        run: cargo install tauri-cli --version "$(node -p "require('./node_modules/@tauri-apps/cli/package.json').version")" --locked
+
+      - name: Build deb, AppImage and portable tar.gz into release/v<version>/linux/
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_UPDATER_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_UPDATER_KEY_PASSWORD }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-linux
+        run: bash scripts/linux-release.sh
+
+      - name: Keep the Linux files
+        uses: actions/upload-artifact@v4
+        with:
+          name: openmind-studio-linux-x64
+          path: release/v*/linux/
           if-no-files-found: error

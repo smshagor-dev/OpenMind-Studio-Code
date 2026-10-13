@@ -29,9 +29,16 @@ pnpm release:build:x86        # tauri build --target i686-pc-windows-msvc --bund
 pnpm release:collect:all      # collects both, named ...-x64 / ...-x86
 ```
 
-Portable ZIPs per architecture: `package:portable -- --no-build --exe <target>/<triple>/release/OpenMindStudio.exe --out <folder>`
-for each build, then pass them to the collector with `--portable <x64 zip> --portable-x86 <x86 zip>` (the zip's own name
-says `win-x64`; the collector renames it to `OpenMind-Studio-<version>-<arch>-portable.zip`).
+The x86 build needs **NASM on PATH**: `aws-lc-sys` (pulled in by the collaboration crate's DTLS stack, `str0m` →
+`dimpl` → `aws-lc-rs`) has prebuilt assembler objects for x64 only. Without NASM the i686 build stops with "NASM command
+not found". Take `w64devkit/bin/nasm.exe` from the Runtime Manager's pinned w64devkit 1.19.0 archive (its SHA-256 is in
+`crates/runtime-manager/manifests/assembly.json`); the release workflow does the same. The x86 packages carry the same
+x64-only offline bundles (`lsp/`, `python-bundle/`); the app uses them only on 64-bit Windows.
+
+Portable ZIPs per architecture: `package:portable -- --no-build --exe <target>/<triple>/release/OpenMindStudio.exe --out release/staging/portable-<arch>`
+for each build (the default `--out` is `release/staging/portable`), then pass them to the collector with
+`--portable <x64 zip> --portable-x86 <x86 zip>` (the zip's own name says `win-x64`; the collector renames it to
+`OpenMind-Studio_<version>_windows_<arch>_portable.zip`).
 
 When the build used `CARGO_TARGET_DIR`, pass the same folder to the collector (`--target-dir <folder>`; `package:portable`
 reads the variable, `release.mjs` reads only `.cargo/config.toml` or `--target-dir`). Without it the collector picks up
@@ -44,12 +51,29 @@ fresh unzip of the portable ZIP and save the network diagnostics (they must cont
 The offline language server bundle is `windows-x64` only: a 32-bit build still carries it, and its servers run only on
 64-bit Windows (on 32-bit Windows the bundle is ignored and servers fall back to npm installs).
 
-`release:collect` writes to `release/` (git-ignored):
+### Where release files go
 
-- `OpenMind-Studio-Setup-<version>-x64.exe`, `OpenMind-Studio-<version>-x64.msi`, `OpenMind-Studio-<version>-x64-portable.zip`
-  — only the files that exist;
-- `SHA256SUMS.txt` (`sha256sum` format);
-- `RELEASE-REPORT.md` — version, architecture, **build type**, date, and each file's size and SHA256.
+Every release file goes into the project's own release folder, **`<project>/release/v<version>/`** (git-ignored with
+`/release/`); nothing is written to another drive or folder, and no clone or copy of the source is made for a release.
+Build caches may live elsewhere (`CARGO_TARGET_DIR`, e.g. an external cache when the drive is full); only the
+finished files must be in the project.
+
+```text
+release/v<version>/
+    windows/   OpenMind-Studio_<version>_windows_<x64|x86>_setup.exe, _<arch>.msi, _<arch>_portable.zip (+ .sig)
+    linux/     OpenMind-Studio_<version>_linux_<x64|x86>.deb, .AppImage, _portable.tar.gz (+ .sig)
+    SHA256SUMS.txt       sha256sum format, paths relative to this folder (windows/<name>, linux/<name>)
+    latest.json          the update feed (only when every installer has its .sig)
+    RELEASE-REPORT.md    version, architectures, build type, date, each file's size and SHA256
+release/staging/         intermediate files (portable ZIPs before they are renamed)
+```
+
+- `release:collect` / `release:collect:all` copy the Windows files into `windows/` (only those that exist) and rewrite
+  `SHA256SUMS.txt` over everything in `windows/` and `linux/`.
+- `scripts/linux-release.sh` (below) puts the Linux files into `linux/`.
+- `pnpm release:checksums` rewrites `SHA256SUMS.txt` from the files present; `pnpm release:verify` checks every listed
+  file and that nothing is missing from the list (exit code 1 otherwise). Run `sha256sum -c SHA256SUMS.txt` in the folder
+  for the same check on Linux.
 
 The tools needed (NSIS and WiX 3) are downloaded by Tauri's bundler the first time (into `%LOCALAPPDATA%\tauri`); that is
 build tooling, not something the app does.
@@ -104,7 +128,7 @@ a **test-signed** one must be signed and unchanged. Each file's result is listed
 reports the build as **unsigned** and the script exits 1. The same check by hand, on any file:
 
 ```powershell
-node scripts/verify-signatures.mjs "release\OpenMind-Studio-Setup-1.0.2-x64.exe" "release\OpenMind-Studio-1.0.2-x64.msi"
+node scripts/verify-signatures.mjs "release\v1.0.3\windows\OpenMind-Studio_1.0.3_windows_x64_setup.exe" "release\v1.0.3\windows\OpenMind-Studio_1.0.3_windows_x64.msi"
 node scripts/verify-signatures.mjs --mode test-signed <files>   # a test certificate
 ```
 
@@ -178,12 +202,12 @@ GitHub resolves `releases/latest` to the newest **published, non-pre-release** r
 
 **What a release must contain** — or no copy can update to it:
 
-1. Each installer **with its update signature**: `OpenMind-Studio-Setup-<v>-x64.exe` + `.exe.sig`,
-   `OpenMind-Studio-<v>-x64.msi` + `.msi.sig` (and the `x86` ones). `tauri build` makes the `.sig` files when the updater
+1. Each installer **with its update signature**: `OpenMind-Studio_<v>_windows_x64_setup.exe` + `.exe.sig`,
+   `OpenMind-Studio_<v>_windows_x64.msi` + `.msi.sig` (and the `x86` ones). `tauri build` makes the `.sig` files when the updater
    key is in the environment (`pnpm release:build` does it through `scripts/tauri-signed.mjs`; CI uses the
    `TAURI_UPDATER_KEY` secret). Each signature carries the version (`version:<v>` in its trusted comment) and the app
    requires that (`plugins.updater.requireSignedVersion`), so a tampered feed can't pair a new number with an old file.
-2. The portable archive `OpenMind-Studio-<v>-x64-portable.zip` + `.zip.sig` — `release.mjs` signs it with the same key,
+2. The portable archive `OpenMind-Studio_<v>_windows_x64_portable.zip` + `.zip.sig` — `release.mjs` signs it with the same key,
    bound to the version.
 3. **`latest.json`**, written by `release.mjs` from exactly those files (`scripts/updateFeed.mjs`): `windows-x86_64`,
    `-nsis`, `-msi` (and `windows-i686…`) with the release's own download addresses, plus an `openmind` section (`channel`,
@@ -233,38 +257,53 @@ Version bump, commit, tag and publishing need the maintainer's approval.
 ## SHA256
 
 ```powershell
-Get-FileHash .\release\OpenMind-Studio-Setup-0.1.0-x64.exe -Algorithm SHA256
+Get-FileHash .\release\v1.0.3\windows\OpenMind-Studio_1.0.3_windows_x64_setup.exe -Algorithm SHA256
+pnpm release:verify    # every file listed in release\v<version>\SHA256SUMS.txt
 ```
 
 or read `SHA256SUMS.txt`. Publish the checksums next to the download.
 
 ## Linux (x64 in WSL, x86 in a Debian i386 container)
 
-Linux editions: `.deb`, AppImage and a portable zip, for x64 and x86. Build x64 in a WSL Ubuntu with WebKitGTK 4.1 and from a clone on the Linux file system (the
-Windows `node_modules` holds Windows binaries):
+Linux editions: `.deb`, AppImage and a portable `.tar.gz`, for x64 and x86. `scripts/linux-release.sh` builds them **from
+this project folder itself** — no clone or copy of the source — and writes them to `release/v<version>/linux/`. The
+cargo target folder is an external cache (`CARGO_TARGET_DIR`, default `~/.cache/openmind-studio/target-linux-<arch>`),
+`--locked` leaves `Cargo.lock` untouched, and the frontend comes from the `dist/` built on Windows (`pnpm build`), so the
+Windows `node_modules` is never replaced. Then rewrite the manifest on Windows with `pnpm release:checksums`.
+
+x64, in a WSL Ubuntu with WebKitGTK 4.1:
 
 ```bash
 sudo apt install -y build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev libwebkit2gtk-4.1-dev \
   libayatana-appindicator3-dev libxdo-dev patchelf squashfs-tools libfuse2t64 xdg-utils
-git clone "/mnt/e/Code Editor" ~/openmind-build && cd ~/openmind-build && pnpm install --frozen-lockfile
-export OPENMIND_UPDATER_KEY=/mnt/c/Users/<you>/.tauri/openmind-studio.key   # + TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-APPIMAGE_EXTRACT_AND_RUN=1 node scripts/tauri-signed.mjs build --bundles deb,appimage
+cargo install tauri-cli --version <the project's @tauri-apps/cli> --locked
+cd "/mnt/e/Code Editor"
+export TAURI_SIGNING_PRIVATE_KEY="$(cat /mnt/c/Users/<you>/.tauri/openmind-studio.key)"   # + TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+bash scripts/linux-release.sh
 ```
 
 `src-tauri/tauri.linux.conf.json` sets the targets and leaves out the Windows-only resources (the offline LSP/formatter
-and Python bundles, `openmind.cmd`). The portable archive is a `.tar.gz` of `OpenMind Studio/OpenMindStudio` (mode 755) plus a README (tar keeps the
-mode); name the files `OpenMind-Studio-<version>-amd64.deb`, `OpenMind-Studio-<version>-x86_64.AppImage` and
-`OpenMind-Studio-<version>-linux-x86_64-portable.tar.gz`, and sign each with `pnpm tauri signer sign` (the updater key)
-for its detached `.sig`. A `.deb` installs to `/usr/bin` and an AppImage runs from a
+and Python bundles, `openmind.cmd`). The portable archive is a `.tar.gz` of `OpenMind Studio/OpenMindStudio` (mode 755)
+plus a README (tar keeps the mode). Without `TAURI_SIGNING_PRIVATE_KEY` the script makes no updater `.sig` files and
+says so. A `.deb` installs to `/usr/bin` and an AppImage runs from a
 read-only mount, so both keep their data in `$XDG_DATA_HOME/openmind-studio` (`~/.local/share/openmind-studio`); the
 portable copy keeps it next to itself when that folder is writable. Not available on Linux: the offline bundles, the
 Runtime Manager's downloads (Windows x64 artifacts) and DPAPI-encrypted secrets (stored unencrypted).
 
 **x86 (32-bit)**: Ubuntu has no 32-bit WebKitGTK, but Debian trixie still builds it for i386. Run a `debian:trixie`
-container with `--platform linux/386` (Docker Desktop): install the same `-dev` packages with apt, rustup with
+container with `--platform linux/386` (Docker Desktop) with **the project mounted** (not cloned) and the caches in a
+Docker volume:
+
+```powershell
+docker run --platform linux/386 --name openmind-linux-x86 -v "E:\Code Editor:/src" -v openmind-linux-x86-cache:/cache `
+  -e CARGO_TARGET_DIR=/cache/target -e CARGO_HOME=/cache/cargo -e RUSTUP_HOME=/cache/rustup debian:trixie bash
+```
+
+Inside it: install the same `-dev` packages with apt (plus `curl git file xvfb xauth`), rustup with
 `--default-host i686-unknown-linux-gnu`, `cargo install tauri-cli --version <the project's @tauri-apps/cli> --locked`,
-clone the repository, copy in the frontend `dist/` built on x64 (Node has no 32-bit Linux build; the bundle doesn't
-depend on the CPU), and run `cargo tauri build --bundles deb,appimage --config '{"build":{"beforeBuildCommand":""}}'`
-with `TAURI_SIGNING_PRIVATE_KEY` (the key file's content), its password and `APPIMAGE_EXTRACT_AND_RUN=1`. Tauri
-downloads the i386 linuxdeploy tools by itself. Name the files `...-i386.deb`, `...-i686.AppImage` and
-`OpenMind-Studio-<version>-linux-i686-portable.tar.gz`. Check a build in the same container under `xvfb-run`.
+then `bash /src/scripts/linux-release.sh` (the `dist/` built on Windows is used: Node has no 32-bit Linux build and the
+bundle doesn't depend on the CPU). Tauri downloads the i386 linuxdeploy tools into `~/.cache/tauri` by itself; if Docker
+stops during that download the cached file stays empty and the next AppImage step fails with "Exec format error" —
+delete `~/.cache/tauri` and run the script again. Check a build in the same container under `xvfb-run`. With 16 GB of RAM
+run the container build alone (not next to `cargo test` or vitest): running them together exhausted memory once, crashed
+Docker Desktop and left corrupt build artifacts.

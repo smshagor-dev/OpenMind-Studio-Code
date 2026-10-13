@@ -138,25 +138,51 @@ function checkVersion(version) {
   if (!VERSION.test(version)) throw new Error(`"${version}" is not a version number.`);
 }
 
-/** The release names: OpenMind-Studio-Setup-0.1.0-x64.exe, OpenMind-Studio-0.1.0-x64.msi, OpenMind-Studio-Portable-0.1.0-x64.zip */
-export function releaseName(kind, version, arch = "x64") {
-  checkVersion(version);
+/** Debian/Linux/Rust spellings of the two architectures -> the release names' `x64` / `x86`. */
+const ARCH_ALIASES = { x64: "x64", amd64: "x64", x86_64: "x64", x86: "x86", i386: "x86", i686: "x86" };
+
+/** `windows` or `linux`: the release folder's subfolder an artifact kind goes into. */
+export function releasePlatform(kind) {
   switch (kind) {
     case "setup":
-      return `OpenMind-Studio-Setup-${version}-${arch}.exe`;
     case "msi":
-      return `OpenMind-Studio-${version}-${arch}.msi`;
     case "portable":
-      return `OpenMind-Studio-${version}-${arch}-portable.zip`;
+      return "windows";
     case "deb":
-      return `OpenMind-Studio-${version}-${arch}.deb`;
     case "appimage":
-      return `OpenMind-Studio-${version}-${arch}.AppImage`;
     case "linux-portable":
-      return `OpenMind-Studio-${version}-linux-${arch}-portable.tar.gz`;
+      return "linux";
     default:
       throw new Error(`Unknown artifact kind "${kind}".`);
   }
+}
+
+/**
+ * The release names (since 1.0.3): `OpenMind-Studio_<version>_<platform>_<arch>` + `_setup.exe` | `.msi` |
+ * `_portable.zip` | `.deb` | `.AppImage` | `_portable.tar.gz`, e.g. OpenMind-Studio_1.0.3_windows_x64_setup.exe.
+ */
+export function releaseName(kind, version, arch = "x64") {
+  checkVersion(version);
+  const normalized = ARCH_ALIASES[arch];
+  if (normalized === undefined) throw new Error(`Unknown architecture "${arch}".`);
+  const suffix = {
+    setup: "_setup.exe",
+    msi: ".msi",
+    portable: "_portable.zip",
+    deb: ".deb",
+    appimage: ".AppImage",
+    "linux-portable": "_portable.tar.gz",
+  }[kind];
+  return `OpenMind-Studio_${version}_${releasePlatform(kind)}_${normalized}${suffix}`;
+}
+
+/**
+ * A version's release folder, always inside the project: `<project>/release/v<version>` (git-ignored), with the
+ * artifacts in `windows/` and `linux/` and SHA256SUMS.txt, latest.json and the report next to them.
+ */
+export function releaseDir(root, version) {
+  checkVersion(version);
+  return `${root.replace(/[\\/]+$/, "")}/release/v${version}`;
 }
 
 /** Human readable size: 8.8 MB */
@@ -204,9 +230,26 @@ export function reportText({ version, arch, buildType, date, artifacts, notes })
   return `${lines.join("\n")}\n`;
 }
 
-/** SHA256SUMS.txt in the `sha256sum` format (hash, two spaces, name). */
+/**
+ * SHA256SUMS.txt in the `sha256sum` format (hash, two spaces, path), the path relative to the release folder
+ * (`windows/<name>`, `linux/<name>`), so `sha256sum -c SHA256SUMS.txt` works from that folder. Sorted by path.
+ */
 export function checksumsText(artifacts) {
-  return `${artifacts.map((a) => `${a.sha256}  ${a.name}`).join("\n")}\n`;
+  const lines = artifacts
+    .map((a) => `${a.sha256}  ${releasePlatform(a.kind)}/${a.name}`)
+    .sort((x, y) => (x.slice(66) < y.slice(66) ? -1 : x.slice(66) > y.slice(66) ? 1 : 0));
+  return `${lines.join("\n")}\n`;
+}
+
+/** The kind of a file named by {@link releaseName}, or `null` for any other file. */
+export function releaseKindOf(name) {
+  if (/_windows_(x64|x86)_setup\.exe$/.test(name)) return "setup";
+  if (/_windows_(x64|x86)\.msi$/.test(name)) return "msi";
+  if (/_windows_(x64|x86)_portable\.zip$/.test(name)) return "portable";
+  if (/_linux_(x64|x86)\.deb$/.test(name)) return "deb";
+  if (/_linux_(x64|x86)\.AppImage$/.test(name)) return "appimage";
+  if (/_linux_(x64|x86)_portable\.tar\.gz$/.test(name)) return "linux-portable";
+  return null;
 }
 
 /**
