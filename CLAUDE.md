@@ -3159,8 +3159,10 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   (Milestone 23 is the Proxy / Download Broker / Gateway above, never the collaborative workspace.)
 - [ ] **Release 1.0.3** — built locally, **not published**. Windows x64/x86 (NSIS, MSI, portable ZIP) and Linux x64/x86
   (deb, AppImage, portable tar.gz) built unsigned with updater artifacts off. Blockers: SignPath Foundation requires
-  open source built from the stated public repository (this project's source is private), the updater key's password
-  is not on the build machine (no `.sig`/`latest.json`), the multi-PC pilot is not run, no publishing access. The x86
+  open source built from the stated public repository (this project's source is private), the multi-PC pilot is not
+  run, no publishing access. Updater signatures exist: all 12 files have version-bound `.sig` files (key 7A590C4E7142F2CF,
+  verified independently) and `release/v1.0.3/latest.json` lists the six Windows installers/portables; they cover the
+  current *unsigned* bytes, so Authenticode signing the installers later means signing the `.sig`s and the feed again. The x86
   Windows build needs NASM (see `docs/release.md`); tests no longer write the user's HKCU installations record (they had
   filled it with deleted temp folders, and its default value — the folder the setup checks first — pointed at one); the
   flaky `a_shared_portable_copy_…` test (a `-wal` deleted between listing and reading, ~1 in 5 runs) is fixed. The
