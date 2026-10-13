@@ -457,12 +457,15 @@ export function compareVersions(a, b) {
  * The updater feed (`latest.json`, uploaded to the GitHub release; the app reads it through
  * `releases/latest/download/latest.json`, which GitHub resolves to the newest stable release).
  *
- * `files` = `{ kind: "setup" | "msi" | "portable", arch: "x64" | "x86", name, signature }`, `signature` being the
+ * `files` = `{ kind: "setup" | "msi" | "portable" | "deb" | "appimage", arch: "x64" | "x86", name, signature }`, `signature` being the
  * minisign `.sig` text made with the release key. For each architecture:
  *  - `windows-<arch>-nsis` = the per-user setup, `windows-<arch>-msi` = the MSI (an installed copy knows which it is);
  *  - `windows-<arch>` = the setup (else the MSI) — read by any copy that isn't a known installer, so it must exist or
  *    those copies get an error instead of "up to date";
  *  - `openmind.portable["windows-<arch>"]` = the signed portable archive (a portable copy swaps its program files);
+ *  - `linux-<arch>-deb`, `linux-<arch>-appimage` and `linux-<arch>` (the AppImage): so a Linux copy's check succeeds and
+ *    it is told about the release. Linux copies never update themselves (`policy::self_update`: managed by the user's
+ *    package manager or a new download), so these entries are only read, never downloaded by the app;
  *  - `openmind.minimumVersion`: copies older than it must update (mandatory), only when given;
  *  - `openmind.channel` = "stable".
  * A pre-release version, a minimum newer than the release, or a file without a signature is refused: nothing unsigned
@@ -496,11 +499,20 @@ export function latestJson({ version, notes, pubDate, minimumVersion = null, fil
       if (!platforms[key]) platforms[key] = entry;
     } else if (file.kind === "portable") {
       portable[key] = entry;
+    } else if (file.kind === "deb") {
+      platforms[`linux-${arch}-deb`] = entry;
+    } else if (file.kind === "appimage") {
+      platforms[`linux-${arch}-appimage`] = entry;
+      platforms[`linux-${arch}`] = entry;
     } else {
-      throw new Error(`${file.name}: only setups, MSIs and portable archives go into the update feed.`);
+      throw new Error(
+        `${file.name}: only setups, MSIs, portable ZIPs, debs and AppImages go into the update feed.`,
+      );
     }
   }
-  if (Object.keys(platforms).length === 0) throw new Error("The update feed needs at least one signed installer.");
+  if (!Object.keys(platforms).some((key) => key.startsWith("windows-"))) {
+    throw new Error("The update feed needs at least one signed Windows installer.");
+  }
   const openmind = { channel: "stable", portable };
   if (minimumVersion !== null) openmind.minimumVersion = minimumVersion;
   return { version, notes, pub_date: pubDate, platforms, openmind };

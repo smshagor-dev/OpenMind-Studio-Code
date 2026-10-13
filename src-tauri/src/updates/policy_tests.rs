@@ -51,25 +51,53 @@ fn a_release_can_require_an_update_only_through_its_minimum_version() {
 
 #[test]
 fn each_installation_updates_the_way_it_was_installed() {
+    let windows = |kind, layout| self_update_on(true, kind, layout);
     assert_eq!(
-        self_update(InstallKind::Nsis, InstallLayout::PerUser),
+        windows(InstallKind::Nsis, InstallLayout::PerUser),
         SelfUpdate::Installer
     );
     assert_eq!(
-        self_update(InstallKind::Msi, InstallLayout::PerMachine),
+        windows(InstallKind::Msi, InstallLayout::PerMachine),
         SelfUpdate::Installer
     );
     assert_eq!(
-        self_update(InstallKind::Portable, InstallLayout::Portable),
+        windows(InstallKind::Portable, InstallLayout::Portable),
         SelfUpdate::Portable
     );
     // A shared network installation is never changed from one of its computers, however it was installed.
     for kind in [InstallKind::Nsis, InstallKind::Msi, InstallKind::Portable] {
         assert!(matches!(
-            self_update(kind, InstallLayout::Network),
+            windows(kind, InstallLayout::Network),
             SelfUpdate::Managed(_)
         ));
     }
+    #[cfg(windows)]
+    assert_eq!(
+        self_update(InstallKind::Portable, InstallLayout::Portable),
+        SelfUpdate::Portable
+    );
+}
+
+#[test]
+fn a_linux_copy_never_updates_itself_whatever_it_looks_like() {
+    // A Linux copy has no uninstall.exe, so it is "portable" to install_kind(); it must not take the Windows archive.
+    for kind in [InstallKind::Nsis, InstallKind::Msi, InstallKind::Portable] {
+        for layout in [
+            InstallLayout::Portable,
+            InstallLayout::PerUser,
+            InstallLayout::Network,
+        ] {
+            match self_update_on(false, kind, layout) {
+                SelfUpdate::Managed(reason) => assert!(reason.contains("Linux"), "{reason}"),
+                other => panic!("{kind:?}/{layout:?}: {other:?}"),
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    assert!(matches!(
+        self_update(InstallKind::Portable, InstallLayout::Portable),
+        SelfUpdate::Managed(_)
+    ));
 }
 
 #[test]

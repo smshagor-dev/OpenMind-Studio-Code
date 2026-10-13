@@ -41,7 +41,7 @@ import {
   reportText,
   signatureVerdict,
 } from "./releaseTools.mjs";
-import { writeManifest } from "./releaseManifest.mjs";
+import { releaseFiles, writeManifest } from "./releaseManifest.mjs";
 import { hasSignature, inspectSignature, signFile } from "./signtool.mjs";
 import { writeUpdateFeed } from "./updateFeed.mjs";
 
@@ -213,10 +213,15 @@ const buildType =
 
 // The update feed (latest.json) for the files just collected; signed builds only (the signatures are what installed
 // copies check, and signing an installer after its .sig was made would break it).
+// The Linux deb and AppImage already in linux/ (scripts/linux-release.sh) go into the feed too: Linux copies are only
+// told about the release (they never update themselves, policy::self_update).
+const linuxFeedFiles = releaseFiles(out)
+  .filter((file) => file.kind === "deb" || file.kind === "appimage")
+  .map((file) => ({ ...file, arch: /_(x64|x86)\./.exec(file.name)?.[1] ?? "x64" }));
 const feed = writeUpdateFeed({
   out,
   version,
-  artifacts,
+  artifacts: [...artifacts, ...linuxFeedFiles],
   notesFile: option("--notes") ?? null,
   minimumVersion: process.env.OPENMIND_MINIMUM_VERSION?.trim() || null,
 });

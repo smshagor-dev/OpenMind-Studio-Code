@@ -69,6 +69,20 @@ pub enum SelfUpdate {
 }
 
 pub fn self_update(kind: InstallKind, layout: InstallLayout) -> SelfUpdate {
+    self_update_on(cfg!(windows), kind, layout)
+}
+
+/// [`self_update`] for a given operating system. Only Windows copies replace themselves: the portable archive and the
+/// installers in the feed are Windows programs, and a Linux copy (a .deb from the package manager, an AppImage or the
+/// tar.gz) would otherwise take the Windows portable archive as its own update.
+pub fn self_update_on(windows: bool, kind: InstallKind, layout: InstallLayout) -> SelfUpdate {
+    if !windows {
+        return SelfUpdate::Managed(
+            "On Linux, OpenMind Studio doesn't update itself: install the new .deb, AppImage or tar.gz from the \
+             releases page (a .deb also through your package manager)."
+                .into(),
+        );
+    }
     if layout == InstallLayout::Network {
         return SelfUpdate::Managed(
             "This is a shared network installation. Other computers run it, so it is updated by whoever installed it: \

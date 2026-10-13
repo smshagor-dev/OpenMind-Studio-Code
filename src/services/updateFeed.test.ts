@@ -17,7 +17,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fixture = (name: string) => readFileSync(join(root, "src-tauri", "src", "updates", "fixtures", name), "utf8");
 const tauri = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")) as Record<string, unknown>;
 
-const signed = (kind: "setup" | "msi" | "portable", arch: "x64" | "x86", name: string) => ({
+const signed = (kind: "setup" | "msi" | "portable" | "deb" | "appimage", arch: "x64" | "x86", name: string) => ({
   kind,
   arch,
   name,
@@ -56,6 +56,33 @@ describe("the update feed (latest.json)", () => {
     for (const entry of Object.values(feed.platforms)) {
       expect(entry.url).toMatch(/^https:\/\/github\.com\/smshagor-dev\/OpenMind-Studio\/releases\/download\/v1\.1\.0\//);
     }
+  });
+
+  it("lists the Linux deb and AppImage so Linux copies hear of the release (they never update themselves)", () => {
+    const feed = latestJson({
+      version: "1.1.0",
+      notes: "",
+      pubDate: "",
+      files: [
+        ...files,
+        signed("deb", "x64", "OpenMind-Studio_1.1.0_linux_x64.deb"),
+        signed("appimage", "x64", "OpenMind-Studio_1.1.0_linux_x64.AppImage"),
+        signed("appimage", "x86", "OpenMind-Studio_1.1.0_linux_x86.AppImage"),
+      ],
+    });
+    expect(Object.keys(feed.platforms).filter((key) => key.startsWith("linux-")).sort()).toEqual([
+      "linux-i686",
+      "linux-i686-appimage",
+      "linux-x86_64",
+      "linux-x86_64-appimage",
+      "linux-x86_64-deb",
+    ]);
+    expect(feed.platforms["linux-x86_64"]).toEqual(feed.platforms["linux-x86_64-appimage"]);
+    expect(feed.openmind.portable["linux-x86_64"]).toBeUndefined();
+    // A Linux file alone is no release: Windows copies would find nothing.
+    expect(() =>
+      latestJson({ version: "1.1.0", notes: "", pubDate: "", files: [signed("deb", "x64", "a.deb")] }),
+    ).toThrow(/Windows installer/);
   });
 
   it("an architecture with only an MSI still answers copies that aren't installers", () => {

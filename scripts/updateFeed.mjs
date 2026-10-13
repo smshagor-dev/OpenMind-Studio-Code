@@ -39,7 +39,7 @@ export function writeUpdateFeed({ out, version, artifacts, notesFile = null, min
   const lines = [];
   const files = [];
   for (const artifact of artifacts) {
-    if (!["setup", "msi", "portable"].includes(artifact.kind)) continue;
+    if (!["setup", "msi", "portable", "deb", "appimage"].includes(artifact.kind)) continue;
     const file = join(out, releasePlatform(artifact.kind), artifact.name);
     const sigFile = `${file}.sig`;
     if (!existsSync(sigFile) && artifact.kind === "portable") {
