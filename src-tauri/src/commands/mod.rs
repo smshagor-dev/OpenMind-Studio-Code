@@ -1,4 +1,5 @@
 pub mod about;
+pub mod agent;
 pub mod ai;
 pub mod assembly;
 pub mod broker;

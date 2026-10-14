@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 32] = [
+const BUILTIN: [&str; 33] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
@@ -38,6 +38,7 @@ const BUILTIN: [&str; 32] = [
     include_str!("../manifests/sqlite.json"),
     include_str!("../manifests/postgresql.json"),
     include_str!("../manifests/livekit.json"),
+    include_str!("../manifests/llamacpp.json"),
 ];
 
 /// The platform id used in manifests for the machine this build runs on.

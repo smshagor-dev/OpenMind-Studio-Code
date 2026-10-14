@@ -84,6 +84,11 @@ impl Catalog {
         Self::parse(BUILTIN)
     }
 
+    /// No models (what the app falls back to if the built-in list could not be read).
+    pub fn empty() -> Self {
+        Self { models: Vec::new() }
+    }
+
     pub fn parse(text: &str) -> Result<Self, LlmError> {
         let file: CatalogFile =
             serde_json::from_str(text).map_err(|err| LlmError::Catalog(err.to_string()))?;

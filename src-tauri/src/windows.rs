@@ -125,6 +125,8 @@ pub fn release_window(app: &AppHandle, label: &str) {
         }
     }
     crate::commands::watch::stop_watching_window(&state, label);
+    app.state::<crate::commands::agent::AgentRuntime>()
+        .forget_window(label);
     crate::commands::collab::net_presence::window_closed(app, label);
     crate::commands::collab::net_voice::window_closed(app, label);
     // Its folder's canonical state goes too when no other window has that folder open.

@@ -8,8 +8,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use openmind_agent::{
-    system_prompt, AgentEvent, AgentHost, CommandEnv, Decision, HttpModel, Mode, PermissionRequest, PromptFacts,
-    Session, TurnInput, Workspace,
+    system_prompt, AgentEvent, AgentHost, CommandEnv, Decision, HttpModel, Mode, PermissionRequest,
+    PromptFacts, Session, TurnInput, Workspace,
 };
 use openmind_llm::{Engine, EngineConfig, Health};
 
@@ -34,20 +34,29 @@ impl AgentHost for AllowAll {
 }
 
 fn env_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_file())
+    std::env::var_os(name)
+        .map(PathBuf::from)
+        .filter(|p| p.is_file())
 }
 
 #[test]
 #[ignore = "needs llama-server and a Nemotron model on disk"]
 fn nemotron_fixes_a_bug_in_a_real_project() {
-    let (Some(program), Some(model)) = (env_path("OPENMIND_TEST_LLAMA_SERVER"), env_path("OPENMIND_TEST_GGUF")) else {
+    let (Some(program), Some(model)) = (
+        env_path("OPENMIND_TEST_LLAMA_SERVER"),
+        env_path("OPENMIND_TEST_GGUF"),
+    ) else {
         eprintln!("skipped: set OPENMIND_TEST_LLAMA_SERVER and OPENMIND_TEST_GGUF");
         return;
     };
     let dir = tempfile::tempdir().expect("tmp");
     let root = dir.path().join("my project");
     std::fs::create_dir_all(&root).expect("mkdir");
-    std::fs::write(root.join("calc.py"), "def add(a, b):\n    return a - b\n\n\nprint(add(2, 3))\n").expect("write");
+    std::fs::write(
+        root.join("calc.py"),
+        "def add(a, b):\n    return a - b\n\n\nprint(add(2, 3))\n",
+    )
+    .expect("write");
     let mut engine = Engine::start(&EngineConfig {
         program,
         model,
@@ -58,8 +67,15 @@ fn nemotron_fixes_a_bug_in_a_real_project() {
     .expect("engine");
     let started = Instant::now();
     while engine.health() != Health::Ready {
-        assert!(engine.exited().is_none(), "the engine stopped: {}", engine.log_tail(20));
-        assert!(started.elapsed() < Duration::from_secs(180), "the model took too long to load");
+        assert!(
+            engine.exited().is_none(),
+            "the engine stopped: {}",
+            engine.log_tail(20)
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(180),
+            "the model took too long to load"
+        );
         std::thread::sleep(Duration::from_millis(500));
     }
     println!("engine ready in {:.1} s", started.elapsed().as_secs_f32());
@@ -90,10 +106,18 @@ fn nemotron_fixes_a_bug_in_a_real_project() {
         unsaved: &[],
         cancel: &cancel,
     };
-    session.run_turn("The add function in calc.py gives the wrong result. Fix it.", &client, &host, &input);
+    session.run_turn(
+        "The add function in calc.py gives the wrong result. Fix it.",
+        &client,
+        &host,
+        &input,
+    );
     engine.stop();
     let fixed = std::fs::read_to_string(root.join("calc.py")).expect("read");
     println!("calc.py now:\n{fixed}");
     assert!(fixed.contains("a + b"), "the bug was not fixed");
-    assert!(!host.asked.lock().expect("lock").is_empty(), "the edit was approved by the user");
+    assert!(
+        !host.asked.lock().expect("lock").is_empty(),
+        "the edit was approved by the user"
+    );
 }
