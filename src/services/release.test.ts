@@ -305,6 +305,41 @@ describe("optional PATH and File Explorer integration in the installers", () => 
   });
 });
 
+describe("CI builds src-tauri only after its generated resources exist", () => {
+  // Tauri's build script refuses to compile src-tauri when a `bundle.resources` path is missing. The licence and legal
+  // texts are generated and git-ignored, so a fresh CI checkout must generate them before any cargo build (both CI
+  // jobs failed at clippy / check for exactly this from 1.0.3 on).
+  const generators: Record<string, string> = {
+    "../licenses/THIRD-PARTY-LICENSES.txt": "scripts/third-party-licenses.mjs",
+    "../licenses/legal/": "scripts/legal-texts.mjs",
+  };
+
+  it("every generated resource has its generator", () => {
+    for (const conf of ["src-tauri/tauri.conf.json", "src-tauri/tauri.linux.conf.json"]) {
+      const resources = (JSON.parse(text(conf)) as { bundle?: { resources?: Record<string, string> } }).bundle
+        ?.resources;
+      for (const source of Object.keys(resources ?? {}).filter((s) => s.startsWith("../licenses/"))) {
+        expect(generators[source], `${conf}: ${source}`).toBeDefined();
+      }
+    }
+  });
+
+  it("each CI job runs the generators before its first cargo build", () => {
+    const workflow = text(".github/workflows/ci.yml").replace(/\r\n/g, "\n");
+    const jobs = workflow.split(/\n {2}(?=[a-z][a-z0-9-]*:\n)/).slice(1);
+    expect(jobs.length).toBeGreaterThanOrEqual(2);
+    for (const job of jobs) {
+      const firstCargoBuild = job.search(/run: cargo (clippy|check|test|build)\b/);
+      if (firstCargoBuild < 0) continue;
+      for (const script of Object.values(generators)) {
+        const at = job.indexOf(`node ${script} --check`);
+        expect(at, `${job.split("\n")[0]} ${script}`).toBeGreaterThanOrEqual(0);
+        expect(at, `${job.split("\n")[0]} ${script} runs before cargo`).toBeLessThan(firstCargoBuild);
+      }
+    }
+  });
+});
+
 describe("signing configuration", () => {
   it("nothing configured: an unsigned build with a clear message", () => {
     const config = readSigningConfig({});

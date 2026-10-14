@@ -49,6 +49,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # tauri.conf.json `bundle.resources` lists licenses/THIRD-PARTY-LICENSES.txt and licenses/legal/, which are generated
+      # (git-ignored) by `pnpm build`; Tauri's build script refuses to compile src-tauri without them. Generate them the same
+      # way first (the licence generator reads each crate's licence files, so the crates are fetched before it runs).
+      - name: Generated licence and legal texts
+        shell: bash
+        run: |
+          cargo fetch --locked
+          node scripts/third-party-licenses.mjs --check
+          node scripts/legal-texts.mjs --check
+
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
@@ -85,6 +95,26 @@ jobs:
 
       - name: Rust ${{ env.RUSTUP_TOOLCHAIN }}
         run: rustup toolchain install ${{ env.RUSTUP_TOOLCHAIN }} --profile minimal
+
+      # The generated resources src-tauri's build needs (see the windows job); the licence generator reads node_modules.
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generated licence and legal texts
+        shell: bash
+        run: |
+          cargo fetch --locked
+          node scripts/third-party-licenses.mjs --check
+          node scripts/legal-texts.mjs --check
 
       # Every crate and test must compile for Linux. Not yet `-D warnings`: the Linux build has 37 dead-code/unused
       # warnings (Windows-only code behind cfg; 32 in openmind-studio, 3 in collab-net, 2 in git) to clean up first.
