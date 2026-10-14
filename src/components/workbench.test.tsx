@@ -193,9 +193,9 @@ describe("ActivityBar", () => {
     ]) {
       expect(screen.getByRole("button", { name })).toBeEnabled();
     }
-    const remote = screen.getByRole("button", { name: "Remote Explorer" });
-    expect(remote).toBeDisabled();
-    expect(remote).toHaveAttribute("title", expect.stringContaining("isn't available"));
+    // The remote (PC) icon is the collaboration room; there is no separate people icon or disabled Remote Explorer.
+    expect(screen.getByRole("button", { name: "Collaboration" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Remote Explorer" })).toBeNull();
   });
 
   it("switches the side bar view, and clicking the active view's icon hides the side bar", async () => {

@@ -117,7 +117,13 @@ pub fn describe_layout(dir: &Path) -> String {
 pub fn run(action: DeployAction, exe: &Path) -> Result<String, String> {
     let dir = exe.parent().ok_or("the program's folder is unknown")?;
     match action {
-        DeployAction::SetLayout(layout) => {
+        DeployAction::SetLayout(requested) => {
+            let earlier = match install::read(dir) {
+                install::InstallRecord::Found(meta) => Some(meta.layout),
+                _ => None,
+            };
+            let layout =
+                install::layout_for_folder(requested, install::is_remote_path(dir), earlier);
             install::write(dir, layout, env!("CARGO_PKG_VERSION")).map_err(|err| {
                 format!(
                     "couldn't write {}: {err}",

@@ -19,6 +19,8 @@ pub struct RuntimePaths {
     /// Where the tools keep their own caches (`{cache}` in a manifest: Go modules, Gradle, NuGet, pub; pip/npm/Composer
     /// caches). The app's `cache` folder, except in a network installation, where each computer keeps its own.
     tool_cache_dir: PathBuf,
+    /// Runtimes kept on this computer instead of in `runtimes_dir` (see [`RuntimePaths::with_local_kinds`]).
+    local: Option<(PathBuf, Vec<String>)>,
 }
 
 impl RuntimePaths {
@@ -28,6 +30,33 @@ impl RuntimePaths {
             runtimes_dir: runtimes_dir.into(),
             tool_cache_dir: cache_dir.clone(),
             shared_cache_dir: cache_dir,
+            local: None,
+        }
+    }
+
+    /// The same paths with the runtimes in `kinds` kept under `dir` — this computer's own disk — instead of the shared
+    /// `runtimes_dir`. Used for toolchains that can't run from a network share (the GNU linker can't open files on a
+    /// network path): each computer installs its own copy there, every other runtime stays shared.
+    pub fn with_local_kinds(mut self, dir: impl Into<PathBuf>, kinds: &[&str]) -> Self {
+        self.local = Some((
+            dir.into(),
+            kinds.iter().map(|kind| kind.to_string()).collect(),
+        ));
+        self
+    }
+
+    /// Whether `kind` is kept on this computer (see [`RuntimePaths::with_local_kinds`]).
+    pub fn is_local_kind(&self, kind: &str) -> bool {
+        self.local
+            .as_ref()
+            .is_some_and(|(_, kinds)| kinds.iter().any(|k| k == kind))
+    }
+
+    /// The folder `<kind>` lives in.
+    fn kind_root(&self, kind: &str) -> &Path {
+        match &self.local {
+            Some((dir, kinds)) if kinds.iter().any(|k| k == kind) => dir,
+            _ => &self.runtimes_dir,
         }
     }
 
@@ -54,7 +83,7 @@ impl RuntimePaths {
 
     pub fn versions_dir(&self, kind: &str) -> Result<PathBuf, RuntimeError> {
         check(kind)?;
-        Ok(self.runtimes_dir.join(kind).join("versions"))
+        Ok(self.kind_root(kind).join(kind).join("versions"))
     }
 
     pub fn version_dir(&self, kind: &str, version: &str) -> Result<PathBuf, RuntimeError> {
@@ -68,14 +97,14 @@ impl RuntimePaths {
     pub fn shim_dir(&self, kind: &str, version: &str) -> Result<PathBuf, RuntimeError> {
         check(version)?;
         Ok(self
-            .runtimes_dir
+            .kind_root(kind)
             .join(check_kind(kind)?)
             .join("shims")
             .join(version))
     }
 
     pub fn shims_root(&self, kind: &str) -> Result<PathBuf, RuntimeError> {
-        Ok(self.runtimes_dir.join(check_kind(kind)?).join("shims"))
+        Ok(self.kind_root(kind).join(check_kind(kind)?).join("shims"))
     }
 
     pub fn staging_dir(&self, kind: &str, version: &str) -> Result<PathBuf, RuntimeError> {
@@ -230,5 +259,28 @@ mod tests {
         assert_eq!(local.cache_dir(), Path::new("/local/cache/tools"));
         assert_eq!(local.downloads_dir(), shared.downloads_dir());
         assert_eq!(local.runtimes_dir(), shared.runtimes_dir());
+    }
+
+    #[test]
+    fn local_kinds_live_on_this_computer_with_their_shims_and_everything_else_stays_shared() {
+        let paths = RuntimePaths::new("/share/runtimes", "/share/cache")
+            .with_local_kinds("/local/runtimes", &["assembly", "fortran"]);
+        assert!(paths.is_local_kind("assembly"));
+        assert!(!paths.is_local_kind("python"));
+        assert_eq!(
+            paths.version_dir("assembly", "2.15.05").expect("dir"),
+            Path::new("/local/runtimes/assembly/versions/2.15.05")
+        );
+        // A shim must stay a sibling of its versions folder.
+        assert_eq!(
+            paths.shim_dir("assembly", "2.15.05").expect("dir"),
+            Path::new("/local/runtimes/assembly/shims/2.15.05")
+        );
+        assert_eq!(
+            paths.version_dir("python", "3.14.7").expect("dir"),
+            Path::new("/share/runtimes/python/versions/3.14.7")
+        );
+        // Downloads stay shared, so a second computer installs from the first one's verified archive.
+        assert_eq!(paths.downloads_dir(), Path::new("/share/cache/downloads"));
     }
 }

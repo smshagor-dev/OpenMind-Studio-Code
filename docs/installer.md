@@ -63,6 +63,12 @@ On Windows 11 these appear under **Show more options** (the classic menu). The n
   (you need permission to write there). Runtimes and tools installed into that folder are shared by every computer;
   each computer and Windows user keeps their own database, settings and logs on their own disk. See
   `docs/deployment.md` for shortcuts on the other computers.
+  The setup fills in the folder itself: the first drive letter mapped to a network share that this user can write to
+  (as its `\\server\share` path, `\OpenMind Studio` added; the user's own home share is skipped, and no network is
+  searched). It says which folder it found, or that none was found; the Directory page can still change it.
+- A folder on another computer (`\\server\share`, a mapped drive) is always installed the shared way, even with For Me
+  (otherwise every computer would open one database). Recommended for All Users in a folder on this computer's own disk
+  asks before installing, since other computers reach it only if that folder is shared.
 
 After copying the files the installer runs `OpenMindStudio.exe --integration set-layout per-user` or `... network`,
 which writes `install.json` next to the program; the app reads it at every start and never shows the data-scope setup.

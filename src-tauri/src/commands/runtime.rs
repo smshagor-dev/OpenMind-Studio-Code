@@ -34,7 +34,7 @@ pub async fn runtime_install(
     {
         return Err(reason);
     }
-    if let Some(reason) = network_unsupported(state.paths.layout, &kind) {
+    if let Some(reason) = network_unsupported(state.runtime.paths(), &kind) {
         return Err(reason.into());
     }
     let result = state
@@ -189,57 +189,50 @@ pub(crate) fn progress_sink(app: AppHandle) -> openmind_runtime_manager::manager
     })
 }
 
-/// Runtimes that can't work from a network share, with the reason. The Fortran and Assembly toolchains are w64devkit
-/// 1.19.0, whose GNU linker (binutils 2.40) can't open files under a network (UNC) path ("Invalid argument") — also
-/// when the share is reached through a drive letter, because GCC finds its own files by the network path. Measured:
-/// `gfortran hello.f90` from the share fails at the link step; from a local folder it works. Refused in a network
-/// installation instead of installing a toolchain that can't build anything.
+/// Toolchains that can't work from a network share: w64devkit 1.19.0, whose GNU linker (binutils 2.40) can't open
+/// files under a network (UNC) path ("Invalid argument") — also when the share is reached through a drive letter,
+/// because GCC finds its own files by the network path. Measured: `gfortran hello.f90` from the share fails at the
+/// link step; from a local folder it works. A network installation keeps them on each computer instead
+/// (`RuntimePaths::with_local_kinds`, set up in `main.rs`).
+pub(crate) const GNU_LINKED: &[&str] = &["fortran", "assembly"];
+
+/// Why `kind` can't be installed where this copy keeps it: only a GNU-linked toolchain whose folder is on a network
+/// share and not kept on this computer (a portable or per-user copy run from a share). A drive that is this
+/// computer's own disk — whatever its letter — is fine.
 pub(crate) fn network_unsupported(
-    layout: openmind_core::InstallLayout,
+    paths: &openmind_runtime_manager::RuntimePaths,
     kind: &str,
 ) -> Option<&'static str> {
-    if layout != openmind_core::InstallLayout::Network {
+    if !GNU_LINKED.contains(&kind) || paths.is_local_kind(kind) {
         return None;
     }
-    match kind {
-        "fortran" | "assembly" => Some(
-            "This toolchain can't be used from a network share: its GNU linker (binutils 2.40) can't open files on a \
-             network (UNC) path. Install OpenMind Studio on this computer (For Me) to use it here.",
-        ),
-        _ => None,
-    }
+    let folder = paths.versions_dir(kind).ok()?;
+    openmind_core::install::is_remote_path(&folder).then_some(
+        "This toolchain can't be used from a network share: its GNU linker (binutils 2.40) can't open files on a \
+         network (UNC) path. Install OpenMind Studio with \"Recommended for All Users\" (it keeps this toolchain on \
+         each computer) or on this computer (For Me).",
+    )
 }
 
 #[cfg(test)]
 mod network_tests {
     use super::*;
-    use openmind_core::InstallLayout;
+    use openmind_runtime_manager::RuntimePaths;
 
     #[test]
-    fn gnu_toolchains_are_refused_only_in_a_network_installation() {
-        assert!(network_unsupported(InstallLayout::Network, "fortran").is_some());
-        assert!(network_unsupported(InstallLayout::Network, "assembly").is_some());
-        for kind in [
-            "python",
-            "node",
-            "php",
-            "composer",
-            "llvm-mingw",
-            "jdk",
-            "go",
-            "pascal",
-        ] {
-            assert!(
-                network_unsupported(InstallLayout::Network, kind).is_none(),
-                "{kind}"
-            );
+    fn gnu_toolchains_are_refused_only_on_a_share_that_doesnt_keep_them_locally() {
+        let share = RuntimePaths::new(r"\\srv\students\app\runtimes", r"\\srv\students\app\cache");
+        assert!(network_unsupported(&share, "fortran").is_some());
+        assert!(network_unsupported(&share, "assembly").is_some());
+        for kind in ["python", "node", "php", "llvm-mingw", "jdk", "go", "pascal"] {
+            assert!(network_unsupported(&share, kind).is_none(), "{kind}");
         }
-        for layout in [
-            InstallLayout::Portable,
-            InstallLayout::PerUser,
-            InstallLayout::PerMachine,
-        ] {
-            assert!(network_unsupported(layout, "fortran").is_none());
-        }
+        // A network installation keeps them on this computer: allowed.
+        let network = share.with_local_kinds(r"C:\Users\me\AppData\Local\x\runtimes", GNU_LINKED);
+        assert!(network_unsupported(&network, "assembly").is_none());
+        assert!(network_unsupported(&network, "fortran").is_none());
+        // A folder on this computer's own disk (any drive letter): allowed.
+        let local = RuntimePaths::new(r"C:\apps\OM\runtimes", r"C:\apps\OM\cache");
+        assert!(network_unsupported(&local, "assembly").is_none());
     }
 }

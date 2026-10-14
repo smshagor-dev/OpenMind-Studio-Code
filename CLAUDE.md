@@ -2943,7 +2943,9 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   - `bundle.json`.
 
   It covers the 30 modules asked for: 18 standard-library modules, tkinter, and requests, httpx, python-dotenv, numpy, pandas, matplotlib, Pillow,
-  opencv-python, python-telegram-bot, telethon, Flask. The request lists `scripts/python-bundle/config.json`; every package is pinned in
+  opencv-python, python-telegram-bot, telethon, Flask. **Reduced later** (to keep the app small, at the user's request): only requests, httpx,
+  python-dotenv, python-telegram-bot and Flask are bundled now — 19 wheels, 2.3 MB instead of 37 wheels, 89 MB; the bigger packages install with
+  pip on demand. The request lists `scripts/python-bundle/config.json`; every package is pinned in
   `packages.lock`. Built by `pnpm python:bundle -- --python <CPython 3.14 x64>` (`scripts/prepare-python-bundle.mjs` + pure `pythonBundle.mjs`);
   `release:build`/`package:installer` run `--check` first.
 

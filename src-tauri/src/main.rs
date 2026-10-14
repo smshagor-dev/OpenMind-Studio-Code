@@ -485,6 +485,13 @@ fn main() {
             if app_paths.layout == openmind_core::InstallLayout::Network {
                 // Each computer's own tool caches (GOPATH, NuGet, Gradle, pip, npm ...); downloads stay shared.
                 runtime_paths = runtime_paths.with_tool_cache(app_paths.machine_cache_dir.join("tools"));
+                // Toolchains whose linker can't open files on a network path go on this computer's own disk.
+                if openmind_core::install::is_remote_path(&app_paths.runtimes_dir) {
+                    if let Some(local) = app_paths.machine_cache_dir.parent() {
+                        runtime_paths = runtime_paths
+                            .with_local_kinds(local.join("runtimes"), commands::runtime::GNU_LINKED);
+                    }
+                }
             }
             let runtime = RuntimeManager::new(
                 db.clone(),

@@ -6,8 +6,9 @@ downloaded:
   standard library   os, sys, pathlib, shutil, subprocess, json, csv, datetime, time, re, logging, asyncio,
                      sqlite3, collections, typing, dataclasses, random, math
   tkinter            python.org's Tcl/Tk package (tcltk.msi), added to the install as the "Tcl/Tk GUI support" add-on
-  packages           requests, httpx, python-dotenv, numpy, pandas, matplotlib, Pillow, opencv-python,
-                     python-telegram-bot, telethon, Flask (and their dependencies)
+  packages           requests, httpx, python-dotenv, python-telegram-bot, Flask (and their dependencies)
+                     Bigger packages (numpy, pandas, matplotlib, Pillow, opencv-python ...) are not bundled, to keep
+                     OpenMind Studio small: install them with pip when you need them.
 
   bundle.json        what is in this folder, with a SHA-256 for every file
   packages.zip       the wheels (Windows x64, CPython 3.14)

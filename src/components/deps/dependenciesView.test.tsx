@@ -109,10 +109,21 @@ afterEach(() => {
 });
 
 describe("DependenciesView", () => {
+  it("without an open folder it says so and offers Open Folder instead of an empty pane", async () => {
+    setup({ projects: [PY] });
+    await act(async () => {
+      render(<DependenciesView hasFolder={false} />);
+      await Promise.resolve();
+    });
+    expect(screen.getByText(/Open a folder to see its projects' dependencies/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Folder" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "py app" })).toBeNull();
+  });
+
   it("shows each project with only its ecosystems, installed and missing packages", async () => {
     setup({ projects: [PY, WEB, RUST] });
     await act(async () => {
-      render(<DependenciesView />);
+      render(<DependenciesView hasFolder />);
       await Promise.resolve();
     });
     const py = screen.getByRole("region", { name: "py app" });
@@ -128,7 +139,7 @@ describe("DependenciesView", () => {
   it("every button asks the shared runner (which confirms before anything runs)", async () => {
     const { perform } = setup({ projects: [PY, WEB] });
     await act(async () => {
-      render(<DependenciesView />);
+      render(<DependenciesView hasFolder />);
       await Promise.resolve();
     });
     const py = screen.getByRole("region", { name: "py app" });
@@ -145,7 +156,7 @@ describe("DependenciesView", () => {
   it("a lock-file conflict is shown and installing waits for a package manager; unsafe script names can't run", async () => {
     const { perform } = setup({ projects: [WEB] });
     await act(async () => {
-      render(<DependenciesView />);
+      render(<DependenciesView hasFolder />);
       await Promise.resolve();
     });
     const web = screen.getByRole("region", { name: "web app" });

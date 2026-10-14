@@ -12,7 +12,6 @@ import {
   FilesIcon,
   GearIcon,
   PackageIcon,
-  PeopleIcon,
   RemoteIcon,
   RuntimeIcon,
   SearchIcon,
@@ -55,7 +54,7 @@ const VIEW_ITEMS: readonly ViewItem[] = [
     command: "view.showDependencies",
     icon: <PackageIcon />,
   },
-  { view: "collab", label: "view.collaboration", icon: <PeopleIcon /> },
+  { view: "collab", label: "view.collaboration", icon: <RemoteIcon /> },
 ];
 
 const AI_ITEM: ViewItem = {
@@ -65,20 +64,10 @@ const AI_ITEM: ViewItem = {
   icon: <AiIcon />,
 };
 
-/** Items whose feature doesn't exist yet: shown, but disabled, with the reason as their tooltip. */
-const UNAVAILABLE_ITEMS: readonly { label: string; reason: string; icon: ReactNode }[] = [
-  {
-    label: "view.remoteExplorer",
-    reason: "view.remoteExplorerReason",
-    icon: <RemoteIcon />,
-  },
-];
-
 /**
  * VS Code's leftmost icon rail. Each view icon switches the side bar to that
  * view (clicking the active one hides the side bar). Runtime Manager opens its
- * dialog. Features that don't exist yet are disabled with a reason rather
- * than faked; the Manage gear at the bottom opens the usual menu.
+ * dialog. The remote (PC) icon opens the collaboration room; the Manage gear at the bottom opens the usual menu.
  */
 export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
   const layout = useSyncExternalStore(
@@ -158,18 +147,6 @@ export function ActivityBar({ sidebarVisible }: { sidebarVisible: boolean }) {
             </button>
           );
         })}
-        {UNAVAILABLE_ITEMS.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            className="activity-bar__item"
-            title={t(item.reason)}
-            aria-label={t(item.label)}
-            disabled
-          >
-            {item.icon}
-          </button>
-        ))}
         <button
           type="button"
           className="activity-bar__item"

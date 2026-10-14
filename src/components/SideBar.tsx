@@ -98,7 +98,11 @@ export function SideBar(props: SideBarProps) {
         ) : null}
       </div>
       <div className="sidebar__content">
-        <SideViewContent view={view} explorer={<ExplorerContent {...props} />} />
+        <SideViewContent
+          view={view}
+          explorer={<ExplorerContent {...props} />}
+          hasFolder={props.workspace !== null}
+        />
       </div>
       <Sash side={layout.sidebarPosition === "right" ? "left" : "right"} />
       {viewsMenu ? (
@@ -114,7 +118,15 @@ export function SideBar(props: SideBarProps) {
   );
 }
 
-function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNode }) {
+function SideViewContent({
+  view,
+  explorer,
+  hasFolder,
+}: {
+  view: SideView;
+  explorer: ReactNode;
+  hasFolder: boolean;
+}) {
   if (isExtensionView(view)) return <ExtensionContainerView key={view} viewKey={view} />;
   switch (view) {
     case "explorer":
@@ -128,7 +140,7 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
     case "extensions":
       return <ExtensionsView />;
     case "deps":
-      return <DependenciesView />;
+      return <DependenciesView hasFolder={hasFolder} />;
     case "collab":
       return <CollaborationView />;
     case "ai":
