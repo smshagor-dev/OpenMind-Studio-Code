@@ -6,6 +6,7 @@ import { container } from "../services/container";
 import type { SideView } from "../services/layoutService";
 import { MANAGE_MENU } from "../services/menus";
 import {
+  AgentIcon,
   AiIcon,
   DebugIcon,
   ExtensionsIcon,
@@ -55,6 +56,7 @@ const VIEW_ITEMS: readonly ViewItem[] = [
     icon: <PackageIcon />,
   },
   { view: "collab", label: "view.collaboration", icon: <RemoteIcon /> },
+  { view: "agent", label: "view.agent", icon: <AgentIcon /> },
 ];
 
 const AI_ITEM: ViewItem = {

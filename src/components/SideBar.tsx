@@ -13,6 +13,7 @@ import { MenuPopup } from "./MenuPopup";
 import { OpenEditorsSection } from "./OpenEditorsSection";
 import { PaneSection } from "./PaneSection";
 import { AiView } from "./AiView";
+import { AgentView } from "./agent/AgentView";
 import { RunDebugView } from "./RunDebugView";
 import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
@@ -42,6 +43,7 @@ const VIEW_TITLES: Record<BuiltInView, string> = {
   deps: "view.dependencies",
   collab: "view.collaboration",
   ai: "view.ai",
+  agent: "view.agent",
 };
 
 /**
@@ -145,6 +147,8 @@ function SideViewContent({
       return <CollaborationView />;
     case "ai":
       return <AiView />;
+    case "agent":
+      return <AgentView />;
   }
 }
 
