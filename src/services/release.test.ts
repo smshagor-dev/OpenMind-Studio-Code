@@ -22,8 +22,8 @@ import {
   releasePlatform,
   releaseSubdir,
   reportText,
-  signtoolArgs,
 } from "../../scripts/releaseTools.mjs";
+import { signtoolSignArgs } from "../../scripts/authenticodeTools.mjs";
 import { agreementText } from "../../scripts/legalTexts.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -348,7 +348,8 @@ describe("signing configuration", () => {
       TIMESTAMP_URL: "http://timestamp.example",
     });
     expect(config.mode).toBe("test-signed");
-    expect(signtoolArgs(config, "a.exe")).toEqual([
+    expect(config.thumbprint).toBe(thumbprint);
+    expect(signtoolSignArgs({ thumbprint, timestampUrl: config.timestampUrl }, "a.exe")).toEqual([
       "sign",
       "/fd",
       "SHA256",
@@ -360,6 +361,8 @@ describe("signing configuration", () => {
       "http://timestamp.example",
       "/td",
       "SHA256",
+      "/d",
+      "OpenMind Studio",
       "a.exe",
     ]);
     expect(readSigningConfig({ SIGNING_CERT_THUMBPRINT: "abc" }).mode).toBe("misconfigured");
@@ -407,17 +410,16 @@ describe("signing configuration", () => {
     expect(redact("signtool failed for /p hunter2 now", ["hunter2"])).toBe(
       "signtool failed for /p *** now",
     );
-    expect(() => signtoolArgs(readSigningConfig({}), "a.exe")).toThrow();
-    expect(signtoolArgs(config, "a.exe")).toEqual([
-      "sign",
-      "/fd",
-      "SHA256",
-      "/f",
-      "C:/secret path/c.pfx",
-      "/p",
-      "hunter2",
-      "a.exe",
-    ]);
+    // SignTool is only ever given a thumbprint: a PFX configuration has none until it is imported into the store
+    // (scripts/signtool.mjs withCertificate), so its password can't reach a command line.
+    expect(config.mode).toBe("signed");
+    expect(() => signtoolSignArgs({ thumbprint: (config as { thumbprint?: string }).thumbprint }, "a.exe")).toThrow(
+      "thumbprint",
+    );
+    const args = signtoolSignArgs({ thumbprint: "352ED3665AF5E1E59278F1E7ABF463F9BA4FE8EC" }, "a.exe");
+    expect(args.join(" ")).not.toContain("hunter2");
+    expect(args).not.toContain("/p");
+    expect(args).not.toContain("/f");
   });
 
   it("no certificate, key or password is committed to the repository", () => {

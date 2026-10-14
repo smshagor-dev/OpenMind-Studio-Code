@@ -5,6 +5,8 @@ export interface SigningConfig {
   message: string;
   certPath?: string;
   password?: string;
+  /** A certificate in the Windows store, by its 40-digit SHA-1 thumbprint. */
+  thumbprint?: string;
   timestampUrl?: string | null;
 }
 
@@ -14,7 +16,6 @@ export function publicSigningInfo(config: SigningConfig): {
   message: string;
   timestamp: string | null;
 };
-export function signtoolArgs(config: SigningConfig, file: string): string[];
 export function redact(text: unknown, secrets: (string | undefined)[]): string;
 export interface SignatureInfo {
   status: string;

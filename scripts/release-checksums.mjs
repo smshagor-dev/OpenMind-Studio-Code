@@ -1,4 +1,4 @@
-// usage: node scripts/release-checksums.mjs [--verify] [--version <x.y.z>]
+// usage: node scripts/release-checksums.mjs [--verify] [--version <x.y.z>] [--dir <release folder>]
 // Rewrites (or with --verify only checks) `release/v<version>/metadata/SHA256SUMS.txt` over the release files in
 // `<platform>/<arch>/` (default version: tauri.conf.json's). Exit code 1 when a check fails or the folder doesn't exist.
 import { existsSync, readFileSync } from "node:fs";
@@ -15,7 +15,9 @@ const version =
   at >= 0
     ? args[at + 1]
     : JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")).version;
-const dir = releaseDir(root, version);
+// --dir: another release folder (scripts/authenticode-release.mjs --release passes it on).
+const dirAt = args.indexOf("--dir");
+const dir = dirAt >= 0 ? resolve(args[dirAt + 1]) : releaseDir(root, version);
 if (!existsSync(dir)) {
   console.error(`${dir} does not exist.`);
   process.exit(1);

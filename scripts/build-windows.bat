@@ -48,6 +48,16 @@ set "OUT=release\v%VERSION%\windows"
 for %%A in (%ARCHES%) do (
   call :check_arch %%A || goto fail
 )
+rem Authenticode (docs\code-signing.md): with a certificate configured, check SignTool and the certificate now, not
+rem after a 20-minute build. Without one the build is unsigned (Tauri's signCommand, scripts\sign-file.mjs, does nothing).
+set "AUTHENTICODE=0"
+if defined SIGNING_CERT_THUMBPRINT set "AUTHENTICODE=1"
+if defined SIGNING_CERT_PATH set "AUTHENTICODE=1"
+if "%AUTHENTICODE%"=="1" (
+  node scripts\authenticode-release.mjs --check || goto fail
+) else (
+  echo Authenticode: no certificate configured - the Windows files will NOT be Authenticode-signed.
+)
 node scripts\prepare-lsp-bundle.mjs --check || goto fail
 node scripts\prepare-python-bundle.mjs --check || goto fail
 
@@ -93,9 +103,22 @@ call pnpm release:checksums || goto fail
 call pnpm release:verify || goto fail
 node scripts\verify-architecture.mjs || goto fail
 if "%SIGN%"=="1" (node scripts\verify-updater-signatures.mjs || goto fail)
+if "%AUTHENTICODE%"=="1" call :verify_authenticode || goto fail
 echo.
 echo Done: OpenMind Studio %VERSION% for %ARCHES% in %CD%\%OUT%
 popd
+exit /b 0
+
+:verify_authenticode
+rem Windows itself must report each setup and MSI signed (valid and timestamped; intact for a test certificate), and
+rem the release signer's dry run must find every file - the program inside each portable ZIP too - already signed by
+rem the configured certificate.
+set "MODE=signed"
+if /i "%SIGNING_CERT_KIND%"=="test" set "MODE=test-signed"
+for %%A in (%ARCHES%) do (
+  node scripts\verify-signatures.mjs --mode %MODE% "%OUT%\%%A\OpenMind-Studio_%VERSION%_windows_%%A_setup.exe" "%OUT%\%%A\OpenMind-Studio_%VERSION%_windows_%%A.msi" || exit /b 1
+  node scripts\authenticode-release.mjs --dry-run --arch %%A || exit /b 1
+)
 exit /b 0
 
 :check_arch
@@ -116,6 +139,9 @@ echo == Building %~1 (%TRIPLE%)
 call pnpm tauri build --target %TRIPLE% --bundles nsis,msi --config "%NO_UPDATER%" || exit /b 1
 set "EXE=%TARGET_DIR%\%TRIPLE%\release\OpenMindStudio.exe"
 if not exist "%EXE%" (echo The program was not built: %EXE% & exit /b 1)
+rem Tauri signs the copies it bundles into the setup and MSI, not this file: sign it before it goes into the portable ZIP
+rem (does nothing without a certificate).
+node scripts\sign-file.mjs "%EXE%" || exit /b 1
 node scripts\package-portable.mjs --no-build --exe "%EXE%" --out "release\staging\portable-%~1" || exit /b 1
 set "ZIP=release\staging\portable-%~1\OpenMindStudio-%VERSION%-portable-win-x64.zip"
 if not exist "%ZIP%" (echo The portable ZIP was not made: %ZIP% & exit /b 1)

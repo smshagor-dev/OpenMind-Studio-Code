@@ -3313,6 +3313,30 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   system's glibc), `scripts/build-macos.command` (macOS only; wraps `macos-release.sh`), shared `scripts/build-info.mjs`
   (`version` agreement, `target-dir`). Upgrade-test kit takes `-OldVersion/-NewVersion` (either naming scheme; never picks
   a `validation\` test build as the previous release). Results: `release/v1.0.4/validation/reports/`.
+- [ ] **Authenticode signing workflow** (branch `feature/authenticode-signing`; no trusted certificate yet). Guide:
+  `docs/code-signing.md`. Authenticode is a second layer next to the updater/LAN `.sig` files (made after it, over the final
+  bytes). `scripts/authenticodeTools.mjs` (pure, tested): SignTool discovery (newest SDK numerically, `SIGNTOOL_PATH`),
+  `certificateVerdict` (found, private key, validity dates + 30-day warning, Code Signing EKU, RSA — Smart App Control rejects
+  ECC —, trusted chain for a release; test certificates get warnings), `signtoolSignArgs` (**thumbprint only**: `/fd SHA256 /sha1 …
+  /s My [/sm] /tr … /td SHA256 /d "OpenMind Studio"` — a password never reaches a command line), `classifySigntoolFailure`,
+  `planArtifact` (keep / sign / repack / refuse: missing, HashMismatch, another certificate, an installer built unsigned unless
+  `--sign-installers-outer`), `compareTrees`. `scripts/signtool.mjs`: `certificateInfo` (store lookup, X509Chain for Code Signing,
+  online revocation), `withCertificate` (a PFX is imported into CurrentUser\My non-exportable for the run, password via an env var to
+  PowerShell, removed afterwards if imported), `signFile` (check → sign → Windows must report it valid/intact, timestamped, by this
+  certificate). `scripts/authenticodeRelease.mjs` + CLI `scripts/authenticode-release.mjs` (`--check`, `--dry-run`, `--arch`,
+  `--release`, `--sign-installers-outer`, `--skip-updater-resign` test-only): everything checked before a change (incl. the updater key,
+  so no `.sig` goes stale), backup to `validation/pre-authenticode/<time>/`, each change on a verified copy, the portable ZIP extracted /
+  `OpenMindStudio.exe` signed / rebuilt with System32 `tar` / re-extracted and compared entry by entry, rollback from the backup on any
+  failure, then `sign-release.mjs` + verification; every helper gets the folder (`--dir` added to `release-checksums.mjs` and
+  `sign-release.mjs` — the first live run found the checksum helper writing the default folder instead). Not signed by us on purpose:
+  `lsp/node/node.exe` (OpenJS-signed), the vendor binaries inside `lsp/packs/*.zip` (SHA-256-pinned) and other bundled packages.
+  `build-windows.bat`: `--check` before the build when a certificate is configured, signs the built exe before the portable ZIP, verifies
+  setups/MSIs and runs the signer's dry run at the end. Tests: `authenticode.test.ts` (22, mock-based) + release tests. Verified with the
+  real SignTool 10.0.26100.0 and the self-signed TEST certificate on a scratch copy: four installers and both portable programs signed and
+  DigiCert-timestamped (Windows: `UnknownError`, untrusted root — expected), only `OpenMindStudio.exe` differs in the rebuilt ZIPs,
+  node.exe still OpenJS-signed, signed programs start, a second run changes nothing, a throwaway PFX signs without its password on any
+  command line and is removed from the store. Azure Artifact Signing: individuals US/Canada only (see the guide). Pending: a trusted
+  certificate, a signed rebuild of v1.0.4 from `29a58ae`, installer/upgrade tests in Sandbox/VM.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).
