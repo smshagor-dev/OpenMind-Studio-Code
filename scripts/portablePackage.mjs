@@ -27,12 +27,35 @@ export function builtExe(targetDir, profile, cargoName = false) {
   return `${targetDir.replace(/[\\/]+$/, "")}/${profile}/${name}`;
 }
 
-export function readmeText(version) {
+export function readmeText(version, arch) {
+  if (arch !== "x64" && arch !== "x86") throw new Error(`Unknown architecture "${arch}" (x64 or x86).`);
   return [
-    `OpenMind Studio ${version} — portable edition`,
+    `OpenMind Studio ${version} — portable edition for Windows ${arch}`,
+    "",
+    arch === "x64"
+      ? "Architecture: x64 (64-bit). For 64-bit Windows 10 and Windows 11."
+      : "Architecture: x86 (32-bit). For 32-bit and 64-bit Windows 10 and Windows 11 (on 64-bit Windows the x64 package is the better choice).",
+    "Needs the Microsoft Edge WebView2 Runtime: it is part of Windows 11; on Windows 10 install it from Microsoft",
+    "(\"WebView2 Runtime\") if the app doesn't start. The setup installs it for you; this ZIP can't.",
+    "",
+    "Unpack: right-click the ZIP > Extract All (or: tar -xf <zip>) into any folder you can write to — a folder in",
+    "your user folder, another drive or a USB drive. Don't run it from inside the ZIP, and don't unpack it into",
+    "Program Files (the app keeps its data next to itself and needs to write there).",
     "",
     "Run OpenMindStudio.exe, or \"Start OpenMind Studio.bat\" (it checks that the program is there and passes on",
     "folders or files to open). There is nothing to install and no administrator rights are needed.",
+    "",
+    "Known limitations:",
+    ...(arch === "x86"
+      ? [
+          "  - The Runtime Manager's downloads (Node.js, Python, Git, PHP, MariaDB ...) are 64-bit builds: this x86",
+          "    package can't install them, also on 64-bit Windows. Use the x64 package for them.",
+          "  - The offline language servers, formatters and Python packages (lsp\\, python-bundle\\) are 64-bit programs:",
+          "    on 32-bit Windows they aren't used, and language servers are installed online when you ask for them.",
+        ]
+      : []),
+    "  - This copy updates itself only when automatic updates are on and the release's update files are signed.",
+    "  - See the release notes for other known limitations.",
     "",
     "These files are not code-signed with a Windows certificate: Windows SmartScreen may show \"Windows protected",
     "your PC\" (choose More info > Run anyway only if you downloaded the ZIP from the official release page and its",
