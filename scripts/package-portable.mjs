@@ -27,6 +27,7 @@ import {
   validateToolchainManifest,
   zipName,
 } from "./portablePackage.mjs";
+import { peArch } from "./verify-architecture.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const args = process.argv.slice(2);
@@ -60,7 +61,10 @@ const staging = join(outDir, PACKAGE_FOLDER);
 rmSync(staging, { recursive: true, force: true });
 mkdirSync(staging, { recursive: true });
 copyFileSync(exe, join(staging, PACKAGE_EXE));
-writeFileSync(join(staging, "README.txt"), readmeText(version));
+// The README names the architecture of the program actually packed (read from its PE header), never a guess.
+const arch = peArch(readFileSync(exe));
+if (arch === null) throw new Error(`${exe} is not a 64-bit or 32-bit Windows program.`);
+writeFileSync(join(staging, "README.txt"), readmeText(version, arch));
 // The licence (Apache-2.0) and every third-party notice the program's components require (scripts/third-party-licenses.mjs).
 const notices = join(root, "licenses", "THIRD-PARTY-LICENSES.txt");
 if (!existsSync(notices)) {

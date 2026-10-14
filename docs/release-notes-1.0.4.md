@@ -59,6 +59,11 @@ Windows (x64, x86) and Linux (x64, x86). Built from the private source `main` af
 - The Windows programs and installers are not Authenticode-signed: SmartScreen warns, and Smart App Control (where it
   is on) blocks them.
 - Network discovery is IPv4 only and doesn't cross routers; type the address of a computer on another subnet.
+- The Windows x86 (32-bit) package can't install the Runtime Manager's runtimes (Node.js, Python, Git, PHP ... are
+  64-bit downloads), also on 64-bit Windows; its offline language servers and Python packages run only on 64-bit
+  Windows. Use the x64 package where you can.
+- Linux packages don't include the offline language servers, formatters or Python packages, and the Runtime Manager's
+  downloads are for Windows.
 
 ## Upgrade
 

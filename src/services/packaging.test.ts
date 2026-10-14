@@ -37,14 +37,30 @@ describe("portable package", () => {
   });
 
   it("the README says everything stays in the folder and nothing touches AppData, the Registry or PATH", () => {
-    const readme = readmeText("0.1.0");
-    expect(readme).toContain("OpenMind Studio 0.1.0 — portable edition");
+    const readme = readmeText("0.1.0", "x64");
+    expect(readme).toContain("OpenMind Studio 0.1.0 — portable edition for Windows x64");
     for (const folder of ["data\\", "settings\\", "runtimes\\", "cache\\", "logs\\"]) {
       expect(readme).toContain(folder);
     }
     expect(readme).toMatch(/never in AppData,\s+the Registry or Program Files/);
     expect(readme).toContain("never changes your PATH");
     expect(readme).toContain("no administrator rights");
+  });
+
+  it("the README names the architecture, the supported Windows, how to unpack, and the x86 package's limits", () => {
+    const x64 = readmeText("1.0.4", "x64");
+    const x86 = readmeText("1.0.4", "x86");
+    expect(x64).toContain("Architecture: x64 (64-bit)");
+    expect(x86).toContain("Architecture: x86 (32-bit)");
+    for (const readme of [x64, x86]) {
+      expect(readme).toContain("Windows 10 and Windows 11");
+      expect(readme).toContain("WebView2 Runtime");
+      expect(readme).toContain("Extract All");
+      expect(readme).toContain("Known limitations:");
+    }
+    expect(x86).toContain("can't install them, also on 64-bit Windows");
+    expect(x64).not.toContain("can't install them");
+    expect(() => readmeText("1.0.4", "arm64" as "x64")).toThrow("Unknown architecture");
   });
 });
 
