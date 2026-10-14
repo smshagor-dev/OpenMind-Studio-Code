@@ -340,6 +340,45 @@ describe("CI builds src-tauri only after its generated resources exist", () => {
   });
 });
 
+describe("Authenticode happens before the updater signatures and checksums", () => {
+  // Authenticode changes a file's bytes, so the updater/LAN .sig files and SHA256SUMS.txt must be made after it, from the
+  // final bytes (docs/code-signing.md). This pins the order of scripts\build-windows.bat.
+  const bat = text("scripts/build-windows.bat").replace(/\r\n/g, "\n");
+  const at = (needle: string) => {
+    const index = bat.indexOf(needle);
+    expect(index, needle).toBeGreaterThanOrEqual(0);
+    return index;
+  };
+
+  it("Tauri signs every binary it builds, and the built program is signed before it goes into the portable ZIP", () => {
+    const tauri = JSON.parse(text("src-tauri/tauri.conf.json")) as {
+      bundle: { windows: { signCommand: { cmd: string; args: string[] } } };
+    };
+    expect(tauri.bundle.windows.signCommand.args).toContain("../scripts/sign-file.mjs");
+    expect(at('node scripts\\sign-file.mjs "%EXE%"')).toBeLessThan(at("node scripts\\package-portable.mjs"));
+  });
+
+  it("collect, then updater signatures, then checksums and verification", () => {
+    const collect = at("node scripts\\release.mjs --target-dir");
+    const updater = at("call pnpm release:sign");
+    expect(collect).toBeLessThan(updater);
+    for (const after of [
+      "call pnpm release:checksums",
+      "call pnpm release:verify",
+      "node scripts\\verify-updater-signatures.mjs",
+      "call :verify_authenticode",
+    ]) {
+      expect(at(after), after).toBeGreaterThan(updater);
+    }
+  });
+
+  it("sign-release keeps a .sig only when it verifies against the file's current bytes", () => {
+    const signRelease = text("scripts/sign-release.mjs");
+    expect(signRelease).toContain("signedFor(file) === version");
+    expect(signRelease).toMatch(/verifySignature\(readFileSync\(file\)/);
+  });
+});
+
 describe("signing configuration", () => {
   it("nothing configured: an unsigned build with a clear message", () => {
     const config = readSigningConfig({});
