@@ -12,6 +12,8 @@ mod startup;
 mod startup_error;
 mod state;
 mod sync;
+#[cfg(all(test, windows))]
+mod test_paths;
 mod tray;
 mod updates;
 mod window_events;

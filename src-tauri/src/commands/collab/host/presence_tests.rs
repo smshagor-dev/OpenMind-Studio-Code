@@ -199,6 +199,33 @@ fn the_owners_editor_path_resolves_to_the_shared_file_and_nothing_else() {
     );
 }
 
+/// The editor may know a file by its 8.3 short spelling (`C:\Users\RUNNER~1\...`, as in GitHub's runners' %TEMP%) while
+/// the share's root is the long one: still the same shared file. A short spelling outside the share still matches nothing.
+#[cfg(windows)]
+#[test]
+fn a_short_spelling_of_a_shared_file_is_still_that_file() {
+    let w = world(&[("A Long Folder Name/a.ts", b"x")]);
+    let file = w.id("A Long Folder Name/a.ts");
+    let path = w.ws.join("A Long Folder Name").join("a.ts");
+    let Some(short) = crate::test_paths::short_spelling(&path) else {
+        eprintln!("this volume makes no 8.3 short names: nothing to compare");
+        return;
+    };
+    assert_ne!(short, path, "two spellings");
+    assert_eq!(block(w.runtime.file_at(&w.db, &w.room, &short)), Some(file));
+    let outside =
+        w.ws.parent()
+            .expect("parent")
+            .join("Another Long Folder Name");
+    std::fs::create_dir_all(&outside).expect("outside");
+    std::fs::write(outside.join("b.ts"), b"y").expect("b");
+    let outside_short = crate::test_paths::short_spelling(&outside.join("b.ts")).expect("short");
+    assert_eq!(
+        block(w.runtime.file_at(&w.db, &w.room, &outside_short)),
+        None
+    );
+}
+
 #[test]
 fn a_folder_is_never_an_active_file() {
     let w = world(&[("src/a.ts", b"x")]);
