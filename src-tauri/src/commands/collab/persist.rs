@@ -246,11 +246,19 @@ fn member_of(row: &MemberRow, overrides: Overrides) -> Result<Member, String> {
 /// The stored members of a room with their overrides.
 pub async fn load_members(db: &Db, room_id: i64) -> Result<Vec<Member>, String> {
     let rows = members::list(db.pool(), room_id).await.map_err(db_err)?;
-    let mut overrides: HashMap<String, Overrides> = HashMap::new();
-    for p in members::list_permissions(db.pool(), room_id)
+    let permissions = members::list_permissions(db.pool(), room_id)
         .await
-        .map_err(db_err)?
-    {
+        .map_err(db_err)?;
+    members_from(&rows, &permissions)
+}
+
+/// The members from their stored rows and permission overrides.
+fn members_from(
+    rows: &[MemberRow],
+    permissions: &[openmind_db::collab::PermissionRow],
+) -> Result<Vec<Member>, String> {
+    let mut overrides: HashMap<String, Overrides> = HashMap::new();
+    for p in permissions {
         let parse = |text: &str| {
             serde_json::from_str::<PermissionSet>(text)
                 .map_err(|_| "A stored permission override is invalid.".to_string())
@@ -275,7 +283,16 @@ pub async fn load_hosted(
     host: PeerIdentity,
     now: i64,
 ) -> Result<Authority, String> {
-    let members = load_members(db, row.id).await?;
+    // The room row, its members and the log's last entry from one snapshot (openmind_db::collab::snapshot). The `row` a
+    // caller passes may be older than an event another writer recorded since (a restart whose old tasks are still
+    // finishing, a second app instance on this computer): checked against the log it refused a consistent database as
+    // "changed outside OpenMind", and restored from it the chain would have continued from an older end.
+    let snapshot = openmind_db::collab::snapshot::hosted_room(db.pool(), &row.room_uid)
+        .await
+        .map_err(db_err)?
+        .ok_or("This room isn't stored on this computer.")?;
+    let row = &snapshot.room;
+    let members = members_from(&snapshot.members, &snapshot.permissions)?;
     let protected = row
         .invite_secret
         .as_deref()
@@ -298,8 +315,7 @@ pub async fn load_hosted(
         next_seq: u64::try_from(row.chain_next_seq).unwrap_or(1),
         last_hash: row.chain_last_hash.clone(),
     };
-    let last = logs::last(db.pool(), row.id).await.map_err(db_err)?;
-    let consistent = match &last {
+    let consistent = match &snapshot.last_log {
         Some((seq, hash)) => seq + 1 == row.chain_next_seq && *hash == row.chain_last_hash,
         None => head == ChainHead::genesis(),
     };
