@@ -84,7 +84,15 @@ pub fn parse(words: &[String]) -> Option<Result<DeployAction, String>> {
 
 /// Two shortcut targets name the same program (any spelling, case, `\\?\` prefix).
 pub fn same_target(a: &Path, b: &Path) -> bool {
-    install::normalized_key_path(a) == install::normalized_key_path(b)
+    if install::normalized_key_path(a) == install::normalized_key_path(b) {
+        return true;
+    }
+    // The same file under two spellings: an 8.3 short name (`C:\Users\RUNNER~1\...`, common in %TEMP%) against the long
+    // one a shortcut resolves to. Only when both exist; the text comparison above stays the rule otherwise.
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => install::normalized_key_path(&a) == install::normalized_key_path(&b),
+        _ => false,
+    }
 }
 
 /// The layout as written, or what the app would infer (for `layout`).
@@ -371,5 +379,34 @@ mod tests {
             super::super::shortcut::write(&lnk, &program, DESCRIPTION),
             Ok(ShortcutOutcome::AlreadyCorrect)
         );
+    }
+
+    /// GitHub's Windows runners set %TEMP% with 8.3 short names (`C:\Users\RUNNER~1\...`) while a shortcut resolves to
+    /// the long names: one file, two spellings. It must count as the same target (it didn't, and CI failed).
+    #[cfg(windows)]
+    #[test]
+    fn a_short_and_a_long_spelling_of_one_program_are_the_same_target() {
+        let dir = tempfile::tempdir().expect("dir");
+        let folder = dir.path().join("A Long Folder Name For Short Names");
+        std::fs::create_dir_all(&folder).expect("folder");
+        let program = folder.join("OpenMindStudio.exe");
+        std::fs::write(&program, b"MZ").expect("exe");
+        let Some(short) = crate::test_paths::short_spelling(&program) else {
+            eprintln!("this volume makes no 8.3 short names: nothing to compare");
+            return;
+        };
+        assert_ne!(short, program, "two spellings");
+        assert!(
+            same_target(&short, &program),
+            "{} vs {}",
+            short.display(),
+            program.display()
+        );
+        assert!(same_target(&program, &short));
+        // Still different files are different, and a missing file doesn't match anything by accident.
+        let other = folder.join("Other.exe");
+        std::fs::write(&other, b"MZ").expect("other");
+        assert!(!same_target(&short, &other));
+        assert!(!same_target(&folder.join("missing.exe"), &program));
     }
 }

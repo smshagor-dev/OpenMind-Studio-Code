@@ -248,12 +248,24 @@ impl CollabRuntime {
                     .map(str::to_string)
                     .collect()
             };
-            let (root, full) = (segments(share.shared.root().path()), segments(path));
             let same = |a: &String, b: &String| a.to_lowercase() == b.to_lowercase();
-            if full.len() <= root.len() || !root.iter().zip(&full).all(|(a, b)| same(a, b)) {
-                return None;
-            }
-            let rel = full[root.len()..].join("/");
+            let inside = |root: &std::path::Path, path: &std::path::Path| -> Option<String> {
+                let (root, full) = (segments(root), segments(path));
+                if full.len() <= root.len() || !root.iter().zip(&full).all(|(a, b)| same(a, b)) {
+                    return None;
+                }
+                Some(full[root.len()..].join("/"))
+            };
+            let root = share.shared.root().path();
+            // As spelled first; then, when both exist, as the files really are on disk (an 8.3 short name such as
+            // `C:\Users\RUNNER~1\...` in one of them and the long name in the other).
+            let rel = inside(root, path).or_else(|| {
+                let (root, path) = (
+                    std::fs::canonicalize(root).ok()?,
+                    std::fs::canonicalize(path).ok()?,
+                );
+                inside(&root, &path)
+            })?;
             share
                 .shared
                 .files()
