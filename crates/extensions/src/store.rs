@@ -323,10 +323,15 @@ impl ExtensionStore {
         } else {
             self.paths.disabled.join(&folder)
         };
+        // Unique per install: the extensions folder can be shared by several computers, whose process ids may match.
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
         let staging = self
             .paths
             .staging
-            .join(format!("{folder}-{}", std::process::id()));
+            .join(format!("{folder}-{}-{unique}", std::process::id()));
         let _ = fs::remove_dir_all(&staging);
         if let Err(error) = vsix::extract_with(vsix_path, &staging, &self.limits) {
             let _ = fs::remove_dir_all(&staging);

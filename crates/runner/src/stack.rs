@@ -388,13 +388,13 @@ impl ComposerAction {
 }
 
 /// `php composer.phar <action> --no-interaction --no-ansi` in the project
-/// folder, on the portable PHP. Composer's home and cache live inside the
-/// portable folder (`data/composer`, `cache/composer`) instead of the user profile.
+/// folder, on the portable PHP. Composer's home (`home`) and cache (`cache`) are folders the app chooses — inside the
+/// portable folder, or this computer's own on a shared installation — never the user profile.
 pub fn composer_plan(
     action: ComposerAction,
     root: &Path,
     phar: &Path,
-    app_root: &Path,
+    (home, cache): (&Path, &Path),
     environment: &RunEnvironment,
     system_path: Option<OsString>,
 ) -> Result<RunPlan, RunError> {
@@ -425,19 +425,11 @@ pub fn composer_plan(
     let mut env = environment.vars.clone();
     env.push((
         "COMPOSER_HOME".to_string(),
-        app_root
-            .join("data")
-            .join("composer")
-            .to_string_lossy()
-            .into_owned(),
+        home.to_string_lossy().into_owned(),
     ));
     env.push((
         "COMPOSER_CACHE_DIR".to_string(),
-        app_root
-            .join("cache")
-            .join("composer")
-            .to_string_lossy()
-            .into_owned(),
+        cache.to_string_lossy().into_owned(),
     ));
     Ok(RunPlan {
         kind: RunnableKind::Php,
@@ -776,7 +768,10 @@ mod tests {
             ComposerAction::Install,
             &project,
             &phar,
-            &fx.app,
+            (
+                &fx.app.join("data").join("composer"),
+                &fx.app.join("cache").join("composer"),
+            ),
             &fx.env,
             None,
         )
@@ -807,9 +802,17 @@ mod tests {
         let phar = fx.dir.path().join("composer.phar");
         fs::write(&phar, b"x").expect("phar");
         let run = |root: &Path, phar: &Path, env: &RunEnvironment| {
-            composer_plan(ComposerAction::Update, root, phar, &fx.app, env, None)
-                .expect_err("refused")
-                .to_string()
+            let (home, cache) = (fx.app.join("home"), fx.app.join("cache"));
+            composer_plan(
+                ComposerAction::Update,
+                root,
+                phar,
+                (&home, &cache),
+                env,
+                None,
+            )
+            .expect_err("refused")
+            .to_string()
         };
 
         assert_eq!(

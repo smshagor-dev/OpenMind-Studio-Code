@@ -44,12 +44,20 @@ folder an earlier version made from the path as it was started stays in use, so 
 2. **Installation type: Recommended for All Users**, then choose the shared folder as the install folder
    (`\\fs01\apps\OpenMind Studio`; a mapped drive letter works too — shortcuts are always made with the `\\server\share`
    path).
-3. The setup writes `install.json` (`"layout": "network"`) and a shortcut on *your* Desktop.
-4. Start OpenMind Studio once from there and install the runtimes the class needs (Terminal > Manage Runtimes, or the
+3. Answer the question that follows: give each user a Desktop shortcut at their first start (Yes, the default) or not
+   (No — choose it when IT deploys shortcuts, see below).
+4. The setup writes `install.json` (`"layout": "network"`), the `deploy\` folder next to the program, and your own
+   shortcut from the finish page.
+5. Start OpenMind Studio once from there and install the runtimes the class needs (Terminal > Manage Runtimes, or the
    Workloads tab). They land in the shared folder.
 
 Silent: `OpenMind-Studio_<version>_windows_x64_setup.exe /S /NETWORK /D=\\fs01\apps\OpenMind Studio` (`/D=` must be last and
-unquoted).
+unquoted; add `/NOUSERSHORTCUTS` before it to turn per-user shortcuts off).
+
+Any drive works for the shared folder (`R:\Shagor\OpenMind Studio` on one computer, `Z:\Shagor\OpenMind Studio` on
+another, or the UNC path): nothing stores a drive letter. Shortcuts and each user's local data folder are made from the
+`\\server\share` path the drive letter stands for, so a user who starts it once from R: and once from Z: has one set of
+settings.
 
 To turn an existing **portable copy** on a share into a network installation (keeping each computer's history): run
 `"\\fs01\apps\OpenMind Studio\OpenMindStudio.exe" --integration set-layout network` once. At its next start each
@@ -59,12 +67,15 @@ shared copy is only read).
 ### Shortcuts on the other computers
 
 Pick what your environment allows. All of them use only rights you already have; none bypasses Active Directory,
-Group Policy or remote-access controls.
+Group Policy or remote-access controls. The `deploy\` folder next to the program has the files named below and a
+`README.txt` for IT with the same steps.
 
 | Method | Needs | Result |
 | --- | --- | --- |
+| **Nothing — at first start** (default): each Windows user who starts OpenMind Studio from the share on a computer gets `OpenMind Studio.lnk` on their own Desktop, once | read access to the share | skipped when a shortcut to the program is already on their Desktop or the Public Desktop (whatever its name); a deleted one stays deleted; a refusal (a locked Desktop) is logged, never retried. Off: `OpenMindStudio.exe --integration user-desktop-shortcuts off` (or the setup's No / `/NOUSERSHORTCUTS`) |
+| **The user, by hand**: double-click `deploy\Create Desktop Shortcut.cmd` in the shared folder (or Shell Integration: Create or Repair Desktop Shortcut in the app) | read access to the share | creates or repairs it; when Windows refuses, prints the manual steps |
 | **Group Policy Preferences** (recommended in a domain): User or Computer Configuration > Preferences > Windows Settings > Shortcuts, *Update* action, target `\\fs01\apps\OpenMind Studio\OpenMindStudio.exe`, location *Desktop* (or *All Users Desktop*), start in the same folder | Group Policy rights on the OU | applied at the next logon / policy refresh |
-| **Logon script** (GPO or local): `"\\fs01\apps\OpenMind Studio\OpenMindStudio.exe" --integration desktop-shortcut` | read access to the share | the user's Desktop; creates, repairs an outdated one, otherwise changes nothing |
+| **Logon script** (GPO or local): `\\fs01\apps\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd` (or `... remove`) | read access to the share | the user's Desktop; creates, repairs an outdated one, otherwise changes nothing; silent, exit code 0, log in `%LOCALAPPDATA%\OpenMind\Studio\logon-shortcut.log` |
 | **Push now** with `scripts\deploy\Deploy-OpenMindShortcuts.ps1` | administrator on the targets, PowerShell remoting (WinRM) enabled on them | Public Desktop of each computer, verified, CSV report |
 | **Per computer by hand** (an administrator on that computer): `OpenMindStudio.exe --integration desktop-shortcut --all-users` | administrator | Public Desktop |
 
@@ -81,6 +92,32 @@ Drop `-WhatIf` to apply. Each computer is reported as `Created`, `Repaired`, `Al
 exits 1 unless every computer is verified. `-ComputerName` or `-ComputerListPath` instead of Active Directory; `-Remove`
 takes the shortcut away (only one that points at this installation). Domain membership alone does **not** let you
 manage a computer: the script reports such computers instead of working around them.
+
+### Restricted computers (standard users, locked-down labs)
+
+- Nothing OpenMind Studio does for a user needs administrator rights or asks for elevation: starting it from the share,
+  its local data folder, the per-user shortcut and the `deploy\` launchers all work as a standard user. Only
+  `--all-users` (the Public Desktop) and the push script need an administrator, and they say so instead of trying.
+- Where Windows or a policy refuses a change (a Desktop that may not be written, a redirected Desktop that is read-only),
+  OpenMind Studio does not retry or work around it: the explicit commands explain it and print the manual way, and
+  `deploy\Check Installation.cmd` (or `OpenMindStudio.exe --integration check`, or Shell Integration: Check Installation
+  and Desktop Shortcut in the app) shows the program and network path, the installation type, the user's data folder
+  and whether it is on this computer, administrator or standard rights, whether the share and the Desktop are writable,
+  the shortcut's state, and what to do.
+- The program is not code-signed yet: SmartScreen may warn when it is first downloaded, and Windows 11 Smart App Control
+  (when on) blocks unsigned programs. Allow it with your organisation's application-control process (an AppLocker/WDAC
+  path rule for the share, for example); OpenMind Studio never tries to get around these controls.
+
+### When the network drive disconnects
+
+- Each computer's database, settings and logs are on that computer, so a lost connection can't damage them, and two
+  computers never share a database.
+- Starting needs the share: while it is unreachable Windows says the shortcut's target is unavailable. A drive letter that
+  isn't mapped on a computer doesn't matter — shortcuts use the `\\server\share` path.
+- A momentary failure to resolve the folder while the program starts no longer gives that start a different, empty local
+  profile: a mapped drive is then named by Windows' own record of its `\\server\share` path.
+- While OpenMind Studio runs, runtimes, tools and language servers are read from the share; they fail until it is back.
+  Close OpenMind Studio and start it again once the share is reachable.
 
 ### Runtimes from a shared folder
 
@@ -100,8 +137,14 @@ manage a computer: the script reports such computers instead of working around t
 | Language servers (offline bundle) | yes, once unpacked | the first computer that opens a file of a language unpacks its server into the shared `language-servers\` (needs write access); computers opening the same language at the same moment wait for that one unpack instead of failing, and a server another computer is running is never replaced or deleted. On a share students may only read, open one file of each language once from the installing computer before the class starts. |
 
 Several computers may **use** a runtime at the same time, and one computer may install a different runtime meanwhile.
-Changing one runtime version is serialised across computers: while a computer installs, repairs or removes it, another
-computer trying the same is told "being changed by OpenMind Studio on another computer" and nothing is written twice.
+Changing one runtime version is serialised across computers. When several computers ask for the same missing runtime at
+once (three PCs press Install Python), one of them installs it — download, checksum, unpack into a staging folder,
+publish by renaming — while the others show "Waiting for another computer that is installing it" and then use that
+install: one download, one unpack, no second copy. If the installing computer crashes or loses the network, its lock
+ends with its process; a waiting computer takes over and its half-unpacked folder is cleared, never published. A wait
+lasts at most an hour. Repair and remove don't wait: another computer trying them is told "being changed by OpenMind
+Studio on another computer" and nothing is written twice. Language Tools' tool installs (`tools\`) work the same way:
+one computer at a time, the others reuse what it installed.
 A runtime that another computer is using (a terminal, a run, a server) can't be removed: nothing is removed and the
 Runtime Manager says it is in use. A computer that lost its network in the middle of an install leaves no stale lock
 (the lock is the operating system's and ends with the process).
@@ -140,6 +183,69 @@ installation: they can't install it themselves, so they keep working and keep sh
 - Tested on one computer with the share reached through `\\localhost` and through separate local folders standing in
   for computers; a real multi-PC lab rollout has not been tested by the developers.
 
+## Finding OpenMind Studio on the network and setting computers up (Network Deployment)
+
+Help > **Network Deployment** (or `OpenMindStudio.exe --deploy ...` in a console) finds OpenMind Studio deployments on
+the local network and sets the computer up from one. This is separate from collaboration rooms (its own UDP port
+47741, its own packets) and never touches a terminal, a running program or another computer's database.
+
+**What can be found**
+
+- A **shared network installation**: every computer that runs it from the share and has *Offer This Installation on the
+  Local Network* turned on (Settings > Network) — or a computer running `--deploy serve` — announces it by its network
+  path. Twenty computers announcing one share are one deployment; its identity is the share's network path, never a
+  drive letter, an IP address or a user name.
+- A **package source**: a computer offering the release's signed `..._setup.exe` / `..._portable.zip`. Copy the release
+  files *with their `.sig` files* into `deploy\packages` next to the program (or pass `--packages <folder>` to
+  `--deploy serve`). A file whose signature doesn't verify against the release key built into OpenMind Studio is not
+  offered (the reason is listed).
+
+**What is sent**: versions, architectures, sizes, SHA-256 checksums, the release signatures and a shared installation's
+network path. Never settings, projects, credentials, keys, the database or the computer's or user's name. Nothing is
+announced unless the setting is on (or `--deploy serve` runs), and nothing is searched until the user clicks *Search the
+Network* or runs the test. A search sends three queries to the network's broadcast addresses (and to any address typed
+in, for a source on another subnet); nothing scans address ranges. A query is padded to at least 512 bytes and an answer
+is smaller than that, so an announcing computer can't be used to multiply someone else's traffic; it also answers each
+address only a few times a second. Discovery is IPv4 only, and broadcasts don't cross routers: for a source on another
+subnet type its address.
+
+**Trust.** Anyone on the network can announce a deployment, and the release signature only proves a package is a real
+OpenMind Studio release, not that the computer offering it, or the share it names, is the one IT meant. So the first
+time a deployment is used on a computer the user is asked to trust it (what it is, the share path, which addresses
+answered); nothing is taken from an untrusted deployment, and the backend refuses it too. Trust is per computer, stored
+in that computer's data folder (`deploy-trust.json`, at most 64 entries). A shared installation is trusted by its exact
+network path (its identity is a hash of that path, checked on every announcement, so another path can't borrow it); a
+package source by its identity. `--deploy untrust <id>` withdraws it. Even when trusted, every package is still checked
+against the release signature, its size and SHA-256; the file stays open (and can't be replaced) from that check until
+the setup or unpacking has finished, and a package older than the running copy is refused.
+
+**Setting a computer up** (one of three, each shown with the reason when it isn't possible):
+
+| Choice | What happens |
+| --- | --- |
+| Use Shared Installation | The program in the share must be readable from this computer; this user gets a Desktop shortcut to its network path. Nothing is copied; the database and settings are created on this computer at the first start. |
+| Install with Setup… | Choose **any folder on any drive** (an `OpenMind Studio` folder is made inside it). The setup is downloaded, its size, SHA-256 and release signature are verified, and it runs silently into that folder. An older copy there is updated in place with its data kept, the same version is repaired, a newer one is never downgraded (refused with the reason), a copy that is in use is left alone. |
+| Install Portable Copy… | The same checks; the portable package is unpacked into the folder, or swapped into an existing portable copy item by item (data, settings and runtimes kept). |
+
+One folder is provisioned by one computer at a time (a lock next to the folder when it is on the network, in this
+computer's data folder when it is local, so nothing is left beside a local destination), never while OpenMind Studio
+runs from it on this computer, and a folder holding other files is never written into. Each provisioning downloads into
+its own temporary folder, removed afterwards. A package that fails a check is deleted and nothing is installed; a source
+that stops mid-download leaves no partial installation. A setup that needs administrator rights (Windows error 740) is
+reported as such; nothing tries to get around it. The firewall: the computer that **offers** must accept inbound UDP 47741 and the package server's
+TCP port (Windows asks the first time); a computer that only searches needs nothing. Where policy blocks broadcasts the
+search says "The network blocked the search"; ask a source directly by typing its address.
+
+**Network Deployment Test** — twenty checks, each PASS, FAIL, BLOCKED or NOT TESTED with the reason (NOT TESTED = the
+check doesn't apply to this copy or was skipped, e.g. the package wasn't downloaded, or a portable copy has no shortcut of
+its own; an untrusted deployment makes provisioning readiness BLOCKED "UNTRUSTED DEPLOYMENT"): machine identity, installation,
+program path, install folder, local data, database isolation, runtime store, network interface, discovery socket,
+deployment discovery ("NO DEPLOYMENT FOUND" / "DISCOVERY UNAVAILABLE" / "NETWORK/BIND BLOCKED" / "PROTOCOL
+INCOMPATIBLE" are told apart), discovered source, protocol, platform, architecture, version, package availability,
+package integrity (optionally downloads the package, verifies it and deletes it), provisioning readiness, the Desktop
+shortcut and runtime reuse. `OpenMindStudio.exe --deploy test --json > report.json` saves it for IT.
+
+
 ## Where a user's data is
 
 - For me / portable: next to the program (`data\`, `settings\`, `logs\` …).
@@ -148,7 +254,9 @@ installation: they can't install it themselves, so they keep working and keep sh
   Copy System Info lists the app and logs folders.
 
 Uninstalling removes the program (and `install.json`) but never a user's data folder; delete it by hand to reclaim the
-space.
+space. The uninstaller removes the installing user's shortcut only: in a network installation remove the other users'
+shortcuts first (the Group Policy item with *Delete*, the logon script with `remove`, or the push script with
+`-Remove`), because once the program is gone nothing can tell which shortcut started it.
 
 ## Command line reference
 
@@ -157,6 +265,18 @@ OpenMindStudio.exe --integration set-layout portable|per-user|per-machine|networ
 OpenMindStudio.exe --integration layout
 OpenMindStudio.exe --integration desktop-shortcut [--all-users]
 OpenMindStudio.exe --integration remove-desktop-shortcut [--all-users]
+OpenMindStudio.exe --integration user-desktop-shortcuts on|off
+OpenMindStudio.exe --integration check
+OpenMindStudio.exe --deploy status
+OpenMindStudio.exe --deploy discover [--target <host[:port]>]... [--json]
+OpenMindStudio.exe --deploy test [--target <host[:port]>]... [--no-download] [--json]
+OpenMindStudio.exe --deploy serve [--packages <folder>]
+OpenMindStudio.exe --deploy provision <deployment id|first> [--kind share|setup|portable] [--to <folder>] [--target ...] [--no-shortcut] [--trust]
+OpenMindStudio.exe --deploy untrust <deployment id>
 ```
 
-Exit code 0 = done, 1 = failed (the reason on standard error), 2 = unknown action.
+`--trust` trusts the deployment first (the dialog's question); with `first` it is refused when more than one compatible
+deployment answered: name the deployment by its id.
+
+Exit code 0 = done, 1 = failed (the reason on standard error; for `--deploy test`: a check failed), 2 = unknown action. Typed into a console, the output
+appears in that console; redirect it (`> report.txt`) in scripts.

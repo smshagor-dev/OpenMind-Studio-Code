@@ -22,6 +22,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::app_state::AppState;
+use crate::commands::composer_dirs::composer_dirs;
 use crate::commands::pma_config;
 use crate::commands::run::environment;
 use crate::secret;
@@ -633,17 +634,18 @@ pub async fn composer_run(
         }
     };
     let environment = environment(&state).await;
+    let (home, cache) = composer_dirs(&state.paths, &state.app_root);
     let plan = composer_plan(
         action,
         Path::new(&root),
         &phar,
-        &state.app_root,
+        (&home, &cache),
         &environment,
         std::env::var_os("PATH"),
     )
     .map_err(|err| err.to_string())?;
-    let _ = std::fs::create_dir_all(state.app_root.join("data").join("composer"));
-    let _ = std::fs::create_dir_all(state.app_root.join("cache").join("composer"));
+    let _ = std::fs::create_dir_all(&home);
+    let _ = std::fs::create_dir_all(&cache);
     let sink = service_sink(
         &app,
         "composer:event",

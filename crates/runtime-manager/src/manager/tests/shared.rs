@@ -160,7 +160,10 @@ fn held_by_another_pc(fx: &Fixture, version: &str) -> version_lock::VersionLock 
 #[tokio::test]
 async fn a_version_another_computer_is_installing_is_never_written_twice() {
     let fx = fixture().await;
-    let pc_b = other_pc(&fx, "pc-b").await;
+    // No waiting: the refusal itself is what this test looks at.
+    let pc_b = other_pc(&fx, "pc-b")
+        .await
+        .with_shared_wait(std::time::Duration::ZERO);
     let other = held_by_another_pc(&fx, "1.0.0");
     // PC-A is half-way: its staging folder exists.
     fs::create_dir_all(versions_dir(&fx).join("1.0.0.installing")).expect("staging");
@@ -280,4 +283,175 @@ async fn a_removal_left_behind_is_cleared_but_not_while_another_computer_works_o
         status.installed.is_empty(),
         "a removal is never adopted as a version"
     );
+}
+
+/// Records the phases one computer's install reports.
+fn phase_recorder() -> (ProgressSink, Arc<Mutex<Vec<InstallPhase>>>) {
+    let phases: Arc<Mutex<Vec<InstallPhase>>> = Arc::default();
+    let sink = phases.clone();
+    (
+        Arc::new(move |p: InstallProgress| sink.lock().expect("lock").push(p.phase)),
+        phases,
+    )
+}
+
+fn saw(phases: &Arc<Mutex<Vec<InstallPhase>>>, phase: InstallPhase) -> bool {
+    phases.lock().expect("lock").contains(&phase)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn three_computers_asking_for_one_runtime_at_once_get_one_install_and_all_use_it() {
+    let fx = fixture().await;
+    let pcs = [
+        fx.manager.clone(),
+        other_pc(&fx, "pc-b").await,
+        other_pc(&fx, "pc-c").await,
+    ];
+    // A fourth computer is installing it right now: all three have to wait, then the work happens exactly once.
+    let other = held_by_another_pc(&fx, "1.0.0");
+    let mut runs = Vec::new();
+    let mut recorders = Vec::new();
+    for pc in &pcs {
+        let (sink, phases) = phase_recorder();
+        recorders.push(phases);
+        let pc = pc.clone();
+        runs.push(tokio::spawn(async move {
+            pc.install("demo", Some("1.0.0"), sink).await
+        }));
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+    for phases in &recorders {
+        assert!(saw(phases, InstallPhase::Waiting), "{phases:?}");
+    }
+    assert!(runs.iter().all(|run| !run.is_finished()), "nobody gave up");
+    assert_eq!(requests(&fx), 0, "nothing downloaded while waiting");
+
+    // That computer crashed (its lock went with its process): one of the three takes over.
+    drop(other);
+    let mut paths = Vec::new();
+    for run in runs {
+        let installed = run.await.expect("task").expect("install");
+        assert!(installed.healthy);
+        paths.push(installed.path);
+    }
+    assert!(paths.windows(2).all(|pair| pair[0] == pair[1]), "{paths:?}");
+    let unpacked = recorders
+        .iter()
+        .filter(|phases| saw(phases, InstallPhase::Extract))
+        .count();
+    assert_eq!(unpacked, 1, "exactly one computer unpacked the runtime");
+    assert_eq!(requests(&fx), 1, "one download for three computers");
+    assert!(!versions_dir(&fx).join("1.0.0.installing").exists());
+    for pc in &pcs {
+        let status = demo(pc.list().await.expect("list"));
+        assert_eq!(status.installed.len(), 1);
+        assert!(status.installed[0].healthy);
+        assert!(pc
+            .environment()
+            .await
+            .expect("env")
+            .path_prepend
+            .iter()
+            .any(|dir| dir.starts_with(versions_dir(&fx).join("1.0.0"))));
+    }
+}
+
+#[tokio::test]
+async fn a_waiting_install_takes_over_a_crashed_computers_half_install() {
+    let fx = fixture().await;
+    let pc_b = other_pc(&fx, "pc-b").await;
+    let other = held_by_another_pc(&fx, "1.0.0");
+    // The crashed computer left its half-unpacked staging folder behind.
+    let staging = versions_dir(&fx).join("1.0.0.installing");
+    fs::create_dir_all(&staging).expect("staging");
+    fs::write(staging.join("half.bin"), b"partial").expect("partial");
+    let (sink, phases) = phase_recorder();
+    let run = tokio::spawn({
+        let pc_b = pc_b.clone();
+        async move { pc_b.install("demo", Some("1.0.0"), sink).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(saw(&phases, InstallPhase::Waiting));
+    assert!(
+        !versions_dir(&fx).join("1.0.0").exists(),
+        "a partial runtime is never published"
+    );
+    drop(other);
+    let installed = run.await.expect("task").expect("install");
+    assert!(installed.healthy);
+    assert!(!versions_dir(&fx).join("1.0.0").join("half.bin").exists());
+    assert!(!staging.exists());
+}
+
+#[tokio::test]
+async fn a_wait_has_a_limit_and_then_says_who_is_busy() {
+    let fx = fixture().await;
+    let pc_b = other_pc(&fx, "pc-b")
+        .await
+        .with_shared_wait(std::time::Duration::from_millis(300));
+    let _other = held_by_another_pc(&fx, "1.0.0");
+    let started = std::time::Instant::now();
+    let outcome = pc_b.install("demo", Some("1.0.0"), no_progress()).await;
+    assert!(
+        matches!(outcome, Err(RuntimeError::BusyElsewhere { .. })),
+        "{outcome:?}"
+    );
+    assert!(started.elapsed() >= std::time::Duration::from_millis(300));
+    assert_eq!(requests(&fx), 0);
+}
+
+#[tokio::test]
+async fn different_runtimes_never_wait_for_each_other() {
+    let fx = fixture().await;
+    let pc_b = other_pc(&fx, "pc-b").await;
+    // 1.0.0 is busy on another computer for as long as this test runs; 2.0.0 installs at once.
+    let _other = held_by_another_pc(&fx, "1.0.0");
+    let started = std::time::Instant::now();
+    pc_b.install("demo", Some("2.0.0"), no_progress())
+        .await
+        .expect("2.0.0");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}
+
+#[tokio::test]
+async fn a_complete_runtime_whose_launchers_cant_be_written_is_never_unpacked_again() {
+    let phar = b"<?php echo 1;".to_vec();
+    let hash = sha(&phar);
+    let manifest = format!(
+        r#"{{
+        "id": "demo", "displayName": "Demo", "description": "d", "defaultVersion": "1.0.0",
+        "versionCommand": {{ "executable": "demo.phar", "args": ["--version"] }},
+        "binDirs": [], "verifyFiles": ["demo.phar"], "env": {{}},
+        "shims": [{{ "name": "demo", "target": "demo.phar", "viaEnv": "DEMO_INTERPRETER" }}],
+        "versions": [
+          {{ "version": "1.0.0", "artifacts": [ {{ "platform": "windows-x64", "url": "{URL_1}", "sha256": "{hash}", "archive": "file", "installAs": "demo.phar" }} ] }}
+        ]
+    }}"#
+    );
+    let fx = fixture_with(vec![(URL_1, phar)], manifest, "windows-x64").await;
+    fx.manager
+        .install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("PC-A");
+    let exe = versions_dir(&fx).join("1.0.0").join("demo.phar");
+    let before = fs::metadata(&exe).expect("meta").modified().expect("mtime");
+    // PC-B sees no launchers, and their folder can't be created (a file stands where it should be).
+    let shims = fx
+        .root
+        .join("runtimes")
+        .join("demo")
+        .join("shims")
+        .join("1.0.0");
+    fs::remove_dir_all(&shims).expect("rm shims");
+    fs::write(&shims, b"in the way").expect("blocker");
+    let downloads = requests(&fx);
+    let pc_b = other_pc(&fx, "pc-b").await;
+    let outcome = pc_b.install("demo", Some("1.0.0"), no_progress()).await;
+    assert!(outcome.is_err(), "{outcome:?}");
+    assert_eq!(requests(&fx), downloads, "nothing downloaded");
+    let after = fs::metadata(&exe)
+        .expect("still there")
+        .modified()
+        .expect("mtime");
+    assert_eq!(before, after, "the complete runtime was left alone");
 }

@@ -66,9 +66,22 @@ On Windows 11 these appear under **Show more options** (the classic menu). The n
 
 After copying the files the installer runs `OpenMindStudio.exe --integration set-layout per-user` or `... network`,
 which writes `install.json` next to the program; the app reads it at every start and never shows the data-scope setup.
-A network install also runs `--integration desktop-shortcut` (the installing user's Desktop, pointing at the UNC path).
 Silent: `/NETWORK`. An update keeps the earlier choice (read from `install.json`); the uninstaller removes
 `install.json` with the program (each computer's local data is kept).
+
+**Desktop shortcuts of a network install.** After choosing Recommended for All Users the setup asks one question: *give
+each user an OpenMind Studio shortcut on their own Desktop the first time they start it from the shared folder?* Yes
+(the default) leaves it to the app: each Windows user gets one shortcut, once, by the `\\server\share` path, unless a
+shortcut to the program is already on their Desktop or the Public Desktop; a deleted one stays deleted. No runs
+`--integration user-desktop-shortcuts off` (for IT that deploys shortcuts itself); silent installs use
+`/NOUSERSHORTCUTS`. An update keeps the choice. The person installing gets their own shortcut from the finish page's
+check box as usual; a silent or passive install points the one it makes at the `\\server\share` path (not with `/NS`,
+never on an update). The `deploy\` folder the setup installs next to the program holds the user launchers (Create /
+Remove Desktop Shortcut, Check Installation), the logon script and the push script for IT — see `docs/deployment.md`.
+
+```powershell
+"OpenMind-Studio_1.0.3_windows_x64_setup.exe" /S /NETWORK /NOUSERSHORTCUTS /D=\\fs01\apps\OpenMind Studio
+```
 
 Then two check boxes, both unchecked on a first install. On a reinstall or update they start with the earlier choice.
 

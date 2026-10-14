@@ -5,6 +5,8 @@
 //! OpenMindStudio.exe --integration layout
 //! OpenMindStudio.exe --integration desktop-shortcut [--all-users]
 //! OpenMindStudio.exe --integration remove-desktop-shortcut [--all-users]
+//! OpenMindStudio.exe --integration user-desktop-shortcuts on|off
+//! OpenMindStudio.exe --integration check
 //! ```
 //!
 //! - `set-layout` writes `install.json` next to the program (see `openmind_core::install`): the per-user setup writes
@@ -15,6 +17,10 @@
 //!   a network share, the shortcut points at the share's `\\server\share` path, never at a drive letter. Running it
 //!   again changes nothing, so it can sit in a logon script.
 //! - `remove-desktop-shortcut` removes that shortcut only when it points at this program.
+//! - `user-desktop-shortcuts on|off` says whether a network installation gives each Windows user a Desktop shortcut at
+//!   their first start (see `super::provision`; on by default, kept in `install.json`).
+//! - `check` prints where the program and this user's data are, what this user may write and the shortcut's state,
+//!   with what to do about anything that is off (see `super::check`).
 
 use std::path::Path;
 
@@ -22,7 +28,7 @@ use openmind_core::install::{self, InstallLayout};
 
 /// The shortcut's file name (the same name the per-user setup's own Desktop shortcut uses).
 pub const SHORTCUT_NAME: &str = "OpenMind Studio.lnk";
-const DESCRIPTION: &str = "OpenMind Studio";
+pub const DESCRIPTION: &str = "OpenMind Studio";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeployAction {
@@ -30,6 +36,8 @@ pub enum DeployAction {
     Layout,
     DesktopShortcut { all_users: bool },
     RemoveDesktopShortcut { all_users: bool },
+    UserDesktopShortcuts(bool),
+    Check,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,7 +47,7 @@ pub enum ShortcutOutcome {
     AlreadyCorrect,
 }
 
-pub const USAGE: &str = "usage: OpenMindStudio.exe --integration set-layout portable|per-user|per-machine|network | layout | desktop-shortcut [--all-users] | remove-desktop-shortcut [--all-users]";
+pub const USAGE: &str = "usage: OpenMindStudio.exe --integration set-layout portable|per-user|per-machine|network | layout | desktop-shortcut [--all-users] | remove-desktop-shortcut [--all-users] | user-desktop-shortcuts on|off | check";
 
 /// One of the actions above, from the words after `--integration`; `None` when the first word is not one of them.
 pub fn parse(words: &[String]) -> Option<Result<DeployAction, String>> {
@@ -57,6 +65,13 @@ pub fn parse(words: &[String]) -> Option<Result<DeployAction, String>> {
             _ => Err(USAGE.to_string()),
         },
         "layout" if rest.is_empty() => Ok(DeployAction::Layout),
+        "check" if rest.is_empty() => Ok(DeployAction::Check),
+        "check" => Err(USAGE.to_string()),
+        "user-desktop-shortcuts" => match rest {
+            [word] if word == "on" => Ok(DeployAction::UserDesktopShortcuts(true)),
+            [word] if word == "off" => Ok(DeployAction::UserDesktopShortcuts(false)),
+            _ => Err(USAGE.to_string()),
+        },
         "desktop-shortcut" => {
             all_users().map(|all_users| DeployAction::DesktopShortcut { all_users })
         }
@@ -73,7 +88,7 @@ pub fn same_target(a: &Path, b: &Path) -> bool {
 }
 
 /// The layout as written, or what the app would infer (for `layout`).
-fn describe_layout(dir: &Path) -> String {
+pub fn describe_layout(dir: &Path) -> String {
     match install::read(dir) {
         install::InstallRecord::Found(meta) => format!(
             "{} (install.json, written by {} on {})",
@@ -101,8 +116,26 @@ pub fn run(action: DeployAction, exe: &Path) -> Result<String, String> {
                     install::install_file(dir).display()
                 )
             })?;
+            if layout == InstallLayout::Network {
+                // The person running the setup gets their shortcut from the setup itself (its last page): their first
+                // start must not add a second one, nor bring back one they chose not to have.
+                note_offer(exe, "the setup decides this user's shortcut");
+            }
             Ok(format!("Installation layout: {}", layout.label()))
         }
+        DeployAction::UserDesktopShortcuts(on) => {
+            install::set_user_desktop_shortcuts(dir, on).map_err(|err| {
+                format!(
+                    "couldn't change {}: {err}",
+                    install::install_file(dir).display()
+                )
+            })?;
+            Ok(format!(
+                "Per-user Desktop shortcuts at first start: {}",
+                if on { "on" } else { "off" }
+            ))
+        }
+        DeployAction::Check => check(exe),
         DeployAction::Layout => Ok(describe_layout(dir)),
         DeployAction::DesktopShortcut { all_users } => desktop_shortcut(exe, all_users),
         DeployAction::RemoveDesktopShortcut { all_users } => {
@@ -111,17 +144,50 @@ pub fn run(action: DeployAction, exe: &Path) -> Result<String, String> {
     }
 }
 
+/// Records, for this Windows user of a network installation, that its first-start shortcut offer is settled (see
+/// `super::provision`). Best effort: without the record the first start only looks again.
+fn note_offer(exe: &Path, outcome: &str) {
+    let Some(dir) = exe.parent() else {
+        return;
+    };
+    if !matches!(install::read(dir), install::InstallRecord::Found(meta) if meta.layout == InstallLayout::Network)
+    {
+        return;
+    }
+    if let Some(local) = install::local_install_dir(dir) {
+        if !super::provision::offered(&local) {
+            let _ = super::provision::record_offer(&local, outcome);
+        }
+    }
+}
+
 #[cfg(windows)]
-fn desktop_shortcut(exe: &Path, all_users: bool) -> Result<String, String> {
+fn check(exe: &Path) -> Result<String, String> {
+    Ok(super::check::render(&super::check::gather(exe)))
+}
+
+#[cfg(not(windows))]
+fn check(_exe: &Path) -> Result<String, String> {
+    Err("The deployment check is available on Windows only.".into())
+}
+
+#[cfg(windows)]
+pub fn desktop_shortcut(exe: &Path, all_users: bool) -> Result<String, String> {
     let target = super::shortcut::universal_path(exe);
     let lnk = super::shortcut::desktop_dir(all_users)?.join(SHORTCUT_NAME);
     let outcome = super::shortcut::write(&lnk, &target, DESCRIPTION).map_err(|err| {
         if all_users {
-            format!("{err}. Writing to the Public Desktop needs administrator rights.")
+            format!(
+                "{err}. Writing to the Public Desktop needs administrator rights: run this from an administrator \
+                 prompt, or create the shortcut on your own Desktop (without --all-users)."
+            )
         } else {
-            err
+            format!("Couldn't save {}: {err}. {}", lnk.display(), super::check::manual_steps(&target))
         }
     })?;
+    if !all_users {
+        note_offer(exe, "created on request");
+    }
     Ok(format!(
         "{} {} -> {}",
         match outcome {
@@ -156,7 +222,7 @@ fn remove_desktop_shortcut(exe: &Path, all_users: bool) -> Result<String, String
 }
 
 #[cfg(not(windows))]
-fn desktop_shortcut(_exe: &Path, _all_users: bool) -> Result<String, String> {
+pub fn desktop_shortcut(_exe: &Path, _all_users: bool) -> Result<String, String> {
     Err("Desktop shortcuts are created by this command on Windows only.".into())
 }
 
@@ -196,6 +262,16 @@ mod tests {
             parse(&words("remove-desktop-shortcut --all-users")),
             Some(Ok(DeployAction::RemoveDesktopShortcut { all_users: true }))
         );
+        assert_eq!(parse(&words("check")), Some(Ok(DeployAction::Check)));
+        assert_eq!(
+            parse(&words("user-desktop-shortcuts off")),
+            Some(Ok(DeployAction::UserDesktopShortcuts(false)))
+        );
+        assert!(matches!(
+            parse(&words("user-desktop-shortcuts")),
+            Some(Err(_))
+        ));
+        assert!(matches!(parse(&words("check now")), Some(Err(_))));
         assert!(matches!(parse(&words("set-layout cloud")), Some(Err(_))));
         assert!(matches!(parse(&words("set-layout")), Some(Err(_))));
         assert!(matches!(
@@ -263,6 +339,37 @@ mod tests {
             std::fs::read_dir(dir.path()).expect("dir").count(),
             2,
             "one shortcut, one folder"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shortcuts_work_in_unicode_folders_with_spaces() {
+        let dir = tempfile::tempdir().expect("dir");
+        let folder = dir
+            .path()
+            .join("Школа Ünïcødé — শিক্ষা")
+            .join("OpenMind Studio");
+        std::fs::create_dir_all(&folder).expect("folder");
+        let program = folder.join("OpenMindStudio.exe");
+        std::fs::copy(std::env::current_exe().expect("exe"), &program).expect("copy");
+        let desktop = dir.path().join("Рабочий стол");
+        std::fs::create_dir_all(&desktop).expect("desktop");
+        let lnk = desktop.join(SHORTCUT_NAME);
+        assert_eq!(
+            super::super::shortcut::write(&lnk, &program, DESCRIPTION),
+            Ok(ShortcutOutcome::Created)
+        );
+        let found = super::super::shortcut::shortcuts_in(&desktop, 10);
+        assert_eq!(found.len(), 1);
+        assert!(
+            same_target(&found[0].1, &program),
+            "{}",
+            found[0].1.display()
+        );
+        assert_eq!(
+            super::super::shortcut::write(&lnk, &program, DESCRIPTION),
+            Ok(ShortcutOutcome::AlreadyCorrect)
         );
     }
 }

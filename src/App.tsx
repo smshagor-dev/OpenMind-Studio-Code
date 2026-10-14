@@ -23,6 +23,8 @@ import { ProfilesDialog } from "./components/profiles/ProfilesDialog";
 import { MandatoryUpdateOverlay } from "./components/updates/MandatoryUpdateOverlay";
 import { UpdateDialog } from "./components/updates/UpdateDialog";
 import "./styles/updates.css";
+import "./styles/deployment.css";
+import { NetworkDeploymentDialog } from "./components/deployment/NetworkDeploymentDialog";
 import { NetworkDialog, NetworkFailureCard } from "./components/network/NetworkDialog";
 import { DependencyCard } from "./components/deps/DependencyCard";
 import { DependencySetupCard } from "./components/deps/DependencySetupCard";
@@ -191,6 +193,7 @@ export function App() {
       <FormatterDialog />
       <ProfilesDialog />
       <UpdateDialog />
+      <NetworkDeploymentDialog />
       <MandatoryUpdateOverlay />
       <NetworkDialog />
       <NetworkFailureCard />

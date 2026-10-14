@@ -3,6 +3,7 @@
 mod app_state;
 mod commands;
 mod data_scope;
+mod deploy;
 mod integration;
 mod launch;
 mod locale;
@@ -34,6 +35,10 @@ fn main() {
     if let Some(code) = commands::integration::run_cli() {
         std::process::exit(code);
     }
+    // `--deploy <action>` (deployment on the local network from a console): likewise, before anything starts.
+    if let Some(code) = deploy::cli::run_cli() {
+        std::process::exit(code);
+    }
     let launch_request = launch::from_process();
     startup::mark_process_start();
     // The app folder, this computer's (hashed) profile id and the portable data scope decide every machine-specific
@@ -46,6 +51,7 @@ fn main() {
     let layout_failure = app_paths.ensure_dirs().err();
     openmind_core::init_logging_to_file(&app_paths.logs_dir);
     data_scope::log_start_notes();
+    data_scope::provision_desktop_shortcut(&scope);
 
     tracing::info!(
         db_path = %app_paths.db_path.display(),
@@ -88,6 +94,7 @@ fn main() {
         .manage(launch::LaunchState::new(launch_request))
         .manage(updates::UpdateState::default())
         .manage(sync::SyncState::default())
+        .manage(deploy::service::DeployService::default())
         .manage(scope)
         .on_page_load(|webview, payload| {
             if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
@@ -109,6 +116,15 @@ fn main() {
             updates::update_report_unsaved,
             commands::integration::integration_status,
             commands::integration::integration_apply,
+            commands::integration::integration_desktop_shortcut,
+            commands::integration::integration_check,
+            commands::deploy::deploy_status,
+            commands::deploy::deploy_apply_offering,
+            commands::deploy::deploy_search,
+            commands::deploy::deploy_test,
+            commands::deploy::deploy_provision,
+            commands::deploy::deploy_launch,
+            commands::deploy::deploy_trust,
             commands::python_packages::python_packages_status,
             commands::python_packages::python_packages_install,
             commands::document::document_open,
@@ -535,6 +551,8 @@ fn main() {
             sync::start_watching(app.handle(), &app_paths.root_dir);
             // The canonical state's first read of every domain, in the background.
             state::fill(app.handle());
+            // Deployment on the local network: offer this installation only when the user turned it on.
+            commands::deploy::apply_offering_at_start(app.handle());
             // The proxy for OpenMind's own requests, from the settings (local reads; no request is made).
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

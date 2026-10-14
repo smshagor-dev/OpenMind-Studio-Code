@@ -36,6 +36,13 @@
 ; Silent installs: /ADDTOPATH and /EXPLORERMENU. The work is done by the app itself
 ; (`OpenMindStudio.exe --integration <action>`), which records what it added and removes only that; the uninstaller
 ; runs `--integration remove-all` (skipped for an update, so the choice survives it).
+;
+; Desktop shortcuts in a "Recommended for All Users" (network) installation: the person installing gets theirs from the
+; finish page, as with For Me (a silent or passive install gets it by its network path unless /NS). Every other Windows
+; user gets one the first time they start OpenMind Studio from the shared folder on a computer (once; see
+; src-tauri/src/integration/provision.rs) unless the installer says No to the question after choosing the type, or a
+; silent install passes /NOUSERSHORTCUTS (`--integration user-desktop-shortcuts off`; kept by updates). IT can deploy
+; them instead with the files in <install>\deploy (deploy\README.txt).
 
 !include LogicLib.nsh
 !include nsDialogs.nsh
@@ -65,6 +72,8 @@
 Var OmInit
 Var OmAddPath
 Var OmAddMenu
+; 1 = each Windows user gets a Desktop shortcut at their first start (network installations only).
+Var OmUserShortcuts
 Var OmNetwork
 Var OmPathBox
 Var OmMenuBox
@@ -275,6 +284,7 @@ Function OmDefaults
   StrCpy $OmInit 1
   StrCpy $OmAddPath 0
   StrCpy $OmAddMenu 0
+  StrCpy $OmUserShortcuts 1
   Call OmEarlierNetwork
   ClearErrors
   ${GetOptions} $CMDLINE "/NETWORK" $0
@@ -291,6 +301,11 @@ Function OmDefaults
   ${GetOptions} $CMDLINE "/EXPLORERMENU" $0
   ${IfNot} ${Errors}
     StrCpy $OmAddMenu 1
+  ${EndIf}
+  ClearErrors
+  ${GetOptions} $CMDLINE "/NOUSERSHORTCUTS" $0
+  ${IfNot} ${Errors}
+    StrCpy $OmUserShortcuts 0
   ${EndIf}
   ; The record's value names are the PATH entries in lower case (see src-tauri/src/integration/mod.rs).
   ${StrCase} $1 "$INSTDIR\bin" "L"
@@ -316,7 +331,7 @@ Function OmCheckLayout
   ${Else}
     StrCpy $1 "per-user"
   ${EndIf}
-  StrCpy $2 "OpenMind Studio was installed, but the installation type couldn't be recorded in $INSTDIR\install.json (exit code $0). Until it is, OpenMind Studio may treat this folder as a different installation type. To fix it, run: $\"$INSTDIR\${MAINBINARYNAME}.exe$\" --integration set-layout $1"
+  StrCpy $2 "OpenMind Studio was installed, but the installation type couldn't be recorded in $INSTDIR\install.json (exit code $0). Until it is, OpenMind Studio may treat this folder as a different installation type. To fix it, run: $\"$INSTDIR\${OM_EXE}$\" --integration set-layout $1"
   DetailPrint "$2"
   MessageBox MB_OK|MB_ICONEXCLAMATION "$2" /SD IDOK
 FunctionEnd
@@ -651,7 +666,12 @@ Function OmWelcomeLeave
   ${NSD_GetState} $OmPathBox $OmAddPath
   ${NSD_GetState} $OmMenuBox $OmAddMenu
   ${If} $OmNetwork == 1
-    MessageBox MB_OK|MB_ICONINFORMATION "Recommended for All Users installs OpenMind Studio once into a shared network folder that several computers run it from.$\r$\n$\r$\nOn the next page, choose that folder (for example \\server\apps\OpenMind Studio). You need permission to write there; the other computers' users only need to read it.$\r$\n$\r$\nEach computer and Windows user keeps their own database, settings and logs on their own disk. Runtimes and tools installed into the shared folder are available on every computer.$\r$\n$\r$\nThis setup does not change other computers and does not change any Windows permissions. It puts a shortcut on your own Desktop only; shortcuts on other computers are added by your IT administrator with the tools you are allowed to use (see docs\deployment.md)."
+    MessageBox MB_YESNO|MB_ICONQUESTION "Recommended for All Users installs OpenMind Studio once into a shared network folder that several computers run it from.$\r$\n$\r$\nOn the next page, choose that folder (for example \\server\apps\OpenMind Studio). You need permission to write there; the other computers' users only need to read it.$\r$\n$\r$\nEach computer and Windows user keeps their own database, settings and logs on their own disk. Runtimes and tools installed into the shared folder are available on every computer. This setup does not change other computers or any Windows permissions; the deploy folder it installs has shortcut launchers and a logon script for IT (deploy\README.txt).$\r$\n$\r$\nGive each user an OpenMind Studio shortcut on their own Desktop the first time they start it from the shared folder? (Recommended. Choose No if IT deploys the shortcuts, for example with Group Policy.)" IDYES om_user_shortcuts_yes
+    StrCpy $OmUserShortcuts 0
+    Goto om_user_shortcuts_done
+    om_user_shortcuts_yes:
+    StrCpy $OmUserShortcuts 1
+    om_user_shortcuts_done:
   ${EndIf}
 FunctionEnd
 
@@ -714,7 +734,21 @@ FunctionEnd
   ${If} $OmNetwork == 1
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration set-layout network' $0
     Call OmCheckLayout
-    ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration desktop-shortcut' $0
+    ; A fresh install records the per-user shortcut choice; an update keeps the one made before (in install.json).
+    ${If} $OmState == "fresh"
+    ${AndIf} $OmUserShortcuts == 0
+      ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration user-desktop-shortcuts off' $0
+    ${EndIf}
+    ; Interactive: the finish page's check box decides this user's shortcut (the app points it at the network path
+    ; at the first start). Silent/passive: the template already made one from $INSTDIR, which may be a drive letter;
+    ; point it at the \\server\share path. Never on an update or with /NS (a deleted shortcut stays deleted).
+    ${If} $UpdateMode <> 1
+    ${AndIf} $NoShortcutMode <> 1
+      ${If} ${Silent}
+      ${OrIf} $PassiveMode = 1
+        ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration desktop-shortcut' $0
+      ${EndIf}
+    ${EndIf}
   ${Else}
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --integration set-layout per-user' $0
     Call OmCheckLayout

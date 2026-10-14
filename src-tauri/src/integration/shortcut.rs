@@ -20,9 +20,6 @@ use winapi::um::objidl::IPersistFile;
 use winapi::um::shlobj::SHGetKnownFolderPath;
 use winapi::um::shobjidl_core::{IShellLinkW, ShellLink};
 use winapi::um::unknwnbase::IUnknown;
-use winapi::um::winnetwk::{
-    WNetGetUniversalNameW, UNIVERSAL_NAME_INFOW, UNIVERSAL_NAME_INFO_LEVEL,
-};
 use winapi::{Class, Interface};
 
 use super::deploy::ShortcutOutcome;
@@ -62,34 +59,7 @@ pub fn desktop_dir(all_users: bool) -> Result<PathBuf, String> {
 
 /// `Z:\dir\file` -> `\\server\share\dir\file` when `Z:` is a network drive; any other path as it is.
 pub fn universal_path(path: &Path) -> PathBuf {
-    if !openmind_core::install::is_remote_path(path) || path.to_string_lossy().starts_with(r"\\") {
-        return path.to_path_buf();
-    }
-    let local = wide(path.as_os_str());
-    let mut size: u32 = 2048;
-    let mut buffer = vec![0u8; size as usize];
-    // SAFETY: `local` is NUL-terminated; `buffer` holds `size` bytes, and on success starts with a UNIVERSAL_NAME_INFOW
-    // whose pointer refers into the same buffer.
-    let universal = unsafe {
-        let status = WNetGetUniversalNameW(
-            local.as_ptr(),
-            UNIVERSAL_NAME_INFO_LEVEL,
-            buffer.as_mut_ptr().cast(),
-            &mut size,
-        );
-        if status != 0 {
-            return path.to_path_buf();
-        }
-        let info = &*(buffer.as_ptr() as *const UNIVERSAL_NAME_INFOW);
-        if info.lpUniversalName.is_null() {
-            return path.to_path_buf();
-        }
-        let len = (0..)
-            .take_while(|&i| *info.lpUniversalName.add(i) != 0)
-            .count();
-        std::slice::from_raw_parts(info.lpUniversalName, len).to_vec()
-    };
-    PathBuf::from(std::ffi::OsString::from_wide(&universal))
+    openmind_core::install::universal_path(path)
 }
 
 /// COM for this thread, released when dropped.
@@ -128,8 +98,15 @@ impl<T: Interface> Drop for Owned<T> {
     }
 }
 
+/// `E_ACCESSDENIED` as a COM result (`HRESULT_FROM_WIN32(ERROR_ACCESS_DENIED)`).
+const E_ACCESS_DENIED: i32 = 0x8007_0005_u32 as i32;
+
 fn check(hr: i32, what: &str) -> Result<(), String> {
-    if FAILED(hr) {
+    if hr == E_ACCESS_DENIED {
+        Err(format!(
+            "{what} failed: Windows denied access (you may not change that folder, or a policy locks it)"
+        ))
+    } else if FAILED(hr) {
         Err(format!("{what} failed (0x{hr:08x})"))
     } else {
         Ok(())
@@ -178,6 +155,25 @@ pub fn read_target(lnk: &Path) -> Option<PathBuf> {
         }
         Some(from_wide(&buffer))
     }
+}
+
+/// The shortcuts (`*.lnk`, not in sub-folders) in `dir` with their targets; at most `limit` files are read. A folder
+/// that can't be listed has none, and a shortcut that can't be read is left out.
+pub fn shortcuts_in(dir: &Path, limit: usize) -> Vec<(PathBuf, PathBuf)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("lnk"))
+                && path.is_file()
+        })
+        .take(limit)
+        .filter_map(|lnk| read_target(&lnk).map(|target| (lnk, target)))
+        .collect()
 }
 
 /// Writes (or repairs) `lnk` so it starts `target` in its own folder with the program's icon.

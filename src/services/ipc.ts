@@ -426,7 +426,7 @@ export interface TerminalSessionInfo {
 }
 
 // Mirrors openmind_runtime_manager (camelCase).
-export type InstallPhase = "download" | "verify" | "extract" | "finalize" | "done";
+export type InstallPhase = "waiting" | "download" | "verify" | "extract" | "finalize" | "done";
 
 export interface InstallProgress {
   kind: string;
@@ -644,6 +644,10 @@ export interface IpcClient
   integrationStatus: () => Promise<IntegrationStatus>;
   /** Adds or removes the PATH entry or the File Explorer entries (only after the user confirmed). */
   integrationApply: (action: IntegrationAction) => Promise<string>;
+  /** Creates or repairs this user's Desktop shortcut to this copy (its network path on a share); what was done. */
+  integrationDesktopShortcut: () => Promise<string>;
+  /** The deployment check's report (`OpenMindStudio.exe --integration check`), as text. */
+  integrationCheck: () => Promise<string>;
   /** The offline Python package bundle that ships with this copy (a local read). */
   pythonPackagesStatus: () => Promise<PythonBundleStatus>;
   /** Installs the bundle into a portable Python (`null` = the active one); resolves with what was installed. */
@@ -1285,6 +1289,8 @@ export const tauriIpcClient: IpcClient = {
   launchTake: () => invoke<LaunchRequest | null>("launch_take"),
   integrationStatus: () => invoke<IntegrationStatus>("integration_status"),
   integrationApply: (action) => invoke<string>("integration_apply", { action }),
+  integrationDesktopShortcut: () => invoke<string>("integration_desktop_shortcut"),
+  integrationCheck: () => invoke<string>("integration_check"),
   pythonPackagesStatus: () => invoke<PythonBundleStatus>("python_packages_status"),
   pythonPackagesInstall: (version) => invoke<string>("python_packages_install", { version }),
   panelConfigPath: (module) => invoke<string | null>("panel_config_path", { kind: module }),

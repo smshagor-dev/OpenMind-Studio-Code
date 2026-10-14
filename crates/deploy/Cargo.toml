@@ -1,0 +1,23 @@
+[package]
+name = "openmind-deploy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenMind Studio deployment on a local network: finding OpenMind Studio deployments (a shared network installation, a computer offering signed setup packages), serving and fetching those packages, and deciding how to provision one computer. Tauri-agnostic; separate from collaboration discovery."
+
+[dependencies]
+getrandom = "0.3"
+# Which IPv4 networks this computer is on (subnet broadcasts of the discovery query).
+netdev = { version = "0.46", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.11.0"
+# SO_REUSEADDR + SO_BROADCAST for the discovery port.
+socket2 = { version = "0.6", features = ["all"] }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

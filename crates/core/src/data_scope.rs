@@ -157,7 +157,7 @@ pub fn clear_pending_import(app_root: &Path) -> std::io::Result<()> {
 
 /// Writes `bytes` to `<file>.<pid>.tmp`, flushes it to the disk and renames it over `file`: a crash (or a pulled drive)
 /// leaves either the old or the new content, never a truncated file.
-pub(crate) fn write_atomic(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub fn write_atomic(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     if let Some(parent) = file.parent() {
         std::fs::create_dir_all(parent)?;

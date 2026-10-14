@@ -184,6 +184,28 @@ fn layout_of(exe_dir: &std::path::Path) -> InstallLayout {
     install::infer_layout(hint, install::is_remote_path(exe_dir))
 }
 
+/// Where this copy keeps its data on this computer, found without preparing, creating or locking anything (the
+/// `--deploy test` diagnostics run while the app may be open). The same rules as [`resolve`]: an installer-managed
+/// layout with local state uses this user's local folder, the per-user setup its own folder, a portable copy this
+/// computer's profile on the drive when it has one.
+pub fn paths_readonly() -> Result<AppPaths, String> {
+    let base = AppPaths::resolve().map_err(|err| err.to_string())?;
+    let exe_dir = exe_dir_or(&base.root_dir);
+    let layout = layout_of(&exe_dir);
+    if layout.local_state() {
+        let local = install::local_install_dir(&exe_dir)
+            .ok_or("this computer has no local application data folder (LOCALAPPDATA)")?;
+        return Ok(local::paths_for(layout, &exe_dir, &local).with_layout(layout));
+    }
+    if layout != InstallLayout::Portable {
+        return Ok(base.with_layout(layout));
+    }
+    let identity = machine_identity::resolve(&base.root_dir);
+    Ok(find_own_profile(&base.root_dir, &identity)
+        .map(|machine| AppPaths::per_machine(base.root_dir.clone(), machine))
+        .unwrap_or(base))
+}
+
 /// Resolves the app folder, this computer's profile and the scope, and prepares the database. Fails only when the app
 /// folder itself can't be found; every other problem becomes [`ScopeRuntime::failure`].
 pub fn resolve() -> Result<ScopeRuntime, CoreError> {
@@ -535,6 +557,34 @@ pub fn data_scope_restart(app: AppHandle) {
 pub fn data_scope_exit(app: AppHandle) {
     app.exit(0);
 }
+
+/// A shared network installation: this Windows user's Desktop shortcut (once; see `integration::provision`). Started
+/// after logging is up, in the background — it reads the Desktops and may wait on the network — and never in tests
+/// (they would touch the real user's Desktop).
+#[cfg(windows)]
+pub fn provision_desktop_shortcut(runtime: &ScopeRuntime) {
+    if runtime.paths.layout != install::InstallLayout::Network
+        || runtime.failure.is_some()
+        || cfg!(test)
+    {
+        return;
+    }
+    let (Some(local), Ok(exe)) = (runtime.local_dir.clone(), std::env::current_exe()) else {
+        return;
+    };
+    let spawned = std::thread::Builder::new()
+        .name("desktop-shortcut".into())
+        .spawn(move || {
+            let outcome = crate::integration::provision::at_start(&exe, &local);
+            tracing::info!(target: "openmind::deploy", %outcome, "per-user Desktop shortcut");
+        });
+    if let Err(err) = spawned {
+        tracing::warn!(%err, "couldn't check the Desktop shortcut");
+    }
+}
+
+#[cfg(not(windows))]
+pub fn provision_desktop_shortcut(_runtime: &ScopeRuntime) {}
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]

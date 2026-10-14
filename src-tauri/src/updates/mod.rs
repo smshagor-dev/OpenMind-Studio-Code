@@ -22,7 +22,7 @@
 
 mod flow;
 pub mod policy;
-mod portable;
+pub(crate) mod portable;
 mod scheduler;
 
 use std::path::{Path, PathBuf};

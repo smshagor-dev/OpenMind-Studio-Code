@@ -53,6 +53,60 @@ fn install_json_round_trips_and_keeps_its_first_date_on_a_rewrite() {
     assert_eq!(updated.app_version, "1.0.3");
     let text = std::fs::read_to_string(install_file(dir.path())).expect("read");
     assert!(text.contains("\"layout\": \"network\""), "{text}");
+    // Nothing was chosen: the field isn't written, so an older version reads the file unchanged.
+    assert!(!text.contains("userDesktopShortcuts"), "{text}");
+}
+
+#[test]
+fn per_user_desktop_shortcuts_default_to_network_installs_and_survive_an_update() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    assert!(
+        set_user_desktop_shortcuts(dir.path(), false).is_err(),
+        "no install.json: nothing is guessed"
+    );
+    write(dir.path(), InstallLayout::Network, "1.0.2").expect("write");
+    let InstallRecord::Found(meta) = read(dir.path()) else {
+        panic!("not found");
+    };
+    assert!(meta.gives_user_desktop_shortcuts());
+    let off = set_user_desktop_shortcuts(dir.path(), false).expect("off");
+    assert!(!off.gives_user_desktop_shortcuts());
+    // The setup of the next version rewrites the layout; the administrator's choice stays.
+    write(dir.path(), InstallLayout::Network, "1.0.3").expect("update");
+    let InstallRecord::Found(updated) = read(dir.path()) else {
+        panic!("not found");
+    };
+    assert_eq!(updated.user_desktop_shortcuts, Some(false));
+    assert_eq!(updated.app_version, "1.0.3");
+    // Other layouts have their own installer shortcuts: off unless asked for.
+    write(dir.path(), InstallLayout::PerUser, "1.0.3").expect("per-user");
+    let InstallRecord::Found(mine) = read(dir.path()) else {
+        panic!("not found");
+    };
+    assert_eq!(mine.user_desktop_shortcuts, Some(false));
+    let fresh = tempfile::tempdir().expect("tempdir");
+    write(fresh.path(), InstallLayout::PerUser, "1.0.3").expect("per-user");
+    let InstallRecord::Found(per_user) = read(fresh.path()) else {
+        panic!("not found");
+    };
+    assert!(!per_user.gives_user_desktop_shortcuts());
+    // A file written by 1.0.2 (no field) still reads.
+    let old = r#"{"format":"openmind-install","schemaVersion":1,"layout":"network","installedAt":"x","appVersion":"1.0.2"}"#;
+    std::fs::write(install_file(fresh.path()), old).expect("old");
+    assert!(
+        matches!(read(fresh.path()), InstallRecord::Found(m) if m.gives_user_desktop_shortcuts())
+    );
+}
+
+#[test]
+fn a_local_path_has_no_other_universal_name() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    assert_eq!(universal_path(dir.path()), dir.path());
+    let unc = Path::new(r"\\fs01\apps\OpenMind Studio");
+    assert_eq!(universal_path(unc), unc);
+    // A folder that can't be resolved is used as given (it is local, so it has no network name either).
+    let gone = dir.path().join("gone");
+    assert_eq!(resolved_install_dir(&gone), gone);
 }
 
 #[test]

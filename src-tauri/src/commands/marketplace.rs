@@ -325,7 +325,8 @@ pub async fn ext_market_download(
     name: String,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let dir = state.app_root.join("cache").join("extensions");
+    // A download in progress: this computer's own cache (two computers fetching one extension must not share a file).
+    let dir = state.paths.machine_cache_dir.join("extensions");
     blocking(move || {
         let value = details_json(&namespace, &name)?;
         let version = text(&value, "version").unwrap_or_else(|| "latest".into());

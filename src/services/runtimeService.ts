@@ -20,6 +20,7 @@ export interface RuntimeState {
 const EMPTY: RuntimeState = { loaded: false, runtimes: [], progress: {}, working: {}, errors: {} };
 
 const PHASE_LABELS: Record<InstallProgress["phase"], string> = {
+  waiting: "runtimes.phase.waiting",
   download: "runtimes.phase.download",
   verify: "runtimes.phase.verify",
   extract: "runtimes.phase.extract",
