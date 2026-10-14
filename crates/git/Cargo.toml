@@ -12,7 +12,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [target."cfg(windows)".dependencies]
-openmind-process = { version = "1.0.3", path = "../process" }
+openmind-process = { version = "1.0.4", path = "../process" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

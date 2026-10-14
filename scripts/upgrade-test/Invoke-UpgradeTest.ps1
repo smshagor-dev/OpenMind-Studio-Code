@@ -5,7 +5,9 @@
 param(
   [string]$Old = "C:\old",          # release\<previous version> (read-only)
   [string]$New = "C:\new",          # release\v<version> (read-only)
-  [string]$Out = "C:\results"
+  [string]$Out = "C:\results",
+  [Parameter(Mandatory = $true)][string]$OldVersion,   # the installed release before the upgrade, e.g. 1.0.3
+  [Parameter(Mandatory = $true)][string]$NewVersion    # the release under test, e.g. 1.0.4
 )
 $ErrorActionPreference = "Stop"
 $results = [ordered]@{ started = (Get-Date).ToString("o"); cases = @() }
@@ -15,7 +17,15 @@ function Case($name, [scriptblock]$body) {
   try { & $body $case; $case.ok = -not ($case.checks.Values -contains $false) } catch { $case.error = "$_" }
   $results.cases += $case; Save
 }
-function Setup($dir, $pattern) { Get-ChildItem $dir -Recurse -File | Where-Object Name -match $pattern | Select-Object -First 1 -ExpandProperty FullName }
+# The previous release's files under either naming scheme: up to 1.0.2 "OpenMindStudio-Setup-<v>-<arch>.exe" and
+# "...-<v>-x64.msi", since 1.0.3 "OpenMind-Studio_<v>_windows_<arch>_setup.exe" and "..._windows_x64.msi".
+function OldSetupPattern($arch) { $v = [regex]::Escape($OldVersion); "(Setup-$v-$arch\.exe|_$($v)_windows_$($arch)_setup\.exe)$" }
+function OldMsiPattern { $v = [regex]::Escape($OldVersion); "($v-x64\.msi|_$($v)_windows_x64\.msi)$" }
+# Only the release files themselves: validation\ holds test builds (e.g. validation\university-test) with the same names.
+function Setup($dir, $pattern) {
+  Get-ChildItem $dir -Recurse -File | Where-Object { $_.Name -match $pattern -and $_.FullName -notmatch '\\validation\\' } |
+    Select-Object -First 1 -ExpandProperty FullName
+}
 function RunSetup($exe, [string[]]$arguments) { (Start-Process -FilePath $exe -ArgumentList $arguments -Wait -PassThru).ExitCode }
 function Launch($exe, $seconds = 25) {
   $p = Start-Process -FilePath $exe -PassThru; Start-Sleep $seconds
@@ -31,9 +41,9 @@ function Snapshot($label) {
 }
 
 foreach ($arch in "x64", "x86") {
-  Case "nsis-${arch}: 1.0.2 -> 1.0.3 in place, data kept" {
+  Case "nsis-${arch}: $OldVersion -> $NewVersion in place, data kept" {
     param($c)
-    $old = Setup $Old "Setup-1\.0\.2-$arch\.exe$"; $new = Setup $New "_windows_$($arch)_setup\.exe$"
+    $old = Setup $Old (OldSetupPattern $arch); $new = Setup $New "_windows_$($arch)_setup\.exe$"
     $c.checks.oldSetupFound = [bool]$old; $c.checks.newSetupFound = [bool]$new
     Snapshot "$arch-before"
     $c.checks.oldInstalled = (RunSetup $old @("/S")) -eq 0
@@ -42,23 +52,23 @@ foreach ($arch in "x64", "x86") {
     Launch $exe
     $db = Get-ChildItem $dir -Recurse -Filter "openmind-studio.db" -ErrorAction SilentlyContinue | Select-Object -First 1
     $c.checks.oldCreatedDatabase = [bool]$db
-    if ($db) { Copy-Item $db.FullName (Join-Path $Out "db-$arch-1.0.2.db") }
+    if ($db) { Copy-Item $db.FullName (Join-Path $Out "db-$arch-$OldVersion.db") }
     New-Item -ItemType Directory -Force (Join-Path $dir "runtimes\marker") | Out-Null
     Set-Content (Join-Path $dir "runtimes\marker\kept.txt") "runtime marker"
     Set-Content (Join-Path $dir "settings\marker.json") '{"kept": true}'
     $code = RunSetup $new @("/S")
     $c.newSetupExitCode = $code
     $c.checks.newSetupSucceeded = $code -eq 0
-    $c.checks.sameFolder = (Test-Path $exe) -and ((Get-Item $exe).VersionInfo.ProductVersion -eq "1.0.3")
+    $c.checks.sameFolder = (Test-Path $exe) -and ((Get-Item $exe).VersionInfo.ProductVersion -eq $NewVersion)
     $c.checks.noSecondInstall = @(Get-ChildItem (Join-Path $env:LOCALAPPDATA "Programs") -Directory | Where-Object Name -like "OpenMind*").Count -eq 1
     $c.checks.runtimeKept = (Get-Content (Join-Path $dir "runtimes\marker\kept.txt") -ErrorAction SilentlyContinue) -eq "runtime marker"
     $c.checks.settingsKept = Test-Path (Join-Path $dir "settings\marker.json")
     $c.checks.databaseKept = $db -and (Test-Path $db.FullName)
     $entry = Uninstall "OpenMind Studio"
     $c.uninstallVersions = @($entry.DisplayVersion)
-    $c.checks.oneUninstallEntry = @($entry).Count -eq 1 -and $entry.DisplayVersion -eq "1.0.3"
+    $c.checks.oneUninstallEntry = @($entry).Count -eq 1 -and $entry.DisplayVersion -eq $NewVersion
     Launch $exe
-    if ($db) { Copy-Item $db.FullName (Join-Path $Out "db-$arch-1.0.3.db") }
+    if ($db) { Copy-Item $db.FullName (Join-Path $Out "db-$arch-$NewVersion.db") }
     $c.checks.repairSucceeds = (RunSetup $new @("/S")) -eq 0
     $c.checks.stillOneInstall = @(Uninstall "OpenMind Studio").Count -eq 1
     Snapshot "$arch-after"
@@ -82,15 +92,15 @@ Case "nsis-x64: network installation keeps its layout on update" {
   RunSetup (Join-Path $share "uninstall.exe") @("/S") | Out-Null
 }
 
-Case "msi-x64: 1.0.2 -> 1.0.3 (per machine)" {
+Case "msi-x64: $OldVersion -> $NewVersion (per machine)" {
   param($c)
-  $old = Setup $Old "1\.0\.2-x64\.msi$"; $new = Setup $New "_windows_x64\.msi$"
+  $old = Setup $Old (OldMsiPattern); $new = Setup $New "_windows_x64\.msi$"
   $c.checks.oldInstalled = (Start-Process msiexec -ArgumentList "/i `"$old`" /qn /l*v `"$Out\msi-old.log`"" -Wait -PassThru).ExitCode -eq 0
   $code = (Start-Process msiexec -ArgumentList "/i `"$new`" /qn /l*v `"$Out\msi-new.log`"" -Wait -PassThru).ExitCode
   $c.newMsiExitCode = $code
   $c.checks.newInstalled = $code -eq 0
   $exe = Join-Path $env:ProgramFiles "OpenMind Studio\OpenMindStudio.exe"
-  $c.checks.version = (Test-Path $exe) -and ((Get-Item $exe).VersionInfo.ProductVersion -eq "1.0.3")
+  $c.checks.version = (Test-Path $exe) -and ((Get-Item $exe).VersionInfo.ProductVersion -eq $NewVersion)
   $c.checks.oneEntry = @(Uninstall "OpenMind Studio").Count -eq 1
   $c.checks.perMachineLayout = ((Get-Content (Join-Path (Split-Path $exe) "install.json") -Raw | ConvertFrom-Json).layout) -eq "perMachine"
 }

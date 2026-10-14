@@ -3300,6 +3300,19 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
     repository, so a private source repo is ineligible; no other free trusted provider. macOS not Developer ID-signed or
     notarized. Updater signing needs the key's password (DPAPI file or env); until then the rebuilt files have no `.sig`
     and no `latest.json`.
+- [ ] **Release 1.0.4** (branch `release/v1.0.4`; built locally, **not published**). Version 1.0.4 everywhere (workspace and
+  internal crates, `package.json`, `tauri.conf.json`, `Cargo.lock` via `cargo update --workspace` — the third-party
+  crates that happen to be at 1.0.3 are untouched). Content since the 1.0.3 build (`8a75e2d`): the multi-PC network
+  deployment work and the shared-installation Desktop shortcuts (`docs/release-notes-1.0.4.md`; those shortcut lines had
+  been added to the 1.0.3 notes after 1.0.3 was built — moved back out). Fixes: installing a package from a network
+  deployment is refused before any download on non-Windows systems (`exec::packages_installable_on`; it used to download
+  and fail at the end), the Linux shortcut check is NOT TESTED (not BLOCKED). Build scripts: `scripts/build-windows.bat`
+  (checks, x64/x86 setup+MSI+portable, collect, `release:sign` only with the key's password, verify; refuses existing
+  files without `--replace`), `scripts/linux-release.sh` (now checks prerequisites, version agreement, ELF machine of the
+  program/AppImage/tarball program, deb architecture/version, executable bits in the tarball; README names the build
+  system's glibc), `scripts/build-macos.command` (macOS only; wraps `macos-release.sh`), shared `scripts/build-info.mjs`
+  (`version` agreement, `target-dir`). Upgrade-test kit takes `-OldVersion/-NewVersion` (either naming scheme; never picks
+  a `validation\` test build as the previous release). Results: `release/v1.0.4/validation/reports/`.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).

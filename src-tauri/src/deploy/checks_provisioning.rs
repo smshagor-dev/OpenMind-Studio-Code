@@ -244,7 +244,7 @@ fn shortcut(copy: &ThisCopy) -> Check {
 
 #[cfg(not(windows))]
 fn shortcut(_copy: &ThisCopy) -> Check {
-    blocked(
+    not_tested(
         "shortcutValidity",
         "Desktop shortcuts are checked on Windows only",
     )

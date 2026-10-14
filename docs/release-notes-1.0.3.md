@@ -23,13 +23,7 @@ Windows (x64, x86), Linux (x64, x86) and — new — macOS (Apple silicon, Intel
   compiled on request and saved files reload the page.
 - **Collaborative workspace (preview).** Rooms with a Room Code, shared editing, presence and voice. Its multi-computer
   and cross-network validation is still pending; treat it as a preview.
-- **Shared network installations: Desktop shortcuts for every user.** Each Windows user who starts a "Recommended for
-  All Users" installation from the share gets an OpenMind Studio shortcut on their own Desktop once (by the
-  `\\server\share` path, so any drive letter works; skipped when a shortcut is already there; a deleted one stays
-  deleted; IT can turn it off). The installation carries a `deploy\` folder: Create / Remove Desktop Shortcut and Check
-  Installation for users (no administrator rights), a silent logon script for Group Policy, the push script and a
-  README for IT. `--integration check` reports paths, rights, writability and the shortcut's state with what to do;
-  `--integration user-desktop-shortcuts on|off`; setup switch `/NOUSERSHORTCUTS`.
+- Desktop-shortcut deployment for labs (`--integration desktop-shortcut`, `scripts\deploy\Deploy-OpenMindShortcuts.ps1`).
 - **macOS editions.** A disk image (`.dmg`) and an app ZIP for Apple silicon (arm64) and Intel (x64). Data is kept in
   `~/Library/Application Support/OpenMind Studio`, never inside the app. macOS copies tell you about new versions but
   don't update themselves.
@@ -49,10 +43,6 @@ Windows (x64, x86), Linux (x64, x86) and — new — macOS (Apple silicon, Intel
   local profile instead of two.
 - Two computers opening a language for the first time could make one language server fail to start (extraction race).
 - Database ownership: two computers could open one database through a share.
-- A network installation started from a mapped drive could start with an empty profile when the folder couldn't be
-  resolved for a moment. The installing user's Desktop shortcut kept the drive letter when the setup was installed
-  onto a mapped drive (the app now points it at the `\\server\share` path), and updates no longer re-add a shortcut
-  the user deleted.
 - Starting an MSI (Program Files) installation as a standard user stopped before any window appeared.
 - A per-user setup placed in a network folder made every computer open one database.
 - Installer state: a failed `--integration set-layout` is now reported; the installation type is kept on update.

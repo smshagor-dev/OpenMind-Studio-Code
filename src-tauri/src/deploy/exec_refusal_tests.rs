@@ -127,3 +127,12 @@ fn a_destination_that_cant_be_reached_or_written_fails_cleanly() {
     .expect_err("not writable");
     assert!(error.contains("can't be created"), "{error}");
 }
+
+#[test]
+fn packages_are_installed_from_the_network_on_windows_only() {
+    assert_eq!(packages_installable_on("windows"), Ok(()));
+    for other in ["linux", "macos"] {
+        let error = packages_installable_on(other).expect_err(other);
+        assert!(error.contains("Windows only"), "{error}");
+    }
+}
