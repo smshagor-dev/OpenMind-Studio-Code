@@ -3664,6 +3664,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
+name = "openmind-agent"
+version = "1.0.4"
+dependencies = [
+ "openmind-ai",
+ "openmind-fs",
+ "openmind-llm",
+ "openmind-process",
+ "openmind-search",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "trash",
+]
+
+[[package]]
 name = "openmind-ai"
 version = "1.0.4"
 dependencies = [
@@ -3912,6 +3929,24 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "openmind-llm"
+version = "1.0.4"
+dependencies = [
+ "getrandom 0.3.4",
+ "openmind-network",
+ "openmind-process",
+ "openmind-runtime-manager",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "ureq",
+ "winapi",
 ]
 
 [[package]]

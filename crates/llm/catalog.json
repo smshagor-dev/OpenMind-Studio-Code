@@ -1,0 +1,170 @@
+{
+  "format": "openmind-llm-catalog",
+  "version": 1,
+  "models": [
+    {
+      "id": "nemotron-3-nano-4b-q4",
+      "family": "Nemotron 3 Nano 4B",
+      "name": "Nemotron 3 Nano 4B",
+      "quant": "Q4_K_M",
+      "publisher": "NVIDIA",
+      "description": "NVIDIA's official 4-bit build. Small and quick: runs on almost any PC, even without a graphics card.",
+      "totalParamsB": 4.0,
+      "activeParamsB": 4.0,
+      "contextTokens": 32768,
+      "repo": "nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF",
+      "revision": "ba223d14e45525f7fae81db77ea8cabeb2fc6c25",
+      "license": {
+        "name": "NVIDIA Nemotron Open Model License",
+        "url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/"
+      },
+      "files": [
+        {
+          "path": "NVIDIA-Nemotron3-Nano-4B-Q4_K_M.gguf",
+          "sizeBytes": 2837072864,
+          "sha256": "be5d9a656a51922f24f1f09a759cebb694e1f5d9728bf0ef9f8c972c5a0b5ef2"
+        }
+      ]
+    },
+    {
+      "id": "nemotron-3-nano-4b-q8",
+      "family": "Nemotron 3 Nano 4B",
+      "name": "Nemotron 3 Nano 4B",
+      "quant": "Q8_0",
+      "publisher": "Unsloth (GGUF of NVIDIA's model)",
+      "description": "The same 4B model at 8-bit: a little better answers, needs about 1.5 GB more memory.",
+      "totalParamsB": 4.0,
+      "activeParamsB": 4.0,
+      "contextTokens": 32768,
+      "repo": "unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF",
+      "revision": "8e81be55c5aa3d63bb82b6ceec62d50805d9e1bb",
+      "license": {
+        "name": "NVIDIA Nemotron Open Model License",
+        "url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/"
+      },
+      "files": [
+        {
+          "path": "NVIDIA-Nemotron-3-Nano-4B-Q8_0.gguf",
+          "sizeBytes": 4233679008,
+          "sha256": "81d4c5931c42f34789267445139dbdb196073760b99e11fbc7067fa2d2d7d629"
+        }
+      ]
+    },
+    {
+      "id": "nemotron-3.5-lightning-30b-a3b-iq3",
+      "family": "Nemotron 3.5 Lightning 30B-A3B",
+      "name": "Nemotron 3.5 Lightning 30B-A3B",
+      "quant": "UD-IQ3_XXS",
+      "publisher": "Unsloth (GGUF of NVIDIA's model)",
+      "description": "The newest Nemotron (August 2026). A mixture of experts: 30B parameters, 3B active per token, so it stays fast even on the processor. Needs a PC with about 32 GB of memory.",
+      "totalParamsB": 30.0,
+      "activeParamsB": 3.0,
+      "contextTokens": 65536,
+      "repo": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
+      "revision": "f2d3fe3694501008786e81e5f20360cbf715496a",
+      "license": {
+        "name": "OpenMDW License 1.1",
+        "url": "https://openmdw.ai/license/1-1/"
+      },
+      "files": [
+        {
+          "path": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-IQ3_XXS.gguf",
+          "sizeBytes": 19758307392,
+          "sha256": "f3e042bb0e6c0081d37b87aa97f24b645b20cd80459dc629ea1b71b5bb46bd10"
+        }
+      ]
+    },
+    {
+      "id": "nemotron-3.5-lightning-30b-a3b-q4",
+      "family": "Nemotron 3.5 Lightning 30B-A3B",
+      "name": "Nemotron 3.5 Lightning 30B-A3B",
+      "quant": "UD-Q4_K_XL",
+      "publisher": "Unsloth (GGUF of NVIDIA's model)",
+      "description": "The newest Nemotron at 4-bit: the best answers a desktop PC with about 40 GB of memory can run.",
+      "totalParamsB": 30.0,
+      "activeParamsB": 3.0,
+      "contextTokens": 65536,
+      "repo": "unsloth/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-GGUF",
+      "revision": "f2d3fe3694501008786e81e5f20360cbf715496a",
+      "license": {
+        "name": "OpenMDW License 1.1",
+        "url": "https://openmdw.ai/license/1-1/"
+      },
+      "files": [
+        {
+          "path": "NVIDIA-Nemotron-3.5-Lightning-30B-A3B-UD-Q4_K_XL.gguf",
+          "sizeBytes": 25505724480,
+          "sha256": "112bf957489a497c18f60bf8bd44ee1dfa05e87368b8ed7f68998a4e38f275c9"
+        }
+      ]
+    },
+    {
+      "id": "nemotron-3-super-120b-a12b-iq3",
+      "family": "Nemotron 3 Super 120B-A12B",
+      "name": "Nemotron 3 Super 120B-A12B",
+      "quant": "UD-IQ3_XXS",
+      "publisher": "Unsloth (GGUF of NVIDIA's model)",
+      "description": "NVIDIA's large model (120B parameters, 12B active). For workstations with about 64 GB of memory or more.",
+      "totalParamsB": 120.0,
+      "activeParamsB": 12.0,
+      "contextTokens": 65536,
+      "repo": "unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-GGUF",
+      "revision": "036038fb30334a2d56a146c6f0d4871ab5edccbb",
+      "license": {
+        "name": "NVIDIA Nemotron Open Model License",
+        "url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/"
+      },
+      "files": [
+        {
+          "path": "UD-IQ3_XXS/NVIDIA-Nemotron-3-Super-120B-A12B-UD-IQ3_XXS-00001-of-00003.gguf",
+          "sizeBytes": 7872576,
+          "sha256": "be4b7aeeb201da01a12905fe318eab19472c59cc2c7f9b6a6e72cb09309c9557"
+        },
+        {
+          "path": "UD-IQ3_XXS/NVIDIA-Nemotron-3-Super-120B-A12B-UD-IQ3_XXS-00002-of-00003.gguf",
+          "sizeBytes": 49775467392,
+          "sha256": "266186de4c20fec41739ae2052b2f81f8c3931002dec3db50265f66f73d8e48c"
+        },
+        {
+          "path": "UD-IQ3_XXS/NVIDIA-Nemotron-3-Super-120B-A12B-UD-IQ3_XXS-00003-of-00003.gguf",
+          "sizeBytes": 6848465824,
+          "sha256": "9b7ad8a1d036d390b06d10075a2dd9569231b805a96aacce31c1a8a9e383575d"
+        }
+      ]
+    },
+    {
+      "id": "nemotron-3-super-120b-a12b-q4",
+      "family": "Nemotron 3 Super 120B-A12B",
+      "name": "Nemotron 3 Super 120B-A12B",
+      "quant": "UD-Q4_K_XL",
+      "publisher": "Unsloth (GGUF of NVIDIA's model)",
+      "description": "NVIDIA's large model at 4-bit. For workstations with about 96 GB of memory or more.",
+      "totalParamsB": 120.0,
+      "activeParamsB": 12.0,
+      "contextTokens": 65536,
+      "repo": "unsloth/NVIDIA-Nemotron-3-Super-120B-A12B-GGUF",
+      "revision": "036038fb30334a2d56a146c6f0d4871ab5edccbb",
+      "license": {
+        "name": "NVIDIA Nemotron Open Model License",
+        "url": "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-nemotron-open-model-license/"
+      },
+      "files": [
+        {
+          "path": "UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00001-of-00003.gguf",
+          "sizeBytes": 7872576,
+          "sha256": "f22083eb6b15acb52905308ab083e8b0cc38897005cc45e8881abd164580aac2"
+        },
+        {
+          "path": "UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00002-of-00003.gguf",
+          "sizeBytes": 49911512480,
+          "sha256": "a53810e8e9c2baf8e2598c4c503c10e0b9361ced72313d441e2f6f5e93b33de3"
+        },
+        {
+          "path": "UD-Q4_K_XL/NVIDIA-Nemotron-3-Super-120B-A12B-UD-Q4_K_XL-00003-of-00003.gguf",
+          "sizeBytes": 33857923456,
+          "sha256": "276c72d16eeaef4404a32747f054292e11484ee20988b1446846a0cdb6049ea5"
+        }
+      ]
+    }
+  ]
+}
