@@ -16,14 +16,37 @@
 # With TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD) set, the deb and AppImage get updater .sig files; without it none are made.
 set -euo pipefail
 
+fail() { echo "BUILD FAILED: $*" >&2; exit 1; }
+trap 'echo "BUILD FAILED at line $LINENO: $BASH_COMMAND" >&2' ERR
+
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The version, the same in tauri.conf.json, package.json and the workspace Cargo.toml (Node isn't available in the
+# 32-bit container, so scripts/build-info.mjs can't be used here).
 version="$(grep -m1 '"version"' "$root/src-tauri/tauri.conf.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/')"
+package_version="$(grep -m1 '"version"' "$root/package.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/')"
+cargo_version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\([^"]*\)"/\1/p}' "$root/Cargo.toml" | head -1)"
+[ -n "$version" ] && [ "$version" = "$package_version" ] && [ "$version" = "$cargo_version" ] ||
+  fail "the version differs: tauri.conf.json '$version', package.json '$package_version', Cargo.toml '$cargo_version'."
+
+# Prerequisites: the architecture, the tools and the WebKitGTK/GTK development files the build links against.
+command -v dpkg >/dev/null || fail "dpkg is missing (a Debian or Ubuntu system is expected)."
 case "$(dpkg --print-architecture)" in
-  amd64) arch=x64 ;;
-  i386) arch=x86 ;;
-  *) echo "Unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;;
+  amd64) arch=x64; elf_machine=62 ;;
+  i386) arch=x86; elf_machine=3 ;;
+  *) fail "unsupported architecture: $(dpkg --print-architecture) (x64 = amd64, x86 = i386)." ;;
 esac
-[ -f "$root/dist/index.html" ] || { echo "dist/ is missing: run 'pnpm build' first." >&2; exit 1; }
+for tool in cargo pkg-config tar gzip od; do
+  command -v "$tool" >/dev/null || fail "$tool is missing."
+done
+cargo tauri --version >/dev/null 2>&1 || fail "cargo tauri is missing: cargo install tauri-cli --version <@tauri-apps/cli in package.json> --locked"
+for lib in webkit2gtk-4.1 gtk+-3.0 librsvg-2.0 ayatana-appindicator3-0.1; do
+  pkg-config --exists "$lib" || fail "the $lib development files are missing (docs/release.md, 'Linux')."
+done
+[ -f "$root/dist/index.html" ] || fail "dist/ is missing: run 'pnpm build' first."
+echo "OpenMind Studio $version, Linux $arch ($(dpkg --print-architecture)), $(ldd --version | head -1)"
+
+# The ELF machine of a program (62 = x86-64, 3 = i386), read from its header.
+elf_machine_of() { od -An -tu2 -j18 -N2 "$1" | tr -d ' '; }
 
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/openmind-studio/target-linux-$arch}"
 export APPIMAGE_EXTRACT_AND_RUN=1
@@ -38,6 +61,9 @@ rm -rf "$CARGO_TARGET_DIR/release/bundle"
 cargo tauri build --bundles deb,appimage --config "$config" -- --locked
 
 built="$CARGO_TARGET_DIR/release"
+[ -x "$built/OpenMindStudio" ] || fail "the program was not built ($built/OpenMindStudio)."
+[ "$(elf_machine_of "$built/OpenMindStudio")" = "$elf_machine" ] ||
+  fail "the built program is not a $arch program (ELF machine $(elf_machine_of "$built/OpenMindStudio"))."
 out="$root/release/v$version/linux/$arch"
 mkdir -p "$out"
 name="OpenMind-Studio_${version}_linux_${arch}"
@@ -61,11 +87,16 @@ mkdir -p "$stage/OpenMind Studio/legal"
 install -m 644 "$root"/licenses/legal/* "$stage/OpenMind Studio/legal/"
 install -m 755 "$root/scripts/launchers/linux/openmind-studio.sh" "$stage/OpenMind Studio/openmind-studio.sh"
 label=$([ "$arch" = x64 ] && echo "x86_64" || echo "x86, 32-bit")
+build_system="$(. /etc/os-release && echo "$PRETTY_NAME")"
+glibc="glibc $(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+$')"
 cat > "$stage/OpenMind Studio/README.txt" <<README
 OpenMind Studio $version - portable (Linux $label)
 
+Unpack (keeps the executable bits): tar -xzf ${name}_portable.tar.gz
 Run: ./openmind-studio.sh  (from this folder; it checks the architecture and the system libraries first)
   or ./OpenMindStudio
+Built on $build_system with $glibc: older systems (an older glibc) are not supported. Tested distributions are
+listed in the release notes; other distributions may work but are not verified.
 License Agreement, Privacy Policy and Terms of Use: legal/
 Data is kept next to the program when this folder is writable, otherwise in ~/.local/share/openmind-studio.
 Needs the system libraries WebKitGTK 4.1, GTK 3, libsoup 3, librsvg2 and libayatana-appindicator3
@@ -75,6 +106,25 @@ README
 tar -C "$stage" --owner=0 --group=0 -czf "$out/${name}_portable.tar.gz" "OpenMind Studio"
 rm -rf "$stage"
 
-echo "Linux $arch release files in $out:"
+# Check what was written: every file present and not empty, the deb's architecture, the AppImage's and the portable
+# program's ELF machine, and the executable bits inside the tarball.
+for file in "$name.deb" "$name.AppImage" "${name}_portable.tar.gz"; do
+  [ -s "$out/$file" ] || fail "$out/$file is missing or empty."
+done
+deb_arch="$(dpkg-deb -f "$out/$name.deb" Architecture)"
+[ "$deb_arch" = "$(dpkg --print-architecture)" ] || fail "the deb is for '$deb_arch', not $(dpkg --print-architecture)."
+[ "$(dpkg-deb -f "$out/$name.deb" Version)" = "$version" ] || fail "the deb's version is not $version."
+[ "$(elf_machine_of "$out/$name.AppImage")" = "$elf_machine" ] || fail "the AppImage is not a $arch program."
+listing="$(tar -tvzf "$out/${name}_portable.tar.gz")"
+for exe in "OpenMind Studio/OpenMindStudio" "OpenMind Studio/openmind-studio.sh"; do
+  grep -qE "^-rwxr-xr-x .* $exe\$" <<<"$listing" || fail "$exe is not executable inside the tarball."
+done
+check="$(mktemp -d)"
+tar -C "$check" -xzf "$out/${name}_portable.tar.gz" "OpenMind Studio/OpenMindStudio"
+[ "$(elf_machine_of "$check/OpenMind Studio/OpenMindStudio")" = "$elf_machine" ] ||
+  fail "the program in the tarball is not a $arch program."
+rm -rf "$check"
+
+echo "Linux $arch release files in $out (all checked):"
 ls -l "$out"
 echo "Then, on Windows: node scripts/release-checksums.mjs   (rewrites release/v$version/metadata/SHA256SUMS.txt)"

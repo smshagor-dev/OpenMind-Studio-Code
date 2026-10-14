@@ -2,7 +2,7 @@
   "name": "openmind-studio",
   "private": true,
   "license": "Apache-2.0",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-monaco-workers.mjs && node scripts/copy-pdf-assets.mjs",

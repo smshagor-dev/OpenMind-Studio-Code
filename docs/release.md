@@ -21,6 +21,18 @@ pnpm package:portable         # optional: OpenMindStudio-<version>-portable-win-
 pnpm release:collect -- --portable "<path to the portable zip>"   # copies, signs (if configured), checksums, report
 ```
 
+### Build scripts
+
+The same steps as scripts, one per platform. Each checks the prerequisites and that the version is the same in
+`package.json`, `tauri.conf.json` and `Cargo.toml` (`scripts/build-info.mjs version`), stops at the first failing step
+with a nonzero exit code and never deletes release files.
+
+| Script | Runs on | Builds |
+| --- | --- | --- |
+| `scripts\build-windows.bat [x64\|x86\|all] [--skip-checks] [--replace]` | Windows | the checks (lint, types, tests, rustfmt, clippy, Rust tests; `--skip-checks` leaves them out), then per architecture the setup EXE, MSI and portable ZIP, collected into `release\v<version>\windows\<arch>\`, then updater signatures (`pnpm release:sign`, only when the key's password is available: `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` or the DPAPI file), checksums and the architecture check. Refuses when that architecture's folder already has files, unless `--replace`. x86 needs NASM on PATH. |
+| `scripts/linux-release.sh` | Linux (x64 in WSL, x86 in a Debian i386 container; below) | the deb, AppImage and portable tar.gz of the machine's architecture, then checks each file: present and not empty, the deb's architecture and version, the AppImage's and the portable program's ELF machine, and the executable bits inside the tarball. |
+| `scripts/build-macos.command [arm64\|x64\|all]` | macOS only | `pnpm build`, then `scripts/macos-release.sh` for each architecture, then the checksums. Ad-hoc signed only (not Developer ID, not notarized). |
+
 Per-architecture builds (the Rust target must be installed: `rustup target add i686-pc-windows-msvc`):
 
 ```powershell

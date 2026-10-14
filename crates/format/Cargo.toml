@@ -8,15 +8,15 @@ authors.workspace = true
 
 [dependencies]
 openmind-core.workspace = true
-openmind-language = { version = "1.0.3", path = "../language" }
+openmind-language = { version = "1.0.4", path = "../language" }
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tracing.workspace = true
 
 [target."cfg(windows)".dependencies]
-openmind-process = { version = "1.0.3", path = "../process" }
+openmind-process = { version = "1.0.4", path = "../process" }
 
 [dev-dependencies]
 tempfile = "3.27.0"
 # The offline bundle's formatters, for the ignored end-to-end test (tests/bundled_formatters.rs).
-openmind-lsp = { version = "1.0.3", path = "../lsp" }
+openmind-lsp = { version = "1.0.4", path = "../lsp" }

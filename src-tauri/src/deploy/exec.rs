@@ -94,6 +94,7 @@ pub fn provision(request: &Request, effects: &Effects) -> Result<Outcome, String
         }
         (Some(_), None) => Err("Choose the folder to install OpenMind Studio into.".into()),
         (Some(kind), Some(dest)) => {
+            packages_installable_on(platform)?;
             if !dest.is_absolute() {
                 return Err(format!("{} is not a full folder path.", dest.display()));
             }
@@ -102,6 +103,20 @@ pub fn provision(request: &Request, effects: &Effects) -> Result<Outcome, String
                 .ok_or("This deployment has no package server to download from.")?;
             provision_package(&request.manifest, source, *kind, dest, effects)
         }
+    }
+}
+
+/// Installing a downloaded package runs its Windows setup or unpacks its Windows portable ZIP, so it is refused before
+/// anything is downloaded on other systems (a Linux package is installed by hand: `.deb`, AppImage or `.tar.gz`).
+pub(crate) fn packages_installable_on(platform: &str) -> Result<(), String> {
+    if platform == "windows" {
+        Ok(())
+    } else {
+        Err(
+            "Installing from a network deployment works on Windows only. On this system, copy the package and install \
+             it by hand (see the README that comes with it)."
+                .into(),
+        )
     }
 }
 
