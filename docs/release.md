@@ -30,7 +30,7 @@ with a nonzero exit code and never deletes release files.
 | Script | Runs on | Builds |
 | --- | --- | --- |
 | `scripts\build-windows.bat [x64\|x86\|all] [--skip-checks] [--replace]` | Windows | the checks (lint, types, tests, rustfmt, clippy, Rust tests; `--skip-checks` leaves them out), then per architecture the setup EXE, MSI and portable ZIP, collected into `release\v<version>\windows\<arch>\`, then updater signatures (`pnpm release:sign`, only when the key's password is available: `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` or the DPAPI file), checksums and the architecture check. Refuses when that architecture's folder already has files, unless `--replace`. x86 needs NASM on PATH. |
-| `scripts/linux-release.sh` | Linux (x64 in WSL, x86 in a Debian i386 container; below) | the deb, AppImage and portable tar.gz of the machine's architecture, then checks each file: present and not empty, the deb's architecture and version, the AppImage's and the portable program's ELF machine, and the executable bits inside the tarball. |
+| `scripts/linux-release.sh` | Linux (x64 in a Debian amd64 container, x86 in a Debian i386 container; below) | the deb, AppImage and portable tar.gz of the machine's architecture, then checks each file: present and not empty, the deb's architecture and version, the AppImage's and the portable program's ELF machine, and the executable bits inside the tarball. |
 | `scripts/build-macos.command [arm64\|x64\|all]` | macOS only | `pnpm build`, then `scripts/macos-release.sh` for each architecture, then the checksums. Ad-hoc signed only (not Developer ID, not notarized). |
 
 Per-architecture builds (the Rust target must be installed: `rustup target add i686-pc-windows-msvc`):
@@ -358,7 +358,7 @@ pnpm release:verify    # every file listed in release\v<version>\metadata\SHA256
 
 or read `SHA256SUMS.txt`. Publish the checksums next to the download.
 
-## Linux (x64 in WSL, x86 in a Debian i386 container)
+## Linux (x64 and x86 in Debian containers)
 
 Linux editions: `.deb`, AppImage and a portable `.tar.gz`, for x64 and x86. `scripts/linux-release.sh` builds them **from
 this project folder itself** — no clone or copy of the source — and writes them to `release/v<version>/linux/<arch>/`. The
@@ -366,7 +366,15 @@ cargo target folder is an external cache (`CARGO_TARGET_DIR`, default `~/.cache/
 `--locked` leaves `Cargo.lock` untouched, and the frontend comes from the `dist/` built on Windows (`pnpm build`), so the
 Windows `node_modules` is never replaced. Then rewrite the manifest on Windows with `pnpm release:checksums`.
 
-x64, in a WSL Ubuntu with WebKitGTK 4.1:
+**The build system decides which Linux versions the packages run on.** An AppImage bundles the build system's WebKitGTK and
+other libraries but never glibc, so it needs a glibc at least as new as the build system's. v1.0.4's x64 AppImage was first
+built in this PC's WSL (Ubuntu 26.04, glibc 2.43) and did not start on Debian 13 (glibc 2.41): rebuilt in a `debian:trixie`
+amd64 container like x86, every v1.0.4 Linux package needs glibc 2.41 or newer. The release workflow
+(`.github/workflows/release-windows.yml`) builds x64 on `ubuntu-22.04` (glibc 2.35), which reaches older systems still. Build
+on the oldest system you support, never on a newer desktop/WSL, and record its glibc (the portable README states it).
+
+x64, in a `debian:trixie` amd64 container (`docker run --platform linux/amd64 ...`, the same steps as x86 below), or on an
+Ubuntu with WebKitGTK 4.1 that is no newer than the oldest system you support:
 
 ```bash
 sudo apt install -y build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev libwebkit2gtk-4.1-dev \

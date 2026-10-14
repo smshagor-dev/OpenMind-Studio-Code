@@ -5,7 +5,9 @@
 # into the project's own release folder, `release/v<version>/linux/<arch>/` (git-ignored), under the release names
 # (scripts/releaseTools.mjs releaseName). Run it on the project itself — no clone or copy of the source:
 #
-#   x64: in WSL, `cd "/mnt/e/Code Editor" && bash scripts/linux-release.sh`
+#   x64: in a Debian trixie amd64 container (as x86 below, --platform linux/amd64) or on the oldest Ubuntu/Debian you
+#        support - not on a newer WSL/desktop: the AppImage bundles the build system's libraries and needs its glibc
+#        (v1.0.4 built in WSL Ubuntu 26.04 needed glibc 2.43 and failed on Debian 13; docs/release.md, "Linux")
 #   x86: in a Debian trixie i386 container with the project mounted at /src (docs/release.md, "Linux"):
 #        `docker run --platform linux/386 -v "E:\Code Editor:/src" -v openmind-linux-cache:/cache ... bash /src/scripts/linux-release.sh`
 #
