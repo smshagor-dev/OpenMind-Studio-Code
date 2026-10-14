@@ -137,3 +137,7 @@
 .deploy-dialog__status--blocked {
   color: var(--warning-fg);
 }
+
+.deploy-dialog__status--notTested {
+  color: var(--fg-muted);
+}

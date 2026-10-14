@@ -148,6 +148,24 @@ export class DeploymentService {
     return report;
   }
 
+  /** Trusts a found deployment on this computer (after the user confirmed it). */
+  async trust(id: string): Promise<boolean> {
+    const done = await this.run("provision", async () => {
+      await this.ipc.trust(id);
+      return true;
+    });
+    const status = this.state.status;
+    if (done && status) {
+      this.set({
+        status: {
+          ...status,
+          deployments: status.deployments.map((d) => (d.id === id ? { ...d, trusted: true } : d)),
+        },
+      });
+    }
+    return done === true;
+  }
+
   async provision(id: string, kind: ProvisionKind, destination: string | null): Promise<ProvisionOutcome | null> {
     const outcome = await this.run("provision", () => this.ipc.provision(id, kind, destination));
     if (outcome) this.set({ outcome });

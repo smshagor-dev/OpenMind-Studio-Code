@@ -3210,6 +3210,21 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   / 1 BLOCKED, `--deploy provision --kind portable` to `G:\OMDeployTest\Apps With Spaces\Программы বাংলা\...` (270 MB,
   verified, unpacked), again = repair, setup into it = kind mismatch. **Not run**: the real setup silently (it would replace
   the dev PC's per-user installation's registration — use Windows Sandbox or the lab), physical multi-PC.
+  **Security/conflict audit** (same branch): a valid signature only proves a real release, not a trusted peer, so
+  **deployment trust** (`deploy/trust.rs`: per computer, `deploy-trust.json`, a share by its exact path; dialog question,
+  `--trust`/`untrust`; backend refuses untrusted, readiness BLOCKED "UNTRUSTED DEPLOYMENT"); a share's id must equal the
+  hash of its announced path (`share_id_for`); queries padded ≥ 512 bytes (no amplification); found tables capped and a
+  kind change ignored; package server: 10 s request-head deadline, files canonicalized at offer time (a link swap isn't
+  served), lingering close after an error answer (Windows reset could drop the 400 — a real intermittent test failure);
+  provisioning: the verified package held open with read-only sharing until the setup/unpack ends (no TOCTOU), packages
+  older than the running copy refused, a download folder per run, local destinations' locks in the data folder,
+  `deploy_launch` only for a program this session provisioned, error 740 named; Runtime Manager: a complete version
+  without a record whose launchers can't be written is never unpacked over again (`adopt_or_refuse`; the old code deleted
+  the files); test status NOT TESTED (portable copy shortcut, package not downloaded); harness: a database left by a
+  process aborted mid-write reopens intact. Verified by hand: serve/discover/untrusted refusal/`--trust` provision into a
+  Unicode path/17 PASS + 3 NOT TESTED/untrust → BLOCKED/source killed mid-download → no partial install. Still not run:
+  the real silent setup and the v1.0.2 → v1.0.3 installer upgrade (owner's installation), IPv6, the link-swap test
+  (no symlink privilege here), physical multi-PC. The university test builds predate the audit.
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. Code is in master (`c5c6d4d`:
   crates `openmind-collab`, `openmind-collab-net`, `openmind-collab-signal`, migrations 0004/0005; see
   `docs/collaboration.md`); its physical, cross-network and classroom gates are still pending, so it is a preview.

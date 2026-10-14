@@ -2657,7 +2657,7 @@
   "deploy.test.download": "Также загрузить пакет и проверить его подпись",
   "deploy.test.run": "Запустить тест",
   "deploy.test.running": "Проверка…",
-  "deploy.test.summary": "Успешно: {passed}, ошибок: {failed}, заблокировано: {blocked}.",
+  "deploy.test.summary": "Успешно: {passed}, ошибок: {failed}, заблокировано: {blocked}, не проверено: {notTested}.",
   "deploy.status.pass": "УСПЕХ",
   "deploy.status.fail": "ОШИБКА",
   "deploy.status.blocked": "БЛОК",
@@ -2681,5 +2681,13 @@
   "deploy.check.provisioningReadiness": "Готовность к установке",
   "deploy.check.shortcutValidity": "Ярлык",
   "deploy.check.runtimeReuse": "Повторное использование сред",
-  "deploy.close": "Закрыть"
+  "deploy.close": "Закрыть",
+  "deploy.status.notTested": "НЕ ПРОВЕРЕНО",
+  "deploy.trust.title": "Доверять этому развёртыванию?",
+  "deploy.trust.source": "Компьютер, предлагающий подписанные пакеты OpenMind Studio.",
+  "deploy.trust.note": "Любой в сети может объявить развёртывание. Доверяйте ему, только если его настроил ваш ИТ-администратор. Пакеты всё равно проверяются подписью выпуска OpenMind.",
+  "deploy.trust.ok": "Доверять и продолжить",
+  "deploy.trust.notYet": "На этом компьютере ещё не помечено как доверенное: перед использованием вас спросят.",
+  "deploy.trust.what": "Развёртывание",
+  "deploy.trust.from": "Ответили"
 }

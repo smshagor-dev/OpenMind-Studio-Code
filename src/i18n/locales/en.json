@@ -2627,7 +2627,7 @@
   "deploy.test.download": "Also download the package and verify its signature",
   "deploy.test.run": "Run Test",
   "deploy.test.running": "Testing…",
-  "deploy.test.summary": "{passed} passed, {failed} failed, {blocked} blocked.",
+  "deploy.test.summary": "{passed} passed, {failed} failed, {blocked} blocked, {notTested} not tested.",
   "deploy.status.pass": "PASS",
   "deploy.status.fail": "FAIL",
   "deploy.status.blocked": "BLOCKED",
@@ -2651,5 +2651,13 @@
   "deploy.check.provisioningReadiness": "Provisioning readiness",
   "deploy.check.shortcutValidity": "Shortcut",
   "deploy.check.runtimeReuse": "Runtime reuse",
-  "deploy.close": "Close"
+  "deploy.close": "Close",
+  "deploy.status.notTested": "NOT TESTED",
+  "deploy.trust.title": "Trust this deployment?",
+  "deploy.trust.source": "A computer offering signed OpenMind Studio packages.",
+  "deploy.trust.note": "Anyone on the network can announce a deployment. Trust it only if your IT administrator set it up. Packages are still checked against OpenMind's release signature.",
+  "deploy.trust.ok": "Trust and Continue",
+  "deploy.trust.notYet": "Not trusted on this computer yet: you'll be asked before anything is used from it.",
+  "deploy.trust.what": "Deployment",
+  "deploy.trust.from": "Answered from"
 }

@@ -11,6 +11,10 @@ use std::time::{Duration, Instant};
 
 use crate::advert::Advert;
 
+/// At most this many deployments and this many sources per deployment are kept (forged answers can't grow it).
+pub const MAX_DEPLOYMENTS: usize = 256;
+pub const MAX_SOURCES: usize = 64;
+
 /// How long an answer counts after it arrived.
 pub const DEFAULT_TTL: Duration = Duration::from_secs(90);
 
@@ -56,6 +60,8 @@ pub enum Observation {
     Restarted,
     /// A known instance at a new address (DHCP gave it another one).
     Moved,
+    /// Not taken: it claims a known deployment's id with another kind, or a limit was reached.
+    Ignored,
 }
 
 #[derive(Debug, Default)]
@@ -73,6 +79,9 @@ impl DiscoveredSet {
             last_seen: now,
         };
         let Some(known) = self.deployments.get_mut(&advert.deployment_id) else {
+            if self.deployments.len() >= MAX_DEPLOYMENTS {
+                return Observation::Ignored;
+            }
             self.deployments.insert(
                 advert.deployment_id.clone(),
                 Deployment {
@@ -83,6 +92,17 @@ impl DiscoveredSet {
             );
             return Observation::New;
         };
+        // A deployment never changes kind: an answer that says otherwise is someone else's claim to its id.
+        if known.advert.kind != advert.kind {
+            return Observation::Ignored;
+        }
+        let new_source = !known
+            .sources
+            .iter()
+            .any(|s| s.instance == source.instance || s.address == source.address);
+        if new_source && known.sources.len() >= MAX_SOURCES {
+            return Observation::Ignored;
+        }
         known.advert = advert;
         let observation = if let Some(same) = known
             .sources
@@ -224,6 +244,41 @@ mod tests {
             Observation::New
         );
         assert!(set.get(&share_advert().deployment_id).is_some());
+    }
+
+    #[test]
+    fn an_answer_claiming_a_known_id_with_another_kind_is_ignored() {
+        let mut set = DiscoveredSet::default();
+        let t = Instant::now();
+        set.observe(from("1111111111111111"), addr("10.0.0.1:47741"), t);
+        let mut forged = from("9999999999999999");
+        forged.kind = crate::advert::DeploymentKind::PackageSource;
+        forged.share_path = None;
+        assert_eq!(
+            set.observe(forged, addr("10.6.6.6:47741"), t),
+            Observation::Ignored
+        );
+        let kept = set.get(&share_advert().deployment_id).expect("kept");
+        assert_eq!(
+            kept.advert.kind,
+            crate::advert::DeploymentKind::NetworkShare
+        );
+        assert_eq!(kept.sources.len(), 1);
+    }
+
+    #[test]
+    fn a_flood_of_sources_is_capped() {
+        let mut set = DiscoveredSet::default();
+        let t = Instant::now();
+        for i in 0..(MAX_SOURCES + 20) {
+            let instance = format!("{i:016x}");
+            set.observe(
+                from(&instance),
+                addr(&format!("10.1.{}.{}:47741", i / 250, i % 250 + 1)),
+                t,
+            );
+        }
+        assert_eq!(set.list()[0].sources.len(), MAX_SOURCES);
     }
 
     #[test]

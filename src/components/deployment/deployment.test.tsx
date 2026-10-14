@@ -4,14 +4,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DeployIpc, DeployStatus, TestReport } from "../../services/deployment/deployIpc";
 import { DeploymentService } from "../../services/deployment/deploymentService";
 
-const holder = vi.hoisted((): { service: DeploymentService | null; folder: string | null } => ({ service: null, folder: null }));
+const holder = vi.hoisted(
+  (): { service: DeploymentService | null; folder: string | null; answer: string | null } => ({
+    service: null,
+    folder: null,
+    answer: null,
+  }),
+);
 vi.mock("../../services/deployment", () => ({
   get deployment() {
     return holder.service;
   },
 }));
 vi.mock("../../services/container", () => ({
-  container: { ipc: { openFolderDialog: () => Promise.resolve(holder.folder) } },
+  container: {
+    ipc: { openFolderDialog: () => Promise.resolve(holder.folder) },
+    extensions: { prompts: { confirm: () => Promise.resolve(holder.answer) } },
+  },
 }));
 
 import { NetworkDeploymentDialog } from "./NetworkDeploymentDialog";
@@ -34,6 +43,7 @@ function status(): DeployStatus {
         sources: [{ address: "10.0.0.5", appVersion: "1.0.3", secondsAgo: 0, servesPackages: true }],
         incompatible: null,
         manifestError: null,
+        trusted: true,
       },
     ],
     lastSearch: null,
@@ -46,7 +56,7 @@ const report: TestReport = {
     { id: "shortcutValidity", status: "fail", detail: "no Desktop shortcut starts this program" },
     { id: "runtimeStore", status: "blocked", detail: "doesn't exist yet" },
   ],
-  passed: 1, failed: 1, blocked: 1,
+  passed: 1, failed: 1, blocked: 1, notTested: 0,
   search: { outcome: "found", found: 1, targets: [], sent: 3, sendErrors: [], socketError: null, incompatible: [], malformed: 0, elapsedMs: 900 },
   deployment: "a".repeat(32),
 };
@@ -61,6 +71,7 @@ function ipc(): DeployIpc {
       Promise.resolve({ action: "install" as const, program: "G:\\Apps\\OpenMind Studio\\OpenMindStudio.exe", version: "1.0.3", shortcut: null, dataLocation: "G:\\Apps\\OpenMind Studio\\data", steps: ["verified"] }),
     ),
     launch: vi.fn(() => Promise.resolve()),
+    trust: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -117,5 +128,45 @@ describe("NetworkDeploymentDialog", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(fake.provision).not.toHaveBeenCalled();
+  });
+
+  it("an untrusted deployment is used only after the user trusts it", async () => {
+    const untrusted = (): DeployIpc => {
+      const fake = ipc();
+      const base = status();
+      const first = base.deployments[0];
+      if (first) first.trusted = false;
+      fake.status = vi.fn(() => Promise.resolve(base));
+      return fake;
+    };
+    // Declined: nothing is trusted or provisioned.
+    const declined = untrusted();
+    const service = new DeploymentService(declined);
+    holder.service = service;
+    holder.folder = "G:\\Apps";
+    holder.answer = null;
+    await act(() => service.openDialog());
+    const view = render(<NetworkDeploymentDialog />);
+    expect(screen.getByText(/Not trusted on this computer yet/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Install with Setup…" }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(declined.trust).not.toHaveBeenCalled();
+    expect(declined.provision).not.toHaveBeenCalled();
+    view.unmount();
+    // Accepted: trusted first, then provisioned.
+    const accepted = untrusted();
+    const second = new DeploymentService(accepted);
+    holder.service = second;
+    holder.answer = "Trust and Continue";
+    await act(() => second.openDialog());
+    render(<NetworkDeploymentDialog />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Install with Setup…" }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(accepted.trust).toHaveBeenCalledWith("a".repeat(32));
+    expect(accepted.provision).toHaveBeenCalledWith("a".repeat(32), "setup", "G:\\Apps\\OpenMind Studio");
   });
 });

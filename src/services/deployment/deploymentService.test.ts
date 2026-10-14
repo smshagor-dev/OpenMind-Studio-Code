@@ -19,6 +19,7 @@ function deploymentView(change: Partial<DeploymentView["manifest"]> = {}, incomp
     sources: [{ address: "10.0.0.5", appVersion: "1.0.3", secondsAgo: 0, servesPackages: true }],
     incompatible,
     manifestError: null,
+    trusted: true,
   };
 }
 
@@ -51,6 +52,7 @@ function fakeIpc(change: Partial<DeployIpc> = {}): DeployIpc {
     test: vi.fn(() => Promise.reject(new Error("unused"))),
     provision: vi.fn(() => Promise.reject(new Error("unused"))),
     launch: vi.fn(() => Promise.resolve()),
+    trust: vi.fn(() => Promise.resolve()),
     ...change,
   };
 }
@@ -106,7 +108,7 @@ describe("DeploymentService", () => {
   it("the test reports and a failure is shown, never thrown", async () => {
     const report: TestReport = {
       checks: [{ id: "deploymentDiscovery", status: "fail", detail: "NO DEPLOYMENT FOUND" }],
-      passed: 0, failed: 1, blocked: 0,
+      passed: 0, failed: 1, blocked: 0, notTested: 0,
       search: { outcome: "nothingFound", found: 0, targets: [], sent: 3, sendErrors: [], socketError: null, incompatible: [], malformed: 0, elapsedMs: 2500 },
       deployment: null,
     };
@@ -140,5 +142,16 @@ describe("DeploymentService", () => {
     await service.applyOffering();
     expect(ipc.applyOffering).toHaveBeenCalled();
     expect(service.getState().status?.offer.on).toBe(true);
+  });
+
+  it("trusting a deployment marks it trusted", async () => {
+    const ipc = fakeIpc();
+    const service = new DeploymentService(ipc);
+    await service.openDialog();
+    await service.search();
+    const id = service.getState().status?.deployments[0]?.id ?? "";
+    expect(await service.trust(id)).toBe(true);
+    expect(ipc.trust).toHaveBeenCalledWith(id);
+    expect(service.getState().status?.deployments[0]?.trusted).toBe(true);
   });
 });

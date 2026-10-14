@@ -3,19 +3,37 @@ import { useSyncExternalStore } from "react";
 import { t, useT } from "../../i18n";
 import { container } from "../../services/container";
 import { deployment } from "../../services/deployment";
-import type { ProvisionKind } from "../../services/deployment/deployIpc";
+import type { DeploymentView, ProvisionKind } from "../../services/deployment/deployIpc";
 import { destinationFor } from "../../services/deployment/deploymentService";
 import { Checks, Deployment, Offer, OutcomeView, SearchSummary, ThisComputer } from "./DeploymentParts";
 
-async function provision(id: string, kind: ProvisionKind): Promise<void> {
+/** Asks the user to trust a deployment before anything is taken from it (the backend refuses untrusted ones). */
+async function confirmTrust(view: DeploymentView): Promise<boolean> {
+  const trustLabel = t("deploy.trust.ok");
+  const share = view.manifest.sharePath;
+  const answer = await container.extensions.prompts.confirm({
+    extension: "OpenMind Studio",
+    title: t("deploy.trust.title"),
+    details: [
+      { label: t("deploy.trust.what"), value: share ?? t("deploy.trust.source") },
+      { label: t("deploy.trust.from"), value: view.sources.map((s) => s.address).join(", ") },
+    ],
+    notes: [t("deploy.trust.note")],
+    buttons: [trustLabel],
+  });
+  return answer === trustLabel && (await deployment.trust(view.id));
+}
+
+async function provision(view: DeploymentView, kind: ProvisionKind): Promise<void> {
+  if (!view.trusted && !(await confirmTrust(view))) return;
   if (kind === "share") {
-    await deployment.provision(id, kind, null);
+    await deployment.provision(view.id, kind, null);
     return;
   }
   // Any folder on any drive the user chooses; the copy goes into an "OpenMind Studio" folder inside it.
   const folder = await container.ipc.openFolderDialog();
   if (folder === null) return;
-  await deployment.provision(id, kind, destinationFor(folder));
+  await deployment.provision(view.id, kind, destinationFor(folder));
 }
 
 /** Help > Network Deployment (see `services/deployment`). */
@@ -61,7 +79,7 @@ export function NetworkDeploymentDialog() {
           {state.search !== null && <SearchSummary search={state.search} />}
           <ul className="deploy-dialog__deployments">
             {(status?.deployments ?? []).map((d) => (
-              <Deployment key={d.id} deployment={d} busy={working} onProvision={(kind) => void provision(d.id, kind)} />
+              <Deployment key={d.id} deployment={d} busy={working} onProvision={(kind) => void provision(d, kind)} />
             ))}
           </ul>
           {busy === "provision" && <p role="status">{t("deploy.provisioning")}</p>}
@@ -98,6 +116,7 @@ export function NetworkDeploymentDialog() {
                   passed: String(state.report.passed),
                   failed: String(state.report.failed),
                   blocked: String(state.report.blocked),
+                  notTested: String(state.report.notTested),
                 })}
               </p>
               <Checks checks={state.report.checks} />

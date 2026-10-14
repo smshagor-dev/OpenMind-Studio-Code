@@ -17,6 +17,11 @@ use crate::advert::Advert;
 use crate::packet::{decode, Decoded, Packet, MAX_PACKET};
 use crate::random_hex;
 
+/// At most this many answers (and this many incompatible ones) are kept from one search: a flood of forged answers
+/// can't grow memory without bound.
+pub const MAX_FOUND: usize = 256;
+pub const MAX_INCOMPATIBLE: usize = 64;
+
 #[derive(Debug, Clone)]
 pub struct Options {
     pub port: u16,
@@ -222,10 +227,11 @@ fn record(decoded: Decoded, from: SocketAddr, nonce: &str, report: &mut Report) 
         }) => {
             if answered != nonce {
                 report.stale += 1;
-            } else if !report
-                .found
-                .iter()
-                .any(|f| f.from == from && f.advert.instance == advert.instance)
+            } else if report.found.len() < MAX_FOUND
+                && !report
+                    .found
+                    .iter()
+                    .any(|f| f.from == from && f.advert.instance == advert.instance)
             {
                 report.found.push(Found { advert, from });
             }
@@ -235,7 +241,9 @@ fn record(decoded: Decoded, from: SocketAddr, nonce: &str, report: &mut Report) 
             deployment_id,
             app_version,
         } => {
-            if !report.incompatible.iter().any(|i| i.from == from) {
+            if report.incompatible.len() < MAX_INCOMPATIBLE
+                && !report.incompatible.iter().any(|i| i.from == from)
+            {
                 report.incompatible.push(IncompatibleFound {
                     from,
                     protocol,

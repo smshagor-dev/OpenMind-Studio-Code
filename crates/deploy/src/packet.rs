@@ -18,6 +18,9 @@ use crate::{is_hex, PROTOCOL};
 pub const MARK: &str = "openmind-deploy";
 /// A packet never exceeds this (one Ethernet frame without fragmentation).
 pub const MAX_PACKET: usize = 1400;
+/// A query is padded to at least this many bytes, and a responder ignores shorter ones: an answer (at most
+/// [`MAX_PACKET`]) is then under three times the query, so a forged source address gains an attacker little.
+pub const MIN_QUERY: usize = 512;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Packet {
@@ -49,6 +52,8 @@ struct Wire<'a> {
     nonce: &'a str,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     advert: Option<Advert>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pad: Option<String>,
 }
 
 impl Packet {
@@ -60,6 +65,7 @@ impl Packet {
                 t: "q",
                 nonce,
                 advert: None,
+                pad: Some("0".repeat(MIN_QUERY)),
             },
             Packet::Answer { nonce, advert } => Wire {
                 m: MARK,
@@ -67,6 +73,7 @@ impl Packet {
                 t: "a",
                 nonce,
                 advert: Some(advert.clone()),
+                pad: None,
             },
         };
         serde_json::to_vec(&wire).unwrap_or_default()
@@ -141,6 +148,8 @@ mod tests {
         assert_eq!(decode(&query.encode()), Decoded::Packet(query));
         let mut advert = share_advert();
         advert.share_path = Some(format!(r"\\server\{}", "a".repeat(380)));
+        advert.deployment_id =
+            crate::share_id_for(advert.share_path.as_deref().unwrap_or_default());
         let answer = Packet::Answer {
             nonce: "00112233445566ff".into(),
             advert,

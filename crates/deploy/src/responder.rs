@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::advert::Advert;
-use crate::packet::{decode, Decoded, Packet, MAX_PACKET};
+use crate::packet::{decode, Decoded, Packet, MAX_PACKET, MIN_QUERY};
 
 pub const ANSWERS_PER_SECOND: u32 = 20;
 const POLL: Duration = Duration::from_millis(200);
@@ -124,7 +124,13 @@ fn answer_loop(socket: &UdpSocket, stop: &AtomicBool, advert: &Mutex<Advert>, co
             // A timeout to look at `stop`, or an ICMP "port unreachable" Windows reports on the next receive.
             Err(_) => continue,
         };
-        let Decoded::Packet(Packet::Query { nonce }) = decode(&buf[..n]) else {
+        // Too short to be a padded query: answering it would amplify a forged sender's traffic.
+        let decoded = if n < MIN_QUERY {
+            Decoded::Foreign
+        } else {
+            decode(&buf[..n])
+        };
+        let Decoded::Packet(Packet::Query { nonce }) = decoded else {
             counters.ignored.fetch_add(1, Ordering::Relaxed);
             continue;
         };

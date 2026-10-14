@@ -412,3 +412,46 @@ async fn different_runtimes_never_wait_for_each_other() {
         .expect("2.0.0");
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }
+
+#[tokio::test]
+async fn a_complete_runtime_whose_launchers_cant_be_written_is_never_unpacked_again() {
+    let phar = b"<?php echo 1;".to_vec();
+    let hash = sha(&phar);
+    let manifest = format!(
+        r#"{{
+        "id": "demo", "displayName": "Demo", "description": "d", "defaultVersion": "1.0.0",
+        "versionCommand": {{ "executable": "demo.phar", "args": ["--version"] }},
+        "binDirs": [], "verifyFiles": ["demo.phar"], "env": {{}},
+        "shims": [{{ "name": "demo", "target": "demo.phar", "viaEnv": "DEMO_INTERPRETER" }}],
+        "versions": [
+          {{ "version": "1.0.0", "artifacts": [ {{ "platform": "windows-x64", "url": "{URL_1}", "sha256": "{hash}", "archive": "file", "installAs": "demo.phar" }} ] }}
+        ]
+    }}"#
+    );
+    let fx = fixture_with(vec![(URL_1, phar)], manifest, "windows-x64").await;
+    fx.manager
+        .install("demo", Some("1.0.0"), no_progress())
+        .await
+        .expect("PC-A");
+    let exe = versions_dir(&fx).join("1.0.0").join("demo.phar");
+    let before = fs::metadata(&exe).expect("meta").modified().expect("mtime");
+    // PC-B sees no launchers, and their folder can't be created (a file stands where it should be).
+    let shims = fx
+        .root
+        .join("runtimes")
+        .join("demo")
+        .join("shims")
+        .join("1.0.0");
+    fs::remove_dir_all(&shims).expect("rm shims");
+    fs::write(&shims, b"in the way").expect("blocker");
+    let downloads = requests(&fx);
+    let pc_b = other_pc(&fx, "pc-b").await;
+    let outcome = pc_b.install("demo", Some("1.0.0"), no_progress()).await;
+    assert!(outcome.is_err(), "{outcome:?}");
+    assert_eq!(requests(&fx), downloads, "nothing downloaded");
+    let after = fs::metadata(&exe)
+        .expect("still there")
+        .modified()
+        .expect("mtime");
+    assert_eq!(before, after, "the complete runtime was left alone");
+}

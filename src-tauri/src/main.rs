@@ -124,6 +124,7 @@ fn main() {
             commands::deploy::deploy_test,
             commands::deploy::deploy_provision,
             commands::deploy::deploy_launch,
+            commands::deploy::deploy_trust,
             commands::python_packages::python_packages_status,
             commands::python_packages::python_packages_install,
             commands::document::document_open,

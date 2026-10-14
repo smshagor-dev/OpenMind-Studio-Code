@@ -12,7 +12,7 @@ use openmind_deploy::provision::{choose_package, plan_package, Destination};
 
 use super::super::local::{RuntimeStore, ThisCopy};
 use super::super::service::{share_program, DeployService, DeploymentView};
-use super::{blocked, fail, pass, Check};
+use super::{blocked, fail, not_tested, pass, Check};
 
 pub(super) fn provisioning(
     copy: &ThisCopy,
@@ -70,7 +70,7 @@ pub(super) fn provisioning(
     };
     let integrity = match &package {
         None => blocked("packageIntegrity", "no package to verify"),
-        Some(_) if !download_package => blocked(
+        Some(_) if !download_package => not_tested(
             "packageIntegrity",
             "not downloaded (run the test with package verification)",
         ),
@@ -123,7 +123,26 @@ fn integrity(
     check
 }
 
+/// Readiness, and whether this computer trusts the deployment yet (provisioning asks for that first).
 fn readiness(
+    copy: &ThisCopy,
+    deployment: &DeploymentView,
+    package: Option<&PackageEntry>,
+) -> Check {
+    let check = readiness_of(copy, deployment, package);
+    if check.status == super::Status::Pass && !deployment.trusted {
+        return blocked(
+            "provisioningReadiness",
+            format!(
+                "UNTRUSTED DEPLOYMENT: {} — not trusted on this computer yet; provisioning asks the user to trust it first",
+                check.detail
+            ),
+        );
+    }
+    check
+}
+
+fn readiness_of(
     copy: &ThisCopy,
     deployment: &DeploymentView,
     package: Option<&PackageEntry>,
@@ -175,19 +194,50 @@ fn readiness(
 fn shortcut(copy: &ThisCopy) -> Check {
     use crate::integration::check::ShortcutState;
     let report = crate::integration::check::gather(&copy.exe);
+    let installed = copy.layout != openmind_core::InstallLayout::Portable;
     match report.shortcut {
-        ShortcutState::Correct(lnk) => pass("shortcutValidity", format!("{} starts this program", lnk.display())),
+        ShortcutState::Correct(lnk) => pass(
+            "shortcutValidity",
+            format!("{} starts this program", lnk.display()),
+        ),
         ShortcutState::DriveLetter(lnk) => fail(
             "shortcutValidity",
-            format!("{} starts this program through a drive letter other computers may not have: use Create or Repair Desktop Shortcut", lnk.display()),
+            format!(
+                "{} starts this program through a drive letter other computers may not have: use Create or Repair Desktop Shortcut",
+                lnk.display()
+            ),
+        ),
+        // A portable (or test) copy is never given the Desktop shortcut: the one there belongs to another copy, and
+        // leaving it alone is how copies stay apart.
+        ShortcutState::OtherProgram(lnk, target) if !installed => not_tested(
+            "shortcutValidity",
+            format!(
+                "a portable copy gets no Desktop shortcut; {} belongs to another OpenMind Studio copy ({}) and was left alone",
+                lnk.display(),
+                target.display()
+            ),
         ),
         ShortcutState::OtherProgram(lnk, target) => fail(
             "shortcutValidity",
-            format!("{} starts {}, not this copy: use Create or Repair Desktop Shortcut", lnk.display(), target.display()),
+            format!(
+                "{} starts {}, not this installation: use Create or Repair Desktop Shortcut",
+                lnk.display(),
+                target.display()
+            ),
         ),
         ShortcutState::Missing => match report.public_shortcut {
-            Some(public) => pass("shortcutValidity", format!("{} (Public Desktop) starts this program", public.display())),
-            None => fail("shortcutValidity", "no Desktop shortcut starts this program: use Create or Repair Desktop Shortcut"),
+            Some(public) => pass(
+                "shortcutValidity",
+                format!("{} (Public Desktop) starts this program", public.display()),
+            ),
+            None if !installed => not_tested(
+                "shortcutValidity",
+                "a portable copy gets no Desktop shortcut (start it from its folder)",
+            ),
+            None => fail(
+                "shortcutValidity",
+                "no Desktop shortcut starts this installation: use Create or Repair Desktop Shortcut",
+            ),
         },
     }
 }

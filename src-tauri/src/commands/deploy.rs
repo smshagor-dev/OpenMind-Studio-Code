@@ -3,7 +3,6 @@
 //! every blocking step (sockets, downloads, the setup) runs off the async runtime.
 
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 
 use openmind_deploy::advert::PackageKind;
 use openmind_deploy::discover::Options;
@@ -12,7 +11,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::app_state::AppState;
 use crate::deploy::checks::TestReport;
-use crate::deploy::exec::{self, Effects, Outcome, Request};
+use crate::deploy::exec::{self, Outcome, Request};
 use crate::deploy::local::ThisCopy;
 use crate::deploy::service::{DeployService, DeploymentView, OfferView, SearchView};
 
@@ -172,38 +171,51 @@ pub async fn deploy_provision(
         .map(|text| PathBuf::from(text.trim()))
         .filter(|path| !path.as_os_str().is_empty());
     let (manifest, source) = app.state::<DeployService>().provisioning_source(&id)?;
-    let verifier = crate::deploy::release_verifier()?;
-    let temp_dir = app.state::<AppState>().paths.temp_dir.clone();
-    blocking(move || {
-        let cancel = AtomicBool::new(false);
-        let shortcut = |program: &std::path::Path| {
-            crate::integration::deploy::desktop_shortcut(program, false)
-        };
-        exec::provision(
-            &Request {
-                manifest,
-                source,
-                kind,
-                destination,
-            },
-            &Effects {
-                verifier: &verifier,
-                shortcut: &shortcut,
-                run_setup: &exec::run_setup_silently,
-                temp_dir,
-                cancel: &cancel,
-            },
-        )
+    let outcome = blocking({
+        let app = app.clone();
+        move || {
+            let copy = copy_of(&app.state::<AppState>());
+            crate::deploy::live::with_live_effects(&copy, true, |effects| {
+                exec::provision(
+                    &Request {
+                        manifest,
+                        source,
+                        kind,
+                        destination,
+                    },
+                    effects,
+                )
+            })
+        }
     })
-    .await?
+    .await???;
+    app.state::<DeployService>().allow_launch(&outcome.program);
+    Ok(outcome)
+}
+
+/// Trusts a found deployment on this computer (the user confirmed it in the dialog).
+#[tauri::command]
+pub async fn deploy_trust(
+    id: String,
+    state: State<'_, AppState>,
+    service: State<'_, DeployService>,
+) -> Result<(), String> {
+    let (manifest, _) = service.provisioning_source(&id)?;
+    crate::deploy::trust::TrustStore::in_dir(&copy_of(&state).data_root)
+        .trust(&manifest)
+        .map_err(|err| format!("The trust record couldn't be saved: {err}"))
 }
 
 /// Starts a provisioned copy (on the user's click).
 #[tauri::command]
-pub async fn deploy_launch(program: String) -> Result<(), String> {
+pub async fn deploy_launch(
+    program: String,
+    service: State<'_, DeployService>,
+) -> Result<(), String> {
     let program = PathBuf::from(program);
-    if program.file_name().and_then(|n| n.to_str()) != Some(crate::deploy::inspect::PROGRAM) {
-        return Err("Only OpenMind Studio itself can be started from here.".into());
+    // Only a copy this session provisioned: the page can't make this start any other program.
+    if !service.may_launch(&program) {
+        return Err("Only the OpenMind Studio copy set up here can be started from here.".into());
     }
     std::process::Command::new(&program)
         .current_dir(program.parent().unwrap_or(&program))

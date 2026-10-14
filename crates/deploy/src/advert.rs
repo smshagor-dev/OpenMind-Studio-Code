@@ -182,7 +182,8 @@ fn check_common(
     check(PLATFORMS.contains(&platform), "platform")?;
     match (kind, share_path) {
         (DeploymentKind::NetworkShare, Some(path)) => {
-            check(valid_share_path(path, platform), "share path")
+            check(valid_share_path(path, platform), "share path")?;
+            check(crate::share_id_for(path) == id, "deployment id")
         }
         (DeploymentKind::NetworkShare, None) => Err("share path".into()),
         (DeploymentKind::PackageSource, None) => Ok(()),

@@ -115,6 +115,12 @@ fn describe(
 /// Checks a received package against its manifest entry and its signature. On failure the caller deletes the file.
 pub fn verify_file(file: &Path, entry: &PackageEntry, verifier: Verifier) -> Result<(), String> {
     let bytes = std::fs::read(file).map_err(|err| format!("{}: {err}", file.display()))?;
+    verify_bytes(&bytes, entry, verifier)
+}
+
+/// [`verify_file`] for bytes already read — through a handle the caller keeps open, so the file can't be changed between
+/// this check and its use.
+pub fn verify_bytes(bytes: &[u8], entry: &PackageEntry, verifier: Verifier) -> Result<(), String> {
     if bytes.len() as u64 != entry.size {
         return Err(format!(
             "the package is {} bytes, not {}",
@@ -122,10 +128,10 @@ pub fn verify_file(file: &Path, entry: &PackageEntry, verifier: Verifier) -> Res
             entry.size
         ));
     }
-    if crate::to_hex(&Sha256::digest(&bytes)) != entry.sha256 {
+    if crate::to_hex(&Sha256::digest(bytes)) != entry.sha256 {
         return Err("the package's SHA-256 doesn't match".into());
     }
-    verifier(&bytes, &entry.signature, &entry.version)
+    verifier(bytes, &entry.signature, &entry.version)
         .map_err(|reason| format!("the package's signature was refused: {reason}"))
 }
 

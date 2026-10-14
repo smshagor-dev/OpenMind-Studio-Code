@@ -12,7 +12,7 @@ export type SearchOutcome =
   | "networkBlocked"
   | "discoveryUnavailable";
 /** `deploy::checks::Status`. */
-export type CheckStatus = "pass" | "fail" | "blocked";
+export type CheckStatus = "pass" | "fail" | "blocked" | "notTested";
 /** How a computer is provisioned from a deployment (`deploy_provision`'s `kind`). */
 export type ProvisionKind = "share" | "setup" | "portable";
 
@@ -67,6 +67,8 @@ export interface DeploymentView {
   sources: { address: string; appVersion: string; secondsAgo: number; servesPackages: boolean }[];
   incompatible: string | null;
   manifestError: string | null;
+  /** Whether this computer's user trusted it; nothing is provisioned from an untrusted deployment. */
+  trusted: boolean;
 }
 
 export interface SearchView {
@@ -111,6 +113,7 @@ export interface TestReport {
   passed: number;
   failed: number;
   blocked: number;
+  notTested: number;
   search: SearchView;
   deployment: string | null;
 }
@@ -131,6 +134,7 @@ export interface DeployIpc {
   test: (targets: string[], downloadPackage: boolean) => Promise<TestReport>;
   provision: (id: string, kind: ProvisionKind, destination: string | null) => Promise<ProvisionOutcome>;
   launch: (program: string) => Promise<void>;
+  trust: (id: string) => Promise<void>;
 }
 
 export const tauriDeployIpc: DeployIpc = {
@@ -140,4 +144,5 @@ export const tauriDeployIpc: DeployIpc = {
   test: (targets, downloadPackage) => invoke<TestReport>("deploy_test", { targetsTyped: targets, downloadPackage }),
   provision: (id, kind, destination) => invoke<ProvisionOutcome>("deploy_provision", { id, kind, destination }),
   launch: (program) => invoke("deploy_launch", { program }).then(() => undefined),
+  trust: (id) => invoke("deploy_trust", { id }).then(() => undefined),
 };

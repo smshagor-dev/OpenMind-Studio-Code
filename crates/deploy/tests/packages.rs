@@ -261,3 +261,55 @@ fn an_unreachable_source_is_a_connection_error() {
         Err(FetchError::Connect(_))
     ));
 }
+
+#[test]
+fn a_client_trickling_its_request_head_is_cut_off() {
+    let source = source_with(&[(&setup_name(), b"setup")]);
+    let mut stream = TcpStream::connect(source.server.address()).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .expect("timeout");
+    let started = std::time::Instant::now();
+    stream
+        .write_all(b"GET /openmind-deploy/v1/manifest HTTP/1.1\r\n")
+        .expect("partial");
+    // Then nothing more: the server must not hold the connection open for good.
+    let mut answer = String::new();
+    let _ = stream.read_to_string(&mut answer);
+    assert!(
+        started.elapsed() < Duration::from_secs(15),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(
+        answer.is_empty() || answer.starts_with("HTTP/1.1 400"),
+        "{answer}"
+    );
+}
+
+#[test]
+fn a_package_replaced_by_a_link_is_not_served() {
+    let payload = big_payload();
+    let source = source_with(&[(&setup_name(), &payload)]);
+    let elsewhere = source.folder.join("other.bin");
+    std::fs::write(&elsewhere, b"not the package").expect("other");
+    let served = source.folder.join(setup_name());
+    std::fs::remove_file(&served).expect("rm");
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_file(&elsewhere, &served);
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(&elsewhere, &served);
+    if linked.is_err() {
+        eprintln!("this account may not create links; skipped");
+        return;
+    }
+    let answer = raw(
+        source.server.address(),
+        format!(
+            "GET /openmind-deploy/v1/packages/{} HTTP/1.1\r\nHost: x\r\n\r\n",
+            setup_name()
+        )
+        .as_bytes(),
+    );
+    assert!(answer.starts_with("HTTP/1.1 404"), "{answer}");
+}

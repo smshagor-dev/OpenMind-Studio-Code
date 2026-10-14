@@ -119,6 +119,26 @@ impl RuntimeManager {
         }
     }
 
+    /// For an install: a complete version folder is adopted; when its files are all there but its launchers can't be
+    /// written (a file another computer holds open, a share this user may only read), the write error is returned —
+    /// a complete runtime other computers may be running is never deleted and unpacked again. `None`: not installed.
+    pub(super) async fn adopt_or_refuse(
+        &self,
+        manifest: &RuntimeManifest,
+        kind: &str,
+        version: &str,
+    ) -> Result<Option<InstalledVersion>, RuntimeError> {
+        if let Some(installed) = self.adopt_if_healthy(manifest, kind, version).await? {
+            return Ok(Some(installed));
+        }
+        let dir = self.paths.version_dir(kind, version)?;
+        if !super::is_healthy(manifest, &dir) {
+            return Ok(None);
+        }
+        crate::shims::write_shims(manifest, version, &self.paths.shim_dir(kind, version)?)?;
+        self.adopt_if_healthy(manifest, kind, version).await
+    }
+
     /// A version another computer (or a hand copy) already installed in full: recorded here and given its shims
     /// instead of being downloaded and unpacked again over files that may be in use. `None` when it isn't healthy.
     pub(super) async fn adopt_if_healthy(

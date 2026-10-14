@@ -24,12 +24,17 @@ pub const PACKAGE_PREFIX: &str = "/openmind-deploy/v1/packages/";
 pub const MAX_CONNECTIONS: usize = 16;
 const MAX_REQUEST: usize = 8 * 1024;
 const IO_TIMEOUT: Duration = Duration::from_secs(30);
+/// The whole request head must arrive within this (a client sending a byte now and then can't hold a slot).
+const HEAD_DEADLINE: Duration = Duration::from_secs(10);
 
 /// What a server offers: the manifest and, for each package name in it, the file on this computer.
 #[derive(Debug, Clone)]
 pub struct Catalog {
     pub manifest: Manifest,
     pub files: HashMap<String, PathBuf>,
+    /// Each file's resolved path when the catalog was made: a file later replaced by a link or junction to something
+    /// else no longer matches and is not served.
+    resolved: HashMap<String, PathBuf>,
 }
 
 impl Catalog {
@@ -44,7 +49,29 @@ impl Catalog {
         {
             return Err("every package needs exactly one file".into());
         }
-        Ok(Self { manifest, files })
+        let mut resolved = HashMap::new();
+        for (name, file) in &files {
+            let canonical =
+                std::fs::canonicalize(file).map_err(|err| format!("{}: {err}", file.display()))?;
+            resolved.insert(name.clone(), canonical);
+        }
+        Ok(Self {
+            manifest,
+            files,
+            resolved,
+        })
+    }
+}
+
+impl Catalog {
+    /// The file to serve for `name`: still a regular file (not a link) at the place it resolved to when the catalog was
+    /// made.
+    fn servable(&self, name: &str) -> Option<&PathBuf> {
+        let file = self.files.get(name)?;
+        let meta = std::fs::symlink_metadata(file).ok()?;
+        let unchanged =
+            meta.is_file() && std::fs::canonicalize(file).ok().as_ref() == self.resolved.get(name);
+        unchanged.then_some(file)
     }
 }
 
@@ -123,10 +150,13 @@ fn accept_loop(listener: &TcpListener, stop: &AtomicBool, catalog: &Arc<Catalog>
 fn read_request(stream: &mut TcpStream) -> std::io::Result<Option<(String, String)>> {
     let mut data = Vec::new();
     let mut buf = [0u8; 1024];
+    let deadline = std::time::Instant::now() + HEAD_DEADLINE;
     while !data.windows(4).any(|w| w == b"\r\n\r\n") {
-        if data.len() > MAX_REQUEST {
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        if data.len() > MAX_REQUEST || left.is_zero() {
             return Ok(None);
         }
+        stream.set_read_timeout(Some(left))?;
         let n = stream.read(&mut buf)?;
         if n == 0 {
             return Ok(None);
@@ -167,7 +197,7 @@ fn serve(mut stream: TcpStream, catalog: &Catalog) -> std::io::Result<()> {
     let file = path
         .strip_prefix(PACKAGE_PREFIX)
         .filter(|name| catalog.manifest.packages.iter().any(|p| p.name == *name))
-        .and_then(|name| catalog.files.get(name));
+        .and_then(|name| catalog.servable(name));
     let Some(file) = file else {
         return respond_status(&mut stream, 404, "Not Found");
     };
@@ -195,5 +225,23 @@ fn write_head(
 
 fn respond_status(stream: &mut TcpStream, status: u16, reason: &str) -> std::io::Result<()> {
     write_head(stream, status, reason, "text/plain", reason.len() as u64)?;
-    stream.write_all(reason.as_bytes())
+    stream.write_all(reason.as_bytes())?;
+    linger_close(stream);
+    Ok(())
+}
+
+/// After an error answer the client may still be sending (an oversized request). Closing a socket with unread data makes
+/// Windows send a reset, which can throw away the answer before the client reads it; so the send side is shut and a
+/// bounded amount of input (64 KB, one second) is read and dropped first.
+fn linger_close(stream: &mut TcpStream) {
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(1)));
+    let mut buf = [0u8; 4096];
+    let mut left = 64 * 1024usize;
+    while left > 0 {
+        match stream.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => left = left.saturating_sub(n),
+        }
+    }
 }

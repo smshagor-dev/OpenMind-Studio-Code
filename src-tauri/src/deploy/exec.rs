@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use openmind_deploy::advert::{Manifest, PackageEntry, PackageKind};
 use openmind_deploy::client;
-use openmind_deploy::package::{verify_file, Verifier};
+use openmind_deploy::package::{verify_bytes, Verifier};
 use openmind_deploy::provision::{plan_package, plan_share, Destination, Plan};
 use serde::Serialize;
 
@@ -65,14 +65,24 @@ pub struct Effects<'a> {
     pub shortcut: &'a dyn Fn(&Path) -> Result<String, String>,
     /// Runs a setup with its arguments, returning its exit code.
     pub run_setup: &'a dyn Fn(&Path, &Path) -> Result<i32, String>,
-    /// This computer's temporary folder for downloads.
+    /// This computer's temporary folder for downloads (each provisioning gets its own folder inside).
     pub temp_dir: PathBuf,
+    /// This computer's folder for the provisioning lock of a destination on its own disks.
+    pub lock_dir: PathBuf,
+    /// Whether this computer's user trusted the deployment (see `trust.rs`); nothing is provisioned otherwise.
+    pub trusted: &'a dyn Fn(&Manifest) -> bool,
+    /// The oldest version a package may have: this program's own. An older release, even correctly signed, is
+    /// refused — a forged source can't roll a computer back to a version with problems fixed since.
+    pub minimum_version: &'a str,
     pub cancel: &'a AtomicBool,
 }
 
 /// Carries out the request (see the module text).
 pub fn provision(request: &Request, effects: &Effects) -> Result<Outcome, String> {
     let platform = openmind_deploy::this_platform();
+    if !(effects.trusted)(&request.manifest) {
+        return Err(super::trust::untrusted_message(&request.manifest));
+    }
     match (&request.kind, &request.destination) {
         (None, _) => {
             let plan =
@@ -125,13 +135,22 @@ fn use_share(exe: &Path, version: &str, effects: &Effects) -> Result<Outcome, St
     })
 }
 
-/// `<parent>/.<name>.openmind-provision.lock`: next to the folder, so it also works on a share.
-fn lock_file(dest: &Path) -> PathBuf {
-    let name = dest
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "openmind".into());
-    dest.with_file_name(format!(".{name}.openmind-provision.lock"))
+/// The provisioning lock of `dest`. A folder on a network share is locked next to it
+/// (`<parent>/.<name>.openmind-provision.lock`), so two computers provisioning one shared folder exclude each other; a
+/// folder on this computer is locked in this computer's own lock folder, so no lock file is left beside the user's
+/// folders (a drive's root, say).
+fn lock_file(dest: &Path, lock_dir: &Path) -> PathBuf {
+    if openmind_core::install::is_remote_path(dest) {
+        let name = dest
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "openmind".into());
+        return dest.with_file_name(format!(".{name}.openmind-provision.lock"));
+    }
+    lock_dir.join(format!(
+        "{}.lock",
+        openmind_core::install::install_key(dest)
+    ))
 }
 
 fn provision_package(
@@ -147,7 +166,7 @@ fn provision_package(
     std::fs::create_dir_all(parent)
         .map_err(|err| format!("{} can't be created or written: {err}", parent.display()))?;
     let _lock = openmind_core::profile_lock::ProfileLock::acquire_file(
-        &lock_file(dest),
+        &lock_file(dest, &effects.lock_dir),
         Duration::from_secs(2),
     )
     .map_err(|_| {
@@ -178,28 +197,62 @@ fn provision_package(
         Plan::Repair { package } => ("repair", package),
         Plan::UseShare { .. } => return Err("unexpected plan".into()),
     };
+    if openmind_deploy::version::compare(&package.version, effects.minimum_version)
+        == std::cmp::Ordering::Less
+    {
+        return Err(format!(
+            "The offered package is OpenMind Studio {}, older than this computer's {}. An older release is never \
+             installed from the network.",
+            package.version, effects.minimum_version
+        ));
+    }
     let mut steps = vec![format!(
         "{action}: {} into {}",
         package.name,
         dest.display()
     )];
-    let downloaded = fetch(source, package, effects, &mut steps)?;
-    let installed = match kind {
-        PackageKind::Installer => run_setup(&downloaded, dest, effects, &mut steps),
-        PackageKind::Portable => place_portable(&downloaded, dest, package, &plan, &mut steps),
-    };
-    let _ = std::fs::remove_file(&downloaded);
+    let download_dir = effects
+        .temp_dir
+        .join("deploy")
+        .join(openmind_deploy::random_hex(8));
+    let fetched = fetch(source, package, &download_dir, effects, &mut steps);
+    let installed = fetched.and_then(|(downloaded, held)| {
+        let outcome = match kind {
+            PackageKind::Installer => run_setup(&downloaded, dest, effects, &mut steps),
+            PackageKind::Portable => place_portable(&downloaded, dest, package, &plan, &mut steps),
+        };
+        // Only now may the file change: it was used exactly as it was verified.
+        drop(held);
+        outcome
+    });
+    let _ = std::fs::remove_dir_all(&download_dir);
     installed?;
     finish(dest, package, action, effects, steps)
 }
 
+/// Opens a downloaded package so that nothing else can change or delete it while the handle lives (others may still
+/// read and run it): the bytes verified are the bytes installed.
+pub(crate) fn open_held(file: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        // FILE_SHARE_READ only: no writer, no delete or rename while held.
+        options.share_mode(0x0000_0001);
+    }
+    options.open(file)
+}
+
+/// Downloads the package into `dir`, then verifies it through a handle that is kept (see [`open_held`]).
 fn fetch(
     source: SocketAddr,
     package: &PackageEntry,
+    dir: &Path,
     effects: &Effects,
     steps: &mut Vec<String>,
-) -> Result<PathBuf, String> {
-    let file = effects.temp_dir.join("deploy").join(&package.name);
+) -> Result<(PathBuf, std::fs::File), String> {
+    let file = dir.join(&package.name);
     client::download(
         source,
         package,
@@ -209,17 +262,24 @@ fn fetch(
         effects.cancel,
     )
     .map_err(|err| format!("The package couldn't be downloaded from {source}: {err}"))?;
-    if let Err(reason) = verify_file(&file, package, effects.verifier) {
+    let refused = |reason: String| {
         let _ = std::fs::remove_file(&file);
-        return Err(format!(
+        format!(
             "The package from {source} was refused and deleted: {reason}. Nothing was installed."
-        ));
+        )
+    };
+    let mut held = open_held(&file).map_err(|err| refused(err.to_string()))?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut held, &mut bytes).map_err(|err| refused(err.to_string()))?;
+    if let Err(reason) = verify_bytes(&bytes, package, effects.verifier) {
+        drop(held);
+        return Err(refused(reason));
     }
     steps.push(format!(
         "downloaded {} bytes from {source}; size, SHA-256 and release signature verified",
         package.size
     ));
-    Ok(file)
+    Ok((file, held))
 }
 
 fn run_setup(
@@ -239,6 +299,8 @@ fn run_setup(
              changed.",
             dest.display()
         )),
+        1 => Err("The setup was cancelled. Nothing was installed.".into()),
+        2 => Err("The setup stopped with an error (exit code 2). Check that you may write to the folder.".into()),
         other => Err(format!("The setup ended with exit code {other}.")),
     }
 }
@@ -252,7 +314,13 @@ pub fn run_setup_silently(setup: &Path, dest: &Path) -> Result<i32, String> {
         .arg("/S")
         .raw_arg(format!("/D={}", dest.display()))
         .spawn()
-        .map_err(|err| format!("The setup couldn't be started: {err}"))?;
+        .map_err(|err| match err.raw_os_error() {
+            // ERROR_ELEVATION_REQUIRED: never escalated silently.
+            Some(740) => "The setup needs administrator rights for this folder. Choose a folder you may write to \
+                          (for example under your user profile or another drive), or ask your IT administrator."
+                .to_string(),
+            _ => format!("The setup couldn't be started: {err}"),
+        })?;
     let deadline = std::time::Instant::now() + SETUP_TIMEOUT;
     loop {
         if let Some(status) = child.try_wait().map_err(|err| err.to_string())? {

@@ -203,8 +203,21 @@ the local network and sets the computer up from one. This is separate from colla
 **What is sent**: versions, architectures, sizes, SHA-256 checksums, the release signatures and a shared installation's
 network path. Never settings, projects, credentials, keys, the database or the computer's or user's name. Nothing is
 announced unless the setting is on (or `--deploy serve` runs), and nothing is searched until the user clicks *Search the
-Network* or runs the test. A search sends three small queries to the network's broadcast addresses (and to any address
-typed in, for a source on another subnet); nothing scans address ranges.
+Network* or runs the test. A search sends three queries to the network's broadcast addresses (and to any address typed
+in, for a source on another subnet); nothing scans address ranges. A query is padded to at least 512 bytes and an answer
+is smaller than that, so an announcing computer can't be used to multiply someone else's traffic; it also answers each
+address only a few times a second. Discovery is IPv4 only, and broadcasts don't cross routers: for a source on another
+subnet type its address.
+
+**Trust.** Anyone on the network can announce a deployment, and the release signature only proves a package is a real
+OpenMind Studio release, not that the computer offering it, or the share it names, is the one IT meant. So the first
+time a deployment is used on a computer the user is asked to trust it (what it is, the share path, which addresses
+answered); nothing is taken from an untrusted deployment, and the backend refuses it too. Trust is per computer, stored
+in that computer's data folder (`deploy-trust.json`, at most 64 entries). A shared installation is trusted by its exact
+network path (its identity is a hash of that path, checked on every announcement, so another path can't borrow it); a
+package source by its identity. `--deploy untrust <id>` withdraws it. Even when trusted, every package is still checked
+against the release signature, its size and SHA-256; the file stays open (and can't be replaced) from that check until
+the setup or unpacking has finished, and a package older than the running copy is refused.
 
 **Setting a computer up** (one of three, each shown with the reason when it isn't possible):
 
@@ -214,13 +227,18 @@ typed in, for a source on another subnet); nothing scans address ranges.
 | Install with Setup… | Choose **any folder on any drive** (an `OpenMind Studio` folder is made inside it). The setup is downloaded, its size, SHA-256 and release signature are verified, and it runs silently into that folder. An older copy there is updated in place with its data kept, the same version is repaired, a newer one is never downgraded (refused with the reason), a copy that is in use is left alone. |
 | Install Portable Copy… | The same checks; the portable package is unpacked into the folder, or swapped into an existing portable copy item by item (data, settings and runtimes kept). |
 
-One folder is provisioned by one computer at a time (a lock next to the folder), never while OpenMind Studio runs from it
-on this computer, and a folder holding other files is never written into. A package that fails a check is deleted and
-nothing is installed. The firewall: the computer that **offers** must accept inbound UDP 47741 and the package server's
+One folder is provisioned by one computer at a time (a lock next to the folder when it is on the network, in this
+computer's data folder when it is local, so nothing is left beside a local destination), never while OpenMind Studio
+runs from it on this computer, and a folder holding other files is never written into. Each provisioning downloads into
+its own temporary folder, removed afterwards. A package that fails a check is deleted and nothing is installed; a source
+that stops mid-download leaves no partial installation. A setup that needs administrator rights (Windows error 740) is
+reported as such; nothing tries to get around it. The firewall: the computer that **offers** must accept inbound UDP 47741 and the package server's
 TCP port (Windows asks the first time); a computer that only searches needs nothing. Where policy blocks broadcasts the
 search says "The network blocked the search"; ask a source directly by typing its address.
 
-**Network Deployment Test** — twenty checks, each PASS, FAIL or BLOCKED with the reason: machine identity, installation,
+**Network Deployment Test** — twenty checks, each PASS, FAIL, BLOCKED or NOT TESTED with the reason (NOT TESTED = the
+check doesn't apply to this copy or was skipped, e.g. the package wasn't downloaded, or a portable copy has no shortcut of
+its own; an untrusted deployment makes provisioning readiness BLOCKED "UNTRUSTED DEPLOYMENT"): machine identity, installation,
 program path, install folder, local data, database isolation, runtime store, network interface, discovery socket,
 deployment discovery ("NO DEPLOYMENT FOUND" / "DISCOVERY UNAVAILABLE" / "NETWORK/BIND BLOCKED" / "PROTOCOL
 INCOMPATIBLE" are told apart), discovered source, protocol, platform, architecture, version, package availability,
@@ -253,8 +271,12 @@ OpenMindStudio.exe --deploy status
 OpenMindStudio.exe --deploy discover [--target <host[:port]>]... [--json]
 OpenMindStudio.exe --deploy test [--target <host[:port]>]... [--no-download] [--json]
 OpenMindStudio.exe --deploy serve [--packages <folder>]
-OpenMindStudio.exe --deploy provision <deployment id|first> [--kind share|setup|portable] [--to <folder>] [--target ...] [--no-shortcut]
+OpenMindStudio.exe --deploy provision <deployment id|first> [--kind share|setup|portable] [--to <folder>] [--target ...] [--no-shortcut] [--trust]
+OpenMindStudio.exe --deploy untrust <deployment id>
 ```
+
+`--trust` trusts the deployment first (the dialog's question); with `first` it is refused when more than one compatible
+deployment answered: name the deployment by its id.
 
 Exit code 0 = done, 1 = failed (the reason on standard error; for `--deploy test`: a check failed), 2 = unknown action. Typed into a console, the output
 appears in that console; redirect it (`> report.txt`) in scripts.

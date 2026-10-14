@@ -54,6 +54,8 @@ pub struct DeploymentView {
     pub incompatible: Option<String>,
     /// The manifest couldn't be fetched from any source (the package list is then empty).
     pub manifest_error: Option<String>,
+    /// Whether this computer's user trusted it (nothing is provisioned from an untrusted deployment).
+    pub trusted: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,6 +85,8 @@ struct Inner {
     known: DiscoveredSet,
     manifests: HashMap<String, (Manifest, Option<String>)>,
     last_search: Option<SearchView>,
+    /// Programs this process provisioned: the only ones `deploy_launch` may start.
+    launchable: std::collections::HashSet<PathBuf>,
 }
 
 #[derive(Default)]
@@ -197,6 +201,7 @@ impl DeployService {
 
     /// What is known now (stale sources dropped), as the UI shows it.
     pub fn deployments(&self, copy: &ThisCopy) -> Vec<DeploymentView> {
+        let trust = super::trust::TrustStore::in_dir(&copy.data_root);
         let mut inner = self.lock();
         let now = Instant::now();
         for gone in inner.known.prune(now, DEFAULT_TTL) {
@@ -214,6 +219,7 @@ impl DeployService {
                     .unwrap_or_else(|| (manifest_from_advert(&deployment.advert), None));
                 DeploymentView {
                     id: deployment.advert.deployment_id.clone(),
+                    trusted: trust.is_trusted(&manifest),
                     incompatible: incompatibility(&manifest, copy),
                     manifest,
                     manifest_error,
@@ -230,6 +236,16 @@ impl DeployService {
                 }
             })
             .collect()
+    }
+
+    /// Remembers a program this process provisioned, so it may be started from the dialog.
+    pub fn allow_launch(&self, program: &std::path::Path) {
+        self.lock().launchable.insert(program.to_path_buf());
+    }
+
+    /// Whether `program` is one this process provisioned (nothing else is started through `deploy_launch`).
+    pub fn may_launch(&self, program: &std::path::Path) -> bool {
+        self.lock().launchable.contains(program)
     }
 
     /// The manifest and the package server to provision `id` from.
@@ -315,7 +331,11 @@ fn manifest_of(advert: &Advert, from: SocketAddr) -> (Manifest, Option<String>) 
     }
     let server = SocketAddr::new(from.ip(), advert.http_port);
     match client::fetch_manifest(server, MANIFEST_TIMEOUT) {
-        Ok(manifest) if manifest.deployment_id == advert.deployment_id => (manifest, None),
+        Ok(manifest)
+            if manifest.deployment_id == advert.deployment_id && manifest.kind == advert.kind =>
+        {
+            (manifest, None)
+        }
         Ok(_) => (
             manifest_from_advert(advert),
             Some(format!(

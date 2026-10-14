@@ -21,7 +21,11 @@ use super::service::{incompatibility, DeployService, DeploymentView, SearchView}
 pub enum Status {
     Pass,
     Fail,
+    /// It couldn't be checked: something it depends on is missing or refused (the reason says what).
     Blocked,
+    /// Not checked in this run (not applicable here, or not asked for): neither a pass nor a failure.
+    #[serde(rename = "notTested")]
+    NotTested,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,6 +43,7 @@ pub struct TestReport {
     pub passed: usize,
     pub failed: usize,
     pub blocked: usize,
+    pub not_tested: usize,
     pub search: SearchView,
     /// The deployment the provisioning checks looked at.
     pub deployment: Option<String>,
@@ -58,6 +63,10 @@ fn pass(id: &'static str, detail: impl Into<String>) -> Check {
 
 fn fail(id: &'static str, detail: impl Into<String>) -> Check {
     check(id, Status::Fail, detail)
+}
+
+fn not_tested(id: &'static str, detail: impl Into<String>) -> Check {
+    check(id, Status::NotTested, detail)
 }
 
 fn blocked(id: &'static str, detail: impl Into<String>) -> Check {
@@ -90,6 +99,7 @@ pub fn run(
         passed: count(Status::Pass),
         failed: count(Status::Fail),
         blocked: count(Status::Blocked),
+        not_tested: count(Status::NotTested),
         deployment: chosen.map(|d| d.id.clone()),
         checks,
         search,
@@ -233,7 +243,7 @@ fn database(copy: &ThisCopy) -> Check {
 
 fn runtime_store(copy: &ThisCopy) -> Check {
     if !copy.runtimes_dir.is_dir() {
-        return blocked(
+        return not_tested(
             "runtimeStore",
             format!(
                 "{} doesn't exist yet (no runtime installed)",

@@ -77,15 +77,16 @@ pub fn report(report: &TestReport) -> String {
     let mut lines = vec!["OpenMind Studio — Network Deployment Test".to_string()];
     for check in &report.checks {
         let status = match check.status {
-            Status::Pass => "PASS   ",
-            Status::Fail => "FAIL   ",
-            Status::Blocked => "BLOCKED",
+            Status::Pass => "PASS      ",
+            Status::Fail => "FAIL      ",
+            Status::Blocked => "BLOCKED   ",
+            Status::NotTested => "NOT TESTED",
         };
         lines.push(format!("  {status}  {:<26} {}", check.id, check.detail));
     }
     lines.push(format!(
-        "{} passed, {} failed, {} blocked",
-        report.passed, report.failed, report.blocked
+        "{} passed, {} failed, {} blocked, {} not tested",
+        report.passed, report.failed, report.blocked, report.not_tested
     ));
     lines.join("\n")
 }

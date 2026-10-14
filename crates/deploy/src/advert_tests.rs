@@ -176,3 +176,15 @@ fn a_manifest_with_two_files_of_one_name_is_refused() {
     manifest.packages.push(manifest.packages[0].clone());
     assert_eq!(manifest.validate(), Err("duplicate package".into()));
 }
+
+#[test]
+fn a_share_announcement_must_carry_its_own_paths_id() {
+    // A forged announcement borrowing a known share's id for another path is refused.
+    let mut forged = share_advert();
+    forged.share_path = Some(r"\\attacker\evil\OpenMind Studio".into());
+    assert_eq!(forged.validate(), Err("deployment id".into()));
+    // The same share spelled in another case keeps its id.
+    let mut same = share_advert();
+    same.share_path = Some(r"\\SERVER\APPS\OPENMIND STUDIO".into());
+    same.validate().expect("same share");
+}

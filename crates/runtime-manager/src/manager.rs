@@ -228,7 +228,7 @@ impl RuntimeManager {
         // ends the wait too), then use what it installed or take over.
         let _guard = self.acquire_waiting(kind, &version, &progress).await?;
         // Installed meanwhile by another computer sharing `runtimes/`: use it, never unpack over it.
-        if let Some(installed) = self.adopt_if_healthy(&manifest, kind, &version).await? {
+        if let Some(installed) = self.adopt_or_refuse(&manifest, kind, &version).await? {
             return Ok(installed);
         }
         self.install_inner(kind, &version, progress).await

@@ -8,6 +8,10 @@ with what you saw; `OpenMindStudio.exe --deploy test --json > pcN-test.json` sav
 and is part of the test), the university test build (setup + portable ZIP for x64, with their `.sig` files), and for
 the shared-installation part a network share every PC can read (`\\server\apps`) that PC1 may write.
 
+Use a test build made from code that contains deployment trust (the earlier university test build predates it: its
+dialog never asks the trust question). Record each result as PASS, FAIL, BLOCKED (something outside OpenMind stopped it)
+or NOT TESTED.
+
 ## A. PC1 — the first computer (package source)
 
 1. Install with the setup, choosing **For Me** and a non-default folder on a drive other than C: if the PC has one
@@ -28,7 +32,8 @@ the shared-installation part a network share every PC can read (`\\server\apps`)
 2. Help > Network Deployment > **Search the Network**. **PASS**: "Found."; PC1's deployment with both packages, "Answered
    from: <PC1's address>". If "No deployment found": type PC1's address into *Also ask these computers* and search
    again — if that works, broadcasts are blocked on this network (note it); if not, UDP 47741 is blocked (note it).
-3. **Install with Setup…**, choose a folder on any drive (e.g. `C:\Student Apps` or `E:\`). **PASS**: "Installed
+3. **Install with Setup…**: the first time, it asks whether to trust PC1's deployment (it shows the addresses that
+   answered); choose Trust and Continue. Then choose a folder on any drive (e.g. `C:\Student Apps` or `E:\`). **PASS**: "Installed
    OpenMind Studio 1.0.3", a Desktop shortcut "OpenMind Studio" starting the new folder's program, data under that
    folder; Start It opens it.
 4. Run the same step again into the same folder. **PASS**: "Repaired …" (no second installation, data kept).
@@ -45,7 +50,7 @@ the shared-installation part a network share every PC can read (`\\server\apps`)
    `\\server\apps\OpenMind Studio\runtimes\python`.
 3. On PC3 (any OpenMind Studio copy, or the portable ZIP) Search the Network. **PASS**: a "shared network installation"
    with the share path and "Ready runtimes: python …".
-4. **Use Shared Installation**. **PASS**: Desktop shortcut to `\\server\apps\OpenMind Studio\OpenMindStudio.exe`;
+4. **Use Shared Installation** (the trust question first: it must show exactly \\server\apps\OpenMind Studio). **PASS**: Desktop shortcut to `\\server\apps\OpenMind Studio\OpenMindStudio.exe`;
    starting it opens the workbench; Help > Network Deployment shows data under PC3's
    `%LOCALAPPDATA%\OpenMind\Studio\Installations\…`, runtimes "shared".
 5. On PC3, Runtime Manager: Python shows **Installed** without downloading (no progress bar). A terminal runs `python
@@ -67,6 +72,8 @@ the shared-installation part a network share every PC can read (`\\server\apps`)
    "Left out" (signature refused); PC2 can no longer install it.
 3. Try **Install with Setup…** on PC2 into a folder that holds other files. **PASS**: refused ("…aren't OpenMind
    Studio; choose an empty folder"), nothing written.
-4. Collaboration regression: create a room on PC1 and join it from PC2 over the LAN. **PASS**: as before.
+4. Trust: on a fresh computer, cancel the trust question. **PASS**: nothing downloaded or installed; Run Test shows
+   provisioning readiness BLOCKED "UNTRUSTED DEPLOYMENT".
+5. Collaboration regression: create a room on PC1 and join it from PC2 over the LAN. **PASS**: as before.
 
 Return the three `pcN-test.json` files and the PASS/FAIL list.

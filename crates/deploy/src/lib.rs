@@ -144,6 +144,13 @@ pub fn share_deployment_id(normalized_share_path: &str) -> String {
     to_hex(&digest[..16])
 }
 
+/// The deployment id a share announced as `share_path` must have (`\\server\share\dir`, any case, with or without a
+/// trailing separator). An announcement whose id isn't this is refused, so a forged one can't borrow the identity — and
+/// the trust — of a share that lives at another path.
+pub fn share_id_for(share_path: &str) -> String {
+    share_deployment_id(share_path.replace('/', "\\").trim_end_matches('\\'))
+}
+
 /// The deployment id of a package source: this computer (a token of it, never its name) and the offered folder.
 pub fn source_deployment_id(computer_token: &str, normalized_folder: &str) -> String {
     let digest = Sha256::digest(format!(

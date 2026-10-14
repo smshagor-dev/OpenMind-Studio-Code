@@ -11,10 +11,12 @@ pub mod cli;
 pub mod cli_text;
 pub mod exec;
 pub mod inspect;
+pub mod live;
 pub mod local;
 pub mod service;
 #[cfg(test)]
 pub mod test_signing;
+pub mod trust;
 
 /// The release's update key (`plugins.updater.pubkey`), read from the configuration built into this program — the
 /// same key the updater trusts, also available to the `--deploy` command line, which runs without the app.

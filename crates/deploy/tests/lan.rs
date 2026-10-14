@@ -290,3 +290,32 @@ fn a_changed_announcement_is_answered_from_then_on() {
     invalid.app_version = "x".into();
     assert!(responder.set_advert(invalid).is_err());
 }
+
+#[test]
+fn an_unpadded_query_gets_no_answer_so_the_responder_cant_amplify_traffic() {
+    let responder = Responder::start(ANY, 0, advert(&random_hex(8))).expect("responder");
+    let target = SocketAddr::from((Ipv4Addr::LOCALHOST, responder.address().port()));
+    let socket = UdpSocket::bind("127.0.0.1:0").expect("socket");
+    socket
+        .set_read_timeout(Some(Duration::from_millis(700)))
+        .expect("timeout");
+    let short = format!(
+        r#"{{"m":"openmind-deploy","v":{PROTOCOL},"t":"q","nonce":"{}"}}"#,
+        random_hex(8)
+    );
+    socket.send_to(short.as_bytes(), target).expect("send");
+    let mut buf = [0u8; 2048];
+    assert!(
+        socket.recv_from(&mut buf).is_err(),
+        "no answer to a short query"
+    );
+    // A proper (padded) query is still answered.
+    let padded = Packet::Query {
+        nonce: random_hex(8),
+    }
+    .encode();
+    assert!(padded.len() >= openmind_deploy::packet::MIN_QUERY);
+    socket.send_to(&padded, target).expect("send");
+    let (n, _) = socket.recv_from(&mut buf).expect("answered");
+    assert!(n <= openmind_deploy::packet::MAX_PACKET && n < padded.len() * 3);
+}

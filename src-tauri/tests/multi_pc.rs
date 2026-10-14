@@ -240,5 +240,60 @@ fn a_database_in_a_shared_folder_is_opened_by_one_computer_at_a_time() {
     assert!(matches!(claim_as(&profile, "token-pc-b"), Claim::Owner(_)));
 }
 
+/// Helper for the crash test below: writes to the database named by `OM_CRASH_DB`, then the process dies on the spot
+/// (`abort`: no clean close, no checkpoint — what a power cut or a killed process leaves).
+#[test]
+#[ignore = "helper process of a_database_left_by_a_crashed_process_reopens_with_its_rows"]
+fn crash_helper() {
+    let Ok(db_path) = std::env::var("OM_CRASH_DB") else {
+        return;
+    };
+    runtime().block_on(async {
+        let db = openmind_db::Db::connect(Path::new(&db_path))
+            .await
+            .expect("connect");
+        let repo = openmind_db::EditorSettingsRepository::new(db.pool());
+        for i in 0..50 {
+            repo.set(&format!("PC-A.crash.{i}"), "kept")
+                .await
+                .expect("write");
+        }
+        std::process::abort();
+    });
+}
+
+#[test]
+fn a_database_left_by_a_crashed_process_reopens_with_its_rows() {
+    let lab = Lab::new();
+    let pc_a = lab.paths("PC-A");
+    let pc_b = lab.paths("PC-B");
+    std::fs::create_dir_all(pc_a.db_path.parent().expect("dir")).expect("dir");
+    let status = std::process::Command::new(std::env::current_exe().expect("test exe"))
+        .args(["--exact", "crash_helper", "--ignored", "--nocapture"])
+        .env("OM_CRASH_DB", &pc_a.db_path)
+        .status()
+        .expect("helper");
+    assert!(!status.success(), "the helper crashed");
+    runtime().block_on(async {
+        let db = openmind_db::Db::connect(&pc_a.db_path)
+            .await
+            .expect("reopen after the crash");
+        let rows: Vec<(String,)> =
+            sqlx::query_as("SELECT key FROM editor_settings WHERE key LIKE 'PC-A.crash.%'")
+                .fetch_all(db.pool())
+                .await
+                .expect("rows");
+        assert_eq!(rows.len(), 50, "every committed row survived");
+        let check: (String,) = sqlx::query_as("PRAGMA quick_check")
+            .fetch_one(db.pool())
+            .await
+            .expect("check");
+        assert_eq!(check.0, "ok");
+        db.pool().close().await;
+    });
+    // The other computer's database was never touched or created by this.
+    assert!(!pc_b.db_path.exists());
+}
+
 #[path = "multi_pc/exec.rs"]
 mod exec;

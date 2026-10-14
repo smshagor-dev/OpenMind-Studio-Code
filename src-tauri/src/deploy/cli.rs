@@ -8,25 +8,27 @@
 //! - `serve [--packages <folder>]` — offer this installation (and the signed packages in the folder) until the console
 //!   is closed or Ctrl+C;
 //! - `provision <deployment id | first> [--kind share|setup|portable] [--to <folder>] [--target <address>]...
-//!   [--no-shortcut]` — provision this computer from a deployment found on the network (`--no-shortcut`: leave this
-//!   user's Desktop alone, e.g. when a script or Group Policy places shortcuts).
+//!   [--no-shortcut] [--trust]` — provision this computer from a deployment found on the network (`--no-shortcut`:
+//!   leave this user's Desktop alone, e.g. when a script or Group Policy places shortcuts). A deployment this computer's
+//!   user hasn't trusted is refused unless `--trust` is given, which records that trust (with `first`, only when exactly
+//!   one compatible deployment answered);
+//! - `untrust <deployment id>` — withdraw that trust.
 //!
 //! Exit codes: 0 done, 1 failed, 2 usage.
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 
 use openmind_deploy::advert::{DeploymentKind, PackageKind};
 use openmind_deploy::discover::Options;
 
-use super::exec::{self, Effects, Request};
+use super::exec::{self, Request};
 use super::local::ThisCopy;
 use super::service::DeployService;
 
 pub const USAGE: &str = "usage: OpenMindStudio.exe --deploy status | discover [--target <host[:port]>]... [--json] | \
 test [--target <host[:port]>]... [--no-download] [--json] | serve [--packages <folder>] | \
-provision <deployment id|first> [--kind share|setup|portable] [--to <folder>] [--target <host[:port]>]... [--no-shortcut]";
+provision <deployment id|first> [--kind share|setup|portable] [--to <folder>] [--target <host[:port]>]... [--no-shortcut] [--trust] | untrust <deployment id>";
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Args {
@@ -39,6 +41,7 @@ struct Args {
     kind: Option<String>,
     to: Option<PathBuf>,
     no_shortcut: bool,
+    trust: bool,
 }
 
 fn target(text: &str) -> Result<SocketAddr, String> {
@@ -72,6 +75,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
             "--json" => args.json = true,
             "--no-download" => args.download = false,
             "--no-shortcut" => args.no_shortcut = true,
+            "--trust" => args.trust = true,
             "--packages" => args.packages = Some(PathBuf::from(value()?)),
             "--kind" => args.kind = Some(value()?),
             "--to" => args.to = Some(PathBuf::from(value()?)),
@@ -163,6 +167,18 @@ fn run(args: &Args, mut copy: ThisCopy) -> Result<i32, String> {
             serve(&service, &copy)
         }
         "provision" => provision(args, &service, &copy),
+        "untrust" => {
+            let id = args
+                .deployment
+                .as_deref()
+                .filter(|id| openmind_deploy::is_hex(id, 32))
+                .ok_or("--deploy untrust needs the deployment id (32 hex digits).")?;
+            super::trust::TrustStore::in_dir(&copy.data_root)
+                .forget(id)
+                .map_err(|err| format!("The trust record couldn't be saved: {err}"))?;
+            println!("Deployment {id} is no longer trusted on this computer.");
+            Ok(0)
+        }
         _ => Err(USAGE.into()),
     }
 }
@@ -195,34 +211,48 @@ fn provision(args: &Args, service: &DeployService, copy: &ThisCopy) -> Result<i3
         None => Some(PackageKind::Installer),
         Some(other) => return Err(format!("--kind {other}: use share, setup or portable")),
     };
-    let verifier = super::release_verifier()?;
-    let cancel = AtomicBool::new(false);
-    let no_shortcut = args.no_shortcut;
-    let shortcut = |program: &std::path::Path| {
-        if no_shortcut {
-            Ok(format!(
-                "not created (--no-shortcut); start {}",
-                program.display()
-            ))
-        } else {
-            crate::integration::deploy::desktop_shortcut(program, false)
+    let trust = super::trust::TrustStore::in_dir(&copy.data_root);
+    if !trust.is_trusted(&manifest) {
+        if !args.trust {
+            return Err(format!(
+                "{}\nRun again with --trust to trust deployment {} on this computer.",
+                super::trust::untrusted_message(&manifest),
+                manifest.deployment_id
+            ));
         }
-    };
-    let outcome = exec::provision(
-        &Request {
-            manifest,
-            source,
-            kind,
-            destination: args.to.clone(),
-        },
-        &Effects {
-            verifier: &verifier,
-            shortcut: &shortcut,
-            run_setup: &exec::run_setup_silently,
-            temp_dir: copy.temp_dir.clone(),
-            cancel: &cancel,
-        },
-    )?;
+        let compatible = deployments
+            .iter()
+            .filter(|d| d.incompatible.is_none())
+            .count();
+        if wanted == "first" && compatible > 1 {
+            return Err(format!(
+                "{compatible} deployments answered: name the one to trust by its id (--deploy discover lists them)."
+            ));
+        }
+        trust
+            .trust(&manifest)
+            .map_err(|err| format!("The trust record couldn't be saved: {err}"))?;
+        println!(
+            "Trusted deployment {}{}",
+            manifest.deployment_id,
+            manifest
+                .share_path
+                .as_deref()
+                .map(|path| format!(" ({path})"))
+                .unwrap_or_default()
+        );
+    }
+    let outcome = super::live::with_live_effects(copy, !args.no_shortcut, |effects| {
+        exec::provision(
+            &Request {
+                manifest,
+                source,
+                kind,
+                destination: args.to.clone(),
+            },
+            effects,
+        )
+    })??;
     println!("{}", super::cli_text::outcome(&outcome));
     Ok(0)
 }

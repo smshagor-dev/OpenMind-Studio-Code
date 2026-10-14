@@ -108,6 +108,7 @@ export function Deployment({
       <div className="deploy-dialog__muted">
         {t("deploy.sources", { list: deployment.sources.map((s) => s.address).join(", ") })}
       </div>
+      {!deployment.trusted && <div className="deploy-dialog__muted">{t("deploy.trust.notYet")}</div>}
       {deployment.incompatible !== null && <div className="deploy-dialog__error">{deployment.incompatible}</div>}
       {deployment.manifestError !== null && <div className="deploy-dialog__error">{deployment.manifestError}</div>}
       <div className="deploy-dialog__actions">
