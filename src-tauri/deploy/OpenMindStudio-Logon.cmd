@@ -1,8 +1,8 @@
 @echo off
 rem OpenMind Studio - logon script for IT administrators (Group Policy: User Configuration > Policies > Windows Settings >
 rem Scripts (Logon/Logoff) > Logon, or any approved logon script). Point it at this file in the shared folder:
-rem     "\server\share\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd"           creates or repairs the user's shortcut
-rem     "\server\share\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd" remove    removes it (before uninstalling)
+rem     "\\server\share\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd"           creates or repairs the user's shortcut
+rem     "\\server\share\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd" remove    removes it (before uninstalling)
 rem It runs as the signed-in user, changes only that user's Desktop, needs no administrator rights, shows nothing and
 rem always ends with exit code 0 so a logon never waits on it. Each run adds two lines to
 rem %LOCALAPPDATA%\OpenMind\Studio\logon-shortcut.log (cleared when it passes 100 KB).

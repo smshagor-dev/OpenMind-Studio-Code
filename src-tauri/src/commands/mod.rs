@@ -3,6 +3,7 @@ pub mod ai;
 pub mod assembly;
 pub mod broker;
 pub mod collab;
+pub mod composer_dirs;
 pub mod database;
 pub mod debug;
 pub mod deploy;

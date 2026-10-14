@@ -9,10 +9,10 @@ policy. Nothing here installs software on a computer, raises privileges or
 works around Group Policy, AppLocker, Smart App Control or antivirus.
 
 Everything below uses the path of the shared folder, for example
-    \fs01\apps\OpenMind Studio
-Use the \server\share path (not a drive letter) wherever you can: drive
+    \\fs01\apps\OpenMind Studio
+Use the \\server\share path (not a drive letter) wherever you can: drive
 letters differ between computers (one maps R:, another Z:). OpenMind Studio
-always converts a mapped drive to its \server\share path for shortcuts and
+always converts a mapped drive to its \\server\share path for shortcuts and
 for each user's local data folder, so a user who starts it once from R: and
 once from Z: keeps one set of settings.
 
@@ -55,7 +55,7 @@ Pick one way to give users a shortcut (all use rights you already have):
 1. Do nothing: per-user shortcuts at first start (default)
    Each user gets a Desktop shortcut the first time they start OpenMind
    Studio on a computer. Turn it off if you deploy shortcuts yourself:
-       "\fs01\apps\OpenMind Studio\OpenMindStudio.exe" --integration user-desktop-shortcuts off
+       "\\fs01\apps\OpenMind Studio\OpenMindStudio.exe" --integration user-desktop-shortcuts off
    (or install with /NOUSERSHORTCUTS). "on" turns it back on.
 
 2. Group Policy Preferences (recommended in a domain)
@@ -64,14 +64,14 @@ Pick one way to give users a shortcut (all use rights you already have):
      Name: OpenMind Studio
      Target type: File System Object
      Location: Desktop          (or "All Users Desktop" in Computer Configuration)
-     Target path: \fs01\apps\OpenMind Studio\OpenMindStudio.exe
-     Start in: \fs01\apps\OpenMind Studio
-     Icon file path: \fs01\apps\OpenMind Studio\OpenMindStudio.exe, index 0
+     Target path: \\fs01\apps\OpenMind Studio\OpenMindStudio.exe
+     Start in: \\fs01\apps\OpenMind Studio
+     Icon file path: \\fs01\apps\OpenMind Studio\OpenMindStudio.exe, index 0
    To remove later: the same item with Action: Delete.
 
 3. Logon script (Group Policy or any approved logon script)
    User Configuration > Policies > Windows Settings > Scripts > Logon:
-       \fs01\apps\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd
+       \\fs01\apps\OpenMind Studio\deploy\OpenMindStudio-Logon.cmd
    Creates or repairs the signed-in user's shortcut; silent; exit code 0;
    log in %LOCALAPPDATA%\OpenMind\Studio\logon-shortcut.log.
    Parameter "remove" takes the shortcut away (use it before uninstalling).
@@ -81,12 +81,12 @@ Pick one way to give users a shortcut (all use rights you already have):
    Public Desktop of each listed computer, verifies it and writes a CSV
    report. Needs administrator rights on the targets and WinRM enabled on
    them; it reports, never works around, computers you may not manage.
-       .\Deploy-OpenMindShortcuts.ps1 -SharedExe "\fs01\apps\OpenMind Studio\OpenMindStudio.exe" `
+       .\Deploy-OpenMindShortcuts.ps1 -SharedExe "\\fs01\apps\OpenMind Studio\OpenMindStudio.exe" `
            -ComputerListPath .\lab1.txt -WhatIf
    Drop -WhatIf to apply; -Remove takes the shortcuts away.
 
 5. One computer by hand (administrator on that computer)
-       "\fs01\apps\OpenMind Studio\OpenMindStudio.exe" --integration desktop-shortcut --all-users
+       "\\fs01\apps\OpenMind Studio\OpenMindStudio.exe" --integration desktop-shortcut --all-users
 
 Checking a computer
    Run Check Installation.cmd as the user (or OpenMindStudio.exe
@@ -98,7 +98,7 @@ Checking a computer
 Updates (centralised)
    Users' copies never change the shared folder. In a maintenance window,
    with OpenMind Studio closed everywhere, run the new setup on one computer
-   that may write to the share (or pass /D=\fs01\apps\OpenMind Studio). It
+   that may write to the share (or pass /D=\\fs01\apps\OpenMind Studio). It
    finds the installation, shows "OpenMind Studio Update", keeps the
    installation type, refuses while a computer still runs the program from
    the share, and every computer starts the new version next time.

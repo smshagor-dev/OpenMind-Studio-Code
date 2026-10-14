@@ -1,7 +1,7 @@
 @echo off
 rem OpenMind Studio - create or repair the OpenMind Studio shortcut on YOUR Desktop.
 rem Double-click it from the shared folder (or a mapped drive). No administrator rights are needed and nothing outside
-rem your own Desktop is changed. On a network share the shortcut points at the \server\share path, so it works on
+rem your own Desktop is changed. On a network share the shortcut points at the \\server\share path, so it works on
 rem every computer that can reach the share, whatever drive letter it maps.
 setlocal
 chcp 65001 >nul
