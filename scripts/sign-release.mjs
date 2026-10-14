@@ -1,4 +1,4 @@
-// usage: node scripts/sign-release.mjs [--version <x.y.z>] [--force]
+// usage: node scripts/sign-release.mjs [--version <x.y.z>] [--force] [--dir <release folder>]
 // Makes the updater signature (`<file>.sig`, minisign, bound to the version: `tauri signer sign --app-version`) of every
 // release file in release/v<version>/<platform>/<arch>/ that has none (or every one with --force), with the release key
 // (scripts/updaterKey.mjs: ~/.tauri/openmind-studio.key + its password). Each new signature is checked independently
@@ -22,7 +22,9 @@ const args = process.argv.slice(2);
 const at = args.indexOf("--version");
 const conf = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
 const version = at >= 0 ? args[at + 1] : conf.version;
-const out = releaseDir(root, version);
+// --dir: another release folder (scripts/authenticode-release.mjs --release passes it on).
+const dirAt = args.indexOf("--dir");
+const out = dirAt >= 0 ? resolve(args[dirAt + 1]) : releaseDir(root, version);
 const pub = publicKey(conf.plugins.updater.pubkey);
 
 let env;

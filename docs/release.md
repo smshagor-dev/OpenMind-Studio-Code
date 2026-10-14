@@ -192,13 +192,18 @@ All Windows app surfaces are pinned to `src-tauri/icons/icon.ico`: the installed
 
 ## Signing
 
+The complete Authenticode guide - certificate options (incl. Azure Artifact Signing eligibility), the certificate check, signing an
+already-built release folder (`scripts/authenticode-release.mjs`, portable ZIP included), SmartScreen / Smart App Control,
+troubleshooting and the pre-release checklist - is **`docs/code-signing.md`**. In short:
+
 Signing is optional and configured **only through environment variables** (never commit a certificate or a password):
 
 | Variable                  | Meaning                                                                                                                                                   |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SIGNING_CERT_THUMBPRINT` | a certificate in the current user's Windows certificate store (SHA-1 thumbprint; no password, the key stays in the store) — used instead of the two below |
 | `SIGNING_CERT_PATH`       | path to the `.pfx` certificate                                                                                                                            |
-| `SIGNING_CERT_PASSWORD`   | its password (never printed or written)                                                                                                                   |
+| `SIGNING_CERT_PASSWORD`   | its password (never printed or written; the PFX is imported into the store for the run, so SignTool only gets a thumbprint, never `/p`)                  |
+| `SIGNTOOL_PATH`           | `signtool.exe` when it isn't in the Windows SDK's default folder                                                                                           |
 | `TIMESTAMP_URL`           | your CA's RFC 3161 time-stamp server (http(s)). **Required for a real certificate**: without a timestamp a signature stops being valid when the certificate expires |
 | `SIGNING_NO_TIMESTAMP`    | `1` waives that requirement (an internal build only)                                                                                                     |
 | `SIGNING_CERT_KIND`       | set to `test` for a self-signed test certificate (no timestamp needed)                                                                                    |

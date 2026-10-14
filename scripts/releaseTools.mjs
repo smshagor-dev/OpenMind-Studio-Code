@@ -92,18 +92,8 @@ export function publicSigningInfo(config) {
   return { mode: config.mode, message: config.message, timestamp: config.timestampUrl ?? null };
 }
 
-/** The `signtool sign` arguments for one file (the password goes in `/p`; callers must not log this list). */
-export function signtoolArgs(config, file) {
-  if (config.mode !== "signed" && config.mode !== "test-signed") {
-    throw new Error("Signing is not configured.");
-  }
-  const args = config.thumbprint
-    ? ["sign", "/fd", "SHA256", "/sha1", config.thumbprint, "/s", "My"]
-    : ["sign", "/fd", "SHA256", "/f", config.certPath, "/p", config.password];
-  if (config.timestampUrl) args.push("/tr", config.timestampUrl, "/td", "SHA256");
-  args.push(file);
-  return args;
-}
+// The `signtool sign` arguments are built by authenticodeTools.signtoolSignArgs: by thumbprint only, so a certificate
+// password never appears on a command line (a PFX is imported into the store first: scripts/signtool.mjs).
 
 /**
  * Whether one file's Authenticode signature is good enough for `mode`, from what Windows reports
