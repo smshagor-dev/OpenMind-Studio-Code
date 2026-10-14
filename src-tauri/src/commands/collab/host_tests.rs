@@ -208,3 +208,64 @@ fn history_changed_outside_the_app_is_refused_on_load() {
     let refused = block(fresh.invite_code(&db, &created.room_uid, 120)).expect_err("refused");
     assert!(refused.contains("changed outside OpenMind"), "{refused}");
 }
+
+/// A second runtime on the same database (an app restart whose old tasks are still finishing, or a second app instance
+/// on this computer) records an event between the moment a room row is read and the moment the room is loaded. The
+/// database is consistent: it must load, from the chain end that is really stored, and the next event must continue that
+/// chain — not be refused as "changed outside OpenMind", and not fork the chain from the older end.
+#[test]
+fn a_room_loaded_right_after_another_writer_recorded_an_event_continues_its_real_chain() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = db(&dir);
+    let runtime = CollabRuntime::default();
+    let created = block(runtime.create_room(&db, &new_room(), 100)).expect("create");
+    let host = block(runtime.identity(&db)).expect("identity");
+    // The reader's view of the room, taken first ...
+    let stale = block(rooms::get_by_uid(db.pool(), &created.room_uid))
+        .expect("get")
+        .expect("row");
+    // ... then another writer records an event (in its own transaction, as every save does).
+    let mut writer = block(persist::load_hosted(&db, &stale, host.clone(), 100)).expect("writer");
+    let locked = writer
+        .execute(
+            &Actor::Host(host.peer_id()),
+            Command::SetLocked { locked: true },
+            150,
+        )
+        .expect("lock");
+    save(&db, stale.id, &writer, &locked, 150);
+    let stored = block(rooms::get_by_uid(db.pool(), &created.room_uid))
+        .expect("get")
+        .expect("row");
+    assert_eq!(
+        stored.chain_next_seq,
+        stale.chain_next_seq + 1,
+        "one event more"
+    );
+
+    let mut loaded = block(persist::load_hosted(&db, &stale, host.clone(), 160))
+        .expect("a consistent database loads");
+    assert_eq!(
+        loaded.chain_head().next_seq,
+        u64::try_from(stored.chain_next_seq).expect("seq")
+    );
+    assert_eq!(loaded.chain_head().last_hash, stored.chain_last_hash);
+    let unlocked = loaded
+        .execute(
+            &Actor::Host(host.peer_id()),
+            Command::SetLocked { locked: false },
+            170,
+        )
+        .expect("unlock");
+    save(&db, stale.id, &loaded, &unlocked, 170);
+    let room = RoomUid::parse(&created.room_uid).expect("uid");
+    let events: Vec<_> = block(logs::list_after(db.pool(), stale.id, 0, 100))
+        .expect("logs")
+        .iter()
+        .map(|r| persist::event_of(r, &room).expect("event"))
+        .collect();
+    assert!(
+        verify_chain(&events, &ChainHead::genesis(), Some(&host.public_key())).is_ok(),
+        "one unbroken chain"
+    );
+}

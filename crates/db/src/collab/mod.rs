@@ -13,6 +13,7 @@ pub mod members;
 pub mod outbox;
 pub mod rooms;
 pub mod sessions;
+pub mod snapshot;
 
 pub use crdt::{CrdtUpdateRow, DocumentSnapshotRow};
 pub use files::CollabFileRow;
@@ -21,6 +22,7 @@ pub use members::{MemberRow, PermissionRow};
 pub use outbox::OutboxRow;
 pub use rooms::{NewRoom, RoomRow, RoomSettings};
 pub use sessions::SessionRow;
+pub use snapshot::HostedRoomSnapshot;
 
 pub(crate) fn query_error(err: sqlx::Error) -> crate::DbError {
     crate::DbError::Query(err)
