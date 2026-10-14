@@ -21,10 +21,11 @@ trap 'echo "BUILD FAILED at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The version, the same in tauri.conf.json, package.json and the workspace Cargo.toml (Node isn't available in the
-# 32-bit container, so scripts/build-info.mjs can't be used here).
-version="$(grep -m1 '"version"' "$root/src-tauri/tauri.conf.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/')"
-package_version="$(grep -m1 '"version"' "$root/package.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/')"
-cargo_version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\([^"]*\)"/\1/p}' "$root/Cargo.toml" | head -1)"
+# 32-bit container, so scripts/build-info.mjs can't be used here). A Windows checkout mounted in WSL or a container has
+# CRLF line endings: the carriage return is removed, or "1.0.4" and "1.0.4\r" would differ.
+version="$(grep -m1 '"version"' "$root/src-tauri/tauri.conf.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/' | tr -d '\r')"
+package_version="$(grep -m1 '"version"' "$root/package.json" | sed -E 's/.*"version": *"([^"]+)".*/\1/' | tr -d '\r')"
+cargo_version="$(sed -n '/^\[workspace.package\]/,/^\[/{s/^version = "\([^"]*\)"/\1/p}' "$root/Cargo.toml" | head -1 | tr -d '\r')"
 [ -n "$version" ] && [ "$version" = "$package_version" ] && [ "$version" = "$cargo_version" ] ||
   fail "the version differs: tauri.conf.json '$version', package.json '$package_version', Cargo.toml '$cargo_version'."
 
