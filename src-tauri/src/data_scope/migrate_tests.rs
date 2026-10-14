@@ -51,16 +51,29 @@ fn legacy_install(root: &Path) -> AppPaths {
     let legacy = AppPaths::from_root(root.to_path_buf());
     std::fs::create_dir_all(&legacy.data_dir).expect("dir");
     set_value(&legacy.db_path, "owner", "legacy");
-    // sqlx's pool `close()` can return before the last connection's closing WAL checkpoint has reached the main file;
-    // wait for it (the `-wal` file disappears), so a byte comparison of the source sees only what the import does.
+    // Everything must be in the main file before its bytes are compared, so a byte comparison of the source sees only
+    // what the import does. Waiting for the closing connection to delete `-wal` isn't enough on Windows: a scanner or a
+    // slow close under load can keep the file (once in a loaded release-build run). So checkpoint explicitly
+    // (TRUNCATE: the WAL is written into the main file and emptied), then require the WAL gone or empty.
+    super::super::tests::block(async {
+        let db = openmind_db::Db::connect(&legacy.db_path)
+            .await
+            .expect("connect");
+        sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(db.pool())
+            .await
+            .expect("checkpoint");
+        db.pool().close().await;
+    });
     let wal = legacy.db_path.with_extension("db-wal");
+    let empty = || std::fs::metadata(&wal).map_or(true, |m| m.len() == 0);
     for _ in 0..100 {
-        if !wal.exists() {
+        if empty() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
-    assert!(!wal.exists(), "the legacy database was never checkpointed");
+    assert!(empty(), "the legacy database was never checkpointed");
     legacy
 }
 
