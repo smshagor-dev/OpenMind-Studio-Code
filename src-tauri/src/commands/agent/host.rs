@@ -129,7 +129,7 @@ pub struct WindowHost<'a> {
 }
 
 impl WindowHost<'_> {
-    pub fn send<T: Serialize + Clone>(&self, payload: &T) {
+    pub fn send<T: Serialize>(&self, payload: &T) {
         let Ok(mut payload) = serde_json::to_value(payload) else {
             return;
         };
@@ -138,7 +138,7 @@ impl WindowHost<'_> {
         }
         if let Err(err) = self
             .app
-            .emit_to(self.label.as_str(), "agent:event", payload.clone())
+            .emit_to(self.label.as_str(), "agent:event", payload)
         {
             tracing::warn!(%err, "could not send an agent event to the window");
         }
