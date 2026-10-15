@@ -909,11 +909,48 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   `src/services/deployment/` + `components/deployment/` (Help > Network Deployment). See `docs/deployment.md`,
   `docs/multi-pc-isolation.md`, `docs/pilot/university-network-deployment.md`.
 
+- `openmind-llm` (OpenMindAI Agent) — local models, Tauri-agnostic. `catalog.json` (compiled in) = the NVIDIA Nemotron builds the
+  agent can download, **each file pinned to a Hugging Face commit + SHA-256 + size** (`catalog::validate`: ids/repos plain, revision a
+  full commit hash, paths relative `.gguf` with no `..`; split models load from their first part): Nemotron 3 Nano 4B (NVIDIA's own
+  Q4_K_M, Unsloth Q8_0), Nemotron 3.5 Lightning 30B-A3B (Aug 2026, IQ3_XXS / Q4_K_XL), Nemotron 3 Super 120B-A12B (IQ3_XXS / Q4_K_XL,
+  3 parts). `hardware` (RAM via `GlobalMemoryStatusEx`, GPUs + dedicated VRAM via DXGI, threads, AVX2, free disk) and `fit` (pure:
+  need = size × 1.08 + 0.8 GiB against 90% of VRAM + 85% of RAM − 3 GiB; speed from active-parameter bytes per token → `Gpu` /
+  `Mixed` / `Cpu` / `Slow` / `TooBig`; `recommended` = the largest model that runs at a usable speed). `store` (`<models>/<id>/<path>`;
+  a model is `Ready` only when every file has its size *and* passed its SHA-256, recorded in `.openmind-verified.json`; `.part` =
+  `Partial`), `download` (the Runtime Manager's `download`/`verify_sha256` — HTTPS only, the user's proxy, Range resume — with a
+  cancellable body; 3 attempts; a stopped download keeps its `.part`; disk space checked first), `server` (`Engine`: `llama-server`
+  `--host 127.0.0.1 --port <free> --api-key <random per run> --ctx-size --parallel 1 --jinja --reasoning-format deepseek --no-webui
+  --offline --gpu-layers auto`, no console window, inside a Job Object, `health()` = `/health` 200).
+- `openmind-agent` (OpenMindAI Agent) — the coding agent, Tauri-agnostic. `wire` (OpenAI chat format with `tools`, a stream reader that
+  rebuilds `tool_calls` from their pieces; Nemotron's native tool calls through llama.cpp's `--jinja` parser were verified), `client`
+  (`ModelClient`; `HttpModel` over `openmind_ai::transport`), `paths::Workspace` (every path resolved inside the open folder, links
+  followed, `..` refused lexically first; `.git` readable but never changed), `textfile` (the model works with `\n`; a write keeps the
+  file's encoding and CRLF; temp + rename; 4 MB limit; binaries refused), `tools` (`read_file` numbered/paged, `list_dir`, `find_files`
+  = `openmind_search::find`, `search` = `openmind_search::walk`, `edit_file` exact unique match / `replace_all`, `write_file`,
+  `delete_file` = Recycle Bin via `trash`, `run_command` = PowerShell `-EncodedCommand` in the folder with the app's run environment,
+  Job Object, timeout ≤ 600 s, output capped, `todo_write`); a call is **prepared** first (exact new text + `diff`) and re-checked
+  before writing (a file changed meanwhile is refused); a file with unsaved editor changes is never changed. `policy` (`Ask` default:
+  every edit/delete/command asks; `AcceptEdits`; `Plan` = changing tools not even offered; "don't ask again" per conversation for
+  edits, deletions or one exact command), `session` (the loop: ≤ 40 model calls a turn, declined → the turn ends and the model hears the
+  feedback, context trimmed oldest tool output first, `undo_last` restores the last turn's files), `prompt` (system prompt with the
+  folder, OS, date, rules, "answer in the user's language", top-level listing and `OPENMIND.md`/`AGENTS.md`/`CLAUDE.md`).
+  `tests/real_nemotron.rs` (ignored; `OPENMIND_TEST_LLAMA_SERVER`, `OPENMIND_TEST_GGUF`) drives the real engine + Nemotron 3 Nano 4B
+  fixing a bug end to end.
+  App: `src-tauri/src/commands/agent/` (`AgentRuntime` managed state: catalog, store in `<runtimes>/../models`, one `EngineSlot` for the
+  app, downloads, one conversation per window in that window's folder; `agent_overview|model_download|model_cancel|model_delete|send|
+  answer|stop|reset|undo|engine_stop`; events `agent:event` (to the asking window; permission questions wait for `agent_answer`, Stop =
+  No) and `agent:download` (all windows); `stop_everything` stops turns, downloads and the engine; a closed window drops its
+  conversation). Runtime Manager manifest `llamacpp` = official llama.cpp b11429 (v0.6.0) Vulkan build (it carries the CPU backends
+  too), SHA-256 pinned, **never on PATH**. Frontend: `src/services/agent/` (`agentIpc`, pure `agentModel` reducer, `AgentService`,
+  `index.ts` wiring outside `container.ts`), `components/agent/` (Claude Code's layout and motion: ● tool lines with ⎿ results,
+  red/green diffs, the ✻ spinner with a shimmering verb + elapsed + tokens + "esc to interrupt", the 1/2/3 permission card, todos,
+  `@file` and `/` menus, Shift+Tab modes), `styles/agent.css` (`--agent-*` tokens), activity bar item "OpenMindAI Agent" (always shown).
+
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)
 
-`openmind-plugin-host` (the OpenMind AI provider itself, embeddings/RAG and an agent mode are also future work; the AI provider
-layer is `openmind-ai`, landed in Milestone 13).
+`openmind-plugin-host` (the OpenMind AI provider itself and embeddings/RAG are also future work; the AI provider layer is
+`openmind-ai`, landed in Milestone 13; the coding agent is `openmind-agent`).
 
 ## Frontend architecture
 
