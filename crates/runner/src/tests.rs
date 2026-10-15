@@ -51,7 +51,12 @@ impl Collector {
     }
 
     fn wait_for_exit(&self) -> RunEvent {
-        let deadline = Instant::now() + Duration::from_secs(20);
+        self.wait_for_exit_within(Duration::from_secs(20))
+    }
+
+    /// Real compiler invocations need their own budget on shared CI machines.
+    fn wait_for_exit_within(&self, budget: Duration) -> RunEvent {
+        let deadline = Instant::now() + budget;
         while Instant::now() < deadline {
             if let Some(event) = self
                 .snapshot()
@@ -62,7 +67,10 @@ impl Collector {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        panic!("the process never reported an exit");
+        panic!(
+            "the process never reported an exit within {budget:?}; events: {:?}",
+            self.snapshot()
+        );
     }
 
     fn output(&self, stream: Stream) -> Vec<String> {

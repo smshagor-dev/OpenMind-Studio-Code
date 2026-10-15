@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/**"
+      - "crates/runner/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - ".github/workflows/agent-ui.yml"
@@ -38,3 +39,18 @@ jobs:
         run: pnpm exec vitest run src/services/agent src/components/agent
       - name: Production frontend build
         run: pnpm exec vite build
+
+  runner:
+    name: Windows compiler regression tests
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: "1.97.1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Compiler and process regression tests
+        run: cargo test -p openmind-runner --lib --locked
