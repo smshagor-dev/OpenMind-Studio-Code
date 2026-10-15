@@ -1,5 +1,5 @@
 // The OpenMindAI Agent of this window, built from the app's own services (kept out of container.ts, which is at its
-// size limit). It starts when its panel is first shown: nothing is read, downloaded or started at launch.
+// size limit). Editor startup preloads an existing setup; downloading always needs an explicit action.
 import { container } from "../container";
 import { i18n, t } from "../../i18n";
 import { tauriAgentIpc, type AgentIpc } from "./agentIpc";
