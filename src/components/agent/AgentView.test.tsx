@@ -39,7 +39,7 @@ vi.mock("../../services/container", () => ({
   },
 }));
 vi.mock("../../i18n", () => ({
-  useT: () => (key: string) => ({
+  useT: () => (key: string, params?: Record<string, string | number>) => key === "agent.setup.requirements" || key === "agent.setup.minimum" ? JSON.stringify(params) : ({
     "agent.ui.notConfigured": "Agent not Configured", "agent.ui.configureNow": "Configure now",
     "agent.ui.ready": "Agent is live", "agent.ui.configure": "Configure agent",
     "agent.ui.done": "Done", "agent.model.download": "Download",
@@ -89,6 +89,8 @@ it("keeps setup out of the sidebar and opens it in a dialog on Configure now", (
   fireEvent.click(screen.getByRole("button", { name: "Configure now" }));
   const dialog = screen.getByRole("dialog", { name: "OpenMindAI Agent" });
   expect(within(dialog).getByText("Lite")).toBeInTheDocument();
+  expect(within(dialog).getByText('{"size":"1.9 GB","memory":"2.8 GB"}')).toBeInTheDocument();
+  expect(within(dialog).getByText('{"ram":"7.0 GB"}')).toBeInTheDocument();
   expect(document.body.textContent).not.toMatch(/Private model|Private publisher|Q4_K_M|Nemotron|private\/models/);
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -2842,5 +2842,6 @@
   "agent.settings.contextHint": "Context and output are capped by the installed edition. Long tool output and earlier exchanges are compacted when needed.",
   "agent.settings.apply": "Apply settings",
   "agent.setup.requirements": "Download: {size} · Estimated working memory: {memory}. Extra memory is needed for the OS and context. GPU optional.",
-  "agent.setup.hardware": "This PC: {ram} RAM · {threads} CPU threads · Free disk: {disk}"
+  "agent.setup.hardware": "This PC: {ram} RAM · {threads} CPU threads · Free disk: {disk}",
+  "agent.setup.minimum": "CPU-only RAM minimum (estimate): {ram}, including OS headroom. GPU acceleration is optional; larger context settings need more memory."
 }

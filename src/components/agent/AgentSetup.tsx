@@ -42,6 +42,7 @@ function Edition({ model, selected, download, recommended }: {
       </div>
       <p className="agent-model__description">{t(`agent.ui.edition.${model.totalParamsB > 100 ? "max" : model.totalParamsB > 4 ? "pro" : "lite"}`)}</p>
       <p className="agent-model__progress-text">{t("agent.setup.requirements", { size: formatBytes(model.sizeBytes), memory: formatBytes(model.fit.neededBytes) })}</p>
+      <p className="agent-model__progress-text">{t("agent.setup.minimum", { ram: formatBytes(Math.ceil((model.fit.neededBytes + 3 * 1024 ** 3) / 0.85 / 1024 ** 3) * 1024 ** 3) })}</p>
       <p className="agent-model__progress-text">{t(`agent.fit.${model.fit.level}`, { speed: model.fit.tokensPerSecond, needed: formatBytes(model.fit.neededBytes) })}</p>
       {running && download ? <Progress state={download} /> : null}
       {download?.error ? <div className="agent-model__error" role="alert">{t("agent.ui.downloadFailed")}</div> : null}

@@ -1083,5 +1083,5 @@
 .agent-queue__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-settings { padding: 16px; display: grid; gap: 12px; }
 .agent-settings label { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.agent-settings input[type=number], .agent-settings select { max-width: 180px; color: inherit; background: var(--bg); border: 1px solid var(--border); padding: 4px; }
+.agent-settings input[type=number], .agent-settings select { max-width: 180px; color: inherit; background: var(--editor-bg); border: 1px solid var(--border); padding: 4px; }
 .agent-settings p { font-size: 12px; opacity: .8; margin: 0; }
