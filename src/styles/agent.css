@@ -1072,3 +1072,6 @@
 .agent-setup-dialog__footer > span { margin-right: auto; color: var(--fg-muted); }
 .agent-license { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--fg-muted); }
 .agent-license button { padding: 0; border: 0; background: none; color: var(--agent-accent); font: inherit; cursor: pointer; }
+
+/* Runtime Manager and permission dialogs use the standard modal layer above setup. */
+.agent-setup-overlay { z-index: 1999; }

@@ -39,7 +39,7 @@ export function AgentSetupDialog() {
     <>
       <span ref={anchor} hidden />
       {state.showSetup ? createPortal(
-        <div className="modal-overlay" onClick={() => { agent.openSetup(false); }}>
+        <div className="modal-overlay agent-setup-overlay" onClick={() => { agent.openSetup(false); }}>
           <div ref={panel} className="agent-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-setup-title" tabIndex={-1}
             onClick={(event) => { event.stopPropagation(); }}
             onKeyDown={(event) => {
