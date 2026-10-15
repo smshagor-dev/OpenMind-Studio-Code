@@ -126,7 +126,8 @@ describe("agent transcript", () => {
 describe("agent helpers", () => {
   it("cycles modes like Shift+Tab in Claude Code", () => {
     expect(nextMode("ask")).toBe("acceptEdits");
-    expect(nextMode("acceptEdits")).toBe("plan");
+    expect(nextMode("acceptEdits")).toBe("auto");
+    expect(nextMode("auto")).toBe("plan");
     expect(nextMode("plan")).toBe("ask");
   });
 

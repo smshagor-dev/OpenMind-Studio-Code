@@ -18,6 +18,7 @@ vi.mock("../../services/agent", () => ({
     subscribe: (listener: () => void) => { harness.listeners.add(listener); return () => { harness.listeners.delete(listener); }; },
     start: vi.fn(() => Promise.resolve()),
     ready: () => Boolean(harness.state?.overview?.engineInstalled && harness.state.overview.models.some((m) => m.id === harness.state?.modelId && m.local.state === "ready")),
+    openSettings: vi.fn(),
     openSetup: (showSetup: boolean) => {
       harness.state = { ...currentState(), showSetup };
       for (const listener of harness.listeners) listener();

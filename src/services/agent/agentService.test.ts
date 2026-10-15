@@ -105,13 +105,14 @@ describe("AgentService", () => {
     expect(service.getState().modelId).toBe("a");
     await service.setMode("acceptEdits");
     expect(await service.send("  fix the bug  ")).toBe(true);
-    expect(ipc.send).toHaveBeenCalledWith({
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    expect(ipc.send).toHaveBeenCalledWith(expect.objectContaining({
       text: "fix the bug",
       modelId: "a",
       mode: "acceptEdits",
       unsaved: ["C:/p/dirty.ts"],
       uiLanguage: "Russian",
-    });
+    }));
     const t = service.getState().transcript;
     expect(t.busy).toBe(true);
     expect(t.entries[0]).toMatchObject({ kind: "user", text: "fix the bug" });
@@ -175,7 +176,8 @@ describe("AgentService", () => {
     const { service, ipc } = setup([model("a", "ready")]);
     vi.mocked(ipc.send).mockRejectedValueOnce("The local AI engine (llama.cpp) is not installed yet.");
     await service.start();
-    expect(await service.send("hi")).toBe(false);
+    expect(await service.send("hi")).toBe(true);
+    await vi.waitFor(() => { expect(service.getState().taskState?.tasks[0]?.status).toBe("failed"); });
     const t = service.getState().transcript;
     expect(t.busy).toBe(false);
     expect(t.entries[1]).toMatchObject({ kind: "notice", tone: "error" });

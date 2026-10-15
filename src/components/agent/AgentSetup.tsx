@@ -41,6 +41,8 @@ function Edition({ model, selected, download, recommended }: {
         {recommended ? <span className="agent-model__badge">{t("agent.model.recommended")}</span> : null}
       </div>
       <p className="agent-model__description">{t(`agent.ui.edition.${model.totalParamsB > 100 ? "max" : model.totalParamsB > 4 ? "pro" : "lite"}`)}</p>
+      <p className="agent-model__progress-text">{t("agent.setup.requirements", { size: formatBytes(model.sizeBytes), memory: formatBytes(model.fit.neededBytes) })}</p>
+      <p className="agent-model__progress-text">{t(`agent.fit.${model.fit.level}`, { speed: model.fit.tokensPerSecond, needed: formatBytes(model.fit.neededBytes) })}</p>
       {running && download ? <Progress state={download} /> : null}
       {download?.error ? <div className="agent-model__error" role="alert">{t("agent.ui.downloadFailed")}</div> : null}
       {!ready && !running ? (
@@ -80,6 +82,7 @@ export function AgentSetup({ overview, downloads, modelId, installing }: {
   const t = useT();
   return (
     <div className="agent-setup">
+      <p className="agent-model__progress-text">{t("agent.setup.hardware", { ram: formatBytes(overview.hardware.totalRamBytes), threads: overview.hardware.cpuThreads, disk: overview.freeDiskBytes === null ? "—" : formatBytes(overview.freeDiskBytes) })}</p>
       <p className="agent-setup__subtitle">{t("agent.ui.setupSubtitle")}</p>
       <section className="agent-setup__step">
         <div className="agent-setup__step-title">1. {t("agent.ui.runtime")}</div>

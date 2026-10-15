@@ -17,6 +17,8 @@ pub enum Mode {
     Ask,
     /// Apply file edits without asking.
     AcceptEdits,
+    /// Run tools without approval; workspace and editor guards still apply.
+    Auto,
     /// Look and plan only; nothing is changed.
     Plan,
 }
@@ -42,6 +44,9 @@ impl Policy {
     }
 
     pub fn must_ask(&self, kind: ToolKind, target: &str) -> bool {
+        if self.mode == Mode::Auto {
+            return false;
+        }
         match kind {
             ToolKind::Read | ToolKind::Meta => false,
             ToolKind::Edit => !(self.edits || self.mode == Mode::AcceptEdits),

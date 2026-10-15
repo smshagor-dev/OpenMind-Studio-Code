@@ -1,5 +1,6 @@
 // The OpenMindAI Agent of this window, built from the app's own services (kept out of container.ts, which is at its
 // size limit). Editor startup preloads an existing setup; downloading always needs an explicit action.
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { container } from "../container";
 import { i18n, t } from "../../i18n";
 import { tauriAgentIpc, type AgentIpc } from "./agentIpc";
@@ -24,11 +25,17 @@ function unsavedPaths(): string[] {
   return [...paths];
 }
 
+function taskScope(): string {
+  try { return getCurrentWebviewWindow().label; } catch { return "main"; }
+}
+
 export function agentHost(): AgentHost {
   return {
     unsavedPaths,
+    taskScope: taskScope(),
     uiLanguage: () => LANGUAGE_NAMES[i18n.language] ?? "English",
     hasFolder: () => container.workspace.getActiveWorkspace() !== null,
+    workspacePath: () => container.workspace.getActiveWorkspace()?.path ?? null,
     installEngine: () => container.runtime.install("llamacpp", null),
     confirm: async (message, okLabel) => {
       const answer = await container.extensions.prompts.confirm({

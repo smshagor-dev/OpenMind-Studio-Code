@@ -125,10 +125,17 @@ pub struct WindowHost<'a> {
     pub app: AppHandle,
     pub label: String,
     pub pending: &'a Pending,
+    pub task_id: Option<&'a str>,
 }
 
 impl WindowHost<'_> {
     pub fn send<T: Serialize + Clone>(&self, payload: &T) {
+        let Ok(mut payload) = serde_json::to_value(payload) else {
+            return;
+        };
+        if let (Some(id), Some(object)) = (self.task_id, payload.as_object_mut()) {
+            object.insert("taskId".into(), serde_json::Value::String(id.into()));
+        }
         if let Err(err) = self
             .app
             .emit_to(self.label.as_str(), "agent:event", payload.clone())

@@ -8,6 +8,9 @@
 //! deletions go to the Recycle Bin; a file edited in the editor but not saved is never changed; each turn's changes can
 //! be undone.
 
+mod context;
+pub mod options;
+pub use options::SessionOptions;
 pub mod client;
 pub mod diff;
 pub mod events;
