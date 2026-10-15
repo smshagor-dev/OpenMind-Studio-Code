@@ -137,7 +137,7 @@ export class AgentService {
       this.restoringHistory = true;
       this.conversation = { id: saved.id, createdAt: saved.createdAt, workspace: saved.workspace };
       if (!startup) this.tasks.restore(saved.tasks);
-      this.set({ conversationId: id, showHistory: false, transcript: { ...EMPTY_TRANSCRIPT, entries: saved.entries.map((entry) => entry.kind === "tool" && (entry.status === "running" || entry.status === "waiting") ? { ...entry, status: "declined" } : entry) } });
+      this.set({ conversationId: id, showHistory: false, attachments: [], transcript: { ...EMPTY_TRANSCRIPT, entries: saved.entries.map((entry) => entry.kind === "tool" && (entry.status === "running" || entry.status === "waiting") ? { ...entry, status: "declined" } : entry) } });
       this.restoringHistory = false;
       await this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, id);
     } catch (error) { this.restoringHistory = false; this.host.notify(String(error)); }
@@ -274,6 +274,7 @@ export class AgentService {
 
   /** Why Send is unavailable, or `null`. */
   sendBlocker(): string | null {
+    if (this.attaching) return this.host.text("agent.loading");
     if (!this.host.hasFolder()) return this.host.text("agent.blocker.noFolder");
     if (!this.ready()) return this.host.text("agent.blocker.noModel");
 

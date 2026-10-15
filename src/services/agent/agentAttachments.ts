@@ -33,7 +33,18 @@ async function image(file: File): Promise<string> {
 async function pdf(bytes: Uint8Array): Promise<string> {
   const pdfjs = await import("pdfjs-dist");
   pdfjs.GlobalWorkerOptions.workerSrc = "/pdf/pdf.worker.min.mjs";
-  const task = pdfjs.getDocument({ data: bytes });
+  const task = pdfjs.getDocument({
+    data: bytes,
+    enableXfa: false,
+    disableAutoFetch: true,
+    disableStream: true,
+    cMapUrl: "/pdf/cmaps/",
+    cMapPacked: true,
+    standardFontDataUrl: "/pdf/standard_fonts/",
+    wasmUrl: "/pdf/wasm/",
+    iccUrl: "/pdf/iccs/",
+    verbosity: 0,
+  });
   try {
     const doc = await task.promise;
     if (doc.numPages > 50) throw new Error("PDF exceeds 50 pages; attach a smaller extract");
@@ -54,7 +65,8 @@ export async function readAttachment(file: File): Promise<AgentAttachment> {
   if (!file.size || file.size > 10 * 1024 * 1024)
     throw new Error("Files must be between 1 byte and 10 MB");
   const result = { id: crypto.randomUUID(), name: Array.from(file.name).slice(0, 75).join("") };
-  if (/^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name)) return { ...result, data: await image(file) };
+  if (/^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name))
+    return { ...result, data: await image(file) };
   const bytes = new Uint8Array(await file.arrayBuffer());
   let text: string;
   if (/\.pdf$/i.test(file.name)) text = await pdf(bytes);

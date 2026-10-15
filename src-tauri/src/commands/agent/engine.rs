@@ -51,7 +51,14 @@ impl EngineSlot {
     pub fn acceleration(&self) -> (bool, Option<u32>) {
         let slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
         let requested = *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner);
-        let layers = if slot.is_some() { *self.offloaded.lock().unwrap_or_else(PoisonError::into_inner) } else { None };
+        let layers = if slot.is_some() {
+            *self
+                .offloaded
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        } else {
+            None
+        };
         (requested, layers)
     }
 
@@ -93,7 +100,10 @@ impl EngineSlot {
         if let Some(mut old) = slot.take() {
             old.stop();
         }
-        *self.offloaded.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        *self
+            .offloaded
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
         let entry = store.ready_entry(model).map_err(|e| e.to_string())?;
         let event = |state: &'static str, message: Option<String>| EngineEvent {
             kind: "engine",
@@ -147,7 +157,10 @@ impl EngineSlot {
             key: engine.key().to_string(),
         };
         *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) = use_gpu;
-        *self.offloaded.lock().unwrap_or_else(PoisonError::into_inner) = offloaded_layers(&engine.log_tail(500));
+        *self
+            .offloaded
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = offloaded_layers(&engine.log_tail(500));
         *slot = Some(engine);
         Ok(connection)
     }
@@ -188,8 +201,14 @@ mod tests {
 
     #[test]
     fn gpu_offload_comes_from_the_engine_report_not_detected_capacity() {
-        assert_eq!(offloaded_layers("load_tensors: offloaded 33/33 layers to GPU"), Some(33));
-        assert_eq!(offloaded_layers("load_tensors: offloaded 0/33 layers to GPU"), Some(0));
+        assert_eq!(
+            offloaded_layers("load_tensors: offloaded 33/33 layers to GPU"),
+            Some(33)
+        );
+        assert_eq!(
+            offloaded_layers("load_tensors: offloaded 0/33 layers to GPU"),
+            Some(0)
+        );
         assert_eq!(offloaded_layers("Vulkan device: 8 GB VRAM"), None);
     }
 

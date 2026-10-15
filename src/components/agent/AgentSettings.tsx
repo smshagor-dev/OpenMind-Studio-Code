@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { AgentCapabilities } from "./AgentCapabilities";
 import { useState } from "react";
 import { agent } from "../../services/agent";
 import type { AgentMode } from "../../services/agent/agentIpc";
@@ -19,8 +19,6 @@ export function AgentSettings() {
   const [draft, setDraft] = useState(agent.options());
   const [mode, setMode] = useState<AgentMode>(agent.getState().mode);
   const [saving, setSaving] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const [status, setStatus] = useState<string[]>([]);
   return (
     <form
       className="agent-settings"
@@ -71,26 +69,7 @@ export function AgentSettings() {
         </label>
       ))}
       <p>{t("agent.settings.contextHint")}</p>
-      <p>{t("agent.capabilities.hint")}</p>
-      {(["searchEndpoint", "visionEndpoint", "imageEndpoint"] as const).map((key) => (
-        <label key={key}>
-          {t(`agent.settings.${key}`)}
-          <input
-            type="url"
-            value={draft[key]}
-            placeholder={
-              key === "searchEndpoint"
-                ? "https://search.example.org"
-                : key === "visionEndpoint"
-                  ? "http://127.0.0.1:8081/v1"
-                  : "http://127.0.0.1:7860"
-            }
-            onChange={(event) => {
-              setDraft({ ...draft, [key]: event.target.value });
-            }}
-          />
-        </label>
-      ))}
+      <AgentCapabilities draft={draft} onChange={setDraft} />
       {TOGGLES.map((key) => (
         <label key={key}>
           <input
@@ -103,28 +82,6 @@ export function AgentSettings() {
           {t(`agent.settings.${key}`)}
         </label>
       ))}
-      <button
-        type="button"
-        disabled={checking}
-        onClick={() => {
-          setChecking(true);
-          void invoke<string[]>("agent_capabilities_check", { options: draft })
-            .then(setStatus)
-            .catch((error: unknown) => {
-              setStatus([String(error)]);
-            })
-            .finally(() => {
-              setChecking(false);
-            });
-        }}
-      >
-        {checking ? t("agent.loading") : t("agent.capabilities.check")}
-      </button>
-      <div role="status">
-        {status.map((line) => (
-          <p key={line}>{line}</p>
-        ))}
-      </div>
       <button type="submit" className="button button--primary" disabled={saving}>
         {t("agent.settings.apply")}
       </button>

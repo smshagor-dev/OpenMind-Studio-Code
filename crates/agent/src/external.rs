@@ -122,11 +122,7 @@ mod tests {
         }
     }
     type Exercise = (Host, Option<(String, Option<String>)>, Vec<Message>);
-    fn exercise(
-        mode: Mode,
-        allowed: bool,
-        cancelled: bool,
-    ) -> Exercise {
+    fn exercise(mode: Mode, allowed: bool, cancelled: bool) -> Exercise {
         let host = Host {
             allowed,
             calls: Mutex::new(0),

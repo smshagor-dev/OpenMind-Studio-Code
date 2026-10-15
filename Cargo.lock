@@ -3667,6 +3667,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 name = "openmind-agent"
 version = "1.0.4"
 dependencies = [
+ "base64 0.22.1",
  "libc",
  "openmind-ai",
  "openmind-fs",
@@ -3679,6 +3680,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tracing",
  "trash",
+ "ureq",
 ]
 
 [[package]]

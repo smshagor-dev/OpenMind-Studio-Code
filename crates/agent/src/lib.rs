@@ -30,3 +30,5 @@ pub use policy::Mode;
 pub use prompt::{system_prompt, PromptFacts};
 pub use session::{AgentHost, Session, TurnInput};
 pub use tools::CommandEnv;
+
+pub mod capabilities;
