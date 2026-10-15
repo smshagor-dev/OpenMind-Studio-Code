@@ -272,3 +272,22 @@ it("reports a runtime install failure inside agent setup", async () => {
   expect(service.getState().setupError).toBe("agent.ui.operationFailed");
   expect(service.getState().installingEngine).toBe(false);
 });
+
+it("queues follow-up prompts and ignores stale task completion events", async () => {
+  const { service, ipc, event } = setup([model("a", "ready")]);
+  await service.start();
+  await service.send("First goal");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(1); });
+  const first = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+  await service.send("Second goal");
+  expect(ipc.send).toHaveBeenCalledTimes(1);
+  event({ type: "turnEnd", taskId: first, reason: "done", message: null });
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(2); });
+  const second = vi.mocked(ipc.send).mock.calls[1]?.[0].taskId;
+  event({ type: "turnEnd", taskId: first, reason: "error", message: "late" });
+  expect(service.getState().taskState?.activeId).toBe(second);
+  expect(service.getState().transcript.busy).toBe(true);
+  await service.stop();
+  event({ type: "turnEnd", taskId: second, reason: "cancelled", message: null });
+  expect(service.getState().taskState?.paused).toBe(true);
+});

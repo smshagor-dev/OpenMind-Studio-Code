@@ -10,7 +10,7 @@ export function AgentQueue({ state }: { state: TaskState | undefined }) {
   return <section className="agent-queue" aria-label={t("agent.tasks.title")}>
     <div className="agent-queue__actions">
       <span role="status">{t(state.paused ? "agent.tasks.paused" : "agent.tasks.title")} · {pending.length}</span>
-      {pending.length ? <button type="button" onClick={() => { state.paused ? agent.resumeQueue() : agent.pauseQueue(); }}>{t(state.paused ? "agent.tasks.resume" : "agent.tasks.pause")}</button> : null}
+      {pending.length ? <button type="button" onClick={() => { if (state.paused) agent.resumeQueue(); else agent.pauseQueue(); }}>{t(state.paused ? "agent.tasks.resume" : "agent.tasks.pause")}</button> : null}
       {state.activeId ? <button type="button" onClick={() => void agent.stop()}>{t("agent.tasks.stop")}</button> : null}
       {!state.activeId && latest && (latest.status === "failed" || latest.status === "cancelled") ? <button type="button" onClick={() => void agent.continueTask()}>{t("agent.tasks.continue")}</button> : null}
     </div>

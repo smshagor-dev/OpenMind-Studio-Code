@@ -40,6 +40,7 @@ pub struct Chat {
     /// The folder the conversation works in (a new folder starts a new conversation).
     root: Mutex<Option<PathBuf>>,
     cancel: Mutex<Arc<AtomicBool>>,
+    active_task: Mutex<Option<String>>,
     busy: AtomicBool,
     pending: Pending,
     mode: Mutex<Mode>,
@@ -214,7 +215,14 @@ pub async fn agent_send(
         return Err("The agent is still working on the last message. Stop it or wait.".into());
     }
     let cancel = Arc::new(AtomicBool::new(false));
-    *chat.cancel.lock().unwrap_or_else(PoisonError::into_inner) = Arc::clone(&cancel);
+    {
+        let mut current = chat.cancel.lock().unwrap_or_else(PoisonError::into_inner);
+        *current = Arc::clone(&cancel);
+        *chat
+            .active_task
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = request.task_id.clone();
+    }
     if let Some(id) = &request.task_id {
         let mut stopped = chat
             .cancelled_tasks
@@ -372,7 +380,8 @@ pub fn agent_guard_answer(
 #[tauri::command]
 pub fn agent_stop(task_id: Option<String>, window: tauri::Window, agent: State<'_, AgentRuntime>) {
     let chat = agent.chat(window.label());
-    if let Some(id) = task_id.filter(|id| id.len() <= 128) {
+    let id = task_id.filter(|id| id.len() <= 128);
+    if let Some(id) = &id {
         let mut stopped = chat
             .cancelled_tasks
             .lock()
@@ -380,12 +389,16 @@ pub fn agent_stop(task_id: Option<String>, window: tauri::Window, agent: State<'
         if stopped.len() >= 256 {
             stopped.pop_front();
         }
-        stopped.push_back(id);
+        stopped.push_back(id.clone());
     }
-    chat.cancel
+    let current = chat.cancel.lock().unwrap_or_else(PoisonError::into_inner);
+    let active = chat
+        .active_task
         .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .store(true, Ordering::Relaxed);
+        .unwrap_or_else(PoisonError::into_inner);
+    if id.is_none() || id == *active {
+        current.store(true, Ordering::Relaxed);
+    }
 }
 
 #[tauri::command]
