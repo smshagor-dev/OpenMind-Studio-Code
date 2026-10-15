@@ -203,7 +203,9 @@ fn pip_gets_rewritten_index_pages_and_verified_files_through_the_broker() {
     );
     let mut files = FakeFiles::default();
     files.files.insert(file.clone(), wheel.clone());
-    files.files.insert(bad.clone(), b"tampered".to_vec());
+    // Keep this failure before streaming starts; live_stream.rs covers a checksum
+    // failure after headers and body bytes have already been sent.
+    files.files.insert(bad.clone(), Vec::new());
     let setup = start(upstream, files);
     let port = setup.gateway.port();
     let base = setup.gateway.base();
@@ -269,7 +271,9 @@ fn pip_gets_rewritten_index_pages_and_verified_files_through_the_broker() {
 
 #[test]
 fn json_index_pages_record_hashes_too() {
-    let wheel = b"requests".to_vec();
+    // No partial bytes means the checksum failure is returned as 502 even if
+    // the download worker is descheduled before sending its final outcome.
+    let wheel = Vec::new();
     let file = format!("{FILES}packages/c/requests-2.32.3-py3-none-any.whl");
     let page = serde_json::json!({
         "meta": {"api-version": "1.1"},

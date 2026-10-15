@@ -202,6 +202,7 @@ pub async fn agent_model_delete(id: String, agent: State<'_, AgentRuntime>) -> R
     }
     let agent = agent.inner().clone();
     tokio::task::spawn_blocking(move || {
+        let _lease = agent.engine.lease()?;
         if agent.engine.running_model().as_deref() == Some(model.id.as_str()) {
             agent.engine.stop();
         }

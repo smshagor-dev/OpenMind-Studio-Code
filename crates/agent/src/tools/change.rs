@@ -5,6 +5,50 @@
 use std::fs;
 use std::path::PathBuf;
 
+/// Checked again after approval. Directory traversal is bounded and never follows links.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DeleteSnapshot(Vec<(PathBuf, u64, Option<std::time::SystemTime>, bool)>);
+
+fn snapshot(path: &std::path::Path) -> Result<DeleteSnapshot, String> {
+    let mut pending = vec![path.to_path_buf()];
+    let mut rows = Vec::new();
+    while let Some(path) = pending.pop() {
+        if rows.len() >= 10_000 {
+            return Err("This folder is too large to delete safely in one action.".into());
+        }
+        let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+        if meta.file_type().is_symlink()
+            || path
+                .file_name()
+                .is_some_and(|n| n.eq_ignore_ascii_case(".git"))
+        {
+            return Err("Deletion of links or Git internals is refused.".into());
+        }
+        if meta.is_dir() {
+            for entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
+                pending.push(entry.map_err(|e| e.to_string())?.path());
+            }
+        }
+        rows.push((path, meta.len(), meta.modified().ok(), meta.is_dir()));
+    }
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(DeleteSnapshot(rows))
+}
+
+fn validate_now(ctx: &ToolContext<'_>, path: &std::path::Path) -> Result<(), String> {
+    let resolved = ctx.ws.resolve_for_change(&path.to_string_lossy())?;
+    if resolved != path {
+        return Err("The path changed after preparation. Read it again.".into());
+    }
+    if ctx.is_unsaved(path) {
+        return Err(UNSAVED.into());
+    }
+    if ctx.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err("Stopped.".into());
+    }
+    Ok(())
+}
+
 use serde_json::Value;
 
 use super::{arg_str, Change, ChangeKind, Op, Outcome, Prepared, ToolContext, ToolKind};
@@ -167,6 +211,9 @@ pub fn apply_write(
     file_diff: Option<FileDiff>,
 ) -> Outcome {
     let rel = ctx.ws.relative(&path);
+    if let Err(e) = validate_now(ctx, &path) {
+        return Outcome::failed(e);
+    }
     let now = fs::read(&path).ok();
     if now != before_bytes {
         return Outcome::failed(format!(
@@ -174,6 +221,7 @@ pub fn apply_write(
         ));
     }
     let like = before.clone().unwrap_or_else(TextFile::new_file);
+    let after = textfile::encoded_bytes(text, &like);
     if let Err(e) = textfile::write(&path, text, &like) {
         return Outcome::failed(e);
     }
@@ -196,6 +244,7 @@ pub fn apply_write(
         summary,
         diff: Some(file_diff),
         change: Some(Change {
+            root: ctx.ws.root().to_path_buf(),
             path,
             rel,
             kind: if created {
@@ -204,6 +253,7 @@ pub fn apply_write(
                 ChangeKind::Modified
             },
             before: before_bytes,
+            after: Some(after),
         }),
         todos: None,
     }
@@ -232,6 +282,10 @@ pub fn delete_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
         .as_ref()
         .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
         .map(|text| diff(&text.replace("\r\n", "\n"), ""));
+    let snapshot = match snapshot(&path) {
+        Ok(s) => s,
+        Err(e) => return refused("Delete", rel, e),
+    };
     Prepared {
         kind: ToolKind::Delete,
         title: "Delete".into(),
@@ -241,7 +295,11 @@ pub fn delete_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
             rel
         },
         diff: file_diff,
-        op: Op::Delete { path, before_bytes },
+        op: Op::Delete {
+            path,
+            before_bytes,
+            snapshot,
+        },
     }
 }
 
@@ -249,8 +307,19 @@ pub fn apply_delete(
     ctx: &ToolContext<'_>,
     path: PathBuf,
     before_bytes: Option<Vec<u8>>,
+    approved: DeleteSnapshot,
 ) -> Outcome {
     let rel = ctx.ws.relative(&path);
+    if let Err(e) = validate_now(ctx, &path) {
+        return Outcome::failed(e);
+    }
+    if snapshot(&path).as_ref() != Ok(&approved)
+        || before_bytes
+            .as_ref()
+            .is_some_and(|before| fs::read(&path).ok().as_ref() != Some(before))
+    {
+        return Outcome::failed("The target changed after deletion was prepared. Read it again and request a new approval.");
+    }
     if !path.exists() {
         return Outcome::failed(format!("{rel} is already gone."));
     }
@@ -265,10 +334,12 @@ pub fn apply_delete(
         summary: "Moved to the Recycle Bin".into(),
         diff: None,
         change: Some(Change {
+            root: ctx.ws.root().to_path_buf(),
             path,
             rel,
             kind: ChangeKind::Deleted,
             before: before_bytes,
+            after: None,
         }),
         todos: None,
     }

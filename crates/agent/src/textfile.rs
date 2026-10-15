@@ -3,7 +3,7 @@
 //! only the lines it meant to. Writes go through a temporary file and a rename.
 
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use openmind_fs::encoding::{decode, encode, TextEncoding};
@@ -63,23 +63,36 @@ pub fn read(path: &Path) -> Result<TextFile, String> {
 
 /// Writes `text` (with `\n` breaks) in the encoding and line endings of `like`.
 pub fn write(path: &Path, text: &str, like: &TextFile) -> Result<(), String> {
+    write_bytes(path, &encoded_bytes(text, like))
+}
+
+pub fn encoded_bytes(text: &str, like: &TextFile) -> Vec<u8> {
     let body = if like.line_ending == LineEnding::Crlf {
         text.replace("\r\n", "\n").replace('\n', "\r\n")
     } else {
         text.to_string()
     };
-    let bytes = encode(&body, like.encoding);
+    encode(&body, like.encoding)
+}
+
+/// Exclusively creates a random temporary file; never follows a project-supplied temporary symlink.
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| format!("The folder can't be created: {err}"))?;
     }
-    let mut temp_name = path.file_name().unwrap_or_default().to_os_string();
-    temp_name.push(".openmind-agent.tmp");
-    let temp = path.with_file_name(temp_name);
-    fs::write(&temp, bytes).map_err(|err| format!("The file can't be written: {err}"))?;
-    fs::rename(&temp, path).map_err(|err| {
-        let _ = fs::remove_file(&temp);
-        format!("The file can't be replaced (is it open in another program?): {err}")
-    })
+    let parent = path.parent().ok_or("The file has no parent folder.")?;
+    let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    if let Ok(meta) = fs::metadata(path) {
+        temp.as_file()
+            .set_permissions(meta.permissions())
+            .map_err(|e| e.to_string())?;
+    }
+    temp.write_all(bytes)
+        .and_then(|()| temp.as_file().sync_all())
+        .map_err(|e| e.to_string())?;
+    temp.persist(path)
+        .map(|_| ())
+        .map_err(|e| format!("The file can't be replaced: {}", e.error))
 }
 
 #[cfg(test)]
@@ -132,5 +145,26 @@ mod tests {
             .path()
             .join("src/deep/new.ts.openmind-agent.tmp")
             .exists());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod safety_tests {
+    use super::*;
+    #[test]
+    fn predictable_temporary_symlink_is_never_opened() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let outside = dir.path().join("outside");
+        fs::write(&outside, b"keep").expect("outside");
+        let path = dir.path().join("a.txt");
+        let trap = dir.path().join("a.txt.openmind-agent.tmp");
+        std::os::unix::fs::symlink(&outside, &trap).expect("link");
+        write(&path, "new", &TextFile::new_file()).expect("write");
+        assert_eq!(fs::read(&outside).expect("outside"), b"keep");
+        assert_eq!(fs::read(&path).expect("file"), b"new");
+        assert!(!fs::symlink_metadata(path)
+            .expect("meta")
+            .file_type()
+            .is_symlink());
     }
 }

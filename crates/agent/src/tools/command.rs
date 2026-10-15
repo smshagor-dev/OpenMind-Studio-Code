@@ -5,6 +5,7 @@
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -140,10 +141,8 @@ pub fn shorten(text: &str, max: usize) -> String {
     format!("{head}\n… [{} characters left out] …\n{tail}", count - max)
 }
 
-fn pump(
-    mut source: impl Read + Send + 'static,
-    sink: Arc<Mutex<Vec<u8>>>,
-) -> std::thread::JoinHandle<()> {
+fn pump(mut source: impl Read + Send + 'static, sink: Arc<Mutex<Vec<u8>>>) -> mpsc::Receiver<()> {
+    let (done, finished) = mpsc::channel();
     std::thread::spawn(move || {
         let mut buffer = [0u8; 8192];
         while let Ok(n) = source.read(&mut buffer) {
@@ -159,7 +158,19 @@ fn pump(
                 out.drain(..cut);
             }
         }
-    })
+        let _ = done.send(());
+    });
+    finished
+}
+
+#[cfg(unix)]
+fn terminate_group(pid: u32) {
+    if let Ok(pid) = i32::try_from(pid) {
+        // SAFETY: the child was started as leader of its own process group. A negative pid targets only that group.
+        unsafe {
+            libc::kill(-pid, libc::SIGKILL);
+        }
+    }
 }
 
 pub fn run(planned: &Planned, ctx: &ToolContext<'_>) -> Outcome {
@@ -174,6 +185,11 @@ pub fn run(planned: &Planned, ctx: &ToolContext<'_>) -> Outcome {
     for (name, value) in &ctx.env.vars {
         command.env(name, value);
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -186,11 +202,19 @@ pub fn run(planned: &Planned, ctx: &ToolContext<'_>) -> Outcome {
     #[cfg(windows)]
     let tree = {
         use std::os::windows::io::AsRawHandle;
-        let tree = openmind_process::ProcessTree::new().ok();
-        if let Some(tree) = &tree {
-            let _ = tree.assign(child.as_raw_handle());
+        match openmind_process::ProcessTree::new().and_then(|tree| {
+            tree.assign(child.as_raw_handle())?;
+            Ok(tree)
+        }) {
+            Ok(tree) => tree,
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Outcome::failed(format!(
+                    "The command could not be contained in a process tree: {e}"
+                ));
+            }
         }
-        tree
     };
     let output = Arc::new(Mutex::new(Vec::new()));
     let mut pumps = Vec::new();
@@ -215,21 +239,21 @@ pub fn run(planned: &Planned, ctx: &ToolContext<'_>) -> Outcome {
         }
         if stopped.is_some() {
             #[cfg(windows)]
-            if let Some(tree) = &tree {
-                tree.terminate();
-            }
+            tree.terminate();
+            #[cfg(unix)]
+            terminate_group(child.id());
             let _ = child.kill();
             break child.wait().ok();
         }
         std::thread::sleep(Duration::from_millis(40));
     };
     #[cfg(windows)]
-    if let Some(tree) = &tree {
-        // Anything the command left running in the background goes with it.
-        tree.terminate();
-    }
-    for handle in pumps {
-        let _ = handle.join();
+    tree.terminate();
+    #[cfg(unix)]
+    terminate_group(child.id());
+    for finished in pumps {
+        // An escaped descendant must not keep Stop or timeout blocked on an inherited pipe.
+        let _ = finished.recv_timeout(Duration::from_secs(2));
     }
     let bytes = output
         .lock()

@@ -120,3 +120,6 @@ jobs:
       # warnings (Windows-only code behind cfg; 32 in openmind-studio, 3 in collab-net, 2 in git) to clean up first.
       - name: cargo check (Linux build of every crate and test)
         run: cargo check --workspace --all-targets
+
+      - name: Agent tests (Unix process groups and safe file replacement)
+        run: cargo test -p openmind-agent --locked

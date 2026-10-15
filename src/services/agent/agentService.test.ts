@@ -48,7 +48,7 @@ function setup(models: ModelView[], engineInstalled = true) {
     answer: vi.fn(() => Promise.resolve(true)),
     stop: vi.fn(() => Promise.resolve()),
     reset: vi.fn(() => Promise.resolve()),
-    undo: vi.fn(() => Promise.resolve({ restored: ["main.py"], failed: [] })),
+    undo: vi.fn(() => Promise.resolve({ restored: ["main.py"], failed: [], canUndo: false })),
     stopEngine: vi.fn(() => Promise.resolve()),
     onEvent: (listener) => {
       onEvent = listener;
@@ -198,4 +198,15 @@ describe("AgentService", () => {
     expect(ipc.reset).toHaveBeenCalled();
     expect(service.getState().transcript.entries).toEqual([]);
   });
+  it("keeps Undo available when the backend has earlier or conflicted history", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    vi.mocked(ipc.undo).mockResolvedValue({ restored: ["latest.py"], failed: [], canUndo: true });
+    await service.undo();
+    expect(service.getState().transcript.canUndo).toBe(true);
+    vi.mocked(ipc.undo).mockResolvedValue({ restored: [], failed: ["later edits"], canUndo: true });
+    await service.undo();
+    expect(service.getState().transcript.canUndo).toBe(true);
+  });
+
 });
