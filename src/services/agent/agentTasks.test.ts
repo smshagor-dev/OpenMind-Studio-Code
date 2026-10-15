@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentTasks, type AgentTask } from "./agentTasks";
+import { AgentTasks, lastInterruptedTask, type AgentTask } from "./agentTasks";
 import { DEFAULT_AGENT_OPTIONS, agentOptions } from "./agentOptions";
 
 const task = (id: string): AgentTask => ({ id, text: id, mode: "ask", modelId: "a", workspace: "/project", options: { ...DEFAULT_AGENT_OPTIONS }, status: "pending", reason: null, createdAt: 1 });
@@ -46,4 +46,10 @@ describe("task controller", () => {
   it("validates persisted options without trusting strings or nonfinite values", () => {
     expect(agentOptions({ maxSteps: Infinity, maxOutputTokens: 1000000, autoRunQueue: "true", temperature: -1 })).toMatchObject({ maxSteps: 128, maxOutputTokens: 32768, autoRunQueue: true, temperature: 0 });
   });
+});
+
+it("restoring history never turns a removed prompt into an interrupted task", () => {
+  const { queue } = setup();
+  queue.restore([{ ...task("stopped"), status: "cancelled", reason: "cancelled" }, { ...task("removed"), status: "cancelled", reason: null }]);
+  expect(lastInterruptedTask(queue.getState().tasks)?.id).toBe("stopped");
 });

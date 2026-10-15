@@ -112,7 +112,7 @@ export function AgentPrompt({
   const submit = async () => {
     if (disabledReason || !text.trim()) return;
     const sent = await agent.send(text);
-    if (sent) setText("");
+    if (sent) { setText(""); area.current?.focus(); }
   };
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (menu.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {

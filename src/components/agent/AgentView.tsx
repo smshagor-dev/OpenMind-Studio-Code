@@ -82,7 +82,7 @@ function Header() {
           type="button"
           className="agent-icon-button"
           title={t("agent.header.newChat")}
-          disabled={transcript.entries.length === 0}
+          disabled={transcript.entries.length === 0 && !state.taskState?.tasks.length}
           onClick={() => void agent.newChat()}
         >
           ＋

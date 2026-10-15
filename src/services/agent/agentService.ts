@@ -1,7 +1,7 @@
 // The OpenMindAI Agent panel's brain: the model list and downloads, the chosen model and mode, and the conversation
 // (folded from backend events by agentModel.ts). UI-free; the panel reads `getState()` through useSyncExternalStore.
 import type { AgentEvent, AgentIpc, AgentMode, AgentOverview, Decision, DownloadEvent, DownloadProgress } from "./agentIpc";
-import { AgentTasks, type AgentTask, type TaskState } from "./agentTasks";
+import { AgentTasks, lastInterruptedTask, type AgentTask, type TaskState } from "./agentTasks";
 import { agentOptions, DEFAULT_AGENT_OPTIONS, type AgentOptions } from "./agentOptions";
 import { agentName } from "./agentBrand";
 import { addNotice, addUser, applyEvent, EMPTY_TRANSCRIPT, nextMode, type Transcript } from "./agentModel";
@@ -101,7 +101,11 @@ export class AgentService {
   resumeQueue(): void { this.tasks.resume(); }
   cancelTask(id: string): void { this.tasks.cancel(id); }
   async continueTask(): Promise<boolean> {
-    const task = [...this.tasks.getState().tasks].reverse().find((t) => t.status === "failed" || t.status === "cancelled");
+    const task = lastInterruptedTask(this.tasks.getState().tasks);
+    if (task && task.workspace !== (this.host.workspacePath?.() ?? null)) {
+      this.host.notify(this.host.text("agent.tasks.workspaceChanged"));
+      return false;
+    }
     const accepted = await this.send(`Continue the interrupted task. Inspect the current project state first; preserve changes already made and complete the remaining work. Original goal:\n${task?.text ?? "Complete the previous request."}`, true);
     if (accepted) this.tasks.resume();
     return accepted;
@@ -365,7 +369,7 @@ export class AgentService {
       });
     }
     if (this.aborted(signal)) return false;
-    await this.ipc.waitIdle?.();
+    try { await this.ipc.waitIdle?.(); } catch (error) { this.host.notify(String(error)); return false; }
     if (this.aborted(signal)) return false;
     if (!this.host.hasFolder() || task.workspace !== (this.host.workspacePath?.() ?? null)) {
       this.host.notify(this.host.text("agent.tasks.workspaceChanged"));
@@ -375,7 +379,7 @@ export class AgentService {
     try {
       await this.ipc.send({
         text: task.text, modelId: task.modelId, mode: task.mode, taskId: task.id,
-        options: task.options, unsaved: this.host.unsavedPaths(), uiLanguage: this.host.uiLanguage(),
+        options: task.options, workspace: task.workspace, unsaved: this.host.unsavedPaths(), uiLanguage: this.host.uiLanguage(),
       });
       return true;
     } catch (error) {
@@ -393,15 +397,17 @@ export class AgentService {
   }
 
   async stop(): Promise<void> {
-    const active = this.tasks.getState().activeId;
-    await this.tasks.stop();
-    if (!active && this.state.transcript.busy) await this.ipc.stop();
+    try {
+      const active = this.tasks.getState().activeId;
+      await this.tasks.stop();
+      if (!active && this.state.transcript.busy) await this.ipc.stop();
+    } catch (error) { this.host.notify(String(error)); }
   }
 
   async newChat(): Promise<void> {
-    await this.tasks.stop();
-    if (this.state.transcript.busy) await this.ipc.stop();
     try {
+      await this.tasks.stop();
+      if (this.state.transcript.busy) await this.ipc.stop();
       await this.ipc.reset();
       this.tasks.clear();
       this.set({ transcript: EMPTY_TRANSCRIPT });

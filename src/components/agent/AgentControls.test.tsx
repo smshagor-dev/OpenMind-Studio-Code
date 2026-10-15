@@ -6,6 +6,7 @@ import { DEFAULT_AGENT_OPTIONS } from "../../services/agent/agentOptions";
 
 vi.mock("../../services/agent", () => ({ agent: {
   send: vi.fn(() => Promise.resolve(true)), stop: vi.fn(() => Promise.resolve()),
+  continueTask: vi.fn(() => Promise.resolve(true)), pauseQueue: vi.fn(), resumeQueue: vi.fn(), cancelTask: vi.fn(),
   cycleMode: vi.fn(() => Promise.resolve()), suggestFiles: vi.fn(() => Promise.resolve([])),
   options: () => ({ ...DEFAULT_AGENT_OPTIONS }), getState: () => ({ mode: "ask", overview: null }),
   updateOptions: vi.fn(() => Promise.resolve()), setMode: vi.fn(() => Promise.resolve()),
@@ -13,6 +14,8 @@ vi.mock("../../services/agent", () => ({ agent: {
 vi.mock("../../i18n", () => ({ useT: () => (key: string) => key }));
 import { agent } from "../../services/agent";
 import { AgentPrompt } from "./AgentPrompt";
+import { AgentQueue } from "./AgentQueue";
+import type { TaskState } from "../../services/agent/agentTasks";
 import { AgentSettings } from "./AgentSettings";
 
 beforeEach(() => { vi.clearAllMocks(); });
@@ -43,4 +46,15 @@ it("applies permission and execution settings only on explicit Apply", async () 
   fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
   await waitFor(() => { expect(agent.setMode).toHaveBeenCalledWith("auto"); });
   expect(agent.updateOptions).toHaveBeenCalledWith(expect.objectContaining({ maxSteps: 200 }));
+});
+
+it("shows the preparing goal and offers Continue even with later prompts pending", () => {
+  const state: TaskState = { activeId: "first", paused: false, tasks: [{ id: "first", text: "Preparing goal", mode: "ask", modelId: "a", workspace: null, options: { ...DEFAULT_AGENT_OPTIONS }, status: "running", reason: null, createdAt: 1 }] };
+  const view = render(<AgentQueue state={state} />);
+  expect(screen.getByText("Preparing goal")).toBeInTheDocument();
+  const first = state.tasks[0];
+  if (!first) throw new Error("missing task");
+  view.rerender(<AgentQueue state={{ activeId: null, paused: true, tasks: [{ ...first, status: "cancelled", reason: "cancelled" }, { ...first, id: "next", text: "Later goal", status: "pending" }] }} />);
+  fireEvent.click(screen.getByRole("button", { name: "agent.tasks.continue" }));
+  expect(agent.continueTask).toHaveBeenCalledOnce();
 });

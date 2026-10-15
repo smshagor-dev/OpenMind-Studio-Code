@@ -126,6 +126,7 @@ export type Decision = { decision: "allow" } | { decision: "allowSession" } | { 
 
 export interface SendRequest {
   taskId?: string;
+  workspace?: string | null;
   options?: AgentOptions;
   text: string;
   modelId: string;

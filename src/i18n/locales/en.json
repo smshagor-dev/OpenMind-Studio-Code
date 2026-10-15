@@ -2827,7 +2827,7 @@
   "agent.settings.permissions": "Permissions",
   "agent.settings.policy.ask": "Ask before file changes, deletions and commands.",
   "agent.settings.policy.acceptEdits": "Apply file edits automatically; ask before deleting files or running commands.",
-  "agent.settings.policy.auto": "Run edits, deletions and commands automatically with your OS permissions. Project boundaries and unsaved editor checks remain active.",
+  "agent.settings.policy.auto": "Run edits, deletions and commands automatically. Commands have your OS permissions and can access files outside the project. File-tool boundaries and unsaved-editor checks stay active.",
   "agent.settings.policy.plan": "Read and plan only. File changes and commands are unavailable.",
   "agent.settings.contextTokens": "Context tokens (0 = edition maximum)",
   "agent.settings.maxOutputTokens": "Output tokens per response",

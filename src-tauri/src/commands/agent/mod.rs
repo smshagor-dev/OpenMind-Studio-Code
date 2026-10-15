@@ -153,6 +153,8 @@ pub struct SendRequest {
     #[serde(default)]
     task_id: Option<String>,
     #[serde(default)]
+    workspace: Option<String>,
+    #[serde(default)]
     options: openmind_agent::SessionOptions,
     text: String,
     model_id: String,
@@ -198,6 +200,13 @@ pub async fn agent_send(
     let folder = crate::windows::window_workspace(&state, &label)
         .await?
         .ok_or("Open a folder first: the agent works inside a project folder.")?;
+    if request.workspace.as_ref().is_some_and(|expected| {
+        std::path::Path::new(expected) != std::path::Path::new(&folder.path)
+    }) {
+        return Err(
+            "The open project changed. Reopen the task's original project before resuming.".into(),
+        );
+    }
     let model = agent
         .catalog
         .get(&request.model_id)

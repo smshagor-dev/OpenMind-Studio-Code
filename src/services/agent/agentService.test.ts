@@ -291,3 +291,46 @@ it("queues follow-up prompts and ignores stale task completion events", async ()
   event({ type: "turnEnd", taskId: second, reason: "cancelled", message: null });
   expect(service.getState().taskState?.paused).toBe(true);
 });
+
+it("reports Stop failure and keeps later tasks paused", async () => {
+  const { service, ipc, host } = setup([model("a", "ready")]);
+  await service.start(); await service.send("Goal");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledOnce(); });
+  await service.send("Later");
+  vi.mocked(ipc.stop).mockRejectedValueOnce("Stop transport failed");
+  await service.stop();
+  expect(host.notify).toHaveBeenCalledWith("Stop transport failed");
+  expect(service.getState().taskState?.paused).toBe(true);
+  expect(ipc.send).toHaveBeenCalledOnce();
+});
+
+it("continues the interrupted goal before pending work and ignores removed prompts", async () => {
+  const { service, ipc, event } = setup([model("a", "ready")]);
+  await service.start(); await service.send("Original goal");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledOnce(); });
+  const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+  await service.send("Next goal"); await service.stop();
+  event({ type: "turnEnd", taskId: id, reason: "cancelled", message: null });
+  await service.send("Removed goal");
+  const removed = service.getState().taskState?.tasks.at(-1);
+  if (!removed) throw new Error("missing queued task");
+  service.cancelTask(removed.id);
+  expect(await service.continueTask()).toBe(true);
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(2); });
+  expect(vi.mocked(ipc.send).mock.calls[1]?.[0].text).toContain("Original goal");
+  expect(vi.mocked(ipc.send).mock.calls[1]?.[0].text).not.toContain("Removed goal");
+});
+
+it("refuses to continue an interrupted goal in a different project", async () => {
+  const { service, ipc, host, event } = setup([model("a", "ready")]);
+  host.workspacePath = () => "/one";
+  await service.start(); await service.send("Change this project");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledOnce(); });
+  const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+  expect(vi.mocked(ipc.send).mock.calls[0]?.[0].workspace).toBe("/one");
+  await service.stop(); event({ type: "turnEnd", taskId: id, reason: "cancelled", message: null });
+  host.workspacePath = () => "/two";
+  expect(await service.continueTask()).toBe(false);
+  expect(ipc.send).toHaveBeenCalledOnce();
+  expect(host.notify).toHaveBeenCalledWith("agent.tasks.workspaceChanged");
+});

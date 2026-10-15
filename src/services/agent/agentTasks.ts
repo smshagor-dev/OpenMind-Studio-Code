@@ -17,6 +17,10 @@ export interface AgentTask {
 export interface TaskState { tasks: AgentTask[]; activeId: string | null; paused: boolean }
 export const EMPTY_TASKS: TaskState = { tasks: [], activeId: null, paused: false };
 
+export function lastInterruptedTask(tasks: readonly AgentTask[]): AgentTask | undefined {
+  return [...tasks].reverse().find((task) => task.status === "failed" || (task.status === "cancelled" && task.reason === "cancelled"));
+}
+
 interface TaskHost {
   run: (task: AgentTask, signal: AbortSignal) => Promise<boolean>;
   stop: (id: string) => Promise<void>;
@@ -46,7 +50,7 @@ export class AgentTasks {
       tasks.push({ id: t.id, text: t.text, modelId: t.modelId, mode: t.mode,
         workspace: typeof t.workspace === "string" ? t.workspace : null,
         options: agentOptions(t.options), status: terminal ? t.status as TaskStatus : "pending",
-        reason: terminal && typeof t.reason === "string" ? t.reason : "interrupted",
+        reason: terminal ? (typeof t.reason === "string" ? t.reason : null) : "interrupted",
         createdAt: typeof t.createdAt === "number" ? t.createdAt : 0,
       });
     }
