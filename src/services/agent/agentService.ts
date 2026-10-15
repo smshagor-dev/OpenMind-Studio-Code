@@ -449,8 +449,8 @@ export class AgentService {
     const history = this.state.transcript.entries.flatMap((entry) => entry.kind === "user" || entry.kind === "assistant" || entry.kind === "document" ? [{ role: entry.kind === "assistant" ? "assistant" : "user", content: entry.kind === "document" ? `[Untrusted attachment: ${entry.name}]\n${entry.text}\n[End attachment]` : entry.text }] : []).slice(-80);
     let transcript = addUser(this.state.transcript, task.text, this.now());
     for (const item of task.attachments ?? []) {
-      if (item.data) transcript = { ...transcript, entries: [...transcript.entries, { kind: "asset", id: item.id, name: item.name, data: item.data }] };
-      else transcript = { ...transcript, entries: [...transcript.entries, { kind: "document", id: item.id, name: item.name, text: item.text ?? "" }] };
+      if (item.data) transcript = { ...transcript, entries: [...transcript.entries, { kind: "asset", id: crypto.randomUUID(), name: item.name, data: item.data }] };
+      else transcript = { ...transcript, entries: [...transcript.entries, { kind: "document", id: crypto.randomUUID(), name: item.name, text: item.text ?? "" }] };
     }
     this.set({ transcript, showHistory: false });
     try {

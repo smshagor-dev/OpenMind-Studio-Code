@@ -355,3 +355,19 @@ describe("persisted agent conversations", () => {
     await service.newChat();
   });
 });
+
+it("keeps attachment context on Continue with unique transcript entry IDs", async () => {
+  const { service, ipc, event } = setup([model("a", "ready")]);
+  await service.start();
+  const file = new File(["const answer = 42;"], "code.ts", { type: "text/plain" });
+  Object.defineProperty(file, "arrayBuffer", { value: () => Promise.resolve(new TextEncoder().encode("const answer = 42;").buffer) });
+  await service.attachFiles([file]); await service.send("read this file");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(1); });
+  event({ type: "turnEnd", reason: "cancelled", message: null });
+  expect(await service.continueTask()).toBe(true);
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(2); });
+  const documents = service.getState().transcript.entries.filter((entry) => entry.kind === "document");
+  expect(documents).toHaveLength(2);
+  expect(new Set(documents.map((entry) => entry.id)).size).toBe(2);
+  expect(ipc.send).toHaveBeenLastCalledWith(expect.objectContaining({ attachments: [expect.objectContaining({ name: "code.ts", text: "const answer = 42;" })] }));
+});
