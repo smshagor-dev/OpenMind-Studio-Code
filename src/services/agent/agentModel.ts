@@ -173,6 +173,10 @@ export function applyEvent(t: Transcript, event: AgentEvent, say: (notice: NonNu
         promptTokens: event.promptTokens,
         contextTokens: event.contextTokens,
       };
+    case "compacted":
+      return addNotice(t, "info", say({ tone: "info", key: "agent.context.compacted", message: null }));
+    case "continuing":
+      return addNotice(t, "info", say({ tone: "info", key: "agent.context.continuing", message: null }));
     case "engine":
       if (event.state === "loading") return { ...t, phase: "loadingModel" };
       if (event.state === "ready") return { ...t, phase: "thinking" };
@@ -195,7 +199,7 @@ export function applyEvent(t: Transcript, event: AgentEvent, say: (notice: NonNu
   }
 }
 
-const MODES: AgentMode[] = ["ask", "acceptEdits", "plan"];
+const MODES: AgentMode[] = ["ask", "acceptEdits", "auto", "plan"];
 
 /** Shift+Tab moves through the modes, as in Claude Code. */
 export function nextMode(mode: AgentMode): AgentMode {

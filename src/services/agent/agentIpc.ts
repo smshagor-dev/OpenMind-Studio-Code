@@ -1,9 +1,10 @@
+import type { AgentOptions } from "./agentOptions";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 /** `openmind_agent::policy::Mode`. */
-export type AgentMode = "ask" | "acceptEdits" | "plan";
+export type AgentMode = "ask" | "acceptEdits" | "auto" | "plan";
 
 /** `openmind_agent::tools::ToolKind`. */
 export type ToolKind = "read" | "edit" | "delete" | "command" | "meta";
@@ -98,7 +99,7 @@ export interface PermissionRequest {
 }
 
 /** What `agent:event` carries: `openmind_agent::AgentEvent`, the permission question and the engine's state. */
-export type AgentEvent =
+export type AgentEvent = (
   | { type: "thinking"; step: number }
   | { type: "reasoning"; text: string }
   | { type: "text"; text: string }
@@ -116,11 +117,17 @@ export type AgentEvent =
   | { type: "usage"; promptTokens: number; completionTokens: number; contextTokens: number }
   | { type: "turnEnd"; reason: "done" | "cancelled" | "rejected" | "limit" | "error"; message: string | null }
   | { type: "permission"; request: PermissionRequest }
-  | { type: "engine"; state: "loading" | "ready" | "failed"; model: string; message: string | null };
+  | { type: "engine"; state: "loading" | "ready" | "failed"; model: string; message: string | null }
+  | { type: "compacted"; beforeTokens: number; afterTokens: number }
+  | { type: "continuing"; attempt: number }
+) & { taskId?: string | null };
 
 export type Decision = { decision: "allow" } | { decision: "allowSession" } | { decision: "deny"; feedback: string | null };
 
 export interface SendRequest {
+  taskId?: string;
+  workspace?: string | null;
+  options?: AgentOptions;
   text: string;
   modelId: string;
   mode: AgentMode;
@@ -135,7 +142,8 @@ export interface AgentIpc {
   deleteModel: (id: string) => Promise<void>;
   send: (request: SendRequest) => Promise<void>;
   answer: (id: string, decision: Decision) => Promise<boolean>;
-  stop: () => Promise<void>;
+  stop: (taskId?: string) => Promise<void>;
+  waitIdle?: () => Promise<void>;
   reset: () => Promise<void>;
   undo: () => Promise<{ restored: string[]; failed: string[]; canUndo: boolean }>;
   startEngine: (id: string) => Promise<boolean>;
@@ -151,7 +159,8 @@ export const tauriAgentIpc: AgentIpc = {
   deleteModel: (id) => invoke("agent_model_delete", { id }),
   send: (request) => invoke("agent_send", { request }),
   answer: (id, decision) => invoke<boolean>("agent_answer", { answer: { id, ...decision } }),
-  stop: () => invoke("agent_stop"),
+  stop: (taskId) => invoke("agent_stop", { taskId: taskId ?? null }),
+  waitIdle: () => invoke("agent_wait_idle"),
   reset: () => invoke("agent_reset"),
   undo: () => invoke<{ restored: string[]; failed: string[]; canUndo: boolean }>("agent_undo"),
   startEngine: (id) => invoke<boolean>("agent_engine_start", { id }),

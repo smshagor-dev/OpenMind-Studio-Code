@@ -308,8 +308,14 @@ fn long_conversations_drop_old_tool_output_first() {
             content: "x".repeat(2_000),
         });
     }
-    s.fit_context();
-    assert!(estimate_tokens(&s.messages) <= 4_096 * 7 / 10);
+    s.goal = "q19".into();
+    s.set_options(crate::SessionOptions {
+        max_output_tokens: 256,
+        ..Default::default()
+    });
+    s.fit_context(&json!([]), &Panel::new(vec![]))
+        .expect("fits");
+    assert!(crate::context::estimate(&s.messages) <= 4_096 * 7 / 10);
     assert!(matches!(s.messages[0], Message::System { .. }));
     assert!(
         matches!(s.messages[1], Message::User { .. }),
@@ -425,4 +431,77 @@ fn undo_revalidates_links_after_the_live_editor_check() {
         "agent"
     );
     assert!(s.can_undo());
+}
+
+#[test]
+fn truncated_tool_arguments_are_discarded_then_the_task_continues() {
+    let dir = tempfile::tempdir().expect("temp");
+    let ws = Workspace::new(dir.path()).expect("workspace");
+    let script = Script::new(vec![
+        vec![format!(
+            "data: {}",
+            json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"partial","function":{"name":"write_file","arguments":"{\"path\":\"oops"}}]},"finish_reason":"length"}]})
+        )],
+        say("Finished"),
+    ]);
+    let panel = Panel::new(vec![]);
+    let cancel = AtomicBool::new(false);
+    let mut session = Session::new("Rules".into(), "m".into(), 32768, Mode::Auto);
+    session.run_turn(
+        "Finish work",
+        &script,
+        &panel,
+        &TurnInput {
+            ws: &ws,
+            env: &CommandEnv::default(),
+            unsaved: &[],
+            cancel: &cancel,
+        },
+    );
+    assert_eq!(panel.end(), "done");
+    assert!(panel
+        .events
+        .lock()
+        .expect("lock")
+        .iter()
+        .any(|e| matches!(e, AgentEvent::Continuing { attempt: 1 })));
+    let requests = script.requests.lock().expect("lock");
+    assert_eq!(requests.len(), 2);
+    assert!(!requests[1]["messages"].to_string().contains("partial"));
+    assert!(!dir.path().join("oops").exists());
+}
+
+#[test]
+fn an_unfinished_stream_is_never_reported_as_completed() {
+    let dir = tempfile::tempdir().expect("temp");
+    let ws = Workspace::new(dir.path()).expect("workspace");
+    let script = Script::new(vec![vec![
+        "data: {\"choices\":[{\"delta\":{\"content\":\"half\"}}]}".into(),
+    ]]);
+    let panel = Panel::new(vec![]);
+    Session::new("Rules".into(), "m".into(), 32768, Mode::Ask).run_turn(
+        "Work",
+        &script,
+        &panel,
+        &TurnInput {
+            ws: &ws,
+            env: &CommandEnv::default(),
+            unsaved: &[],
+            cancel: &AtomicBool::new(false),
+        },
+    );
+    assert_eq!(panel.end(), "error");
+}
+
+#[test]
+fn changing_permission_mode_revokes_session_grants() {
+    let mut s = session(Mode::Ask);
+    s.policy
+        .remember(tools::ToolKind::Command, "test", &Decision::AllowSession);
+    assert!(!s.policy.must_ask(tools::ToolKind::Command, "test"));
+    s.set_mode(Mode::Auto);
+    assert!(!s.policy.must_ask(tools::ToolKind::Delete, "file"));
+    s.set_mode(Mode::Ask);
+    assert!(s.policy.must_ask(tools::ToolKind::Command, "test"));
+    assert!(s.policy.must_ask(tools::ToolKind::Edit, "file"));
 }

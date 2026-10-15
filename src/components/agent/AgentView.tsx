@@ -6,6 +6,7 @@ import type { Todo } from "../../services/agent/agentIpc";
 import { agent } from "../../services/agent";
 import { container } from "../../services/container";
 import { useT } from "../../i18n";
+import { AgentQueue } from "./AgentQueue";
 import { AgentPermission } from "./AgentPermission";
 import { AgentPrompt } from "./AgentPrompt";
 import { agentTier } from "../../services/agent/agentBrand";
@@ -71,6 +72,7 @@ function Header() {
         {model && agent.ready() ? <span className="agent-tier">{agentTier(model)}</span> : null}
       </button>
       <div className="agent-header__actions">
+        <button type="button" className="agent-icon-button" title={t("agent.settings.title")} onClick={() => { agent.openSettings(true); }}>⚙</button>
         {transcript.canUndo && !transcript.busy ? (
           <button type="button" className="agent-icon-button" title={t("agent.header.undo")} onClick={() => void agent.undo()}>
             ↶
@@ -80,7 +82,7 @@ function Header() {
           type="button"
           className="agent-icon-button"
           title={t("agent.header.newChat")}
-          disabled={transcript.entries.length === 0}
+          disabled={transcript.entries.length === 0 && !state.taskState?.tasks.length}
           onClick={() => void agent.newChat()}
         >
           ＋
@@ -103,8 +105,8 @@ export function AgentView() {
   const { transcript } = state;
   useEffect(() => {
     const element = scroller.current;
-    if (element && pinned.current) element.scrollTop = element.scrollHeight;
-  }, [transcript]);
+    if (element && pinned.current && state.options?.autoScroll !== false) element.scrollTop = element.scrollHeight;
+  }, [transcript, state.options?.autoScroll]);
 
   if (!state.overview) {
     return (
@@ -152,23 +154,23 @@ export function AgentView() {
         }}
       >
         {transcript.entries.length === 0 ? <AgentWelcome folder={folder} /> : null}
-        <AgentTranscript entries={transcript.entries} busy={transcript.busy} />
+        <AgentTranscript entries={transcript.entries} busy={transcript.busy} showReasoning={state.options?.showReasoning} />
         {transcript.busy && !transcript.permission ? (
           <AgentSpinner phase={transcript.phase} startedAt={transcript.startedAt} tokens={transcript.outputTokens} />
         ) : null}
       </div>
       <div className="agent-view__bottom">
         <Todos items={transcript.todos} />
+        <AgentQueue state={state.taskState} />
         {transcript.permission ? (
           <AgentPermission request={transcript.permission} onAnswer={(decision) => void agent.answer(decision)} />
-        ) : (
+        ) : null}
           <AgentPrompt
             mode={state.mode}
-            busy={transcript.busy}
-            disabledReason={folder ? (state.engineState === "loading" ? t("agent.ui.loading") : null) : t("agent.blocker.noFolder")}
+            busy={transcript.busy || !!state.taskState?.activeId}
+            disabledReason={folder ? null : t("agent.blocker.noFolder")}
             contextShare={share}
           />
-        )}
       </div>
     </div>
   );

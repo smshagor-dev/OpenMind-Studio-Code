@@ -105,13 +105,14 @@ describe("AgentService", () => {
     expect(service.getState().modelId).toBe("a");
     await service.setMode("acceptEdits");
     expect(await service.send("  fix the bug  ")).toBe(true);
-    expect(ipc.send).toHaveBeenCalledWith({
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    expect(ipc.send).toHaveBeenCalledWith(expect.objectContaining({
       text: "fix the bug",
       modelId: "a",
       mode: "acceptEdits",
       unsaved: ["C:/p/dirty.ts"],
       uiLanguage: "Russian",
-    });
+    }));
     const t = service.getState().transcript;
     expect(t.busy).toBe(true);
     expect(t.entries[0]).toMatchObject({ kind: "user", text: "fix the bug" });
@@ -175,7 +176,8 @@ describe("AgentService", () => {
     const { service, ipc } = setup([model("a", "ready")]);
     vi.mocked(ipc.send).mockRejectedValueOnce("The local AI engine (llama.cpp) is not installed yet.");
     await service.start();
-    expect(await service.send("hi")).toBe(false);
+    expect(await service.send("hi")).toBe(true);
+    await vi.waitFor(() => { expect(service.getState().taskState?.tasks[0]?.status).toBe("failed"); });
     const t = service.getState().transcript;
     expect(t.busy).toBe(false);
     expect(t.entries[1]).toMatchObject({ kind: "notice", tone: "error" });
@@ -269,4 +271,66 @@ it("reports a runtime install failure inside agent setup", async () => {
   await service.installEngine();
   expect(service.getState().setupError).toBe("agent.ui.operationFailed");
   expect(service.getState().installingEngine).toBe(false);
+});
+
+it("queues follow-up prompts and ignores stale task completion events", async () => {
+  const { service, ipc, event } = setup([model("a", "ready")]);
+  await service.start();
+  await service.send("First goal");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(1); });
+  const first = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+  await service.send("Second goal");
+  expect(ipc.send).toHaveBeenCalledTimes(1);
+  event({ type: "turnEnd", taskId: first, reason: "done", message: null });
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(2); });
+  const second = vi.mocked(ipc.send).mock.calls[1]?.[0].taskId;
+  event({ type: "turnEnd", taskId: first, reason: "error", message: "late" });
+  expect(service.getState().taskState?.activeId).toBe(second);
+  expect(service.getState().transcript.busy).toBe(true);
+  await service.stop();
+  event({ type: "turnEnd", taskId: second, reason: "cancelled", message: null });
+  expect(service.getState().taskState?.paused).toBe(true);
+});
+
+it("reports Stop failure and keeps later tasks paused", async () => {
+  const { service, ipc, host } = setup([model("a", "ready")]);
+  await service.start(); await service.send("Goal");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledOnce(); });
+  await service.send("Later");
+  vi.mocked(ipc.stop).mockRejectedValueOnce("Stop transport failed");
+  await service.stop();
+  expect(host.notify).toHaveBeenCalledWith("Stop transport failed");
+  expect(service.getState().taskState?.paused).toBe(true);
+  expect(ipc.send).toHaveBeenCalledOnce();
+});
+
+it("continues the interrupted goal before pending work and ignores removed prompts", async () => {
+  const { service, ipc, event } = setup([model("a", "ready")]);
+  await service.start(); await service.send("Original goal");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledOnce(); });
+  const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+  await service.send("Next goal"); await service.stop();
+  event({ type: "turnEnd", taskId: id, reason: "cancelled", message: null });
+  await service.send("Removed goal");
+  const removed = service.getState().taskState?.tasks.at(-1);
+  if (!removed) throw new Error("missing queued task");
+  service.cancelTask(removed.id);
+  expect(await service.continueTask()).toBe(true);
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(2); });
+  expect(vi.mocked(ipc.send).mock.calls[1]?.[0].text).toContain("Original goal");
+  expect(vi.mocked(ipc.send).mock.calls[1]?.[0].text).not.toContain("Removed goal");
+});
+
+it("refuses to continue an interrupted goal in a different project", async () => {
+  const { service, ipc, host, event } = setup([model("a", "ready")]);
+  host.workspacePath = () => "/one";
+  await service.start(); await service.send("Change this project");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledOnce(); });
+  const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+  expect(vi.mocked(ipc.send).mock.calls[0]?.[0].workspace).toBe("/one");
+  await service.stop(); event({ type: "turnEnd", taskId: id, reason: "cancelled", message: null });
+  host.workspacePath = () => "/two";
+  expect(await service.continueTask()).toBe(false);
+  expect(ipc.send).toHaveBeenCalledOnce();
+  expect(host.notify).toHaveBeenCalledWith("agent.tasks.workspaceChanged");
 });

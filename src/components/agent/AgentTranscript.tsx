@@ -66,10 +66,10 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   );
 }
 
-function Assistant({ entry, live }: { entry: Extract<Entry, { kind: "assistant" }>; live: boolean }) {
+function Assistant({ entry, live, showReasoning }: { entry: Extract<Entry, { kind: "assistant" }>; live: boolean; showReasoning: boolean }) {
   return (
     <div className="agent-message agent-message--assistant agent-enter">
-      {entry.reasoning.trim() ? <Reasoning text={entry.reasoning} live={live && !entry.text} /> : null}
+      {showReasoning && entry.reasoning.trim() ? <Reasoning text={entry.reasoning} live={live && !entry.text} /> : null}
       {entry.text.trim() ? (
         <div className="agent-message__row">
           <span className="agent-dot agent-dot--text" aria-hidden="true">
@@ -168,7 +168,7 @@ function ToolCard({ entry }: { entry: ToolEntry }) {
   );
 }
 
-export function AgentTranscript({ entries, busy }: { entries: Entry[]; busy: boolean }) {
+export function AgentTranscript({ entries, busy, showReasoning = true }: { entries: Entry[]; busy: boolean; showReasoning?: boolean }) {
   const last = entries[entries.length - 1];
   return (
     <>
@@ -184,7 +184,7 @@ export function AgentTranscript({ entries, busy }: { entries: Entry[]; busy: boo
               </div>
             );
           case "assistant":
-            return <Assistant key={entry.id} entry={entry} live={busy && entry === last} />;
+            return <Assistant showReasoning={showReasoning} key={entry.id} entry={entry} live={busy && entry === last} />;
           case "tool":
             return <ToolCard key={entry.id} entry={entry} />;
           case "notice":

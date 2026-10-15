@@ -1075,3 +1075,13 @@
 
 /* Runtime Manager and permission dialogs use the standard modal layer above setup. */
 .agent-setup-overlay { z-index: 1999; }
+
+.agent-queue { max-height: 180px; overflow-y: auto; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; }
+.agent-queue__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px; }
+.agent-queue__actions button, .agent-queue__item button { color: inherit; background: transparent; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.agent-queue__item { display: flex; justify-content: space-between; gap: 8px; }
+.agent-queue__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-settings { padding: 16px; display: grid; gap: 12px; }
+.agent-settings label { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.agent-settings input[type=number], .agent-settings select { max-width: 180px; color: inherit; background: var(--editor-bg); border: 1px solid var(--border); padding: 4px; }
+.agent-settings p { font-size: 12px; opacity: .8; margin: 0; }

@@ -14,8 +14,6 @@ use crate::tools::{self, Change, ChangeKind, CommandEnv, ToolContext};
 use crate::wire::{request_body, Delta, Message, StreamState};
 
 /// Model calls in one turn before the agent stops and asks the user to continue.
-const MAX_STEPS: usize = 40;
-const MAX_ANSWER_TOKENS: u32 = 8_192;
 const PREVIEW_CHARS: usize = 1_200;
 
 /// The panel: shows events and answers permission questions.
@@ -41,29 +39,12 @@ pub struct Session {
     pub context_tokens: u32,
     messages: Vec<Message>,
     policy: Policy,
+    options: crate::SessionOptions,
+    model_context: u32,
+    memory: String,
+    goal: String,
     /// The changes of each turn that changed something, newest last (for Undo).
     turns: Vec<Vec<Change>>,
-}
-
-fn estimate_tokens(messages: &[Message]) -> usize {
-    let chars: usize = messages
-        .iter()
-        .map(|m| match m {
-            Message::System { content } | Message::User { content } => content.len(),
-            Message::Assistant {
-                content,
-                tool_calls,
-            } => {
-                content.len()
-                    + tool_calls
-                        .iter()
-                        .map(|c| c.arguments.len() + 40)
-                        .sum::<usize>()
-            }
-            Message::Tool { content, .. } => content.len(),
-        })
-        .sum();
-    chars / 3
 }
 
 fn preview(text: &str) -> String {
@@ -81,6 +62,10 @@ impl Session {
         Self {
             model,
             context_tokens,
+            model_context: context_tokens,
+            options: crate::SessionOptions::default().bounded(context_tokens),
+            memory: String::new(),
+            goal: String::new(),
             messages: vec![Message::System { content: system }],
             policy: Policy::new(mode),
             turns: Vec::new(),
@@ -92,7 +77,9 @@ impl Session {
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
-        self.policy.mode = mode;
+        if self.policy.mode != mode {
+            self.policy = Policy::new(mode);
+        }
     }
 
     /// Replaces the system prompt (the mode or the project changed).
@@ -110,31 +97,24 @@ impl Session {
         !self.turns.is_empty()
     }
 
-    /// Keeps the conversation inside the context window: old tool output goes first, then the oldest exchanges.
-    fn fit_context(&mut self) {
-        let budget = (self.context_tokens as usize).saturating_mul(7) / 10;
-        let keep_recent = 8;
-        let len = self.messages.len();
-        for i in 1..len.saturating_sub(keep_recent) {
-            if estimate_tokens(&self.messages) <= budget {
-                return;
-            }
-            if let Message::Tool { content, .. } = &mut self.messages[i] {
-                if content.len() > 200 {
-                    *content = "[older tool output removed to save space]".into();
-                }
-            }
+    pub fn set_options(&mut self, options: crate::SessionOptions) {
+        self.options = options.bounded(self.model_context);
+        self.context_tokens = self.options.context_tokens;
+    }
+
+    fn fit_context(&mut self, tools: &Value, host: &dyn AgentHost) -> Result<(), String> {
+        let schema = tools.to_string().len().div_ceil(2);
+        let budget = (self.context_tokens as usize)
+            .saturating_sub(self.options.max_output_tokens as usize + schema + 512);
+        let (before_tokens, after_tokens) =
+            crate::context::compact(&mut self.messages, &mut self.memory, &self.goal, budget)?;
+        if before_tokens > after_tokens {
+            host.emit(AgentEvent::Compacted {
+                before_tokens,
+                after_tokens,
+            });
         }
-        while estimate_tokens(&self.messages) > budget && self.messages.len() > keep_recent + 1 {
-            self.messages.remove(1);
-            // A conversation may not start with a tool result or a reply to one.
-            while matches!(
-                self.messages.get(1),
-                Some(Message::Tool { .. } | Message::Assistant { .. })
-            ) {
-                self.messages.remove(1);
-            }
-        }
+        Ok(())
     }
 
     fn stream_step(
@@ -144,7 +124,14 @@ impl Session {
         cancel: &AtomicBool,
         tools: &Value,
     ) -> Result<StreamState, String> {
-        let body = request_body(&self.model, &self.messages, tools, MAX_ANSWER_TOKENS);
+        let messages = crate::context::with_memory(&self.messages, &self.memory);
+        let mut body = request_body(
+            &self.model,
+            &messages,
+            tools,
+            self.options.max_output_tokens,
+        );
+        body["temperature"] = serde_json::json!(self.options.temperature);
         let mut state = StreamState::default();
         let mut failure = None;
         let result = client.stream(&body, cancel, &mut |line| {
@@ -167,7 +154,13 @@ impl Session {
         if let Some(message) = failure {
             return Err(message);
         }
-        result.map(|()| state)
+        result?;
+        if state.finish_reason.is_none() && !cancel.load(Ordering::Relaxed) {
+            return Err(
+                "The response stream ended before completion. Continue the task to retry.".into(),
+            );
+        }
+        Ok(state)
     }
 
     /// Runs one user message to the end of the agent's work.
@@ -178,6 +171,7 @@ impl Session {
         host: &dyn AgentHost,
         input: &TurnInput<'_>,
     ) {
+        self.goal = text.to_string();
         self.messages.push(Message::User {
             content: text.to_string(),
         });
@@ -202,10 +196,16 @@ impl Session {
             cancel: input.cancel,
             unsaved: input.unsaved,
         };
-        for step in 0..MAX_STEPS {
+        let mut continuations = 0;
+        for step in 0..self.options.max_steps {
+            if input.cancel.load(Ordering::Relaxed) {
+                return ("cancelled".into(), None);
+            }
             host.emit(AgentEvent::Thinking { step });
-            self.fit_context();
             let tools = tools::specs(self.policy.read_only());
+            if let Err(message) = self.fit_context(&tools, host) {
+                return ("limit".into(), Some(message));
+            }
             let state = match self.stream_step(client, host, input.cancel, &tools) {
                 Ok(state) => state,
                 Err(_) if input.cancel.load(Ordering::Relaxed) => {
@@ -213,19 +213,38 @@ impl Session {
                 }
                 Err(message) => return ("error".into(), Some(message)),
             };
+            if state.finish_reason.as_deref() == Some("length") {
+                self.messages.push(Message::Assistant {
+                    content: state.text.clone(),
+                    tool_calls: Vec::new(),
+                });
+                if !self.options.auto_continue || continuations >= self.options.max_continuations {
+                    return (
+                        "limit".into(),
+                        Some("Output limit reached. Continue the task to finish.".into()),
+                    );
+                }
+                continuations += 1;
+                host.emit(AgentEvent::Continuing {
+                    attempt: continuations,
+                });
+                self.messages.push(Message::User { content: "Continue the original task from where you stopped. Incomplete tool arguments were discarded; issue complete tool calls again if needed.".into() });
+                continue;
+            }
             let calls = state.tool_calls(step);
             self.messages.push(Message::Assistant {
                 content: state.text.clone(),
                 tool_calls: calls.clone(),
             });
-            if input.cancel.load(Ordering::Relaxed) {
-                return ("cancelled".into(), None);
-            }
             if calls.is_empty() {
-                let cut = state.finish_reason.as_deref() == Some("length");
                 return (
-                    "done".into(),
-                    cut.then(|| "The answer reached the length limit and was cut.".to_string()),
+                    if input.cancel.load(Ordering::Relaxed) {
+                        "cancelled"
+                    } else {
+                        "done"
+                    }
+                    .into(),
+                    None,
                 );
             }
             if let Some(end) = self.run_calls(&calls, host, &ctx, changes) {
@@ -234,9 +253,10 @@ impl Session {
         }
         (
             "limit".into(),
-            Some(format!(
-                "The agent stopped after {MAX_STEPS} steps. Send a message to let it continue."
-            )),
+            Some(
+                "The agent reached its configured step limit. Send a message to let it continue."
+                    .into(),
+            ),
         )
     }
 
@@ -250,15 +270,19 @@ impl Session {
     ) -> Option<(String, Option<String>)> {
         let mut ending: Option<(String, Option<String>)> = None;
         for call in calls {
+            if ctx.cancel.load(Ordering::Relaxed) {
+                ending = Some(("cancelled".into(), None));
+            }
             if ending.is_some() {
                 self.messages.push(Message::Tool {
                     tool_call_id: call.id.clone(),
-                    content: "Skipped: the user declined an earlier action.".into(),
+                    content: "Skipped: this turn was stopped or an earlier action was declined."
+                        .into(),
                 });
                 continue;
             }
-            let prepared =
-                tools::prepare(&call.name, &call.arguments, ctx, self.policy.read_only());
+            let arguments = self.command_arguments(call);
+            let prepared = tools::prepare(&call.name, &arguments, ctx, self.policy.read_only());
             host.emit(AgentEvent::ToolStart {
                 id: call.id.clone(),
                 name: call.name.clone(),
@@ -326,6 +350,24 @@ impl Session {
             });
         }
         ending
+    }
+
+    fn command_arguments(&self, call: &crate::wire::ToolCall) -> String {
+        if call.name != "run_command" {
+            return call.arguments.clone();
+        }
+        let Ok(mut args) = serde_json::from_str::<Value>(&call.arguments) else {
+            return call.arguments.clone();
+        };
+        if let Some(map) = args.as_object_mut() {
+            let timeout = map
+                .get("timeout_seconds")
+                .and_then(Value::as_u64)
+                .unwrap_or(self.options.command_timeout_seconds)
+                .min(self.options.command_timeout_seconds);
+            map.insert("timeout_seconds".into(), serde_json::json!(timeout));
+        }
+        args.to_string()
     }
 
     fn declined(&mut self, host: &dyn AgentHost, id: &str, feedback: Option<&str>) {

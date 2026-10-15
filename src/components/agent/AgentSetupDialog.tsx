@@ -2,6 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { agent } from "../../services/agent";
 import { useT } from "../../i18n";
+import { AgentSettings } from "./AgentSettings";
 import { AgentSetup } from "./AgentSetup";
 import "../../styles/agent.css";
 
@@ -9,10 +10,12 @@ import "../../styles/agent.css";
 export function AgentSetupDialog() {
   const t = useT();
   const state = useSyncExternalStore((listener) => agent.subscribe(listener), () => agent.getState());
+  const open = state.showSetup || state.showSettings;
+  const close = () => { agent.openSetup(false); agent.openSettings(false); };
   const anchor = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!state.showSetup) return;
+    if (!open) return;
     const dialog = panel.current;
     const editor = anchor.current?.parentElement;
     const previous = document.activeElement;
@@ -34,21 +37,21 @@ export function AgentSetupDialog() {
       window.removeEventListener("resize", position);
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
-  }, [state.showSetup]);
+  }, [open]);
   return (
     <>
       <span ref={anchor} hidden />
-      {state.showSetup ? createPortal(
-        <div className="modal-overlay agent-setup-overlay" onClick={() => { agent.openSetup(false); }}>
+      {open ? createPortal(
+        <div className="modal-overlay agent-setup-overlay" onClick={() => { close(); }}>
           <div ref={panel} className="agent-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="agent-setup-title" tabIndex={-1}
             onClick={(event) => { event.stopPropagation(); }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.stopPropagation();
-                agent.openSetup(false);
+                close();
               }
               if (event.key !== "Tab") return;
-              const buttons = panel.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), a[href]");
+              const buttons = panel.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href]");
               const first = buttons?.[0];
               const last = buttons?.[buttons.length - 1];
               if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) {
@@ -59,11 +62,11 @@ export function AgentSetupDialog() {
             }}>
             <div className="agent-setup-dialog__header">
               <h2 id="agent-setup-title"><span className="agent-welcome__star" aria-hidden="true">✻</span> OpenMindAI Agent</h2>
-              <button type="button" className="agent-icon-button" aria-label={t("agent.setup.close")} onClick={() => { agent.openSetup(false); }}>✕</button>
+              <button type="button" className="agent-icon-button" aria-label={t("agent.setup.close")} onClick={() => { close(); }}>✕</button>
             </div>
             {state.setupError ? <p className="agent-notice agent-notice--error" role="alert">{state.setupError}</p> : null}
             {state.overview && state.overviewError ? <p className="agent-notice agent-notice--error" role="alert">{state.overviewError}</p> : null}
-            {state.overview ? <AgentSetup overview={state.overview} downloads={state.downloads} modelId={state.modelId} installing={state.installingEngine} /> : (
+            {state.showSettings ? <AgentSettings /> : state.overview ? <AgentSetup overview={state.overview} downloads={state.downloads} modelId={state.modelId} installing={state.installingEngine} /> : (
               <div className="agent-view__loading">
                 {state.overviewError ? t("agent.ui.operationFailed") : t("agent.loading")}
                 <button type="button" className="button button--secondary" onClick={() => void agent.refresh()}>{t("agent.ui.retry")}</button>
@@ -74,7 +77,7 @@ export function AgentSetupDialog() {
               {agent.ready() && state.engineState !== "ready" && state.engineState !== "loading" ? (
                 <button type="button" className="button button--secondary" onClick={() => void agent.activate()}>{t("agent.ui.retry")}</button>
               ) : null}
-              <button type="button" className="button button--primary" onClick={() => { agent.openSetup(false); }}>{t("agent.ui.done")}</button>
+              <button type="button" className="button button--primary" onClick={() => { close(); }}>{t("agent.ui.done")}</button>
             </div>
           </div>
         </div>, document.body,

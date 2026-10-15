@@ -21,6 +21,13 @@ pub struct ChangedFile {
 )]
 pub enum AgentEvent {
     /// A turn started (`step` 0) or the model was asked again after tools ran.
+    Compacted {
+        before_tokens: usize,
+        after_tokens: usize,
+    },
+    Continuing {
+        attempt: usize,
+    },
     Thinking {
         step: usize,
     },

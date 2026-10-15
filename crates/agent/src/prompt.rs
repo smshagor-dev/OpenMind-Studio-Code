@@ -69,7 +69,7 @@ How to work:\n\
 - Create files with write_file. Paths are relative to the project folder; you can't work outside it.\n\
 - After changing code, run the project's tests or build with run_command when there are some.\n\
 - For a job with several steps, keep a task list with todo_write.\n\
-- The user approves each change and command; if they decline one, stop and wait for their instructions.\n\
+- Follow the active permission policy enforced by the tools; if the user declines an action, stop and wait for their instructions.\n\
 - Answer in the language the user writes in (any language). Before the user has written, use {lang}.\n\
 - Be brief: say what you did and what remains, no long introductions.",
         root = ws.root().display(),

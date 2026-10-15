@@ -40,9 +40,11 @@ pub struct Chat {
     /// The folder the conversation works in (a new folder starts a new conversation).
     root: Mutex<Option<PathBuf>>,
     cancel: Mutex<Arc<AtomicBool>>,
+    active_task: Mutex<Option<String>>,
     busy: AtomicBool,
     pending: Pending,
     mode: Mutex<Mode>,
+    cancelled_tasks: Mutex<std::collections::VecDeque<String>>,
 }
 
 #[derive(Clone)]
@@ -148,6 +150,12 @@ fn os_name() -> &'static str {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendRequest {
+    #[serde(default)]
+    task_id: Option<String>,
+    #[serde(default)]
+    workspace: Option<String>,
+    #[serde(default)]
+    options: openmind_agent::SessionOptions,
     text: String,
     model_id: String,
     mode: Mode,
@@ -182,6 +190,9 @@ pub async fn agent_send(
     agent: State<'_, AgentRuntime>,
 ) -> Result<(), String> {
     let text = request.text.trim().to_string();
+    if text.len() > 100000 || request.task_id.as_ref().is_some_and(|id| id.len() > 128) {
+        return Err("The request is too large.".into());
+    }
     if text.is_empty() {
         return Err("Type a message first.".into());
     }
@@ -189,6 +200,13 @@ pub async fn agent_send(
     let folder = crate::windows::window_workspace(&state, &label)
         .await?
         .ok_or("Open a folder first: the agent works inside a project folder.")?;
+    if request.workspace.as_ref().is_some_and(|expected| {
+        std::path::Path::new(expected) != std::path::Path::new(&folder.path)
+    }) {
+        return Err(
+            "The open project changed. Reopen the task's original project before resuming.".into(),
+        );
+    }
     let model = agent
         .catalog
         .get(&request.model_id)
@@ -206,7 +224,24 @@ pub async fn agent_send(
         return Err("The agent is still working on the last message. Stop it or wait.".into());
     }
     let cancel = Arc::new(AtomicBool::new(false));
-    *chat.cancel.lock().unwrap_or_else(PoisonError::into_inner) = Arc::clone(&cancel);
+    {
+        let mut current = chat.cancel.lock().unwrap_or_else(PoisonError::into_inner);
+        *current = Arc::clone(&cancel);
+        *chat
+            .active_task
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = request.task_id.clone();
+    }
+    if let Some(id) = &request.task_id {
+        let mut stopped = chat
+            .cancelled_tasks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some(index) = stopped.iter().position(|item| item == id) {
+            stopped.remove(index);
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
     *chat.mode.lock().unwrap_or_else(PoisonError::into_inner) = request.mode;
     let agent = agent.inner().clone();
     let root = PathBuf::from(&folder.path);
@@ -216,6 +251,7 @@ pub async fn agent_send(
             app,
             label,
             pending: &chat.pending,
+            task_id: request.task_id.as_deref(),
         };
         run_turn(
             &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
@@ -299,6 +335,7 @@ fn run_turn(
         return end("The conversation could not be started.".into());
     };
     session.set_mode(request.mode);
+    session.set_options(request.options.clone());
     session.set_system(system);
     let unsaved: Vec<PathBuf> = request.unsaved.iter().map(PathBuf::from).collect();
     let client = HttpModel {
@@ -350,12 +387,43 @@ pub fn agent_guard_answer(
 
 /// Stops the running turn (a waiting question counts as "no").
 #[tauri::command]
-pub fn agent_stop(window: tauri::Window, agent: State<'_, AgentRuntime>) {
+pub fn agent_stop(task_id: Option<String>, window: tauri::Window, agent: State<'_, AgentRuntime>) {
     let chat = agent.chat(window.label());
-    chat.cancel
+    let id = task_id.filter(|id| id.len() <= 128);
+    if let Some(id) = &id {
+        let mut stopped = chat
+            .cancelled_tasks
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if stopped.len() >= 256 {
+            stopped.pop_front();
+        }
+        stopped.push_back(id.clone());
+    }
+    let current = chat.cancel.lock().unwrap_or_else(PoisonError::into_inner);
+    let active = chat
+        .active_task
         .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .store(true, Ordering::Relaxed);
+        .unwrap_or_else(PoisonError::into_inner);
+    if id.is_none() || id == *active {
+        current.store(true, Ordering::Relaxed);
+    }
+}
+
+#[tauri::command]
+pub async fn agent_wait_idle(
+    window: tauri::Window,
+    agent: State<'_, AgentRuntime>,
+) -> Result<(), String> {
+    let chat = agent.chat(window.label());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while chat.busy.load(Ordering::SeqCst) {
+        if std::time::Instant::now() >= deadline {
+            return Err("The previous task is still stopping.".into());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    Ok(())
 }
 
 /// Starts a new conversation (the old one is dropped; files stay as they are).
@@ -422,6 +490,7 @@ pub async fn agent_undo(
             app,
             label: window.label().to_string(),
             pending: &chat.pending,
+            task_id: None,
         };
         let cancel = AtomicBool::new(false);
         let mut slot = chat.session.lock().unwrap_or_else(PoisonError::into_inner);

@@ -13,6 +13,10 @@ interface SlashCommand {
 
 function slashCommands(): SlashCommand[] {
   return [
+    { name: "/settings", key: "agent.settings.title", run: () => { agent.openSettings(true); } },
+    { name: "/resume", key: "agent.tasks.resume", run: () => { agent.resumeQueue(); } },
+    { name: "/pause", key: "agent.tasks.pause", run: () => { agent.pauseQueue(); } },
+    { name: "/continue", key: "agent.tasks.continue", run: () => void agent.continueTask() },
     { name: "/clear", key: "agent.slash.clear", run: () => void agent.newChat() },
     { name: "/undo", key: "agent.slash.undo", run: () => void agent.undo() },
     { name: "/models", key: "agent.slash.models", run: () => { agent.openSetup(true); } },
@@ -40,7 +44,7 @@ function ModeLine({ mode, contextShare }: { mode: AgentMode; contextShare: numbe
             <span aria-hidden="true">⏸</span> {t("agent.mode.plan")}
           </>
         ) : (
-          t("agent.mode.ask")
+          t(`agent.mode.${mode}`)
         )}
         <span className="agent-mode__hint">{t("agent.mode.shiftTab")}</span>
       </button>
@@ -106,9 +110,9 @@ export function AgentPrompt({
     window.requestAnimationFrame(() => area.current?.setSelectionRange(next.caret, next.caret));
   };
   const submit = async () => {
-    if (busy || !text.trim()) return;
+    if (disabledReason || !text.trim()) return;
     const sent = await agent.send(text);
-    if (sent) setText("");
+    if (sent) { setText(""); area.current?.focus(); }
   };
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (menu.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -177,6 +181,10 @@ export function AgentPrompt({
           }}
           onKeyDown={onKey}
         />
+      </div>
+      <div className="agent-queue__actions">
+        <button type="button" disabled={!!disabledReason || !text.trim()} onClick={() => void submit()}>{t(busy ? "agent.tasks.queue" : "agent.tasks.send")}</button>
+        {busy ? <button type="button" onClick={() => void agent.stop()}>{t("agent.tasks.stop")}</button> : null}
       </div>
       <ModeLine mode={mode} contextShare={contextShare} />
     </div>

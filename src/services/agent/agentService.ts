@@ -1,6 +1,8 @@
 // The OpenMindAI Agent panel's brain: the model list and downloads, the chosen model and mode, and the conversation
 // (folded from backend events by agentModel.ts). UI-free; the panel reads `getState()` through useSyncExternalStore.
 import type { AgentEvent, AgentIpc, AgentMode, AgentOverview, Decision, DownloadEvent, DownloadProgress } from "./agentIpc";
+import { AgentTasks, lastInterruptedTask, type AgentTask, type TaskState } from "./agentTasks";
+import { agentOptions, DEFAULT_AGENT_OPTIONS, type AgentOptions } from "./agentOptions";
 import { agentName } from "./agentBrand";
 import { addNotice, addUser, applyEvent, EMPTY_TRANSCRIPT, nextMode, type Transcript } from "./agentModel";
 
@@ -11,6 +13,8 @@ export interface AgentHost {
   uiLanguage: () => string;
   /** Whether a folder is open (the agent works inside one). */
   hasFolder: () => boolean;
+  workspacePath?: () => string | null;
+  taskScope?: string;
   /** Installs the local engine through the Runtime Manager; `true` when it is installed afterwards. */
   installEngine: () => Promise<boolean>;
   confirm: (message: string, okLabel: string) => Promise<boolean>;
@@ -29,6 +33,9 @@ export interface DownloadState {
 }
 
 export interface AgentState {
+  options?: AgentOptions;
+  taskState?: TaskState;
+  showSettings?: boolean;
   engineState: "idle" | "loading" | "ready" | "failed";
   overview: AgentOverview | null;
   overviewError: string | null;
@@ -64,12 +71,52 @@ export class AgentService {
   private unlisten: (() => void)[] = [];
   private started = false;
   private warming: Promise<void> | null = null;
+  private readonly tasks: AgentTasks;
+  private saves: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly ipc: AgentIpc,
     private readonly host: AgentHost,
     private readonly now: () => number = () => Date.now(),
-  ) {}
+  ) {
+    this.tasks = new AgentTasks({
+      run: (task, signal) => this.runTask(task, signal),
+      stop: (id) => this.ipc.stop(id),
+      changed: (taskState) => { this.set({ taskState }); this.persistTasks(taskState); },
+    });
+  }
+
+  options(): AgentOptions { return this.state.options ?? { ...DEFAULT_AGENT_OPTIONS }; }
+
+  async updateOptions(change: Partial<AgentOptions>): Promise<void> {
+    const options = agentOptions({ ...this.options(), ...change });
+    this.set({ options });
+    await this.host.settingSet("agent.options", JSON.stringify(options)).catch(() => {
+      this.host.notify(this.host.text("agent.tasks.saveFailed"));
+    });
+  }
+
+  openSettings(open: boolean): void { this.set({ showSettings: open }); }
+  pauseQueue(): void { this.tasks.pause(); }
+  resumeQueue(): void { this.tasks.resume(); }
+  cancelTask(id: string): void { this.tasks.cancel(id); }
+  async continueTask(): Promise<boolean> {
+    const task = lastInterruptedTask(this.tasks.getState().tasks);
+    if (task && task.workspace !== (this.host.workspacePath?.() ?? null)) {
+      this.host.notify(this.host.text("agent.tasks.workspaceChanged"));
+      return false;
+    }
+    const accepted = await this.send(`Continue the interrupted task. Inspect the current project state first; preserve changes already made and complete the remaining work. Original goal:\n${task?.text ?? "Complete the previous request."}`, true);
+    if (accepted) this.tasks.resume();
+    return accepted;
+  }
+
+  private persistTasks(state: TaskState): void {
+    const payload = JSON.stringify(state.tasks);
+    this.saves = this.saves.then(() => this.host.settingSet(`agent.tasks.${this.host.taskScope ?? "main"}`, payload)).catch(() => {
+      this.host.notify(this.host.text("agent.tasks.saveFailed"));
+    });
+  }
 
   getState(): AgentState {
     return this.state;
@@ -92,11 +139,17 @@ export class AgentService {
     try {
       this.unlisten.push(await this.ipc.onEvent((event) => { this.onEvent(event); }));
       this.unlisten.push(await this.ipc.onDownload((event) => { this.onDownload(event); }));
-      const [model, mode] = await Promise.all([
+      const [model, mode, savedOptions, savedTasks] = await Promise.all([
         this.host.settingGet(MODEL_KEY).catch(() => null),
         this.host.settingGet(MODE_KEY).catch(() => null),
+        this.host.settingGet("agent.options").catch(() => null),
+        this.host.settingGet(`agent.tasks.${this.host.taskScope ?? "main"}`).catch(() => null),
       ]);
-      if (mode === "ask" || mode === "acceptEdits" || mode === "plan") this.set({ mode });
+      try { this.set({ options: agentOptions(JSON.parse(savedOptions ?? "null")) }); } catch { this.set({ options: { ...DEFAULT_AGENT_OPTIONS } }); }
+      if (savedTasks) {
+        try { this.tasks.restore(JSON.parse(savedTasks) as unknown); } catch { /* Invalid local state is ignored. */ }
+      }
+      if (mode === "ask" || mode === "acceptEdits" || mode === "auto" || mode === "plan") this.set({ mode });
       if (model) this.set({ modelId: model });
       await this.refresh();
       await this.activate();
@@ -159,8 +212,7 @@ export class AgentService {
   sendBlocker(): string | null {
     if (!this.host.hasFolder()) return this.host.text("agent.blocker.noFolder");
     if (!this.ready()) return this.host.text("agent.blocker.noModel");
-    if (this.state.engineState === "loading") return this.host.text("agent.ui.loading");
-    if (this.state.transcript.busy) return this.host.text("agent.blocker.busy");
+
     return null;
   }
 
@@ -270,6 +322,7 @@ export class AgentService {
   }
 
   private onEvent(event: AgentEvent): void {
+    if (event.taskId && event.taskId !== this.tasks.getState().activeId) return;
     if (event.type === "engine") {
       if (event.model !== this.state.modelId) {
         this.set({ engineState: "idle" });
@@ -285,27 +338,48 @@ export class AgentService {
     if (event.type === "engine" && event.state === "failed" && event.message) {
       this.set({ transcript: addNotice(this.state.transcript, "error", this.host.text("agent.ui.failed")) });
     }
-    if (event.type === "turnEnd") void this.refresh();
+    if (event.type === "turnEnd") { this.tasks.finish(event.reason); void this.refresh(); }
   }
 
-  async send(text: string): Promise<boolean> {
+  send(text: string, first = false): Promise<boolean> {
     const message = text.trim();
-    if (!message) return false;
+    if (!message || message.length > 100000) return Promise.resolve(false);
     const blocker = this.sendBlocker();
-    if (blocker) {
-      this.host.notify(blocker);
+    if (blocker) { this.host.notify(blocker); return Promise.resolve(false); }
+    const modelId = this.state.modelId;
+    if (!modelId) return Promise.resolve(false);
+    const accepted = this.tasks.enqueue({
+      id: crypto.randomUUID(), text: message, modelId, mode: this.state.mode,
+      workspace: this.host.workspacePath?.() ?? null, options: { ...this.options() },
+      status: "pending", reason: null, createdAt: this.now(),
+    }, first);
+    if (!accepted) this.host.notify(this.host.text("agent.tasks.full"));
+    return Promise.resolve(accepted);
+  }
+
+  private aborted(signal: AbortSignal): boolean { return signal.aborted; }
+
+  private async runTask(task: AgentTask, signal: AbortSignal): Promise<boolean> {
+    if (this.warming) {
+      await new Promise<void>((resolve) => {
+        const done = () => { signal.removeEventListener("abort", done); resolve(); };
+        signal.addEventListener("abort", done, { once: true });
+        void this.warming?.finally(done);
+        if (signal.aborted) done();
+      });
+    }
+    if (this.aborted(signal)) return false;
+    try { await this.ipc.waitIdle?.(); } catch (error) { this.host.notify(String(error)); return false; }
+    if (this.aborted(signal)) return false;
+    if (!this.host.hasFolder() || task.workspace !== (this.host.workspacePath?.() ?? null)) {
+      this.host.notify(this.host.text("agent.tasks.workspaceChanged"));
       return false;
     }
-    const { modelId, mode } = this.state;
-    if (!modelId) return false;
-    this.set({ transcript: addUser(this.state.transcript, message, this.now()) });
+    this.set({ transcript: addUser(this.state.transcript, task.text, this.now()) });
     try {
       await this.ipc.send({
-        text: message,
-        modelId,
-        mode,
-        unsaved: this.host.unsavedPaths(),
-        uiLanguage: this.host.uiLanguage(),
+        text: task.text, modelId: task.modelId, mode: task.mode, taskId: task.id,
+        options: task.options, workspace: task.workspace, unsaved: this.host.unsavedPaths(), uiLanguage: this.host.uiLanguage(),
       });
       return true;
     } catch (error) {
@@ -322,14 +396,20 @@ export class AgentService {
     await this.ipc.answer(request.id, decision);
   }
 
-  stop(): Promise<void> {
-    return this.ipc.stop();
+  async stop(): Promise<void> {
+    try {
+      const active = this.tasks.getState().activeId;
+      await this.tasks.stop();
+      if (!active && this.state.transcript.busy) await this.ipc.stop();
+    } catch (error) { this.host.notify(String(error)); }
   }
 
   async newChat(): Promise<void> {
-    if (this.state.transcript.busy) await this.ipc.stop();
     try {
+      await this.tasks.stop();
+      if (this.state.transcript.busy) await this.ipc.stop();
       await this.ipc.reset();
+      this.tasks.clear();
       this.set({ transcript: EMPTY_TRANSCRIPT });
     } catch (error) {
       this.host.notify(String(error));
