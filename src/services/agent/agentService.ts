@@ -452,7 +452,7 @@ export class AgentService {
       if (item.data) transcript = { ...transcript, entries: [...transcript.entries, { kind: "asset", id: item.id, name: item.name, data: item.data }] };
       else transcript = { ...transcript, entries: [...transcript.entries, { kind: "document", id: item.id, name: item.name, text: item.text ?? "" }] };
     }
-    this.set({ transcript });
+    this.set({ transcript, showHistory: false });
     try {
       await this.ipc.send({
         text: task.text, modelId: task.modelId, mode: task.mode, taskId: task.id,

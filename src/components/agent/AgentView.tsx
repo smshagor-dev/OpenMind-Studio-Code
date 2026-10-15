@@ -109,8 +109,11 @@ export function AgentView() {
   const { transcript } = state;
   useEffect(() => {
     const element = scroller.current;
-    if (element && pinned.current && state.options?.autoScroll !== false) element.scrollTop = element.scrollHeight;
-  }, [transcript, state.options?.autoScroll]);
+    if (element && !state.showHistory && pinned.current && state.options?.autoScroll !== false) element.scrollTop = element.scrollHeight;
+  }, [transcript, state.options?.autoScroll, state.showHistory]);
+  useEffect(() => {
+    if (state.showHistory && scroller.current) scroller.current.scrollTop = 0;
+  }, [state.showHistory]);
 
   if (!state.overview) {
     return (
@@ -159,12 +162,13 @@ export function AgentView() {
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
       >
-        {state.showHistory ? <AgentHistoryView items={state.history ?? []} /> : null}
+        {state.showHistory ? <AgentHistoryView items={state.history ?? []} /> : <>
         {transcript.entries.length === 0 ? <AgentWelcome folder={folder} /> : null}
         <AgentTranscript entries={transcript.entries} busy={transcript.busy} showReasoning={state.options?.showReasoning} />
         {transcript.busy && !transcript.permission ? (
           <AgentSpinner phase={transcript.phase} startedAt={transcript.startedAt} tokens={transcript.outputTokens} />
         ) : null}
+        </>}
       </div>
       <div className="agent-view__bottom">
         <Todos items={transcript.todos} />

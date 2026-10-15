@@ -122,3 +122,10 @@ describe("configured header", () => {
     expect(container.querySelector(".agent-live--ready")).toBeNull();
   });
 });
+
+it("shows saved conversations instead of hiding history above the current transcript", () => {
+  harness.state = { ...currentState(), overview: overview(true), modelId: "internal", showHistory: true, history: [{ id: "saved", title: "Saved project task", providerId: "/project", updatedAt: 1, messageCount: 2 }] };
+  mount();
+  expect(screen.getByRole("button", { name: /Saved project task/ })).toBeInTheDocument();
+  expect(screen.queryByText("Welcome")).not.toBeInTheDocument();
+});
