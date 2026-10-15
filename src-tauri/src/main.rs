@@ -348,6 +348,16 @@ fn main() {
             commands::ai::ai_provider_test,
             commands::ai::ai_chat_send,
             commands::ai::ai_request_cancel,
+            commands::agent::models::agent_overview,
+            commands::agent::models::agent_model_download,
+            commands::agent::models::agent_model_cancel,
+            commands::agent::models::agent_model_delete,
+            commands::agent::agent_send,
+            commands::agent::agent_answer,
+            commands::agent::agent_stop,
+            commands::agent::agent_reset,
+            commands::agent::agent_undo,
+            commands::agent::agent_engine_stop,
             commands::ai::ai_conversations_list,
             commands::ai::ai_conversation_load,
             commands::ai::ai_conversation_save,
@@ -485,6 +495,13 @@ fn main() {
             if app_paths.layout == openmind_core::InstallLayout::Network {
                 // Each computer's own tool caches (GOPATH, NuGet, Gradle, pip, npm ...); downloads stay shared.
                 runtime_paths = runtime_paths.with_tool_cache(app_paths.machine_cache_dir.join("tools"));
+                // Toolchains whose linker can't open files on a network path go on this computer's own disk.
+                if openmind_core::install::is_remote_path(&app_paths.runtimes_dir) {
+                    if let Some(local) = app_paths.machine_cache_dir.parent() {
+                        runtime_paths = runtime_paths
+                            .with_local_kinds(local.join("runtimes"), commands::runtime::GNU_LINKED);
+                    }
+                }
             }
             let runtime = RuntimeManager::new(
                 db.clone(),
@@ -503,6 +520,11 @@ fn main() {
                 &network_config.go_proxy,
             );
 
+            // The OpenMindAI Agent: models live beside the runtimes (shared like them), its engine log with the app's logs.
+            app.manage(commands::agent::AgentRuntime::new(
+                app_paths.runtimes_dir.with_file_name("models"),
+                app_paths.logs_dir.clone(),
+            ));
             // The canonical state (and its publisher thread) exists before anything can change it.
             app.manage(state::CanonicalState::start(app.handle()));
             app.manage(AppState {

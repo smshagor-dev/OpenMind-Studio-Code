@@ -241,6 +241,7 @@ pub const COMPONENTS: &[Component] = &[
     rt("sqlite", "SQLite tools", Database, Some("sqlite3"), &[]),
     rt("postgresql", "PostgreSQL client tools", Database, Some("psql"), &[]),
     rt("livekit", "Classroom voice server (LiveKit, for large collaboration calls)", Tool, None, &[]),
+    rt("llamacpp", "Local AI engine (llama.cpp, for the OpenMindAI Agent)", Tool, None, &[]),
     // Parts of a runtime.
     with("npm", "npm", PackageManager, "node", "Comes with Node.js."),
     with("pip", "pip", PackageManager, "python", "Comes with OpenMind's Python."),
@@ -572,12 +573,12 @@ pub const WORKLOADS: &[Workload] = &[
     },
     Workload {
         id: "aiml", name: "AI / ML development", summary: "Python with notebooks and offline wheels, ONNX Runtime in projects and local model providers. GPU drivers stay external.",
-        components: &["python", "pip", "jupyter", "notebooks", "offline-cache", "onnxruntime", "local-ai", "cuda", "rocm"],
+        components: &["python", "pip", "jupyter", "notebooks", "offline-cache", "onnxruntime", "local-ai", "llamacpp", "cuda", "rocm"],
         frameworks: &["jupyter"],
     },
     Workload {
         id: "full-offline", name: "Full offline toolkit", summary: "Every runtime and SDK OpenMind can install, the offline language servers, the debuggers and the offline cache. Several GB: deselect the heavy SDKs you don't need.",
-        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "assembly", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "livekit", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
+        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "assembly", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "livekit", "llamacpp", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
         frameworks: &[],
     },
 ];

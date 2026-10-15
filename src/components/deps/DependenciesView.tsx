@@ -162,12 +162,23 @@ function ProjectBlock({ project, busy }: { project: ProjectDeps; busy: boolean }
  * The Dependencies side bar view: each project of the open folder with only the ecosystems it uses. Reading is local;
  * every button asks the backend for the exact command and shows it before anything runs.
  */
-export function DependenciesView() {
+export function DependenciesView({ hasFolder }: { hasFolder: boolean }) {
   const t = useT();
   const state = useSyncExternalStore(container.dependencies.subscribe, container.dependencies.getState);
   useEffect(() => {
-    void container.dependencies.refresh();
-  }, []);
+    if (hasFolder) void container.dependencies.refresh();
+  }, [hasFolder]);
+  if (!hasFolder) {
+    // Without a folder there is nothing to read: say so instead of an empty pane.
+    return (
+      <div className="deps-view">
+        <p className="deps-view__empty">{t("deps.view.noFolder")}</p>
+        <button type="button" className="deps-view__action" onClick={() => { container.run("file.openFolder"); }}>
+          {t("deps.view.openFolder")}
+        </button>
+      </div>
+    );
+  }
   const projects = state.snapshot?.projects ?? [];
   return (
     <div className="deps-view">

@@ -135,6 +135,9 @@ pub async fn stop_everything(app: &AppHandle) {
     state.index.stop_all();
     // A request to an AI provider may not outlive the app, nor a package download.
     state.ai.cancel_all();
+    // The agent's turns and model downloads stop, and its local engine (llama-server) with them.
+    app.state::<crate::commands::agent::AgentRuntime>()
+        .stop_all();
     state.collab.net.stop_all();
     state.collab.net.sfu.stop_all();
     state.broker.stop();

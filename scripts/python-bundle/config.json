@@ -25,17 +25,26 @@
     "tkinter"
   ],
   "packages": [
-    { "name": "requests", "import": "requests" },
-    { "name": "httpx", "import": "httpx" },
-    { "name": "python-dotenv", "import": "dotenv" },
-    { "name": "numpy", "import": "numpy" },
-    { "name": "pandas", "import": "pandas" },
-    { "name": "matplotlib", "import": "matplotlib" },
-    { "name": "pillow", "import": "PIL" },
-    { "name": "opencv-python", "import": "cv2" },
-    { "name": "python-telegram-bot", "import": "telegram" },
-    { "name": "telethon", "import": "telethon" },
-    { "name": "flask", "import": "flask" }
+    {
+      "name": "requests",
+      "import": "requests"
+    },
+    {
+      "name": "httpx",
+      "import": "httpx"
+    },
+    {
+      "name": "python-dotenv",
+      "import": "dotenv"
+    },
+    {
+      "name": "python-telegram-bot",
+      "import": "telegram"
+    },
+    {
+      "name": "flask",
+      "import": "flask"
+    }
   ],
   "addon": "tcltk"
 }

@@ -22,7 +22,7 @@ const config = JSON.parse(
 const lock = parseLock(readFileSync(join(root, "scripts/python-bundle/packages.lock"), "utf8"));
 
 describe("offline Python package bundle", () => {
-  it("covers the 30 modules asked for: 19 from Python itself (tkinter via Tcl/Tk) and 11 packages", () => {
+  it("covers 19 modules from Python itself (tkinter via Tcl/Tk) and 5 small, much-used packages", () => {
     expect(config.stdlib).toEqual([
       "os", "sys", "pathlib", "shutil", "subprocess", "json", "csv", "datetime", "time", "re", "logging", "asyncio",
       "sqlite3", "collections", "typing", "dataclasses", "random", "math", "tkinter",
@@ -31,13 +31,7 @@ describe("offline Python package bundle", () => {
       ["requests", "requests"],
       ["httpx", "httpx"],
       ["python-dotenv", "dotenv"],
-      ["numpy", "numpy"],
-      ["pandas", "pandas"],
-      ["matplotlib", "matplotlib"],
-      ["pillow", "PIL"],
-      ["opencv-python", "cv2"],
       ["python-telegram-bot", "telegram"],
-      ["telethon", "telethon"],
       ["flask", "flask"],
     ]);
     expect(config.addon).toBe("tcltk");

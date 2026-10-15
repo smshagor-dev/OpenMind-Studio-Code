@@ -235,6 +235,22 @@ pub enum InstallerHint {
     Portable,
 }
 
+/// The layout a setup records for the folder it installed into. A per-user ("For Me") setup in a **network folder**
+/// becomes a network installation: with the per-user layout every computer that runs the folder would open the one
+/// database next to the program (refused while another computer has it open), and nothing would be per computer. A
+/// folder an earlier setup already recorded as per-user keeps it (an update must never move the data it holds).
+pub fn layout_for_folder(
+    requested: InstallLayout,
+    remote: bool,
+    earlier: Option<InstallLayout>,
+) -> InstallLayout {
+    if requested == InstallLayout::PerUser && remote && earlier != Some(InstallLayout::PerUser) {
+        InstallLayout::Network
+    } else {
+        requested
+    }
+}
+
 /// The layout of a copy without `install.json`. A per-user setup placed in a **network folder** is a network
 /// installation: one database next to the program would be opened by every computer at once.
 pub fn infer_layout(hint: InstallerHint, remote: bool) -> InstallLayout {

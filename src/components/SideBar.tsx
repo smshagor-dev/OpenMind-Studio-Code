@@ -13,6 +13,7 @@ import { MenuPopup } from "./MenuPopup";
 import { OpenEditorsSection } from "./OpenEditorsSection";
 import { PaneSection } from "./PaneSection";
 import { AiView } from "./AiView";
+import { AgentView } from "./agent/AgentView";
 import { RunDebugView } from "./RunDebugView";
 import { Sash } from "./Sash";
 import { SearchView } from "./SearchView";
@@ -42,6 +43,7 @@ const VIEW_TITLES: Record<BuiltInView, string> = {
   deps: "view.dependencies",
   collab: "view.collaboration",
   ai: "view.ai",
+  agent: "view.agent",
 };
 
 /**
@@ -98,7 +100,11 @@ export function SideBar(props: SideBarProps) {
         ) : null}
       </div>
       <div className="sidebar__content">
-        <SideViewContent view={view} explorer={<ExplorerContent {...props} />} />
+        <SideViewContent
+          view={view}
+          explorer={<ExplorerContent {...props} />}
+          hasFolder={props.workspace !== null}
+        />
       </div>
       <Sash side={layout.sidebarPosition === "right" ? "left" : "right"} />
       {viewsMenu ? (
@@ -114,7 +120,15 @@ export function SideBar(props: SideBarProps) {
   );
 }
 
-function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNode }) {
+function SideViewContent({
+  view,
+  explorer,
+  hasFolder,
+}: {
+  view: SideView;
+  explorer: ReactNode;
+  hasFolder: boolean;
+}) {
   if (isExtensionView(view)) return <ExtensionContainerView key={view} viewKey={view} />;
   switch (view) {
     case "explorer":
@@ -128,11 +142,13 @@ function SideViewContent({ view, explorer }: { view: SideView; explorer: ReactNo
     case "extensions":
       return <ExtensionsView />;
     case "deps":
-      return <DependenciesView />;
+      return <DependenciesView hasFolder={hasFolder} />;
     case "collab":
       return <CollaborationView />;
     case "ai":
       return <AiView />;
+    case "agent":
+      return <AgentView />;
   }
 }
 

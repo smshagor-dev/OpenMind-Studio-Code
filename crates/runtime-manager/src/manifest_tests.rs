@@ -340,6 +340,7 @@ fn workload_runtimes_carry_sizes_licences_and_honest_flags() {
         "sqlite",
         "postgresql",
         "livekit",
+        "llamacpp",
     ] {
         let manifest = registry.get(id).expect(id);
         let (download, install) = manifest.sizes(&manifest.default_version, "windows-x64");

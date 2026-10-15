@@ -36,6 +36,8 @@ openmind-preview = { version = "1.0.4", path = "../crates/preview" }
 openmind-live-preview = { version = "1.0.4", path = "../crates/live-preview" }
 openmind-toolchains = { version = "1.0.4", path = "../crates/toolchains" }
 openmind-ai = { version = "1.0.4", path = "../crates/ai" }
+openmind-agent = { version = "1.0.4", path = "../crates/agent" }
+openmind-llm = { version = "1.0.4", path = "../crates/llm" }
 openmind-search = { version = "1.0.4", path = "../crates/search" }
 openmind-runner = { version = "1.0.4", path = "../crates/runner" }
 openmind-runtime-manager = { version = "1.0.4", path = "../crates/runtime-manager" }

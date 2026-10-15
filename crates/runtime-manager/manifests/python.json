@@ -60,7 +60,7 @@
     },
     {
       "id": "bundled-packages",
-      "label": "Bundled packages (requests, httpx, python-dotenv, numpy, pandas, matplotlib, Pillow, opencv-python, python-telegram-bot, telethon, Flask)",
+      "label": "Bundled packages (requests, httpx, python-dotenv, python-telegram-bot, Flask)",
       "verifyFile": ".openmind-python-packages.json",
       "missingNote": "Installed offline from OpenMind Studio's Python bundle right after Python 3.14 is installed. For this install: Command Palette > \"Python: Install Bundled Packages\" (Python 3.14 only; other versions use pip)."
     }

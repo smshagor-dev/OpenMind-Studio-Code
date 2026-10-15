@@ -48,6 +48,26 @@ pub struct Facts<'a> {
     pub user: &'a [(PathBuf, PathBuf)],
     /// `(shortcut, target)` on the Public Desktop.
     pub public: &'a [(PathBuf, PathBuf)],
+    /// Targets of this user's Desktop shortcuts that don't exist on this computer.
+    pub missing: &'a [PathBuf],
+}
+
+/// `D:\Students\OpenMind Studio\OpenMindStudio.exe` and `E:\Students\OpenMind Studio\OpenMindStudio.exe`: the same
+/// folders on another drive letter. A shared or student drive can get a different letter on each computer, and a
+/// roaming Desktop then carries a shortcut made on another computer.
+fn same_folders_other_letter(a: &Path, b: &Path) -> bool {
+    fn split(path: &Path) -> Option<(char, String)> {
+        let text = path.to_string_lossy().replace('/', "\\");
+        let mut chars = text.chars();
+        let letter = chars.next()?.to_ascii_uppercase();
+        let rest: String = chars.collect();
+        (letter.is_ascii_alphabetic() && rest.starts_with(":\\"))
+            .then(|| (letter, rest.to_lowercase()))
+    }
+    match (split(a), split(b)) {
+        (Some((la, ra)), Some((lb, rb))) => la != lb && ra == rb,
+        _ => false,
+    }
 }
 
 fn starts_this_program(target: &Path, facts: &Facts) -> bool {
@@ -56,6 +76,14 @@ fn starts_this_program(target: &Path, facts: &Facts) -> bool {
 
 /// The decision. `first_start` = this user has never been offered a shortcut for this installation on this computer.
 pub fn plan(first_start: bool, facts: &Facts) -> Plan {
+    // A shortcut to this program made where the drive had another letter: it can't start anything here, so it
+    // follows the drive (only one that is missing here and names exactly this program's folders).
+    if let Some((lnk, _)) = facts.user.iter().find(|(_, target)| {
+        facts.missing.iter().any(|gone| same_target(gone, target))
+            && same_folders_other_letter(target, facts.exe)
+    }) {
+        return Plan::Normalize(lnk.clone());
+    }
     let spelled_differently = !same_target(facts.exe, facts.universal);
     if let Some((lnk, _)) = facts.user.iter().find(|(_, target)| {
         spelled_differently
@@ -136,12 +164,19 @@ pub fn at_start(exe: &Path, local_dir: &Path) -> String {
     let public = shortcut::desktop_dir(true)
         .map(|dir| shortcut::shortcuts_in(&dir, SCAN_LIMIT))
         .unwrap_or_default();
+    let missing: Vec<PathBuf> = user
+        .iter()
+        .map(|(_, target)| target)
+        .filter(|target| same_folders_other_letter(target, exe) && !target.exists())
+        .cloned()
+        .collect();
     let facts = Facts {
         exe,
         universal: &universal,
         desktop: &desktop,
         user: &user,
         public: &public,
+        missing: &missing,
     };
     let outcome = match plan(first_start, &facts) {
         Plan::Nothing(reason) => format!("nothing: {reason}"),
@@ -191,6 +226,7 @@ mod tests {
                 desktop: Path::new(r"C:\Users\s\Desktop"),
                 user,
                 public,
+                missing: &[],
             },
         )
     }
@@ -240,6 +276,44 @@ mod tests {
             r"C:\Users\s\AppData\Local\OpenMind Studio\OpenMindStudio.exe",
         )];
         assert!(matches!(decide(true, MAPPED, &user, &[]), Plan::Nothing(_)));
+    }
+
+    #[test]
+    fn a_roaming_shortcut_made_where_the_drive_had_another_letter_follows_the_drive() {
+        const HERE: &str = r"E:\Students\Me\OpenMind Studio\OpenMindStudio.exe";
+        let elsewhere = r"D:\students\me\OpenMind Studio\OpenMindStudio.exe";
+        let user = [link("OpenMind Studio.lnk", elsewhere)];
+        let decide_here = |missing: &[PathBuf], first: bool| {
+            plan(
+                first,
+                &Facts {
+                    exe: Path::new(HERE),
+                    universal: Path::new(HERE),
+                    desktop: Path::new(r"C:\Users\s\Desktop"),
+                    user: &user,
+                    public: &[],
+                    missing,
+                },
+            )
+        };
+        // Missing here: repaired, also on a later start.
+        let missing = [PathBuf::from(elsewhere)];
+        assert_eq!(
+            decide_here(&missing, false),
+            Plan::Normalize(user[0].0.clone())
+        );
+        // Still there (another copy on that drive): left alone.
+        assert!(matches!(decide_here(&[], true), Plan::Nothing(_)));
+        // Other folders, the same letter, or a network path are not this case.
+        assert!(!same_folders_other_letter(
+            Path::new(r"D:\Other\OpenMindStudio.exe"),
+            Path::new(HERE)
+        ));
+        assert!(!same_folders_other_letter(Path::new(HERE), Path::new(HERE)));
+        assert!(!same_folders_other_letter(
+            Path::new(r"\\srv\a\OpenMindStudio.exe"),
+            Path::new(HERE)
+        ));
     }
 
     #[test]

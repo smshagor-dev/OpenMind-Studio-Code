@@ -149,6 +149,21 @@ fn a_copy_without_metadata_is_classified_from_its_installer() {
 }
 
 #[test]
+fn a_for_me_setup_in_a_network_folder_records_a_network_installation() {
+    use InstallLayout::*;
+    assert_eq!(layout_for_folder(PerUser, true, None), Network);
+    assert_eq!(layout_for_folder(PerUser, true, Some(Network)), Network);
+    // A local folder stays the user's own copy.
+    assert_eq!(layout_for_folder(PerUser, false, None), PerUser);
+    // An update of a folder recorded as per-user keeps its data where it is.
+    assert_eq!(layout_for_folder(PerUser, true, Some(PerUser)), PerUser);
+    // Every other choice is recorded as asked.
+    assert_eq!(layout_for_folder(Network, false, None), Network);
+    assert_eq!(layout_for_folder(Portable, true, None), Portable);
+    assert_eq!(layout_for_folder(PerMachine, true, None), PerMachine);
+}
+
+#[test]
 fn the_install_key_is_one_folder_whatever_its_spelling() {
     let a = install_key(Path::new(r"C:\Program Files\OpenMind Studio"));
     assert_eq!(a.len(), 16);

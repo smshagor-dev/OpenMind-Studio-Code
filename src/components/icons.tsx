@@ -458,13 +458,12 @@ export function AiIcon(props: IconProps) {
   );
 }
 
-export function PeopleIcon(props: IconProps) {
+/** The OpenMindAI Agent: an eight-ray spark (the agent's ✻). */
+export function AgentIcon(props: IconProps) {
   return (
     <Svg {...props}>
-      <circle cx="6" cy="5" r="2.5" />
-      <path d="M1.5 14c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5" />
-      <circle cx="11.5" cy="5.5" r="2" />
-      <path d="M11 9.6c2.1.1 3.5 1.7 3.5 4" />
+      <path d="M8 1.5v4M8 10.5v4M1.5 8h4M10.5 8h4M3.4 3.4l2.8 2.8M9.8 9.8l2.8 2.8M12.6 3.4L9.8 6.2M6.2 9.8l-2.8 2.8" />
+      <circle cx="8" cy="8" r="1" />
     </Svg>
   );
 }

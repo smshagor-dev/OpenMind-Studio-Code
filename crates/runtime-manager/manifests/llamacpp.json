@@ -1,0 +1,34 @@
+{
+  "id": "llamacpp",
+  "displayName": "Local AI engine (llama.cpp)",
+  "description": "Runs AI models on this PC for the OpenMindAI Agent. Uses the graphics card through Vulkan (NVIDIA, AMD, Intel) or the processor.",
+  "defaultVersion": "0.6.0",
+  "versionCommand": { "executable": "llama-server.exe", "args": ["--version"], "outputPrefix": "version:" },
+  "binDirs": [],
+  "verifyFiles": ["llama-server.exe", "llama.dll", "ggml-base.dll", "ggml-vulkan.dll", "ggml-cpu-x64.dll"],
+  "env": {},
+  "requires": [],
+  "license": {
+    "name": "MIT",
+    "url": "https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "The official llama.cpp release b11429 (v0.6.0) for Windows x64 with the Vulkan backend; it also carries the processor backends, so it runs without a graphics card too. SHA256 is the digest GitHub publishes for the release asset. Nothing is added to PATH: OpenMind starts llama-server itself, on 127.0.0.1 only, when the OpenMindAI Agent needs a model.",
+  "versions": [
+    {
+      "version": "0.6.0",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://github.com/ggml-org/llama.cpp/releases/download/b11429/llama-b11429-bin-win-vulkan-x64.zip",
+          "sha256": "1bfe78ad9168b79fa02bf67f6af9f5e17a966d824d77238517f7bef12ac73b36",
+          "sizeBytes": 33337769,
+          "installBytes": 94802717,
+          "archive": "zip",
+          "stripComponents": 0
+        }
+      ]
+    }
+  ]
+}

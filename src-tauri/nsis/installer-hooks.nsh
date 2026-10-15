@@ -27,6 +27,9 @@
 ;   - Recommended for All Users   -> one installation in a shared network folder (chosen on the next page, e.g.
 ;                                    \\server\apps\OpenMind Studio): runtimes and tools installed there are shared,
 ;                                    and every computer keeps its own database, settings and logs on its own disk.
+;   No administrator rights for either. A folder on another computer (\\server\share, a mapped network drive) is always
+;   installed the shared way, whichever was picked; "Recommended for All Users" in a folder on this computer's own disk
+;   asks first (OmCheckFolder), because other computers can reach it only when it is shared.
 ;   The choice is written next to the program as install.json (`--integration set-layout per-user|network`); the app
 ;   reads it and never asks again. Silent installs: /NETWORK. An update keeps the earlier choice.
 ;
@@ -95,6 +98,10 @@ Var OmNextX
 Var OmNextY
 Var OmNextW
 Var OmNextH
+; The shared network folder found for "Recommended for All Users" (empty: none), and the folder the setup put on the
+; Directory page itself (so going Back to "For Me" puts the local default back; a folder the user typed is kept).
+Var OmShareDir
+Var OmAutoDir
 
 ; "a.b.c" of an executable's version resource (empty when it has none).
 !macro OmExeVersion FILE OUT
@@ -317,6 +324,76 @@ Function OmDefaults
   ${If} $0 != ""
     StrCpy $OmAddMenu 1
   ${EndIf}
+FunctionEnd
+
+; Whether $INSTDIR is on another computer ($0 = 1): a \\server\share path or a drive letter Windows maps to a share
+; (the same rule as openmind_core::install::is_remote_path).
+Function OmIsRemote
+  Push $1
+  Push $2
+  StrCpy $0 0
+  StrCpy $1 $INSTDIR 2
+  ${If} $1 == "\\"
+    StrCpy $0 1
+  ${Else}
+    StrCpy $1 $INSTDIR 1
+    System::Call 'kernel32::GetDriveTypeW(w "$1:\")i.r2'
+    ; DRIVE_REMOTE
+    ${If} $2 = 4
+      StrCpy $0 1
+    ${EndIf}
+  ${EndIf}
+  Pop $2
+  Pop $1
+FunctionEnd
+
+; A fresh install: a folder on another computer is always a shared installation (with "For Me" every computer would
+; open the one database next to the program). A folder on another drive of this computer (D:, E:, a student drive
+; every computer reaches under some letter) can't be told apart from a private one, so the setup asks: For Me there
+; asks whether other computers use the folder (Yes = shared: each computer its own database, terminals and Desktop
+; shortcut), and "Recommended for All Users" on the Windows drive or in this user's profile asks before installing,
+; since other computers reach it only when it is shared. Silent installs keep what the switches say.
+Function OmCheckFolder
+  ${If} $OmState != "fresh"
+    Return
+  ${EndIf}
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  Call OmIsRemote
+  ; $5 = 1 for a folder clearly this computer's own: the Windows drive or this user's profile.
+  Push $5
+  StrCpy $1 $WINDIR 2
+  StrCpy $2 $INSTDIR 2
+  StrLen $3 $PROFILE
+  StrCpy $4 $INSTDIR $3
+  StrCpy $5 0
+  ${If} $2 == $1
+  ${OrIf} $4 == $PROFILE
+    StrCpy $5 1
+  ${EndIf}
+  ${If} $0 == 1
+    ${If} $OmNetwork != 1
+      StrCpy $OmNetwork 1
+      DetailPrint "$INSTDIR is a network folder: installed for all computers that open it (each computer keeps its own database, settings and terminals; runtimes are shared)."
+    ${EndIf}
+  ${ElseIf} $OmNetwork != 1
+    ${If} $5 == 0
+      MessageBox MB_YESNO|MB_ICONQUESTION "Will OpenMind Studio in $INSTDIR also be started from other computers (for example a student or shared drive that every computer opens, whatever its drive letter there)?$\r$\n$\r$\nYes: install it for all computers. Each computer keeps its own database, settings, terminals and output, runtimes installed here are shared, and each computer gets a Desktop shortcut the first time OpenMind Studio is started there.$\r$\n$\r$\nNo: install it only for you on this computer." /SD IDNO IDNO om_folder_ok
+      StrCpy $OmNetwork 1
+      DetailPrint "$INSTDIR: installed for all computers that open it."
+    ${EndIf}
+  ${ElseIf} $5 == 1
+    MessageBox MB_YESNO|MB_ICONEXCLAMATION "$INSTDIR is on this computer's own disk.$\r$\n$\r$\nOther computers can run OpenMind Studio from it only if this folder is shared on the network. To install for all computers, choose a shared folder instead (for example \server\apps\OpenMind Studio, a mapped network drive or a student drive) — no administrator rights are needed, only permission to write there.$\r$\n$\r$\nInstall into $INSTDIR anyway?" /SD IDYES IDYES om_folder_ok
+    StrCpy $OmProblem "Installation cancelled: choose a shared folder and run the setup again. Nothing has been changed."
+  ${EndIf}
+  om_folder_ok:
+  Pop $5
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
 FunctionEnd
 
 ; After `--integration set-layout` (its exit code in $0): a failure is said, never ignored — without install.json the
@@ -647,6 +724,59 @@ Function OmWelcomeShow
   ${EndIf}
 FunctionEnd
 
+; Finds a shared network folder this Windows user can write to, for "Recommended for All Users": each drive letter
+; Windows maps to a share, as its \\server\share path (WNetGetConnection reads the mapping; a disconnected mapping is
+; skipped without touching the network), except the user's own home share (HOMESHARE, which other users can't read).
+; Sets $OmShareDir to "<\\server\share>\OpenMind Studio", or "" when there is none. The network is not searched.
+Function OmFindShare
+  Push $R0
+  Push $R1
+  Push $R2
+  Push $R3
+  Push $R4
+  Push $R5
+  StrCpy $OmShareDir ""
+  ReadEnvStr $R0 HOMESHARE
+  StrCpy $R2 0
+  ${Do}
+    StrCpy $R1 "DEFGHIJKLMNOPQRSTUVWXYZ" 1 $R2
+    ${If} $R1 == ""
+      ${Break}
+    ${EndIf}
+    IntOp $R2 $R2 + 1
+    System::Call 'kernel32::GetDriveTypeW(w "$R1:\")i.R4'
+    ; DRIVE_REMOTE
+    ${If} $R4 <> 4
+      ${Continue}
+    ${EndIf}
+    System::Call 'mpr::WNetGetConnectionW(w "$R1:", w .R3, *i ${NSIS_MAX_STRLEN}) i.R5'
+    ${If} $R5 <> 0
+    ${OrIf} $R3 == ""
+      ${Continue}
+    ${EndIf}
+    ${If} $R0 != ""
+    ${AndIf} $R3 == $R0
+      ${Continue}
+    ${EndIf}
+    ; Only a share this user may write to (the installation goes there); the test file is removed at once.
+    ClearErrors
+    FileOpen $R4 "$R3\.openmind-setup-check" w
+    ${If} ${Errors}
+      ${Continue}
+    ${EndIf}
+    FileClose $R4
+    Delete "$R3\.openmind-setup-check"
+    StrCpy $OmShareDir "$R3\OpenMind Studio"
+    ${Break}
+  ${Loop}
+  Pop $R5
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Pop $R0
+FunctionEnd
+
 Function OmWelcomeLeave
   ${If} $OmState != "fresh"
     ; Update / Repair (/ an allowed downgrade): checked here, so a problem is explained on this page.
@@ -665,8 +795,30 @@ Function OmWelcomeLeave
   ${NSD_GetState} $OmAllRadio $OmNetwork
   ${NSD_GetState} $OmPathBox $OmAddPath
   ${NSD_GetState} $OmMenuBox $OmAddMenu
+  ${If} $OmNetwork != 1
+  ${AndIf} $OmAutoDir != ""
+  ${AndIf} $INSTDIR == $OmAutoDir
+    ; Back to "For Me": the folder this setup filled in for the shared choice goes away again.
+    StrCpy $INSTDIR "$LOCALAPPDATA\OpenMind Studio"
+    StrCpy $OmAutoDir ""
+  ${EndIf}
   ${If} $OmNetwork == 1
-    MessageBox MB_YESNO|MB_ICONQUESTION "Recommended for All Users installs OpenMind Studio once into a shared network folder that several computers run it from.$\r$\n$\r$\nOn the next page, choose that folder (for example \\server\apps\OpenMind Studio). You need permission to write there; the other computers' users only need to read it.$\r$\n$\r$\nEach computer and Windows user keeps their own database, settings and logs on their own disk. Runtimes and tools installed into the shared folder are available on every computer. This setup does not change other computers or any Windows permissions; the deploy folder it installs has shortcut launchers and a logon script for IT (deploy\README.txt).$\r$\n$\r$\nGive each user an OpenMind Studio shortcut on their own Desktop the first time they start it from the shared folder? (Recommended. Choose No if IT deploys the shortcuts, for example with Group Policy.)" IDYES om_user_shortcuts_yes
+    ; Put a shared folder on the Directory page while the user hasn't chosen one (the template's local default).
+    ${If} $INSTDIR == "$LOCALAPPDATA\OpenMind Studio"
+    ${OrIf} $INSTDIR == $OmAutoDir
+      Call OmFindShare
+      ${If} $OmShareDir != ""
+        StrCpy $INSTDIR $OmShareDir
+        StrCpy $OmAutoDir $OmShareDir
+      ${EndIf}
+    ${EndIf}
+    ${If} $OmShareDir != ""
+    ${AndIf} $INSTDIR == $OmShareDir
+      StrCpy $R9 "Shared network folder found: $OmShareDir$\r$\nIt is already filled in on the next page; change it there if OpenMind Studio belongs somewhere else."
+    ${Else}
+      StrCpy $R9 "No shared network folder was found on this computer. On the next page, enter one (for example \\server\apps\OpenMind Studio or a mapped network drive)."
+    ${EndIf}
+    MessageBox MB_YESNO|MB_ICONQUESTION "Recommended for All Users installs OpenMind Studio once into a shared network folder that several computers run it from.$\r$\n$\r$\n$R9 You need permission to write there; the other computers' users only need to read it.$\r$\n$\r$\nEach computer and Windows user keeps their own database, settings and logs on their own disk. Runtimes and tools installed into the shared folder are available on every computer. This setup does not change other computers or any Windows permissions; the deploy folder it installs has shortcut launchers and a logon script for IT (deploy\README.txt).$\r$\n$\r$\nGive each user an OpenMind Studio shortcut on their own Desktop the first time they start it from the shared folder? (Recommended. Choose No if IT deploys the shortcuts, for example with Group Policy.)" IDYES om_user_shortcuts_yes
     StrCpy $OmUserShortcuts 0
     Goto om_user_shortcuts_done
     om_user_shortcuts_yes:
@@ -700,8 +852,12 @@ FunctionEnd
     ${EndIf}
   ${EndIf}
   Call OmDefaults
+  StrCpy $OmProblem ""
+  Call OmCheckFolder
   SetOutPath $INSTDIR
-  ${If} $OmState == "msi"
+  ${If} $OmProblem != ""
+    ; Said by OmCheckFolder (the user chose not to install there).
+  ${ElseIf} $OmState == "msi"
     StrCpy $OmProblem "OpenMind Studio is installed for all users with the Windows Installer package (MSI). Update it with the new .msi package; this setup would make a second installation."
   ${ElseIf} $OmState == "downgrade"
   ${AndIf} $OmAllowDowngrade != 1

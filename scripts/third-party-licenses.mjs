@@ -243,8 +243,8 @@ if (isMain) {
     sections.push({
       title: "Python packages of the offline Python bundle (python-bundle/, Windows builds)",
       intro:
-        "Installed into OpenMind's portable Python on request. Packages under the LGPL (e.g. python-telegram-bot, and the\n" +
-        "FFmpeg/Qt libraries inside opencv-python) are unmodified; their source is available from PyPI and the projects named.",
+        "Installed into OpenMind's portable Python on request. Packages under the LGPL (e.g. python-telegram-bot) are\n" +
+        "unmodified; their source is available from PyPI and the projects named.",
       components: python,
     });
     appendix.push({ title: "Tcl/Tk", text: TCLTK });

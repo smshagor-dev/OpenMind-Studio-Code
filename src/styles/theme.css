@@ -122,6 +122,16 @@
   --overlay-1: rgba(255, 255, 255, 0.06);
   --overlay-2: rgba(255, 255, 255, 0.1);
   --overlay-3: rgba(255, 255, 255, 0.15);
+  /* OpenMindAI Agent: its warm accent (spinner, mode chip), diff lines and the user's message. */
+  --agent-accent: #d97757;
+  --agent-accent-soft: rgba(217, 119, 87, 0.16);
+  --agent-diff-add-bg: rgba(78, 160, 98, 0.18);
+  --agent-diff-add-fg: #8fd19e;
+  --agent-diff-del-bg: rgba(218, 84, 84, 0.18);
+  --agent-diff-del-fg: #f29b9b;
+  --agent-user-bg: #232527;
+  --agent-dot-ok: #6fbf73;
+  --agent-dot-fail: #e06c6c;
 
   /* Aliases the component styles use */
   --accent-fg: var(--info-fg);
@@ -255,6 +265,15 @@
   --overlay-1: rgba(0, 0, 0, 0.05);
   --overlay-2: rgba(0, 0, 0, 0.08);
   --overlay-3: rgba(0, 0, 0, 0.12);
+  --agent-accent: #c15f3c;
+  --agent-accent-soft: rgba(193, 95, 60, 0.12);
+  --agent-diff-add-bg: rgba(46, 160, 67, 0.14);
+  --agent-diff-add-fg: #1a7f37;
+  --agent-diff-del-bg: rgba(207, 34, 46, 0.12);
+  --agent-diff-del-fg: #cf222e;
+  --agent-user-bg: #eef0f2;
+  --agent-dot-ok: #1a7f37;
+  --agent-dot-fail: #cf222e;
   --debug-current-line-bg: rgba(255, 238, 0, 0.35);
   --debug-var-name-fg: #001080;
   --debug-var-value-fg: #a31515;
@@ -364,6 +383,15 @@
   --overlay-1: rgba(255, 255, 255, 0.12);
   --overlay-2: rgba(255, 255, 255, 0.2);
   --overlay-3: rgba(255, 255, 255, 0.3);
+  --agent-accent: #ff9a6b;
+  --agent-accent-soft: rgba(255, 154, 107, 0.25);
+  --agent-diff-add-bg: rgba(0, 255, 0, 0.18);
+  --agent-diff-add-fg: #7cff7c;
+  --agent-diff-del-bg: rgba(255, 0, 0, 0.22);
+  --agent-diff-del-fg: #ff8c8c;
+  --agent-user-bg: #000000;
+  --agent-dot-ok: #7cff7c;
+  --agent-dot-fail: #ff6b6b;
   --debug-current-line-bg: rgba(255, 238, 0, 0.3);
   --terminal-bg: #000000;
   --terminal-fg: #ffffff;
