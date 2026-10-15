@@ -358,6 +358,7 @@ fn main() {
             commands::agent::agent_stop,
             commands::agent::agent_reset,
             commands::agent::agent_undo,
+            commands::agent::agent_engine_start,
             commands::agent::agent_engine_stop,
             commands::ai::ai_conversations_list,
             commands::ai::ai_conversation_load,

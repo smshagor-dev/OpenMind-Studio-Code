@@ -40,6 +40,8 @@ import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { container } from "./services/container";
+import { agent } from "./services/agent";
+import { AgentSetupDialog } from "./components/agent/AgentSetupDialog";
 import { buildMenuBar, projectMenuCommands } from "./services/menus";
 
 // Dialogs that only open on a click are loaded then (a separate chunk each), not at start-up.
@@ -63,6 +65,9 @@ export function App() {
   useT();
   const { workspaceState, activeWorkspace, themeKind, layout } = useWorkbenchState();
   const ready = useAppStartup();
+  useEffect(() => {
+    if (ready) void agent.start();
+  }, [ready]);
   const [toasts, dismissToast] = useToasts();
   const [recents, refreshRecents] = useRecents();
   const [aboutOpen, closeAbout] = useAboutDialog();
@@ -174,6 +179,7 @@ export function App() {
             recents={recents}
           />
           <BottomPanel themeKind={themeKind} />
+          <AgentSetupDialog />
         </div>
         {secondary.visible ? (
           <SecondarySideBar onLeft={layout.sidebarPosition === "right"} />

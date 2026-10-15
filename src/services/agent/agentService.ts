@@ -1,6 +1,7 @@
 // The OpenMindAI Agent panel's brain: the model list and downloads, the chosen model and mode, and the conversation
 // (folded from backend events by agentModel.ts). UI-free; the panel reads `getState()` through useSyncExternalStore.
 import type { AgentEvent, AgentIpc, AgentMode, AgentOverview, Decision, DownloadEvent, DownloadProgress } from "./agentIpc";
+import { agentName } from "./agentBrand";
 import { addNotice, addUser, applyEvent, EMPTY_TRANSCRIPT, nextMode, type Transcript } from "./agentModel";
 
 export interface AgentHost {
@@ -28,8 +29,10 @@ export interface DownloadState {
 }
 
 export interface AgentState {
+  engineState: "idle" | "loading" | "ready" | "failed";
   overview: AgentOverview | null;
   overviewError: string | null;
+  setupError?: string | null;
   loadingOverview: boolean;
   installingEngine: boolean;
   downloads: Record<string, DownloadState>;
@@ -45,8 +48,10 @@ const MODE_KEY = "agent.mode";
 
 export class AgentService {
   private state: AgentState = {
+    engineState: "idle",
     overview: null,
     overviewError: null,
+    setupError: null,
     loadingOverview: false,
     installingEngine: false,
     downloads: {},
@@ -58,6 +63,7 @@ export class AgentService {
   private readonly listeners = new Set<() => void>();
   private unlisten: (() => void)[] = [];
   private started = false;
+  private warming: Promise<void> | null = null;
 
   constructor(
     private readonly ipc: AgentIpc,
@@ -79,19 +85,43 @@ export class AgentService {
     for (const listener of this.listeners) listener();
   }
 
-  /** Called when the panel is first shown: listens to the backend and reads the model list. Nothing is downloaded. */
+  /** Called once per editor window; restores and preloads an existing setup without downloading. */
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    this.unlisten.push(await this.ipc.onEvent((event) => { this.onEvent(event); }));
-    this.unlisten.push(await this.ipc.onDownload((event) => { this.onDownload(event); }));
-    const [model, mode] = await Promise.all([
-      this.host.settingGet(MODEL_KEY).catch(() => null),
-      this.host.settingGet(MODE_KEY).catch(() => null),
-    ]);
-    if (mode === "ask" || mode === "acceptEdits" || mode === "plan") this.set({ mode });
-    if (model) this.set({ modelId: model });
-    await this.refresh();
+    try {
+      this.unlisten.push(await this.ipc.onEvent((event) => { this.onEvent(event); }));
+      this.unlisten.push(await this.ipc.onDownload((event) => { this.onDownload(event); }));
+      const [model, mode] = await Promise.all([
+        this.host.settingGet(MODEL_KEY).catch(() => null),
+        this.host.settingGet(MODE_KEY).catch(() => null),
+      ]);
+      if (mode === "ask" || mode === "acceptEdits" || mode === "plan") this.set({ mode });
+      if (model) this.set({ modelId: model });
+      await this.refresh();
+      await this.activate();
+    } catch {
+      this.dispose();
+      this.set({ overviewError: this.host.text("agent.ui.operationFailed") });
+    }
+  }
+
+  /** Preloads the configured agent without downloading or starting a conversation. */
+  activate(): Promise<void> {
+    if (this.warming) return this.warming;
+    if (!this.ready() || !this.state.modelId) return Promise.resolve();
+    const id = this.state.modelId;
+    this.set({ engineState: "loading" });
+    this.warming = (async () => {
+      try {
+        const ready = await this.ipc.startEngine(id);
+        await this.refresh();
+        this.set({ engineState: ready || this.state.overview?.runningModel === id ? "ready" : "idle" });
+      } catch {
+        this.set({ engineState: "failed" });
+      }
+    })().finally(() => { this.warming = null; });
+    return this.warming;
   }
 
   dispose(): void {
@@ -109,9 +139,12 @@ export class AgentService {
       if (!modelId || !ready.some((m) => m.id === modelId)) {
         modelId = ready.find((m) => m.id === overview.recommended)?.id ?? ready[0]?.id ?? modelId;
       }
-      this.set({ overview, modelId, loadingOverview: false });
-    } catch (error) {
-      this.set({ loadingOverview: false, overviewError: String(error) });
+      this.set({
+        overview, modelId, loadingOverview: false,
+        engineState: overview.runningModel === modelId && modelId !== null ? "ready" : this.state.engineState === "ready" ? "idle" : this.state.engineState,
+      });
+    } catch {
+      this.set({ loadingOverview: false, overviewError: this.host.text("agent.ui.operationFailed") });
     }
   }
 
@@ -126,6 +159,7 @@ export class AgentService {
   sendBlocker(): string | null {
     if (!this.host.hasFolder()) return this.host.text("agent.blocker.noFolder");
     if (!this.ready()) return this.host.text("agent.blocker.noModel");
+    if (this.state.engineState === "loading") return this.host.text("agent.ui.loading");
     if (this.state.transcript.busy) return this.host.text("agent.blocker.busy");
     return null;
   }
@@ -135,8 +169,10 @@ export class AgentService {
   }
 
   async selectModel(id: string): Promise<void> {
+    if (this.warming || this.state.transcript.busy) return;
     this.set({ modelId: id });
     await this.host.settingSet(MODEL_KEY, id).catch(() => undefined);
+    await this.activate();
   }
 
   async setMode(mode: AgentMode): Promise<void> {
@@ -149,22 +185,27 @@ export class AgentService {
   }
 
   async installEngine(): Promise<void> {
-    this.set({ installingEngine: true });
+    this.set({ installingEngine: true, setupError: null });
     try {
-      await this.host.installEngine();
+      if (!await this.host.installEngine()) {
+        this.set({ setupError: this.host.text("agent.ui.operationFailed") });
+      }
+    } catch {
+      this.set({ setupError: this.host.text("agent.ui.operationFailed") });
     } finally {
       this.set({ installingEngine: false });
       await this.refresh();
+      await this.activate();
     }
   }
 
   /** Downloads a model after the user accepted its licence. */
-  async download(id: string): Promise<void> {
+  async download(id: string, licenceAccepted = false): Promise<void> {
     const model = this.state.overview?.models.find((m) => m.id === id);
     if (!model) return;
-    const ok = await this.host.confirm(
+    const ok = licenceAccepted || await this.host.confirm(
       this.host.text("agent.download.confirm", {
-        name: `${model.name} (${model.quant})`,
+        name: agentName(model),
         license: model.license.name,
         url: model.license.url,
       }),
@@ -188,7 +229,7 @@ export class AgentService {
     const model = this.state.overview?.models.find((m) => m.id === id);
     if (!model) return;
     const ok = await this.host.confirm(
-      this.host.text("agent.delete.confirm", { name: `${model.name} (${model.quant})` }),
+      this.host.text("agent.delete.confirm", { name: agentName(model) }),
       this.host.text("agent.delete.ok"),
     );
     if (!ok) return;
@@ -215,19 +256,34 @@ export class AgentService {
     }
     if (event.state === "done") {
       const model = this.state.overview?.models.find((m) => m.id === event.id);
-      this.host.notify(this.host.text("agent.download.done", { name: model?.name ?? event.id }));
-      if (!this.ready()) void this.selectModel(event.id);
+      this.host.notify(this.host.text("agent.download.done", { name: model ? agentName(model) : "OpenMindAI Agent" }));
+      if (!this.ready()) {
+        this.set({ modelId: event.id });
+        void this.host.settingSet(MODEL_KEY, event.id).catch(() => undefined);
+      }
     }
-    void this.refresh();
+    if (event.state === "done") {
+      void this.refresh().then(() => this.activate());
+    } else {
+      void this.refresh();
+    }
   }
 
   private onEvent(event: AgentEvent): void {
+    if (event.type === "engine") {
+      if (event.model !== this.state.modelId) {
+        this.set({ engineState: "idle" });
+        return;
+      }
+      this.set({ engineState: event.state });
+      if (!this.state.transcript.busy) return;
+    }
     const transcript = applyEvent(this.state.transcript, event, (notice) =>
       notice.message ? `${this.host.text(notice.key)} ${notice.message}` : this.host.text(notice.key),
     );
     this.set({ transcript });
     if (event.type === "engine" && event.state === "failed" && event.message) {
-      this.set({ transcript: addNotice(this.state.transcript, "error", event.message) });
+      this.set({ transcript: addNotice(this.state.transcript, "error", this.host.text("agent.ui.failed")) });
     }
     if (event.type === "turnEnd") void this.refresh();
   }

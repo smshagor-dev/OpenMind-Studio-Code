@@ -138,6 +138,7 @@ export interface AgentIpc {
   stop: () => Promise<void>;
   reset: () => Promise<void>;
   undo: () => Promise<{ restored: string[]; failed: string[]; canUndo: boolean }>;
+  startEngine: (id: string) => Promise<boolean>;
   stopEngine: () => Promise<void>;
   onEvent: (listener: (event: AgentEvent) => void) => Promise<() => void>;
   onDownload: (listener: (event: DownloadEvent) => void) => Promise<() => void>;
@@ -153,15 +154,22 @@ export const tauriAgentIpc: AgentIpc = {
   stop: () => invoke("agent_stop"),
   reset: () => invoke("agent_reset"),
   undo: () => invoke<{ restored: string[]; failed: string[]; canUndo: boolean }>("agent_undo"),
+  startEngine: (id) => invoke<boolean>("agent_engine_start", { id }),
   stopEngine: () => invoke("agent_engine_stop"),
-  onEvent: (listener) =>
-    listen<AgentEvent>(
+  onEvent: async (listener) => {
+    const off = await listen<AgentEvent>(
       "agent:event",
-      (event) => {
-        listener(event.payload);
-      },
+      (event) => { listener(event.payload); },
       { target: { kind: "WebviewWindow", label: getCurrentWebviewWindow().label } },
-    ),
+    );
+    try {
+      const offEngine = await listen<AgentEvent>("agent:engine", (event) => { listener(event.payload); });
+      return () => { off(); offEngine(); };
+    } catch (error) {
+      off();
+      throw error;
+    }
+  },
   onDownload: (listener) =>
     listen<DownloadEvent>("agent:download", (event) => {
       listener(event.payload);

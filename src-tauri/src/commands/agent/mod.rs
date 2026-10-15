@@ -1,7 +1,7 @@
 //! The OpenMindAI Agent (Tauri side): one conversation per editor window, working in that window's open folder, on
 //! the local Nemotron engine. A turn runs on its own thread; the panel follows it through `agent:event`, answers
-//! permission questions with `agent_answer` and can stop it at any time. Nothing runs until the user sends a message:
-//! the engine starts then, and stops with the app.
+//! permission questions with `agent_answer` and can stop it at any time. An existing setup is preloaded at editor
+//! startup; a conversation starts only after the user sends a message. The engine stops with the app.
 
 mod engine;
 mod host;
@@ -18,7 +18,7 @@ use openmind_agent::{
 };
 use openmind_llm::{Catalog, ModelStore};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::app_state::AppState;
 use engine::EngineSlot;
@@ -53,6 +53,7 @@ pub struct AgentRuntime {
     pub downloads: Arc<Downloads>,
     chats: Arc<Mutex<HashMap<String, Arc<Chat>>>>,
     logs_dir: PathBuf,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl AgentRuntime {
@@ -68,6 +69,7 @@ impl AgentRuntime {
             downloads: Arc::new(Downloads::default()),
             chats: Arc::new(Mutex::new(HashMap::new())),
             logs_dir,
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -83,6 +85,7 @@ impl AgentRuntime {
 
     /// Stops every turn, download and the engine (the app is closing).
     pub fn stop_all(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
         for chat in self
             .chats
             .lock()
@@ -433,6 +436,47 @@ pub async fn agent_undo(
             failed,
             can_undo: session.can_undo(),
         })
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+/// Preloads an existing setup at editor startup. Never installs or downloads anything.
+#[tauri::command]
+pub async fn agent_engine_start(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    agent: State<'_, AgentRuntime>,
+) -> Result<bool, String> {
+    let model = agent.catalog.get(&id).map_err(|e| e.to_string())?.clone();
+    let program = state
+        .runtime
+        .installed_dir("llamacpp")
+        .await
+        .map(engine::program_in)
+        .ok_or("The agent runtime is not installed.")?;
+    let agent = agent.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        // Another window may already be loading or using the shared engine.
+        // Do not replace it or interrupt its active turn.
+        let Ok(_lease) = agent.engine.lease() else {
+            return Ok(false);
+        };
+        if agent.shutdown.load(Ordering::Relaxed) {
+            return Err("The editor is closing.".to_string());
+        }
+        agent.engine.ensure(
+            &program,
+            &agent.store,
+            &model,
+            &agent.logs_dir,
+            &agent.shutdown,
+            &|event| {
+                let _ = app.emit("agent:engine", event);
+            },
+        )?;
+        Ok(true)
     })
     .await
     .map_err(|err| err.to_string())?

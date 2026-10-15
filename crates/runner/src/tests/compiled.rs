@@ -77,7 +77,7 @@ fn run(plan: &RunPlan) -> (Vec<String>, Vec<String>, Option<i32>, bool) {
     let registry = RunRegistry::new();
     let collector = Collector::new();
     registry.start(plan, collector.sink()).expect("start");
-    let exit = collector.wait_for_exit();
+    // Includes compiler startup, compilation, linking and program execution.\n    // Direct process tests retain their 20-second deadline.\n    let exit = collector.wait_for_exit_within(Duration::from_secs(120));
     let RunEventKind::Exited {
         code, build_failed, ..
     } = exit.event

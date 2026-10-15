@@ -49,6 +49,7 @@ function setup(models: ModelView[], engineInstalled = true) {
     stop: vi.fn(() => Promise.resolve()),
     reset: vi.fn(() => Promise.resolve()),
     undo: vi.fn(() => Promise.resolve({ restored: ["main.py"], failed: [], canUndo: false })),
+    startEngine: vi.fn(() => Promise.resolve(true)),
     stopEngine: vi.fn(() => Promise.resolve()),
     onEvent: (listener) => {
       onEvent = listener;
@@ -209,4 +210,63 @@ describe("AgentService", () => {
     expect(service.getState().transcript.canUndo).toBe(true);
   });
 
+});
+
+describe("Agent startup", () => {
+  it("preloads an existing setup without downloading or starting a turn", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a");
+    expect(ipc.download).not.toHaveBeenCalled();
+    expect(ipc.send).not.toHaveBeenCalled();
+    expect(service.getState().engineState).toBe("ready");
+  });
+
+  it("leaves an unconfigured editor alone", async () => {
+    const { service, ipc } = setup([model("a", "notDownloaded")]);
+    await service.start();
+    expect(ipc.startEngine).not.toHaveBeenCalled();
+    expect(ipc.download).not.toHaveBeenCalled();
+    expect(service.getState().showSetup).toBe(false);
+  });
+
+  it("does not mark a failed startup as live and allows retry", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
+    vi.mocked(ipc.startEngine).mockRejectedValueOnce(new Error("failed"));
+    await service.start();
+    expect(service.getState().engineState).toBe("failed");
+    expect(service.getState().transcript.entries).toEqual([]);
+    await service.activate();
+    expect(service.getState().engineState).toBe("ready");
+  });
+
+  it("does not mark another window's different agent as live", async () => {
+    const { service, event } = setup([model("a", "ready")]);
+    await service.start();
+    event({ type: "engine", state: "ready", model: "b", message: null });
+    expect(service.getState().engineState).toBe("idle");
+  });
+
+  it("deduplicates startup while an engine is still loading", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
+    let finish!: (ready: boolean) => void;
+    vi.mocked(ipc.startEngine).mockImplementationOnce(() => new Promise<boolean>((resolve) => { finish = resolve; }));
+    const startup = service.start();
+    await vi.waitFor(() => { expect(ipc.startEngine).toHaveBeenCalledTimes(1); });
+    const activation = service.activate();
+    await service.selectModel("b");
+    expect(service.getState().modelId).toBe("a");
+    finish(true);
+    await Promise.all([startup, activation]);
+    expect(ipc.startEngine).toHaveBeenCalledTimes(1);
+  });
+});
+
+it("reports a runtime install failure inside agent setup", async () => {
+  const { service, host } = setup([model("a", "notDownloaded")], false);
+  vi.mocked(host.installEngine).mockResolvedValueOnce(false);
+  await service.start();
+  await service.installEngine();
+  expect(service.getState().setupError).toBe("agent.ui.operationFailed");
+  expect(service.getState().installingEngine).toBe(false);
 });

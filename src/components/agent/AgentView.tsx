@@ -8,7 +8,7 @@ import { container } from "../../services/container";
 import { useT } from "../../i18n";
 import { AgentPermission } from "./AgentPermission";
 import { AgentPrompt } from "./AgentPrompt";
-import { AgentSetup } from "./AgentSetup";
+import { agentTier } from "../../services/agent/agentBrand";
 import { AgentSpinner } from "./AgentSpinner";
 import { AgentTranscript, AgentWelcome } from "./AgentTranscript";
 
@@ -47,19 +47,28 @@ function Header() {
   const state = useAgent();
   const model = state.overview?.models.find((m) => m.id === state.modelId);
   const { transcript } = state;
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (agent.getState().engineState !== "loading" && !agent.getState().transcript.busy) void agent.refresh();
+    }, 15_000);
+    return () => { window.clearInterval(timer); };
+  }, []);
   return (
     <div className="agent-header">
       <button
         type="button"
         className="agent-model-chip"
-        title={t("agent.header.models")}
+        title={t("agent.ui.configure")}
         onClick={() => { agent.openSetup(!state.showSetup); }}
       >
-        <span className="agent-model-chip__star" aria-hidden="true">
-          ✻
-        </span>
-        <span className="agent-model-chip__name">{model ? `${model.name} · ${model.quant}` : t("agent.header.noModel")}</span>
-        <span aria-hidden="true">▾</span>
+        <span
+          className={state.engineState === "ready" && agent.ready() ? "agent-live agent-live--ready" : "agent-live"}
+          role="status"
+          aria-label={t(`agent.ui.${state.engineState}`)}
+          title={t(`agent.ui.${state.engineState}`)}
+        />
+        <span className="agent-model-chip__name">OpenMindAI Agent</span>
+        {model && agent.ready() ? <span className="agent-tier">{agentTier(model)}</span> : null}
       </button>
       <div className="agent-header__actions">
         {transcript.canUndo && !transcript.busy ? (
@@ -109,18 +118,16 @@ export function AgentView() {
     );
   }
   const ready = agent.ready();
-  if (!ready || state.showSetup) {
+  if (!ready) {
     return (
       <div className="agent-view">
-        {ready ? <Header /> : null}
-        <div className="agent-view__scroll">
-          <AgentSetup
-            overview={state.overview}
-            downloads={state.downloads}
-            modelId={state.modelId}
-            installing={state.installingEngine}
-            canClose={ready}
-          />
+        <Header />
+        <div className="agent-unconfigured">
+          <span className="agent-welcome__star" aria-hidden="true">✻</span>
+          <div>{t("agent.ui.notConfigured")}</div>
+          <button type="button" className="button button--primary" onClick={() => { agent.openSetup(true); }}>
+            {t("agent.ui.configureNow")}
+          </button>
         </div>
       </div>
     );
@@ -158,7 +165,7 @@ export function AgentView() {
           <AgentPrompt
             mode={state.mode}
             busy={transcript.busy}
-            disabledReason={folder ? null : t("agent.blocker.noFolder")}
+            disabledReason={folder ? (state.engineState === "loading" ? t("agent.ui.loading") : null) : t("agent.blocker.noFolder")}
             contextShare={share}
           />
         )}
