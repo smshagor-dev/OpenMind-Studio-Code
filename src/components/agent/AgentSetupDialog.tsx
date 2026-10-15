@@ -61,6 +61,8 @@ export function AgentSetupDialog() {
               <h2 id="agent-setup-title"><span className="agent-welcome__star" aria-hidden="true">✻</span> OpenMindAI Agent</h2>
               <button type="button" className="agent-icon-button" aria-label={t("agent.setup.close")} onClick={() => { agent.openSetup(false); }}>✕</button>
             </div>
+            {state.setupError ? <p className="agent-notice agent-notice--error" role="alert">{state.setupError}</p> : null}
+            {state.overview && state.overviewError ? <p className="agent-notice agent-notice--error" role="alert">{state.overviewError}</p> : null}
             {state.overview ? <AgentSetup overview={state.overview} downloads={state.downloads} modelId={state.modelId} installing={state.installingEngine} /> : (
               <div className="agent-view__loading">
                 {state.overviewError ? t("agent.ui.operationFailed") : t("agent.loading")}

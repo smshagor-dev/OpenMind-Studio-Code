@@ -261,3 +261,12 @@ describe("Agent startup", () => {
     expect(ipc.startEngine).toHaveBeenCalledTimes(1);
   });
 });
+
+it("reports a runtime install failure inside agent setup", async () => {
+  const { service, host } = setup([model("a", "notDownloaded")], false);
+  vi.mocked(host.installEngine).mockResolvedValueOnce(false);
+  await service.start();
+  await service.installEngine();
+  expect(service.getState().setupError).toBe("agent.ui.operationFailed");
+  expect(service.getState().installingEngine).toBe(false);
+});

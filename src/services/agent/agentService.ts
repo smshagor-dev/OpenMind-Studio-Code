@@ -32,6 +32,7 @@ export interface AgentState {
   engineState: "idle" | "loading" | "ready" | "failed";
   overview: AgentOverview | null;
   overviewError: string | null;
+  setupError?: string | null;
   loadingOverview: boolean;
   installingEngine: boolean;
   downloads: Record<string, DownloadState>;
@@ -50,6 +51,7 @@ export class AgentService {
     engineState: "idle",
     overview: null,
     overviewError: null,
+    setupError: null,
     loadingOverview: false,
     installingEngine: false,
     downloads: {},
@@ -183,11 +185,13 @@ export class AgentService {
   }
 
   async installEngine(): Promise<void> {
-    this.set({ installingEngine: true });
+    this.set({ installingEngine: true, setupError: null });
     try {
-      await this.host.installEngine();
+      if (!await this.host.installEngine()) {
+        this.set({ setupError: this.host.text("agent.ui.operationFailed") });
+      }
     } catch {
-      this.host.notify(this.host.text("agent.ui.operationFailed"));
+      this.set({ setupError: this.host.text("agent.ui.operationFailed") });
     } finally {
       this.set({ installingEngine: false });
       await this.refresh();
