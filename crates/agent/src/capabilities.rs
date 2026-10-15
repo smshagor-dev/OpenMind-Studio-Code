@@ -222,6 +222,67 @@ pub fn attachment_text(
     }
     Ok(output)
 }
+/// Explicit connection check; never sends workspace content.
+pub fn check(options: &SessionOptions) -> Vec<String> {
+    let mut status = Vec::new();
+    for (name, base, suffix, local) in [
+        (
+            "Web search",
+            options.search_endpoint.as_str(),
+            "/search?q=OpenMind&format=json",
+            false,
+        ),
+        (
+            "Image reading",
+            options.vision_endpoint.as_str(),
+            "/models",
+            true,
+        ),
+        (
+            "Image generation",
+            options.image_endpoint.as_str(),
+            "/sdapi/v1/sd-models",
+            true,
+        ),
+    ] {
+        if base.is_empty() {
+            status.push(format!("{name}: disabled"));
+            continue;
+        }
+        let result = endpoint(base, local)
+            .and_then(|base| probe(format!("{base}{suffix}")))
+            .and_then(|value| {
+                let ready = match name {
+                    "Web search" => value["results"].is_array(),
+                    "Image reading" => value["data"]
+                        .as_array()
+                        .is_some_and(|models| !models.is_empty()),
+                    _ => value.as_array().is_some_and(|models| !models.is_empty()),
+                };
+                if ready {
+                    Ok(())
+                } else {
+                    Err("No compatible loaded capability found".into())
+                }
+            });
+        status.push(match result {
+            Ok(()) => format!("{name}: connected (generation/vision inference not tested)"),
+            Err(error) => format!("{name}: {error}"),
+        });
+    }
+    status
+}
+
+fn probe(url: String) -> Result<Value, String> {
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let deadline = std::sync::Arc::clone(&cancel);
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(8));
+        deadline.store(true, std::sync::atomic::Ordering::Relaxed);
+    });
+    request(url, None, &cancel)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,7 +377,7 @@ mod tests {
             data: None,
         };
         let result = attachment_text(
-            &[item.clone()],
+            std::slice::from_ref(&item),
             "read",
             &SessionOptions::default(),
             &AtomicBool::new(false),
@@ -418,65 +479,4 @@ mod tests {
             .unwrap()
             .contains("q=%72%75%73%74%20%26%20%63%6F%64%65&format=json"));
     }
-}
-
-/// Explicit connection check; never sends workspace content.
-pub fn check(options: &SessionOptions) -> Vec<String> {
-    let mut status = Vec::new();
-    for (name, base, suffix, local) in [
-        (
-            "Web search",
-            options.search_endpoint.as_str(),
-            "/search?q=OpenMind&format=json",
-            false,
-        ),
-        (
-            "Image reading",
-            options.vision_endpoint.as_str(),
-            "/models",
-            true,
-        ),
-        (
-            "Image generation",
-            options.image_endpoint.as_str(),
-            "/sdapi/v1/sd-models",
-            true,
-        ),
-    ] {
-        if base.is_empty() {
-            status.push(format!("{name}: disabled"));
-            continue;
-        }
-        let result = endpoint(base, local)
-            .and_then(|base| probe(format!("{base}{suffix}")))
-            .and_then(|value| {
-                let ready = match name {
-                    "Web search" => value["results"].is_array(),
-                    "Image reading" => value["data"]
-                        .as_array()
-                        .is_some_and(|models| !models.is_empty()),
-                    _ => value.as_array().is_some_and(|models| !models.is_empty()),
-                };
-                if ready {
-                    Ok(())
-                } else {
-                    Err("No compatible loaded capability found".into())
-                }
-            });
-        status.push(match result {
-            Ok(()) => format!("{name}: connected (generation/vision inference not tested)"),
-            Err(error) => format!("{name}: {error}"),
-        });
-    }
-    status
-}
-
-fn probe(url: String) -> Result<Value, String> {
-    let cancel = std::sync::Arc::new(AtomicBool::new(false));
-    let deadline = std::sync::Arc::clone(&cancel);
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(8));
-        deadline.store(true, std::sync::atomic::Ordering::Relaxed);
-    });
-    request(url, None, &cancel)
 }
