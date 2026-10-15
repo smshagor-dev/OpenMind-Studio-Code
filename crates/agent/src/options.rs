@@ -11,6 +11,10 @@ pub struct SessionOptions {
     pub temperature: f64,
     pub command_timeout_seconds: u64,
     pub auto_continue: bool,
+    pub use_gpu: bool,
+    pub search_endpoint: String,
+    pub vision_endpoint: String,
+    pub image_endpoint: String,
 }
 
 impl Default for SessionOptions {
@@ -23,6 +27,10 @@ impl Default for SessionOptions {
             temperature: 0.6,
             command_timeout_seconds: 120,
             auto_continue: true,
+            use_gpu: true,
+            search_endpoint: String::new(),
+            vision_endpoint: String::new(),
+            image_endpoint: String::new(),
         }
     }
 }

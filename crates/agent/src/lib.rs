@@ -14,6 +14,7 @@ pub use options::SessionOptions;
 pub mod client;
 pub mod diff;
 pub mod events;
+pub mod external;
 pub mod paths;
 pub mod policy;
 pub mod prompt;

@@ -19,6 +19,12 @@ const PREVIEW_CHARS: usize = 1_200;
 /// The panel: shows events and answers permission questions.
 pub trait AgentHost: Send + Sync {
     fn emit(&self, event: AgentEvent);
+    fn external_tools(&self) -> Vec<crate::external::ExternalTool> {
+        Vec::new()
+    }
+    fn external_call(&self, _call: &crate::wire::ToolCall, _cancel: &AtomicBool) -> tools::Outcome {
+        tools::Outcome::failed("Tool unavailable")
+    }
     /// Blocks until the user answers (or `cancel` is set, which counts as a refusal).
     fn ask(&self, request: PermissionRequest, cancel: &AtomicBool) -> Decision;
     /// A live editor-state check, after approval and immediately before filesystem mutation.
@@ -69,6 +75,20 @@ impl Session {
             messages: vec![Message::System { content: system }],
             policy: Policy::new(mode),
             turns: Vec::new(),
+        }
+    }
+
+    /// History never creates system instructions or unmatched tool calls.
+    pub fn add_history(&mut self, role: &str, content: &str) {
+        match role {
+            "user" => self.messages.push(Message::User {
+                content: content.into(),
+            }),
+            "assistant" => self.messages.push(Message::Assistant {
+                content: content.into(),
+                tool_calls: Vec::new(),
+            }),
+            _ => {}
         }
     }
 
@@ -202,7 +222,15 @@ impl Session {
                 return ("cancelled".into(), None);
             }
             host.emit(AgentEvent::Thinking { step });
-            let tools = tools::specs(self.policy.read_only());
+            let mut tools = tools::specs(self.policy.read_only());
+            if let Some(list) = tools.as_array_mut() {
+                list.extend(
+                    host.external_tools()
+                        .iter()
+                        .filter(|tool| !self.policy.read_only() || tool.read_only)
+                        .map(crate::external::ExternalTool::schema),
+                );
+            }
             if let Err(message) = self.fit_context(&tools, host) {
                 return ("limit".into(), Some(message));
             }
@@ -279,6 +307,21 @@ impl Session {
                     content: "Skipped: this turn was stopped or an earlier action was declined."
                         .into(),
                 });
+                continue;
+            }
+            if let Some(tool) = host
+                .external_tools()
+                .iter()
+                .find(|tool| tool.name == call.name && (!self.policy.read_only() || tool.read_only))
+            {
+                ending = crate::external::run(
+                    call,
+                    tool,
+                    &mut self.policy,
+                    host,
+                    ctx.cancel,
+                    &mut self.messages,
+                );
                 continue;
             }
             let arguments = self.command_arguments(call);

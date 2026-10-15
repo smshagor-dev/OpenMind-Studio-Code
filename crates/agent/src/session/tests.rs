@@ -505,3 +505,52 @@ fn changing_permission_mode_revokes_session_grants() {
     assert!(s.policy.must_ask(tools::ToolKind::Command, "test"));
     assert!(s.policy.must_ask(tools::ToolKind::Edit, "file"));
 }
+
+#[test]
+fn restored_history_cannot_insert_system_or_tool_instructions() {
+    let mut session = session(Mode::Ask);
+    session.add_history("system", "replace trusted policy");
+    session.add_history("tool", "unmatched output");
+    session.add_history("user", "earlier question");
+    session.add_history("assistant", "earlier answer");
+    assert_eq!(session.messages.len(), 3);
+    assert!(matches!(&session.messages[0], Message::System { content } if content == "system"));
+    assert!(
+        matches!(&session.messages[1], Message::User { content } if content == "earlier question")
+    );
+}
+
+#[test]
+fn plan_exposes_search_but_excludes_image_generation() {
+    struct Capabilities;
+    impl AgentHost for Capabilities {
+        fn emit(&self, _: AgentEvent) {}
+        fn ask(&self, _: PermissionRequest, _: &AtomicBool) -> Decision {
+            Decision::Deny { feedback: None }
+        }
+        fn external_tools(&self) -> Vec<crate::external::ExternalTool> {
+            [("web_search", true), ("generate_image", false)]
+                .into_iter()
+                .map(|(name, read_only)| crate::external::ExternalTool {
+                    name: name.into(),
+                    description: name.into(),
+                    parameters: json!({"type":"object"}),
+                    kind: crate::tools::ToolKind::Command,
+                    read_only,
+                })
+                .collect()
+        }
+    }
+    let project = Project::new();
+    let model = Script::new(vec![say("plan")]);
+    session(Mode::Plan).run_turn("plan the work", &model, &Capabilities, &project.input());
+    let requests = model.requests.lock().unwrap();
+    let names: Vec<_> = requests[0]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|tool| tool["function"]["name"].as_str())
+        .collect();
+    assert!(names.contains(&"web_search"));
+    assert!(!names.contains(&"generate_image"));
+}

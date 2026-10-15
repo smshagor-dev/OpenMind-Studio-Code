@@ -1,0 +1,83 @@
+.agent-history {
+  padding: 12px;
+}
+.agent-history__row {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-history__row button {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 10px;
+  cursor: pointer;
+}
+.agent-history__row button:first-child {
+  flex: 1;
+  text-align: left;
+}
+.agent-history small {
+  display: block;
+  color: var(--fg-muted);
+}
+.agent-attachments {
+  padding: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+.agent-attachments button {
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.agent-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.agent-attachment img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+.agent-asset {
+  margin: 8px 12px;
+}
+.agent-asset img {
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+.agent-asset a {
+  color: var(--agent-accent);
+}
+.agent-acceleration {
+  padding: 3px 12px;
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+.agent-settings input[type="url"] {
+  width: 100%;
+  color: inherit;
+  background: var(--editor-bg);
+  border: 1px solid var(--border);
+  padding: 6px;
+}
+.agent-document {
+  margin: 8px 12px;
+}
+.agent-document pre {
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+}

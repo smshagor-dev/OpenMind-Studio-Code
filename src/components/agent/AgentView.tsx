@@ -1,11 +1,14 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import "../../styles/agent.css";
+import "../../styles/agentMedia.css";
 
 import type { Todo } from "../../services/agent/agentIpc";
 import { agent } from "../../services/agent";
 import { container } from "../../services/container";
 import { useT } from "../../i18n";
+import { AgentAttachments } from "./AgentAttachments";
+import { AgentHistoryView } from "./AgentHistoryView";
 import { AgentQueue } from "./AgentQueue";
 import { AgentPermission } from "./AgentPermission";
 import { AgentPrompt } from "./AgentPrompt";
@@ -72,6 +75,7 @@ function Header() {
         {model && agent.ready() ? <span className="agent-tier">{agentTier(model)}</span> : null}
       </button>
       <div className="agent-header__actions">
+        <button type="button" className="agent-icon-button" title={t("agent.history.title")} onClick={() => void agent.showHistory(!state.showHistory)}>◷</button>
         <button type="button" className="agent-icon-button" title={t("agent.settings.title")} onClick={() => { agent.openSettings(true); }}>⚙</button>
         {transcript.canUndo && !transcript.busy ? (
           <button type="button" className="agent-icon-button" title={t("agent.header.undo")} onClick={() => void agent.undo()}>
@@ -124,6 +128,7 @@ export function AgentView() {
     return (
       <div className="agent-view">
         <Header />
+        {state.showHistory ? <AgentHistoryView items={state.history ?? []} /> : null}
         <div className="agent-unconfigured">
           <span className="agent-welcome__star" aria-hidden="true">✻</span>
           <div>{t("agent.ui.notConfigured")}</div>
@@ -145,6 +150,7 @@ export function AgentView() {
       }}
     >
       <Header />
+      <div className="agent-acceleration" role="status">{t("agent.gpu.status", { mode: state.overview.acceleration?.[1] != null ? (state.overview.acceleration[1] > 0 ? "GPU" : "CPU") : state.overview.acceleration?.[0] === false ? "CPU" : "Auto", layers: state.overview.acceleration?.[1] ?? "—", vram: ((state.overview.hardware.gpus.reduce((sum, gpu) => sum + gpu.vramBytes, 0)) / 1024 ** 3).toFixed(1) })}</div>
       <div
         ref={scroller}
         className="agent-view__scroll"
@@ -153,6 +159,7 @@ export function AgentView() {
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
         }}
       >
+        {state.showHistory ? <AgentHistoryView items={state.history ?? []} /> : null}
         {transcript.entries.length === 0 ? <AgentWelcome folder={folder} /> : null}
         <AgentTranscript entries={transcript.entries} busy={transcript.busy} showReasoning={state.options?.showReasoning} />
         {transcript.busy && !transcript.permission ? (
@@ -165,6 +172,7 @@ export function AgentView() {
         {transcript.permission ? (
           <AgentPermission request={transcript.permission} onAnswer={(decision) => void agent.answer(decision)} />
         ) : null}
+          <AgentAttachments />
           <AgentPrompt
             mode={state.mode}
             busy={transcript.busy || !!state.taskState?.activeId}

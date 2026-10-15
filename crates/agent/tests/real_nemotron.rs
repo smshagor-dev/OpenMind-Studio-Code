@@ -62,6 +62,7 @@ fn nemotron_fixes_a_bug_in_a_real_project() {
         model,
         alias: "nemotron".into(),
         context_tokens: 16_384,
+        use_gpu: true,
         log_file: dir.path().join("engine.log"),
     })
     .expect("engine");

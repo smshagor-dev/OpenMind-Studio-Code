@@ -1,5 +1,7 @@
 // The OpenMindAI Agent panel's brain: the model list and downloads, the chosen model and mode, and the conversation
 // (folded from backend events by agentModel.ts). UI-free; the panel reads `getState()` through useSyncExternalStore.
+import { readAttachment, type AgentAttachment } from "./agentAttachments";
+import { AgentHistory, type HistoryIpc, type HistorySnapshot, type HistorySummary } from "./agentHistory";
 import type { AgentEvent, AgentIpc, AgentMode, AgentOverview, Decision, DownloadEvent, DownloadProgress } from "./agentIpc";
 import { AgentTasks, lastInterruptedTask, type AgentTask, type TaskState } from "./agentTasks";
 import { agentOptions, DEFAULT_AGENT_OPTIONS, type AgentOptions } from "./agentOptions";
@@ -15,6 +17,7 @@ export interface AgentHost {
   hasFolder: () => boolean;
   workspacePath?: () => string | null;
   taskScope?: string;
+  historyIpc?: HistoryIpc;
   /** Installs the local engine through the Runtime Manager; `true` when it is installed afterwards. */
   installEngine: () => Promise<boolean>;
   confirm: (message: string, okLabel: string) => Promise<boolean>;
@@ -33,6 +36,10 @@ export interface DownloadState {
 }
 
 export interface AgentState {
+  attachments?: AgentAttachment[];
+  history?: HistorySummary[];
+  showHistory?: boolean;
+  conversationId?: string;
   options?: AgentOptions;
   taskState?: TaskState;
   showSettings?: boolean;
@@ -72,6 +79,11 @@ export class AgentService {
   private started = false;
   private warming: Promise<void> | null = null;
   private readonly tasks: AgentTasks;
+  private history: AgentHistory | null = null;
+  private conversation: { id: string; createdAt: number; workspace: string | null } = { id: crypto.randomUUID(), createdAt: Date.now(), workspace: null as string | null };
+  private attaching = false;
+  private restoringHistory = false;
+  private savedActiveId: string | null = null;
   private saves: Promise<void> = Promise.resolve();
 
   constructor(
@@ -79,11 +91,60 @@ export class AgentService {
     private readonly host: AgentHost,
     private readonly now: () => number = () => Date.now(),
   ) {
+    if (host.historyIpc) this.history = new AgentHistory(host.historyIpc, () => { host.notify(host.text("agent.tasks.saveFailed")); });
     this.tasks = new AgentTasks({
       run: (task, signal) => this.runTask(task, signal),
       stop: (id) => this.ipc.stop(id),
       changed: (taskState) => { this.set({ taskState }); this.persistTasks(taskState); },
     });
+  }
+
+  async attachFiles(files: File[]): Promise<void> {
+    if (this.attaching) return;
+    this.attaching = true;
+    const conversationId = this.conversation.id;
+    try {
+      const existing = this.state.attachments ?? [];
+      if (existing.length + files.length > 6) throw new Error("Attach at most six files");
+      const added: AgentAttachment[] = [];
+      for (const file of files) added.push(await readAttachment(file));
+      if (conversationId === this.conversation.id) this.set({ attachments: [...(this.state.attachments ?? []), ...added] });
+    } catch (error) { this.host.notify(String(error)); } finally { this.attaching = false; }
+  }
+  removeAttachment(id: string): void { this.set({ attachments: this.state.attachments?.filter((item) => item.id !== id) ?? [] }); }
+
+  private saveHistory(): void {
+    if (!this.history || this.restoringHistory || !this.state.transcript.entries.length) return;
+    const first = this.state.transcript.entries.find((entry) => entry.kind === "user");
+    const snapshot: HistorySnapshot = { ...this.conversation, title: first?.kind === "user" ? first.text.slice(0, 100) : "OpenMindAI Agent", entries: this.state.transcript.entries, tasks: this.tasks.getState().tasks };
+    this.history.schedule(snapshot);
+    if (this.savedActiveId !== snapshot.id) {
+      this.savedActiveId = snapshot.id;
+      void this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, snapshot.id).catch(() => { this.savedActiveId = null; });
+    }
+  }
+  async showHistory(open: boolean): Promise<void> {
+    try { this.set({ showHistory: open, history: open ? await this.history?.list() ?? [] : [] }); }
+    catch (error) { this.host.notify(String(error)); }
+  }
+  async restoreHistory(id: string, startup = false): Promise<void> {
+    if (!this.history) return;
+    try {
+      const saved = await this.history.load(id);
+      if (!saved) return;
+      if (saved.workspace !== (this.host.workspacePath?.() ?? null)) throw new Error(this.host.text("agent.tasks.workspaceChanged"));
+      if (!startup) { await this.tasks.stop(); await this.ipc.reset(); }
+      this.restoringHistory = true;
+      this.conversation = { id: saved.id, createdAt: saved.createdAt, workspace: saved.workspace };
+      if (!startup) this.tasks.restore(saved.tasks);
+      this.set({ conversationId: id, showHistory: false, transcript: { ...EMPTY_TRANSCRIPT, entries: saved.entries.map((entry) => entry.kind === "tool" && (entry.status === "running" || entry.status === "waiting") ? { ...entry, status: "declined" } : entry) } });
+      this.restoringHistory = false;
+      await this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, id);
+    } catch (error) { this.restoringHistory = false; this.host.notify(String(error)); }
+  }
+  async deleteHistory(id: string): Promise<void> {
+    try { if (id === this.conversation.id && !await this.newChat()) return; await this.history?.delete(id); await this.showHistory(true); }
+    catch (error) { this.host.notify(String(error)); }
   }
 
   options(): AgentOptions { return this.state.options ?? { ...DEFAULT_AGENT_OPTIONS }; }
@@ -106,7 +167,7 @@ export class AgentService {
       this.host.notify(this.host.text("agent.tasks.workspaceChanged"));
       return false;
     }
-    const accepted = await this.send(`Continue the interrupted task. Inspect the current project state first; preserve changes already made and complete the remaining work. Original goal:\n${task?.text ?? "Complete the previous request."}`, true);
+    const accepted = await this.send(`Continue the interrupted task. Inspect the current project state first; preserve changes already made and complete the remaining work. Original goal:\n${task?.text ?? "Complete the previous request."}`, true, task?.attachments);
     if (accepted) this.tasks.resume();
     return accepted;
   }
@@ -130,6 +191,7 @@ export class AgentService {
   private set(change: Partial<AgentState>): void {
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener();
+    this.saveHistory();
   }
 
   /** Called once per editor window; restores and preloads an existing setup without downloading. */
@@ -151,6 +213,8 @@ export class AgentService {
       }
       if (mode === "ask" || mode === "acceptEdits" || mode === "auto" || mode === "plan") this.set({ mode });
       if (model) this.set({ modelId: model });
+      const active = await this.host.settingGet(`agent.active.${this.host.taskScope ?? "main"}`).catch(() => null);
+      if (active && this.history) await this.restoreHistory(active, true);
       await this.refresh();
       await this.activate();
     } catch {
@@ -167,7 +231,7 @@ export class AgentService {
     this.set({ engineState: "loading" });
     this.warming = (async () => {
       try {
-        const ready = await this.ipc.startEngine(id);
+        const ready = await this.ipc.startEngine(id, this.options().useGpu);
         await this.refresh();
         this.set({ engineState: ready || this.state.overview?.runningModel === id ? "ready" : "idle" });
       } catch {
@@ -338,21 +402,23 @@ export class AgentService {
     if (event.type === "engine" && event.state === "failed" && event.message) {
       this.set({ transcript: addNotice(this.state.transcript, "error", this.host.text("agent.ui.failed")) });
     }
-    if (event.type === "turnEnd") { this.tasks.finish(event.reason); void this.refresh(); }
+    if (event.type === "turnEnd") { this.tasks.finish(event.reason); void this.history?.flush(); void this.refresh(); }
   }
 
-  send(text: string, first = false): Promise<boolean> {
+  send(text: string, first = false, savedAttachments?: AgentAttachment[]): Promise<boolean> {
     const message = text.trim();
-    if (!message || message.length > 100000) return Promise.resolve(false);
+    const attachments = savedAttachments ?? this.state.attachments ?? [];
+    if ((!message && !attachments.length) || message.length > 100000) return Promise.resolve(false);
     const blocker = this.sendBlocker();
     if (blocker) { this.host.notify(blocker); return Promise.resolve(false); }
     const modelId = this.state.modelId;
     if (!modelId) return Promise.resolve(false);
     const accepted = this.tasks.enqueue({
-      id: crypto.randomUUID(), text: message, modelId, mode: this.state.mode,
+      id: crypto.randomUUID(), attachments, text: message || "Read the attached files and describe their contents.", modelId, mode: this.state.mode,
       workspace: this.host.workspacePath?.() ?? null, options: { ...this.options() },
       status: "pending", reason: null, createdAt: this.now(),
     }, first);
+    if (accepted && !savedAttachments) this.set({ attachments: [] });
     if (!accepted) this.host.notify(this.host.text("agent.tasks.full"));
     return Promise.resolve(accepted);
   }
@@ -375,11 +441,21 @@ export class AgentService {
       this.host.notify(this.host.text("agent.tasks.workspaceChanged"));
       return false;
     }
-    this.set({ transcript: addUser(this.state.transcript, task.text, this.now()) });
+    if (this.state.transcript.entries.length && this.conversation.workspace !== task.workspace) {
+      this.host.notify(this.host.text("agent.tasks.workspaceChanged")); return false;
+    }
+    this.conversation.workspace = task.workspace;
+    const history = this.state.transcript.entries.flatMap((entry) => entry.kind === "user" || entry.kind === "assistant" || entry.kind === "document" ? [{ role: entry.kind === "assistant" ? "assistant" : "user", content: entry.kind === "document" ? `[Untrusted attachment: ${entry.name}]\n${entry.text}\n[End attachment]` : entry.text }] : []).slice(-80);
+    let transcript = addUser(this.state.transcript, task.text, this.now());
+    for (const item of task.attachments ?? []) {
+      if (item.data) transcript = { ...transcript, entries: [...transcript.entries, { kind: "asset", id: item.id, name: item.name, data: item.data }] };
+      else transcript = { ...transcript, entries: [...transcript.entries, { kind: "document", id: item.id, name: item.name, text: item.text ?? "" }] };
+    }
+    this.set({ transcript });
     try {
       await this.ipc.send({
         text: task.text, modelId: task.modelId, mode: task.mode, taskId: task.id,
-        options: task.options, workspace: task.workspace, unsaved: this.host.unsavedPaths(), uiLanguage: this.host.uiLanguage(),
+        attachments: task.attachments ?? [], conversationId: this.conversation.id, history, options: task.options, workspace: task.workspace, unsaved: this.host.unsavedPaths(), uiLanguage: this.host.uiLanguage(),
       });
       return true;
     } catch (error) {
@@ -404,15 +480,22 @@ export class AgentService {
     } catch (error) { this.host.notify(String(error)); }
   }
 
-  async newChat(): Promise<void> {
+  async newChat(): Promise<boolean> {
     try {
       await this.tasks.stop();
       if (this.state.transcript.busy) await this.ipc.stop();
       await this.ipc.reset();
+      await this.history?.flush();
+      this.restoringHistory = true;
       this.tasks.clear();
-      this.set({ transcript: EMPTY_TRANSCRIPT });
+      this.conversation = { id: crypto.randomUUID(), createdAt: this.now(), workspace: this.host.workspacePath?.() ?? null };
+      this.set({ transcript: EMPTY_TRANSCRIPT, conversationId: this.conversation.id, attachments: [] });
+      this.restoringHistory = false;
+      this.savedActiveId = null;
+      await this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, "");
+      return true;
     } catch (error) {
-      this.host.notify(String(error));
+      this.restoringHistory = false; this.host.notify(String(error)); return false;
     }
   }
 

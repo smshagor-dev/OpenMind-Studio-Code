@@ -110,7 +110,7 @@ export function AgentPrompt({
     window.requestAnimationFrame(() => area.current?.setSelectionRange(next.caret, next.caret));
   };
   const submit = async () => {
-    if (disabledReason || !text.trim()) return;
+    if (disabledReason || (!text.trim() && !agent.getState().attachments?.length)) return;
     const sent = await agent.send(text);
     if (sent) { setText(""); area.current?.focus(); }
   };
@@ -183,7 +183,7 @@ export function AgentPrompt({
         />
       </div>
       <div className="agent-queue__actions">
-        <button type="button" disabled={!!disabledReason || !text.trim()} onClick={() => void submit()}>{t(busy ? "agent.tasks.queue" : "agent.tasks.send")}</button>
+        <button type="button" disabled={!!disabledReason || (!text.trim() && !agent.getState().attachments?.length)} onClick={() => void submit()}>{t(busy ? "agent.tasks.queue" : "agent.tasks.send")}</button>
         {busy ? <button type="button" onClick={() => void agent.stop()}>{t("agent.tasks.stop")}</button> : null}
       </div>
       <ModeLine mode={mode} contextShare={contextShare} />

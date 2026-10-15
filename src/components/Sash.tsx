@@ -31,7 +31,7 @@ export function Sash({ side }: SashProps) {
       onPointerDown={(event) => {
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
-        start.current = { x: event.clientX, width: container.layout.getState().sidebarWidth };
+        start.current = { x: event.clientX, width: event.currentTarget.closest(".sidebar")?.getBoundingClientRect().width ?? container.layout.getState().sidebarWidth };
         setDragging(true);
       }}
       onPointerMove={(event) => {

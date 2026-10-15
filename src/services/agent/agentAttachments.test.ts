@@ -1,0 +1,23 @@
+import { describe, expect, it, vi } from "vitest";
+import { readAttachment } from "./agentAttachments";
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+function file(text: string, name = "code.ts"): File {
+  const value = new File([text], name, { type: "text/plain" });
+  Object.defineProperty(value, "arrayBuffer", {
+    value: () => Promise.resolve(new TextEncoder().encode(text).buffer),
+  });
+  return value;
+}
+describe("readAttachment", () => {
+  it("reads UTF-8 source without interpreting instructions", async () => {
+    expect(await readAttachment(file("const greeting = 'বাংলা';"))).toMatchObject({
+      name: "code.ts",
+      text: "const greeting = 'বাংলা';",
+    });
+  });
+  it("rejects empty, binary and oversized extracted text", async () => {
+    await expect(readAttachment(file(""))).rejects.toThrow("1 byte");
+    await expect(readAttachment(file("binary\0payload"))).rejects.toThrow("binary");
+    await expect(readAttachment(file("a".repeat(100001)))).rejects.toThrow("100 KB");
+  });
+});

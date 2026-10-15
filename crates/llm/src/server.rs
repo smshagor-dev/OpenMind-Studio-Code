@@ -19,6 +19,7 @@ pub struct EngineConfig {
     /// The name the engine reports for the model (the catalog id).
     pub alias: String,
     pub context_tokens: u32,
+    pub use_gpu: bool,
     /// Where the engine writes what it prints (the app's logs folder).
     pub log_file: PathBuf,
 }
@@ -83,7 +84,7 @@ pub fn arguments(config: &EngineConfig, port: u16, key: &str) -> Vec<String> {
         "--offline".into(),
     ];
     args.push("--gpu-layers".into());
-    args.push("auto".into());
+    args.push(if config.use_gpu { "auto" } else { "0" }.into());
     args
 }
 
@@ -219,7 +220,19 @@ mod tests {
             model: PathBuf::from("C:/Models/My Model/a.gguf"),
             alias: "nemotron".into(),
             context_tokens: 32768,
+            use_gpu: true,
             log_file: PathBuf::from("engine.log"),
+        }
+    }
+
+    #[test]
+    fn cpu_mode_disables_gpu_offload_and_gpu_mode_uses_auto() {
+        let mut config = config();
+        for (enabled, expected) in [(false, "0"), (true, "auto")] {
+            config.use_gpu = enabled;
+            let args = arguments(&config, 4242, "key");
+            let index = args.iter().position(|arg| arg == "--gpu-layers").unwrap();
+            assert_eq!(args[index + 1], expected);
         }
     }
 

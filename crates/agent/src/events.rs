@@ -20,6 +20,10 @@ pub struct ChangedFile {
     rename_all_fields = "camelCase"
 )]
 pub enum AgentEvent {
+    Asset {
+        name: String,
+        data: String,
+    },
     /// A turn started (`step` 0) or the model was asked again after tools ran.
     Compacted {
         before_tokens: usize,
