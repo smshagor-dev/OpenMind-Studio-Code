@@ -52,9 +52,14 @@ function start() {
       render(<PhpServerWindow />);
     });
   } else {
-    void import("./services/agent/mutationGuard").then(() => import("./App")).then(({ App }) => {
-      render(<App />);
-    });
+    void import("./services/agent/mutationGuard")
+      .then(async ({ installMutationGuard }) => {
+        await installMutationGuard();
+        return import("./App");
+      })
+      .then(({ App }) => {
+        render(<App />);
+      });
   }
 }
 
