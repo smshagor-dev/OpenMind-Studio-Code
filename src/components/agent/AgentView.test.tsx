@@ -8,14 +8,18 @@ const harness = vi.hoisted(() => ({
   state: null as AgentState | null,
   listeners: new Set<() => void>(),
 }));
+function currentState(): AgentState {
+  if (harness.state === null) throw new Error("Agent test state is missing");
+  return harness.state;
+}
 vi.mock("../../services/agent", () => ({
   agent: {
-    getState: () => harness.state!,
+    getState: () => currentState(),
     subscribe: (listener: () => void) => { harness.listeners.add(listener); return () => { harness.listeners.delete(listener); }; },
     start: vi.fn(() => Promise.resolve()),
     ready: () => Boolean(harness.state?.overview?.engineInstalled && harness.state.overview.models.some((m) => m.id === harness.state?.modelId && m.local.state === "ready")),
     openSetup: (showSetup: boolean) => {
-      harness.state = { ...harness.state!, showSetup };
+      harness.state = { ...currentState(), showSetup };
       for (const listener of harness.listeners) listener();
     },
     download: vi.fn(() => Promise.resolve()),
@@ -90,6 +94,7 @@ it("keeps setup out of the sidebar and opens it in a dialog on Configure now", (
   expect(screen.getByRole("button", { name: "Configure now" })).toHaveFocus();
 });
 it("requires licence consent before starting a setup download", () => {
+  const downloadSpy = vi.spyOn(agent, "download");
   mount();
   fireEvent.click(screen.getByRole("button", { name: "Configure now" }));
   const download = screen.getByRole("button", { name: "Download" });
@@ -97,11 +102,11 @@ it("requires licence consent before starting a setup download", () => {
   fireEvent.click(screen.getByRole("checkbox", { name: "I accept the" }));
   expect(download).toBeEnabled();
   fireEvent.click(download);
-  expect(agent.download).toHaveBeenCalledWith("internal", true);
+  expect(downloadSpy).toHaveBeenCalledWith("internal", true);
 });
 describe("configured header", () => {
   it("shows only the product, edition and live status", () => {
-    harness.state = { ...harness.state!, overview: overview(true), modelId: "internal", engineState: "ready" };
+    harness.state = { ...currentState(), overview: overview(true), modelId: "internal", engineState: "ready" };
     mount();
     expect(screen.getByRole("status", { name: "Agent is live" })).toHaveClass("agent-live--ready");
     expect(screen.getByText("Lite")).toBeInTheDocument();
@@ -109,7 +114,7 @@ describe("configured header", () => {
     expect(document.body.textContent).not.toContain("Private model name");
   });
   it("does not show a green dot while the engine is loading", () => {
-    harness.state = { ...harness.state!, overview: overview(true), modelId: "internal", engineState: "loading" };
+    harness.state = { ...currentState(), overview: overview(true), modelId: "internal", engineState: "loading" };
     const { container } = mount();
     expect(container.querySelector(".agent-live--ready")).toBeNull();
   });
