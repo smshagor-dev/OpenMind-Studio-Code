@@ -372,6 +372,7 @@ impl Session {
                         "a later change to this file could not be undone",
                     ));
                 }
+                check(&change.path).map_err(std::io::Error::other)?;
                 let ws = Workspace::new(&change.root).map_err(std::io::Error::other)?;
                 let target = ws
                     .resolve_for_change(&change.path.to_string_lossy())
@@ -379,7 +380,6 @@ impl Session {
                 if target != change.path {
                     return Err(std::io::Error::other("the path now resolves elsewhere"));
                 }
-                check(&change.path).map_err(std::io::Error::other)?;
                 if let Ok(meta) = std::fs::metadata(&change.path) {
                     if change
                         .after

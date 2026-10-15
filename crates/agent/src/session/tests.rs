@@ -390,3 +390,39 @@ fn live_host_refusal_after_approval_prevents_the_write() {
     assert_eq!(project.text(), before);
     assert!(!s.can_undo());
 }
+
+#[cfg(unix)]
+#[test]
+fn undo_revalidates_links_after_the_live_editor_check() {
+    let project = Project::new();
+    let outside = tempfile::tempdir().expect("outside");
+    fs::write(outside.path().join("main.py"), "agent").expect("outside file");
+    let model = Script::new(vec![
+        call(
+            "c1",
+            "write_file",
+            json!({"path":"src/main.py","content":"agent"}),
+        ),
+        say("done"),
+    ]);
+    let panel = Panel::new(vec![Decision::Allow]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("go", &model, &panel, &project.input());
+    let (restored, failed) = s.undo_last_checked(&|_| {
+        fs::rename(
+            project.ws.root().join("src"),
+            project.ws.root().join("saved"),
+        )
+        .map_err(|e| e.to_string())?;
+        std::os::unix::fs::symlink(outside.path(), project.ws.root().join("src"))
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    });
+    assert!(restored.is_empty());
+    assert_eq!(failed.len(), 1);
+    assert_eq!(
+        fs::read_to_string(outside.path().join("main.py")).expect("outside"),
+        "agent"
+    );
+    assert!(s.can_undo());
+}
