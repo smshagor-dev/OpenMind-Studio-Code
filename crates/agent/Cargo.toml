@@ -7,6 +7,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+base64 = "0.22"
+ureq = { version = "3.4.2", features = ["rustls"] }
 openmind-ai = { version = "1.0.4", path = "../ai" }
 openmind-fs = { version = "1.0.4", path = "../fs" }
 openmind-search = { version = "1.0.4", path = "../search" }

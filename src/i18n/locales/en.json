@@ -2843,5 +2843,18 @@
   "agent.settings.apply": "Apply settings",
   "agent.setup.requirements": "Download: {size} · Estimated working memory: {memory}. Extra memory is needed for the OS and context. GPU optional.",
   "agent.setup.hardware": "This PC: {ram} RAM · {threads} CPU threads · Free disk: {disk}",
-  "agent.setup.minimum": "CPU-only RAM minimum (estimate): {ram}, including OS headroom. GPU acceleration is optional; larger context settings need more memory."
+  "agent.setup.minimum": "CPU-only RAM minimum (estimate): {ram}, including OS headroom. GPU acceleration is optional; larger context settings need more memory.",
+  "agent.history.title": "Chat history",
+  "agent.history.empty": "No saved conversations yet.",
+  "agent.history.delete": "Delete conversation",
+  "agent.attach.add": "Attach files",
+  "agent.attach.hint": "Text, PDF, DOCX or images · 10 MB/file · up to 6 files",
+  "agent.attach.remove": "Remove attachment",
+  "agent.gpu.status": "{mode} · offloaded layers: {layers} · detected VRAM capacity: {vram} GB",
+  "agent.settings.useGpu": "Use GPU acceleration (applies to the next task; CPU fallback if unavailable)",
+  "agent.settings.searchEndpoint": "Web search · SearXNG server URL",
+  "agent.settings.visionEndpoint": "Image reading · local vision API URL",
+  "agent.settings.imageEndpoint": "Image generation · local image API URL",
+  "agent.capabilities.hint": "Optional capabilities require a running server: SearXNG with JSON enabled for search, an OpenAI-compatible vision server with a loaded vision model for image reading, and an A1111-compatible server started with --api for image generation. Leave a URL empty to disable it. Images stay on this computer; web queries go to your configured search server. Tools run only when needed for your request, following the selected permission mode.",
+  "agent.capabilities.check": "Check connections"
 }

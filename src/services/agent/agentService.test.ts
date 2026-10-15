@@ -35,7 +35,7 @@ function overview(models: ModelView[], engineInstalled = true): AgentOverview {
   };
 }
 
-function setup(models: ModelView[], engineInstalled = true) {
+function setup(models: ModelView[], engineInstalled = true, historyIpc?: import("./agentHistory").HistoryIpc) {
   let onEvent: (event: AgentEvent) => void = () => undefined;
   let onDownload: (event: DownloadEvent) => void = () => undefined;
   const settings = new Map<string, string>();
@@ -61,6 +61,7 @@ function setup(models: ModelView[], engineInstalled = true) {
     },
   };
   const host: AgentHost = {
+    historyIpc,
     unsavedPaths: () => ["C:/p/dirty.ts"],
     uiLanguage: () => "Russian",
     hasFolder: () => true,
@@ -218,7 +219,7 @@ describe("Agent startup", () => {
   it("preloads an existing setup without downloading or starting a turn", async () => {
     const { service, ipc } = setup([model("a", "ready")]);
     await service.start();
-    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a");
+    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a", true);
     expect(ipc.download).not.toHaveBeenCalled();
     expect(ipc.send).not.toHaveBeenCalled();
     expect(service.getState().engineState).toBe("ready");
@@ -333,4 +334,40 @@ it("refuses to continue an interrupted goal in a different project", async () =>
   expect(await service.continueTask()).toBe(false);
   expect(ipc.send).toHaveBeenCalledOnce();
   expect(host.notify).toHaveBeenCalledWith("agent.tasks.workspaceChanged");
+});
+
+
+describe("persisted agent conversations", () => {
+  it("refuses another workspace before resetting the active conversation", async () => {
+    const history = { list: vi.fn(() => Promise.resolve([])), save: vi.fn(() => Promise.resolve()), delete: vi.fn(() => Promise.resolve(true)), load: vi.fn(() => Promise.resolve({ id: "old", title: "old", providerId: "/another-project", model: "agent-v1", createdAt: 1, updatedAt: 1, messages: [] })) };
+    const { service, ipc, host } = setup([model("a", "ready")], true, history);
+    await service.start(); await service.restoreHistory("old");
+    expect(ipc.reset).not.toHaveBeenCalled();
+    expect(host.notify).toHaveBeenCalledWith(expect.stringContaining("agent.tasks.workspaceChanged"));
+  });
+  it("restores context without sending until the user submits a new request", async () => {
+    const history = { list: vi.fn(() => Promise.resolve([])), save: vi.fn(() => Promise.resolve()), delete: vi.fn(() => Promise.resolve(true)), load: vi.fn(() => Promise.resolve({ id: "old", title: "old", providerId: "", model: "agent-v1", createdAt: 1, updatedAt: 1, messages: [{ role: "entry", content: JSON.stringify({ kind: "user", id: "prior", text: "Remember the project goal" }), createdAt: 1, error: null }] })) };
+    const { service, ipc } = setup([model("a", "ready")], true, history);
+    await service.start(); await service.restoreHistory("old");
+    expect(ipc.send).not.toHaveBeenCalled();
+    expect(await service.send("continue" )).toBe(true);
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledWith(expect.objectContaining({ conversationId: "old", history: [{ role: "user", content: "Remember the project goal" }] })); });
+    await service.newChat();
+  });
+});
+
+it("keeps attachment context on Continue with unique transcript entry IDs", async () => {
+  const { service, ipc, event } = setup([model("a", "ready")]);
+  await service.start();
+  const file = new File(["const answer = 42;"], "code.ts", { type: "text/plain" });
+  Object.defineProperty(file, "arrayBuffer", { value: () => Promise.resolve(new TextEncoder().encode("const answer = 42;").buffer) });
+  await service.attachFiles([file]); await service.send("read this file");
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(1); });
+  event({ type: "turnEnd", reason: "cancelled", message: null });
+  expect(await service.continueTask()).toBe(true);
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalledTimes(2); });
+  const documents = service.getState().transcript.entries.filter((entry) => entry.kind === "document");
+  expect(documents).toHaveLength(2);
+  expect(new Set(documents.map((entry) => entry.id)).size).toBe(2);
+  expect(ipc.send).toHaveBeenLastCalledWith(expect.objectContaining({ attachments: [expect.objectContaining({ name: "code.ts", text: "const answer = 42;" })] }));
 });

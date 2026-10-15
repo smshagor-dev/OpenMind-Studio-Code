@@ -126,6 +126,7 @@ pub struct WindowHost<'a> {
     pub label: String,
     pub pending: &'a Pending,
     pub task_id: Option<&'a str>,
+    pub options: Option<&'a openmind_agent::SessionOptions>,
 }
 
 impl WindowHost<'_> {
@@ -146,6 +147,21 @@ impl WindowHost<'_> {
 }
 
 impl AgentHost for WindowHost<'_> {
+    fn external_tools(&self) -> Vec<openmind_agent::external::ExternalTool> {
+        self.options
+            .map(super::capabilities::specs)
+            .unwrap_or_default()
+    }
+    fn external_call(
+        &self,
+        call: &openmind_agent::wire::ToolCall,
+        cancel: &AtomicBool,
+    ) -> openmind_agent::tools::Outcome {
+        match self.options {
+            Some(options) => super::capabilities::call(self, options, call, cancel),
+            None => openmind_agent::tools::Outcome::failed("Capability unavailable"),
+        }
+    }
     fn check_change(&self, path: &std::path::Path, cancel: &AtomicBool) -> Result<(), String> {
         let key = |p: &std::path::Path| {
             let s = p.to_string_lossy().replace('\\', "/");

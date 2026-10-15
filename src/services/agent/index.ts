@@ -1,6 +1,7 @@
 // The OpenMindAI Agent of this window, built from the app's own services (kept out of container.ts, which is at its
 // size limit). Editor startup preloads an existing setup; downloading always needs an explicit action.
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { historyIpc } from "./agentHistory";
 import { container } from "../container";
 import { i18n, t } from "../../i18n";
 import { tauriAgentIpc, type AgentIpc } from "./agentIpc";
@@ -32,6 +33,7 @@ function taskScope(): string {
 export function agentHost(): AgentHost {
   return {
     unsavedPaths,
+    historyIpc,
     taskScope: taskScope(),
     uiLanguage: () => LANGUAGE_NAMES[i18n.language] ?? "English",
     hasFolder: () => container.workspace.getActiveWorkspace() !== null,

@@ -5,6 +5,8 @@ import type { AgentEvent, AgentMode, FileDiff, PermissionRequest, Todo, ToolKind
 export type ToolStatus = "running" | "waiting" | "ok" | "failed" | "declined";
 
 export type Entry =
+  | { kind: "document"; id: string; name: string; text: string }
+  | { kind: "asset"; id: string; name: string; data: string }
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; reasoning: string }
   | {
@@ -53,8 +55,7 @@ export const EMPTY_TRANSCRIPT: Transcript = {
   canUndo: false,
 };
 
-let counter = 0;
-const nextId = (prefix: string): string => `${prefix}-${++counter}`;
+const nextId = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`;
 
 export function addUser(t: Transcript, text: string, now: number): Transcript {
   return {
@@ -114,6 +115,8 @@ export function endNotice(reason: string, message: string | null): EndNotice {
 /** Folds one backend event into the transcript. `say` turns an end notice into text (it is translated). */
 export function applyEvent(t: Transcript, event: AgentEvent, say: (notice: NonNullable<EndNotice>) => string): Transcript {
   switch (event.type) {
+    case "asset":
+      return { ...t, entries: [...t.entries, { kind: "asset", id: crypto.randomUUID(), name: event.name, data: event.data }] };
     case "thinking":
       return { ...t, phase: "thinking" };
     case "reasoning":

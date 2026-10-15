@@ -36,6 +36,7 @@ pub struct Overview {
     running_model: Option<String>,
     models_dir: String,
     free_disk_bytes: Option<u64>,
+    acceleration: (bool, Option<u32>),
 }
 
 /// Downloads in progress, by model id.
@@ -123,6 +124,7 @@ pub(super) fn build_overview(agent: &AgentRuntime, engine_installed: bool) -> Ov
         engine_installed,
         running_model: agent.engine.running_model(),
         models_dir: agent.store.dir().display().to_string(),
+        acceleration: agent.engine.acceleration(),
         free_disk_bytes: free_disk_bytes(agent.store.dir()),
     }
 }

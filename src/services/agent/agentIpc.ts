@@ -45,6 +45,7 @@ export interface ModelView {
 }
 
 export interface AgentOverview {
+  acceleration?: [boolean, number | null];
   hardware: Hardware;
   models: ModelView[];
   recommended: string | null;
@@ -100,6 +101,7 @@ export interface PermissionRequest {
 
 /** What `agent:event` carries: `openmind_agent::AgentEvent`, the permission question and the engine's state. */
 export type AgentEvent = (
+  | { type: "asset"; name: string; data: string }
   | { type: "thinking"; step: number }
   | { type: "reasoning"; text: string }
   | { type: "text"; text: string }
@@ -125,6 +127,9 @@ export type AgentEvent = (
 export type Decision = { decision: "allow" } | { decision: "allowSession" } | { decision: "deny"; feedback: string | null };
 
 export interface SendRequest {
+  attachments?: import("./agentAttachments").AgentAttachment[];
+  conversationId?: string;
+  history?: { role: string; content: string }[];
   taskId?: string;
   workspace?: string | null;
   options?: AgentOptions;
@@ -146,7 +151,7 @@ export interface AgentIpc {
   waitIdle?: () => Promise<void>;
   reset: () => Promise<void>;
   undo: () => Promise<{ restored: string[]; failed: string[]; canUndo: boolean }>;
-  startEngine: (id: string) => Promise<boolean>;
+  startEngine: (id: string, useGpu?: boolean) => Promise<boolean>;
   stopEngine: () => Promise<void>;
   onEvent: (listener: (event: AgentEvent) => void) => Promise<() => void>;
   onDownload: (listener: (event: DownloadEvent) => void) => Promise<() => void>;
@@ -163,7 +168,7 @@ export const tauriAgentIpc: AgentIpc = {
   waitIdle: () => invoke("agent_wait_idle"),
   reset: () => invoke("agent_reset"),
   undo: () => invoke<{ restored: string[]; failed: string[]; canUndo: boolean }>("agent_undo"),
-  startEngine: (id) => invoke<boolean>("agent_engine_start", { id }),
+  startEngine: (id, useGpu) => invoke<boolean>("agent_engine_start", { id, useGpu: useGpu ?? true }),
   stopEngine: () => invoke("agent_engine_stop"),
   onEvent: async (listener) => {
     const off = await listen<AgentEvent>(

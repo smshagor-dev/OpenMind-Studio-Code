@@ -32,6 +32,8 @@ pub struct Connection {
 pub struct EngineSlot {
     lease: Mutex<()>,
     engine: Mutex<Option<Engine>>,
+    gpu_mode: Mutex<bool>,
+    offloaded: Mutex<Option<u32>>,
 }
 
 impl EngineSlot {
@@ -44,6 +46,20 @@ impl EngineSlot {
         let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
         let engine = slot.as_mut()?;
         engine.exited().is_none().then(|| engine.alias.clone())
+    }
+
+    pub fn acceleration(&self) -> (bool, Option<u32>) {
+        let slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
+        let requested = *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner);
+        let layers = if slot.is_some() {
+            *self
+                .offloaded
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        } else {
+            None
+        };
+        (requested, layers)
     }
 
     pub fn stop(&self) {
@@ -60,6 +76,7 @@ impl EngineSlot {
     /// The engine running `model`, started (and waited for) when needed.
     pub fn ensure(
         &self,
+        use_gpu: bool,
         program: &Path,
         store: &ModelStore,
         model: &ModelEntry,
@@ -69,7 +86,8 @@ impl EngineSlot {
     ) -> Result<Connection, String> {
         let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(engine) = slot.as_mut() {
-            if engine.alias == model.id
+            if *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) == use_gpu
+                && engine.alias == model.id
                 && engine.exited().is_none()
                 && engine.health() == Health::Ready
             {
@@ -82,6 +100,10 @@ impl EngineSlot {
         if let Some(mut old) = slot.take() {
             old.stop();
         }
+        *self
+            .offloaded
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
         let entry = store.ready_entry(model).map_err(|e| e.to_string())?;
         let event = |state: &'static str, message: Option<String>| EngineEvent {
             kind: "engine",
@@ -95,6 +117,7 @@ impl EngineSlot {
             model: entry,
             alias: model.id.clone(),
             context_tokens: model.context_tokens,
+            use_gpu,
             log_file: log_dir.join("llama-server.log"),
         };
         let mut engine = Engine::start(&config).map_err(|e| {
@@ -133,9 +156,21 @@ impl EngineSlot {
             base_url: engine.base_url(),
             key: engine.key().to_string(),
         };
+        *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) = use_gpu;
+        *self
+            .offloaded
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = offloaded_layers(&engine.log_tail(500));
         *slot = Some(engine);
         Ok(connection)
     }
+}
+
+fn offloaded_layers(log: &str) -> Option<u32> {
+    log.lines().rev().find_map(|line| {
+        let tail = line.split("offloaded ").nth(1)?;
+        tail.split('/').next()?.trim().parse::<u32>().ok()
+    })
 }
 
 /// The engine's own explanation from its log (out of memory, a model it can't read ...).
@@ -163,6 +198,19 @@ pub fn program_in(dir: PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpu_offload_comes_from_the_engine_report_not_detected_capacity() {
+        assert_eq!(
+            offloaded_layers("load_tensors: offloaded 33/33 layers to GPU"),
+            Some(33)
+        );
+        assert_eq!(
+            offloaded_layers("load_tensors: offloaded 0/33 layers to GPU"),
+            Some(0)
+        );
+        assert_eq!(offloaded_layers("Vulkan device: 8 GB VRAM"), None);
+    }
 
     #[test]
     fn the_engines_own_error_is_found_in_its_log() {

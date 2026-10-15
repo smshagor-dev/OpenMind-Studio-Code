@@ -4,6 +4,10 @@
 //! startup; a conversation starts only after the user sends a message. The engine stops with the app.
 
 mod engine;
+mod turn;
+use turn::run_turn;
+pub mod capabilities;
+pub mod history;
 mod host;
 pub mod models;
 
@@ -12,10 +16,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use openmind_agent::{
-    system_prompt, AgentHost, CommandEnv, Decision, HttpModel, Mode, PromptFacts, Session,
-    TurnInput, Workspace,
-};
+use openmind_agent::{AgentHost, CommandEnv, Decision, Mode, Session};
 use openmind_llm::{Catalog, ModelStore};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -41,6 +42,7 @@ pub struct Chat {
     root: Mutex<Option<PathBuf>>,
     cancel: Mutex<Arc<AtomicBool>>,
     active_task: Mutex<Option<String>>,
+    conversation_id: Mutex<Option<String>>,
     busy: AtomicBool,
     pending: Pending,
     mode: Mutex<Mode>,
@@ -148,8 +150,20 @@ fn os_name() -> &'static str {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct HistoryMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SendRequest {
+    #[serde(default)]
+    attachments: Vec<capabilities::Attachment>,
+    #[serde(default)]
+    conversation_id: Option<String>,
+    #[serde(default)]
+    history: Vec<HistoryMessage>,
     #[serde(default)]
     task_id: Option<String>,
     #[serde(default)]
@@ -190,7 +204,21 @@ pub async fn agent_send(
     agent: State<'_, AgentRuntime>,
 ) -> Result<(), String> {
     let text = request.text.trim().to_string();
-    if text.len() > 100000 || request.task_id.as_ref().is_some_and(|id| id.len() > 128) {
+    if text.len() > 100000
+        || request.task_id.as_ref().is_some_and(|id| id.len() > 128)
+        || request.attachments.len() > 6
+        || request.history.len() > 80
+        || request
+            .history
+            .iter()
+            .map(|m| m.content.len())
+            .sum::<usize>()
+            > 8 * 1024 * 1024
+        || request
+            .conversation_id
+            .as_ref()
+            .is_some_and(|id| id.is_empty() || id.len() > 80)
+    {
         return Err("The request is too large.".into());
     }
     if text.is_empty() {
@@ -252,107 +280,13 @@ pub async fn agent_send(
             label,
             pending: &chat.pending,
             task_id: request.task_id.as_deref(),
+            options: Some(&request.options),
         };
         run_turn(
             &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
         );
     });
     Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn run_turn(
-    agent: &AgentRuntime,
-    chat: &Chat,
-    host: &WindowHost<'_>,
-    program: &std::path::Path,
-    model: &openmind_llm::ModelEntry,
-    root: &std::path::Path,
-    request: &SendRequest,
-    text: &str,
-    env: &CommandEnv,
-    cancel: &AtomicBool,
-) {
-    let end = |message: String| {
-        host.send(&openmind_agent::AgentEvent::TurnEnd {
-            reason: "error".into(),
-            message: Some(message),
-        });
-    };
-    let ws = match Workspace::new(root) {
-        Ok(ws) => ws,
-        Err(message) => return end(message),
-    };
-    let _lease = match agent.engine.lease() {
-        Ok(lease) => lease,
-        Err(message) => return end(message),
-    };
-    let connection = match agent.engine.ensure(
-        program,
-        &agent.store,
-        model,
-        &agent.logs_dir,
-        cancel,
-        &|event| host.send(&event),
-    ) {
-        Ok(connection) => connection,
-        Err(_) if cancel.load(Ordering::Relaxed) => {
-            return host.send(&openmind_agent::AgentEvent::TurnEnd {
-                reason: "cancelled".into(),
-                message: None,
-            })
-        }
-        Err(message) => return end(message),
-    };
-    let ui_language = if request.ui_language.is_empty() {
-        "English"
-    } else {
-        request.ui_language.as_str()
-    };
-    let date = today();
-    let facts = PromptFacts {
-        os: os_name(),
-        date: &date,
-        ui_language,
-        plan_mode: request.mode == Mode::Plan,
-    };
-    let system = system_prompt(&ws, &facts);
-    let mut slot = chat.session.lock().unwrap_or_else(PoisonError::into_inner);
-    let mut root_slot = chat.root.lock().unwrap_or_else(PoisonError::into_inner);
-    let same = root_slot.as_deref() == Some(ws.root())
-        && slot.as_ref().is_some_and(|s| s.model == model.id);
-    if !same {
-        *slot = Some(Session::new(
-            system.clone(),
-            model.id.clone(),
-            model.context_tokens,
-            request.mode,
-        ));
-        *root_slot = Some(ws.root().to_path_buf());
-    }
-    drop(root_slot);
-    let Some(session) = slot.as_mut() else {
-        return end("The conversation could not be started.".into());
-    };
-    session.set_mode(request.mode);
-    session.set_options(request.options.clone());
-    session.set_system(system);
-    let unsaved: Vec<PathBuf> = request.unsaved.iter().map(PathBuf::from).collect();
-    let client = HttpModel {
-        base_url: connection.base_url,
-        key: connection.key,
-    };
-    session.run_turn(
-        text,
-        &client,
-        host,
-        &TurnInput {
-            ws: &ws,
-            env,
-            unsaved: &unsaved,
-            cancel,
-        },
-    );
 }
 
 #[derive(Debug, Deserialize)]
@@ -491,6 +425,7 @@ pub async fn agent_undo(
             label: window.label().to_string(),
             pending: &chat.pending,
             task_id: None,
+            options: None,
         };
         let cancel = AtomicBool::new(false);
         let mut slot = chat.session.lock().unwrap_or_else(PoisonError::into_inner);
@@ -514,6 +449,7 @@ pub async fn agent_undo(
 #[tauri::command]
 pub async fn agent_engine_start(
     id: String,
+    use_gpu: Option<bool>,
     app: AppHandle,
     state: State<'_, AppState>,
     agent: State<'_, AgentRuntime>,
@@ -536,6 +472,7 @@ pub async fn agent_engine_start(
             return Err("The editor is closing.".to_string());
         }
         agent.engine.ensure(
+            use_gpu.unwrap_or(true),
             &program,
             &agent.store,
             &model,

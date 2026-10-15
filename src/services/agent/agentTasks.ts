@@ -1,9 +1,11 @@
+import { attachment } from "./historyValidation";
 import type { AgentMode } from "./agentIpc";
 import { agentOptions } from "./agentOptions";
 import type { AgentOptions } from "./agentOptions";
 
 export type TaskStatus = "pending" | "running" | "stopping" | "completed" | "cancelled" | "failed";
 export interface AgentTask {
+  attachments?: import("./agentAttachments").AgentAttachment[];
   id: string;
   text: string;
   mode: AgentMode;
@@ -47,7 +49,7 @@ export class AgentTasks {
       if (typeof t.id !== "string" || !t.id || t.id.length > 128 || tasks.some((item) => item.id === t.id) || typeof t.text !== "string" || t.text.length > 100000 || typeof t.modelId !== "string") continue;
       if (t.mode !== "ask" && t.mode !== "acceptEdits" && t.mode !== "auto" && t.mode !== "plan") continue;
       const terminal = t.status === "completed" || t.status === "cancelled" || t.status === "failed";
-      tasks.push({ id: t.id, text: t.text, modelId: t.modelId, mode: t.mode,
+      tasks.push({ attachments: Array.isArray(t.attachments) ? t.attachments.slice(0, 6).filter(attachment) : [], id: t.id, text: t.text, modelId: t.modelId, mode: t.mode,
         workspace: typeof t.workspace === "string" ? t.workspace : null,
         options: agentOptions(t.options), status: terminal ? t.status as TaskStatus : "pending",
         reason: terminal ? (typeof t.reason === "string" ? t.reason : null) : "interrupted",

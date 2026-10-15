@@ -14,6 +14,7 @@ pub use options::SessionOptions;
 pub mod client;
 pub mod diff;
 pub mod events;
+pub mod external;
 pub mod paths;
 pub mod policy;
 pub mod prompt;
@@ -29,3 +30,5 @@ pub use policy::Mode;
 pub use prompt::{system_prompt, PromptFacts};
 pub use session::{AgentHost, Session, TurnInput};
 pub use tools::CommandEnv;
+
+pub mod capabilities;

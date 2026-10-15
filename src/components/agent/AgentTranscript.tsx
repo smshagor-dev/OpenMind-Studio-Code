@@ -174,6 +174,10 @@ export function AgentTranscript({ entries, busy, showReasoning = true }: { entri
     <>
       {entries.map((entry) => {
         switch (entry.kind) {
+          case "document":
+            return <details key={entry.id} className="agent-document"><summary>{entry.name}</summary><pre>{entry.text}</pre></details>;
+          case "asset":
+            return <figure key={entry.id} className="agent-asset"><img src={entry.data} alt={entry.name} loading="lazy" /><figcaption>{entry.name} <a href={entry.data} download={entry.name}>↓</a></figcaption></figure>;
           case "user":
             return (
               <div key={entry.id} className="agent-message agent-message--user agent-enter">
