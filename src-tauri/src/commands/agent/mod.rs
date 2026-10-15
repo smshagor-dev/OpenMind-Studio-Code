@@ -13,8 +13,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use openmind_agent::{
-    system_prompt, CommandEnv, Decision, HttpModel, Mode, PromptFacts, Session, TurnInput,
-    Workspace,
+    system_prompt, AgentHost, CommandEnv, Decision, HttpModel, Mode, PromptFacts, Session,
+    TurnInput, Workspace,
 };
 use openmind_llm::{Catalog, ModelStore};
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,14 @@ use crate::app_state::AppState;
 use engine::EngineSlot;
 use host::{Pending, WindowHost};
 use models::Downloads;
+
+struct BusyGuard(Arc<Chat>);
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.0.busy.store(false, Ordering::SeqCst);
+    }
+}
 
 /// A window's conversation.
 #[derive(Default)]
@@ -200,6 +208,7 @@ pub async fn agent_send(
     let agent = agent.inner().clone();
     let root = PathBuf::from(&folder.path);
     std::thread::spawn(move || {
+        let _busy = BusyGuard(Arc::clone(&chat));
         let host = WindowHost {
             app,
             label,
@@ -208,7 +217,6 @@ pub async fn agent_send(
         run_turn(
             &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
         );
-        chat.busy.store(false, Ordering::SeqCst);
     });
     Ok(())
 }
@@ -234,6 +242,10 @@ fn run_turn(
     };
     let ws = match Workspace::new(root) {
         Ok(ws) => ws,
+        Err(message) => return end(message),
+    };
+    let _lease = match agent.engine.lease() {
+        Ok(lease) => lease,
         Err(message) => return end(message),
     };
     let connection = match agent.engine.ensure(
@@ -319,6 +331,20 @@ pub fn agent_answer(answer: Answer, window: tauri::Window, agent: State<'_, Agen
         .answer(&answer.id, answer.decision)
 }
 
+#[tauri::command]
+pub fn agent_guard_answer(
+    id: String,
+    owner: String,
+    editor: host::EditorState,
+    window: tauri::Window,
+    agent: State<'_, AgentRuntime>,
+) -> bool {
+    agent
+        .chat(&owner)
+        .pending
+        .editor_state(&id, window.label(), editor)
+}
+
 /// Stops the running turn (a waiting question counts as "no").
 #[tauri::command]
 pub fn agent_stop(window: tauri::Window, agent: State<'_, AgentRuntime>) {
@@ -331,11 +357,35 @@ pub fn agent_stop(window: tauri::Window, agent: State<'_, AgentRuntime>) {
 
 /// Starts a new conversation (the old one is dropped; files stay as they are).
 #[tauri::command]
-pub fn agent_reset(window: tauri::Window, agent: State<'_, AgentRuntime>) -> Result<(), String> {
+pub async fn agent_reset(
+    window: tauri::Window,
+    agent: State<'_, AgentRuntime>,
+) -> Result<(), String> {
     let chat = agent.chat(window.label());
-    if chat.busy.load(Ordering::SeqCst) {
-        return Err("Stop the agent first.".into());
+    tokio::task::spawn_blocking(move || reset_chat(chat))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn reset_chat(chat: Arc<Chat>) -> Result<(), String> {
+    chat.cancel
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .store(true, Ordering::Relaxed);
+    let started = std::time::Instant::now();
+    while chat
+        .busy
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        if started.elapsed() > std::time::Duration::from_secs(10) {
+            return Err(
+                "The agent has not stopped yet. Try New Chat again once it finishes.".into(),
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    let _busy = BusyGuard(Arc::clone(&chat));
     *chat.session.lock().unwrap_or_else(PoisonError::into_inner) = None;
     Ok(())
 }
@@ -345,26 +395,44 @@ pub fn agent_reset(window: tauri::Window, agent: State<'_, AgentRuntime>) -> Res
 pub struct UndoResult {
     restored: Vec<String>,
     failed: Vec<String>,
+    can_undo: bool,
 }
 
 /// Puts back the files the last turn changed.
 #[tauri::command]
 pub async fn agent_undo(
     window: tauri::Window,
+    app: AppHandle,
     agent: State<'_, AgentRuntime>,
 ) -> Result<UndoResult, String> {
     let chat = agent.chat(window.label());
-    if chat.busy.load(Ordering::SeqCst) {
+    if chat
+        .busy
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
         return Err("Stop the agent first.".into());
     }
     tokio::task::spawn_blocking(move || {
+        let _busy = BusyGuard(Arc::clone(&chat));
+        let host = WindowHost {
+            app,
+            label: window.label().to_string(),
+            pending: &chat.pending,
+        };
+        let cancel = AtomicBool::new(false);
         let mut slot = chat.session.lock().unwrap_or_else(PoisonError::into_inner);
         let session = slot.as_mut().ok_or("There is nothing to undo.")?;
         if !session.can_undo() {
             return Err("There is nothing to undo.".to_string());
         }
-        let (restored, failed) = session.undo_last();
-        Ok(UndoResult { restored, failed })
+        let (restored, failed) =
+            session.undo_last_checked(&|path| host.check_change(path, &cancel));
+        Ok(UndoResult {
+            restored,
+            failed,
+            can_undo: session.can_undo(),
+        })
     })
     .await
     .map_err(|err| err.to_string())?
@@ -374,9 +442,13 @@ pub async fn agent_undo(
 #[tauri::command]
 pub async fn agent_engine_stop(agent: State<'_, AgentRuntime>) -> Result<(), String> {
     let engine = Arc::clone(&agent.engine);
-    tokio::task::spawn_blocking(move || engine.stop())
-        .await
-        .map_err(|err| err.to_string())
+    tokio::task::spawn_blocking(move || {
+        let _lease = engine.lease()?;
+        engine.stop();
+        Ok(())
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[cfg(test)]
@@ -418,5 +490,31 @@ mod tests {
         agent.forget_window("window-2");
         assert!(chat.cancel.lock().expect("lock").load(Ordering::Relaxed));
         assert!(!Arc::ptr_eq(&chat, &agent.chat("window-2")));
+    }
+}
+
+#[cfg(test)]
+mod reset_tests {
+    use super::*;
+    #[test]
+    fn reset_waits_for_cancelled_worker_to_release_busy() {
+        let chat = Arc::new(Chat::default());
+        chat.busy.store(true, Ordering::SeqCst);
+        let worker = Arc::clone(&chat);
+        let thread = std::thread::spawn(move || {
+            while !worker
+                .cancel
+                .lock()
+                .expect("cancel")
+                .load(Ordering::Relaxed)
+            {
+                std::thread::yield_now();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            worker.busy.store(false, Ordering::SeqCst);
+        });
+        reset_chat(Arc::clone(&chat)).expect("reset");
+        thread.join().expect("worker");
+        assert!(!chat.busy.load(Ordering::SeqCst));
     }
 }

@@ -41,6 +41,38 @@ const STAGED_DIR: &str = ".update-staged";
 const OLD_MARK: &str = ".old-";
 /// The folder the portable ZIP holds everything in.
 const ZIP_ROOT: &str = "OpenMind Studio";
+const MAX_PACKAGE_BYTES: u64 = 512 * 1024 * 1024;
+
+fn read_package(
+    reader: &mut dyn Read,
+    total: Option<u64>,
+    limit: u64,
+    report: &mut dyn FnMut(u64, Option<u64>),
+) -> Result<Vec<u8>, String> {
+    if total.is_some_and(|n| n > limit) {
+        return Err("The portable update exceeds the maximum package size.".into());
+    }
+    let mut data = Vec::with_capacity(total.unwrap_or(0).min(8 * 1024 * 1024) as usize);
+    let mut reader = reader.take(limit + 1);
+    let mut buffer = vec![0u8; 1 << 16];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|e| format!("The portable update download stopped: {e}"))?;
+        if read == 0 {
+            break;
+        }
+        if data.len() as u64 + read as u64 > limit {
+            return Err("The portable update exceeds the maximum package size.".into());
+        }
+        data.extend_from_slice(&buffer[..read]);
+        report(data.len() as u64, total);
+    }
+    if total.is_some_and(|n| n != data.len() as u64) {
+        return Err("The portable update size does not match Content-Length.".into());
+    }
+    Ok(data)
+}
 
 /// This build's key in `latest.json`'s `openmind.portable` map.
 pub fn target() -> &'static str {
@@ -206,18 +238,7 @@ pub fn download_and_stage(
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse::<u64>().ok());
     let mut reader = response.body_mut().as_reader();
-    let mut data = Vec::with_capacity(total.unwrap_or(0).min(1 << 30) as usize);
-    let mut buffer = vec![0u8; 1 << 16];
-    loop {
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|err| format!("The portable update download stopped: {err}"))?;
-        if read == 0 {
-            break;
-        }
-        data.extend_from_slice(&buffer[..read]);
-        report(data.len() as u64, total);
-    }
+    let data = read_package(&mut reader, total, MAX_PACKAGE_BYTES, &mut report)?;
     verify(&data, &request.signature, &request.pubkey, &request.version)?;
     std::fs::write(&archive, &data).map_err(|err| err.to_string())?;
     drop(data);
@@ -347,3 +368,21 @@ pub fn finish_previous_update(root: &Path) {
 #[cfg(test)]
 #[path = "portable_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+mod download_limit_tests {
+    use super::*;
+    #[test]
+    fn package_limit_handles_declared_and_chunked_oversize_and_truncation() {
+        let bytes = [0u8; 9];
+        assert!(read_package(&mut &bytes[..], Some(9), 8, &mut |_, _| {}).is_err());
+        assert!(read_package(&mut &bytes[..], None, 8, &mut |_, _| {}).is_err());
+        assert!(read_package(&mut &bytes[..4], Some(8), 8, &mut |_, _| {}).is_err());
+        assert_eq!(
+            read_package(&mut &bytes[..8], Some(8), 8, &mut |_, _| {})
+                .expect("at limit")
+                .len(),
+            8
+        );
+    }
+}

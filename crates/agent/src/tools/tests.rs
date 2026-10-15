@@ -285,3 +285,59 @@ fn todos_are_passed_to_the_panel() {
     );
     assert_eq!(out.todos.map(|t| t.len()), Some(2));
 }
+
+#[test]
+fn dirty_descendants_prevent_directory_deletion() {
+    let mut f = Fixture::new();
+    f.unsaved.push(f.ws.root().join("src/main.py"));
+    let result = f.run("delete_file", json!({"path":"src"}));
+    assert!(!result.ok);
+    assert!(f.ws.root().join("src/main.py").exists());
+}
+
+#[test]
+fn write_rechecks_dirty_state_after_preparation() {
+    let mut f = Fixture::new();
+    let prepared = prepare(
+        "write_file",
+        &json!({"path":"README.md","content":"agent"}).to_string(),
+        &f.ctx(),
+        false,
+    );
+    f.unsaved.push(f.ws.root().join("README.md"));
+    assert!(!execute(prepared, &f.ctx()).ok);
+    assert_eq!(
+        fs::read_to_string(f.ws.root().join("README.md")).expect("read"),
+        "# App\n"
+    );
+}
+
+#[test]
+fn delete_rechecks_the_approved_bytes() {
+    let f = Fixture::new();
+    let prepared = prepare(
+        "delete_file",
+        &json!({"path":"README.md"}).to_string(),
+        &f.ctx(),
+        false,
+    );
+    fs::write(f.ws.root().join("README.md"), "later work").expect("save");
+    assert!(!execute(prepared, &f.ctx()).ok);
+    assert_eq!(
+        fs::read_to_string(f.ws.root().join("README.md")).expect("read"),
+        "later work"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn unix_timeout_kills_inherited_output_pipes() {
+    let f = Fixture::new();
+    let started = std::time::Instant::now();
+    let result = f.run(
+        "run_command",
+        json!({"command":"sleep 30 & wait", "timeout_seconds":1}),
+    );
+    assert!(!result.ok);
+    assert!(started.elapsed() < std::time::Duration::from_secs(6));
+}

@@ -137,7 +137,7 @@ export interface AgentIpc {
   answer: (id: string, decision: Decision) => Promise<boolean>;
   stop: () => Promise<void>;
   reset: () => Promise<void>;
-  undo: () => Promise<{ restored: string[]; failed: string[] }>;
+  undo: () => Promise<{ restored: string[]; failed: string[]; canUndo: boolean }>;
   stopEngine: () => Promise<void>;
   onEvent: (listener: (event: AgentEvent) => void) => Promise<() => void>;
   onDownload: (listener: (event: DownloadEvent) => void) => Promise<() => void>;
@@ -152,7 +152,7 @@ export const tauriAgentIpc: AgentIpc = {
   answer: (id, decision) => invoke<boolean>("agent_answer", { answer: { id, ...decision } }),
   stop: () => invoke("agent_stop"),
   reset: () => invoke("agent_reset"),
-  undo: () => invoke<{ restored: string[]; failed: string[] }>("agent_undo"),
+  undo: () => invoke<{ restored: string[]; failed: string[]; canUndo: boolean }>("agent_undo"),
   stopEngine: () => invoke("agent_engine_stop"),
   onEvent: (listener) =>
     listen<AgentEvent>(
@@ -167,3 +167,4 @@ export const tauriAgentIpc: AgentIpc = {
       listener(event.payload);
     }),
 };
+

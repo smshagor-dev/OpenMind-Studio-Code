@@ -53,11 +53,14 @@ pub enum ChangeKind {
 /// A file the agent changed, with what was there before (for Undo).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
+    pub root: PathBuf,
     pub path: PathBuf,
     pub rel: String,
     pub kind: ChangeKind,
     /// The bytes before the change; `None` when the file didn't exist (or was a folder, which the Recycle Bin keeps).
     pub before: Option<Vec<u8>>,
+    /// Expected bytes after the change (None means deleted). Undo refuses later edits.
+    pub after: Option<Vec<u8>>,
 }
 
 /// What a finished call reports.
@@ -110,6 +113,7 @@ pub(crate) enum Op {
     Delete {
         path: PathBuf,
         before_bytes: Option<Vec<u8>>,
+        snapshot: change::DeleteSnapshot,
     },
     Command(command::Planned),
     Todos(Vec<Todo>),
@@ -141,6 +145,13 @@ impl Prepared {
     pub fn is_finished(&self) -> bool {
         matches!(self.op, Op::Finished(_))
     }
+
+    pub fn change_path(&self) -> Option<&std::path::Path> {
+        match &self.op {
+            Op::Write { path, .. } | Op::Delete { path, .. } => Some(path),
+            _ => None,
+        }
+    }
 }
 
 pub struct ToolContext<'a> {
@@ -162,7 +173,10 @@ impl ToolContext<'_> {
             }
         };
         let wanted = key(path);
-        self.unsaved.iter().any(|p| key(p) == wanted)
+        self.unsaved.iter().any(|p| {
+            let actual = key(p);
+            actual == wanted || actual.starts_with(&format!("{wanted}/"))
+        })
     }
 }
 
@@ -334,7 +348,11 @@ pub fn execute(prepared: Prepared, ctx: &ToolContext<'_>) -> Outcome {
             before_bytes,
             text,
         } => change::apply_write(ctx, path, before, before_bytes, &text, prepared.diff),
-        Op::Delete { path, before_bytes } => change::apply_delete(ctx, path, before_bytes),
+        Op::Delete {
+            path,
+            before_bytes,
+            snapshot,
+        } => change::apply_delete(ctx, path, before_bytes, snapshot),
         Op::Command(planned) => command::run(&planned, ctx),
         Op::Todos(list) => {
             let mut outcome = Outcome::done(

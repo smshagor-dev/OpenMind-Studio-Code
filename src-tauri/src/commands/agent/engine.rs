@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
 use openmind_llm::{Engine, EngineConfig, Health, ModelEntry, ModelStore};
@@ -30,10 +30,15 @@ pub struct Connection {
 
 #[derive(Default)]
 pub struct EngineSlot {
+    lease: Mutex<()>,
     engine: Mutex<Option<Engine>>,
 }
 
 impl EngineSlot {
+    /// Held for the entire turn, deletion or manual stop, not only model loading.
+    pub fn lease(&self) -> Result<MutexGuard<'_, ()>, String> {
+        self.lease.try_lock().map_err(|_| "The local engine is in use by another agent operation. Wait for it to finish or stop that turn.".into())
+    }
     /// The model the engine runs now, if it runs.
     pub fn running_model(&self) -> Option<String> {
         let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
@@ -171,5 +176,18 @@ mod tests {
         let slot = EngineSlot::default();
         assert_eq!(slot.running_model(), None);
         slot.stop();
+    }
+}
+
+#[cfg(test)]
+mod lease_tests {
+    use super::*;
+    #[test]
+    fn a_turn_excludes_model_switch_delete_and_stop_until_released() {
+        let slot = EngineSlot::default();
+        let lease = slot.lease().expect("first");
+        assert!(slot.lease().is_err());
+        drop(lease);
+        assert!(slot.lease().is_ok());
     }
 }

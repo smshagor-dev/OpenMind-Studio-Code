@@ -23,6 +23,10 @@ pub trait AgentHost: Send + Sync {
     fn emit(&self, event: AgentEvent);
     /// Blocks until the user answers (or `cancel` is set, which counts as a refusal).
     fn ask(&self, request: PermissionRequest, cancel: &AtomicBool) -> Decision;
+    /// A live editor-state check, after approval and immediately before filesystem mutation.
+    fn check_change(&self, _path: &std::path::Path, _cancel: &AtomicBool) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 pub struct TurnInput<'a> {
@@ -286,7 +290,13 @@ impl Session {
                 }
                 self.policy.remember(kind, &target, &decision);
             }
-            let outcome = tools::execute(prepared, ctx);
+            let checked = prepared
+                .change_path()
+                .map_or(Ok(()), |path| host.check_change(path, ctx.cancel));
+            let outcome = match checked {
+                Ok(()) => tools::execute(prepared, ctx),
+                Err(e) => tools::Outcome::failed(e),
+            };
             if let Some(items) = outcome.todos.clone() {
                 host.emit(AgentEvent::Todos { items });
             }
@@ -341,30 +351,81 @@ impl Session {
 
     /// Puts back what the last turn that changed files changed. Returns the files restored and those that couldn't be.
     pub fn undo_last(&mut self) -> (Vec<String>, Vec<String>) {
+        self.undo_last_checked(&|_| Ok(()))
+    }
+
+    pub fn undo_last_checked(
+        &mut self,
+        check: &dyn Fn(&std::path::Path) -> Result<(), String>,
+    ) -> (Vec<String>, Vec<String>) {
         let Some(changes) = self.turns.pop() else {
             return (Vec::new(), Vec::new());
         };
         let mut restored = Vec::new();
         let mut failed = Vec::new();
+        let mut retained = Vec::new();
+        let mut blocked = std::collections::HashSet::new();
         for change in changes.iter().rev() {
-            let result = match (change.kind, &change.before) {
-                (ChangeKind::Created, _) => std::fs::remove_file(&change.path),
-                (_, Some(bytes)) => change
-                    .path
-                    .parent()
-                    .map_or(Ok(()), std::fs::create_dir_all)
-                    .and_then(|()| std::fs::write(&change.path, bytes)),
-                (_, None) => Err(std::io::Error::other("restore it from the Recycle Bin")),
-            };
+            let result = (|| {
+                if blocked.contains(&change.path) {
+                    return Err(std::io::Error::other(
+                        "a later change to this file could not be undone",
+                    ));
+                }
+                let ws = Workspace::new(&change.root).map_err(std::io::Error::other)?;
+                let target = ws
+                    .resolve_for_change(&change.path.to_string_lossy())
+                    .map_err(std::io::Error::other)?;
+                if target != change.path {
+                    return Err(std::io::Error::other("the path now resolves elsewhere"));
+                }
+                check(&change.path).map_err(std::io::Error::other)?;
+                if let Ok(meta) = std::fs::metadata(&change.path) {
+                    if change
+                        .after
+                        .as_ref()
+                        .is_none_or(|bytes| meta.len() != bytes.len() as u64)
+                    {
+                        return Err(std::io::Error::other(
+                            "the file has later changes; Undo refused",
+                        ));
+                    }
+                }
+                let current = match std::fs::read(&change.path) {
+                    Ok(bytes) => Some(bytes),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(e),
+                };
+                if current != change.after {
+                    return Err(std::io::Error::other(
+                        "the file has later changes; Undo refused",
+                    ));
+                }
+                match (change.kind, &change.before) {
+                    (ChangeKind::Created, _) => std::fs::remove_file(&change.path),
+                    (_, Some(bytes)) => crate::textfile::write_bytes(&change.path, bytes)
+                        .map_err(std::io::Error::other),
+                    (_, None) => Err(std::io::Error::other("restore it from the Recycle Bin")),
+                }
+            })();
             match result {
                 Ok(()) => restored.push(change.rel.clone()),
-                Err(err) => failed.push(format!("{} ({err})", change.rel)),
+                Err(err) => {
+                    blocked.insert(change.path.clone());
+                    retained.push(change.clone());
+                    failed.push(format!("{} ({err})", change.rel));
+                }
             }
+        }
+        if !retained.is_empty() {
+            retained.reverse();
+            self.turns.push(retained);
         }
         self.messages.push(Message::User {
             content: format!(
-                "[The user undid your last changes: {}. Those files are back as they were before.]",
-                restored.join(", ")
+                "[Undo restored: {}. Not restored (conflicts or unavailable backups): {}.]",
+                restored.join(", "),
+                failed.join(", ")
             ),
         });
         self.messages.push(Message::Assistant {

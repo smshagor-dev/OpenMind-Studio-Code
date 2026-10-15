@@ -15,10 +15,13 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 trash = "5.2.9"
+tempfile = "3.27.0"
+
+[target."cfg(unix)".dependencies]
+libc = "0.2"
 
 [target."cfg(windows)".dependencies]
 openmind-process = { version = "1.0.4", path = "../process" }
 
 [dev-dependencies]
 openmind-llm = { version = "1.0.4", path = "../llm" }
-tempfile = "3.27.0"

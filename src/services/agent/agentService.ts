@@ -282,9 +282,9 @@ export class AgentService {
 
   async undo(): Promise<void> {
     try {
-      const { restored, failed } = await this.ipc.undo();
+      const { restored, failed, canUndo } = await this.ipc.undo();
       let transcript = addNotice(
-        { ...this.state.transcript, canUndo: false },
+        { ...this.state.transcript, canUndo },
         "info",
         this.host.text("agent.undo.done", { files: restored.join(", ") || "—" }),
       );
@@ -305,3 +305,4 @@ export class AgentService {
     return this.host.suggestFiles(query).catch(() => []);
   }
 }
+

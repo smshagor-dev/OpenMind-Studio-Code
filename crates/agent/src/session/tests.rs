@@ -316,3 +316,77 @@ fn long_conversations_drop_old_tool_output_first() {
         "a conversation never starts mid-exchange"
     );
 }
+
+#[test]
+fn undo_refuses_later_saves_and_keeps_failed_history() {
+    let project = Project::new();
+    let model = Script::new(vec![
+        call(
+            "c1",
+            "write_file",
+            json!({"path":"main.py","content":"agent"}),
+        ),
+        say("done"),
+    ]);
+    let panel = Panel::new(vec![Decision::Allow]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("go", &model, &panel, &project.input());
+    fs::write(project.ws.root().join("main.py"), "later work").expect("save");
+    let (restored, failed) = s.undo_last();
+    assert!(restored.is_empty());
+    assert_eq!(failed.len(), 1);
+    assert_eq!(project.text(), "later work");
+    assert!(s.can_undo());
+}
+
+#[test]
+fn a_live_editor_conflict_blocks_undo() {
+    let project = Project::new();
+    let model = Script::new(vec![
+        call(
+            "c1",
+            "write_file",
+            json!({"path":"main.py","content":"agent"}),
+        ),
+        say("done"),
+    ]);
+    let panel = Panel::new(vec![Decision::Allow]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("go", &model, &panel, &project.input());
+    let (restored, failed) = s.undo_last_checked(&|_| Err("dirty editor".into()));
+    assert!(restored.is_empty());
+    assert_eq!(failed.len(), 1);
+    assert_eq!(project.text(), "agent");
+    assert!(s.can_undo());
+}
+
+#[test]
+fn live_host_refusal_after_approval_prevents_the_write() {
+    struct DirtyPanel(Panel);
+    impl AgentHost for DirtyPanel {
+        fn emit(&self, event: AgentEvent) {
+            self.0.emit(event);
+        }
+        fn ask(&self, request: PermissionRequest, cancel: &AtomicBool) -> Decision {
+            self.0.ask(request, cancel)
+        }
+        fn check_change(&self, _: &std::path::Path, _: &AtomicBool) -> Result<(), String> {
+            Err("new unsaved edits".into())
+        }
+    }
+    let project = Project::new();
+    let before = project.text();
+    let model = Script::new(vec![
+        call(
+            "c1",
+            "write_file",
+            json!({"path":"main.py","content":"agent"}),
+        ),
+        say("done"),
+    ]);
+    let panel = DirtyPanel(Panel::new(vec![Decision::Allow]));
+    let mut s = session(Mode::Ask);
+    s.run_turn("go", &model, &panel, &project.input());
+    assert_eq!(project.text(), before);
+    assert!(!s.can_undo());
+}

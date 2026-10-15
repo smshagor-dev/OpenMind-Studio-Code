@@ -354,6 +354,7 @@ fn main() {
             commands::agent::models::agent_model_delete,
             commands::agent::agent_send,
             commands::agent::agent_answer,
+            commands::agent::agent_guard_answer,
             commands::agent::agent_stop,
             commands::agent::agent_reset,
             commands::agent::agent_undo,
