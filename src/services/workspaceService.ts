@@ -91,6 +91,7 @@ export class WorkspaceService {
   private readonly layout: EditorLayoutService;
   private cachedState: WorkspaceState = EMPTY_STATE;
   private activeWorkspace: WorkspaceInfo | null = null;
+  private defaultWorkspace: Promise<WorkspaceInfo | null> | null = null;
   /** Paths of closed file-backed documents, most recent last — backs "Reopen Closed Editor". */
   private readonly closedPaths: string[] = [];
   private revealer: ((uri: string, target: RevealTarget) => void) | null = null;
@@ -589,6 +590,22 @@ export class WorkspaceService {
 
   // --- Workspace folder ---
 
+  /** Resolves the Documents workspace once when no project is open. Explicit projects always win. */
+  async ensureWorkspace(): Promise<WorkspaceInfo | null> {
+    if (this.activeWorkspace) return this.activeWorkspace;
+    if (!this.defaultWorkspace) {
+      this.defaultWorkspace = (async () => {
+        const info = await safely(this.events, () => this.ipc.workspaceActiveFolder(), "open the Documents workspace", null);
+        if (!this.activeWorkspace && info) {
+          this.activeWorkspace = info;
+          this.events.emit("workspaceFolderChanged", { workspace: info });
+        }
+        return this.activeWorkspace;
+      })().finally(() => { this.defaultWorkspace = null; });
+    }
+    return this.defaultWorkspace;
+  }
+
   async openFolder(path: string): Promise<WorkspaceInfo | null> {
     const info = await safely(
       this.events,
@@ -757,3 +774,4 @@ export function parentFolder(path: string): string | null {
   if (folder === "") return path.slice(0, 1);
   return /^[A-Za-z]:$/.test(folder) ? `${folder}${path[cut]}` : folder;
 }
+

@@ -42,7 +42,7 @@ export function useAppStartup(): boolean {
         container.associations.initialize(),
         container.previews.initialize(),
         container.runConfigs.initialize(),
-        container.welcome.initialize(),
+        container.welcome.initialize(true),
         container.secondarySideBar.initialize(),
         // Listens for runtime changes made in the PHP Server window too.
         container.runtime.initialize(),
@@ -292,3 +292,4 @@ export function useWorkbenchState() {
   );
   return { workspaceState, activeWorkspace, themeKind, layout };
 }
+

@@ -13,7 +13,7 @@ interface PaneSectionProps {
   title: string;
   expanded: boolean;
   onToggle: () => void;
-  /** Icon buttons shown on the header's right while hovered/focused (VS Code view actions). */
+  /** Icon buttons always shown on the header's right. */
   actions?: PaneAction[];
   /** Grow to fill the remaining sidebar height (the folder tree) rather than size to content. */
   grow?: boolean;
@@ -46,6 +46,7 @@ export function PaneSection({
         aria-expanded={expanded}
         onClick={onToggle}
         onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             onToggle();
@@ -56,7 +57,7 @@ export function PaneSection({
         <h3 className="pane-section__title" title={title}>
           {title}
         </h3>
-        {expanded && actions && actions.length > 0 ? (
+        {actions && actions.length > 0 ? (
           <div className="pane-section__actions">
             {actions.map((action) => (
               <button
@@ -81,3 +82,4 @@ export function PaneSection({
     </section>
   );
 }
+

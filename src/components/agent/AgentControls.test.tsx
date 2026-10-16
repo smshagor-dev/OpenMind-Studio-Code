@@ -4,11 +4,15 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_AGENT_OPTIONS } from "../../services/agent/agentOptions";
 
+const controlsState = vi.hoisted(() => ({ mode: "ask", overview: null }));
+
 vi.mock("../../services/agent", () => ({ agent: {
+  subscribe: () => () => undefined,
+  openSetup: vi.fn(), openSettings: vi.fn(), showHistory: vi.fn(),
   send: vi.fn(() => Promise.resolve(true)), stop: vi.fn(() => Promise.resolve()),
   continueTask: vi.fn(() => Promise.resolve(true)), pauseQueue: vi.fn(), resumeQueue: vi.fn(), cancelTask: vi.fn(),
   cycleMode: vi.fn(() => Promise.resolve()), suggestFiles: vi.fn(() => Promise.resolve([])),
-  options: () => ({ ...DEFAULT_AGENT_OPTIONS }), getState: () => ({ mode: "ask", overview: null }),
+  options: () => ({ ...DEFAULT_AGENT_OPTIONS }), getState: () => controlsState,
   updateOptions: vi.fn(() => Promise.resolve()), setMode: vi.fn(() => Promise.resolve()),
 } }));
 vi.mock("../../i18n", () => ({ useT: () => (key: string) => key }));
@@ -57,4 +61,37 @@ it("shows the preparing goal and offers Continue even with later prompts pending
   view.rerender(<AgentQueue state={{ activeId: null, paused: true, tasks: [{ ...first, status: "cancelled", reason: "cancelled" }, { ...first, id: "next", text: "Later goal", status: "pending" }] }} />);
   fireEvent.click(screen.getByRole("button", { name: "agent.tasks.continue" }));
   expect(agent.continueTask).toHaveBeenCalledOnce();
+});
+
+
+
+it("opens slash shortcuts, navigates them and runs the selected action", () => {
+  render(<AgentPrompt mode="ask" busy={false} disabledReason={null} contextShare={null} />);
+  const input = screen.getByRole("textbox");
+  fireEvent.change(input, { target: { value: "/" } });
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(agent.openSettings).toHaveBeenCalledWith(true);
+  expect(agent.send).not.toHaveBeenCalled();
+  expect(input).toHaveValue("");
+});
+
+it("closes shortcuts with Escape without stopping the running task", () => {
+  render(<AgentPrompt mode="ask" busy disabledReason={null} contextShare={null} />);
+  const input = screen.getByRole("textbox");
+  fireEvent.change(input, { target: { value: "/" } });
+  fireEvent.keyDown(input, { key: "Escape" });
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  expect(agent.stop).not.toHaveBeenCalled();
+});
+
+it("keeps a draft when opening shortcuts from the toolbar", () => {
+  render(<AgentPrompt mode="ask" busy={false} disabledReason={null} contextShare={null} />);
+  const input = screen.getByRole("textbox");
+  fireEvent.change(input, { target: { value: "My unfinished request" } });
+  fireEvent.click(screen.getByRole("button", { name: "agent.composer.commands" }));
+  fireEvent.click(screen.getByRole("option", { name: /\/settings/ }));
+  expect(agent.openSettings).toHaveBeenCalledWith(true);
+  expect(input).toHaveValue("My unfinished request");
 });

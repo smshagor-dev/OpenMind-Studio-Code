@@ -34,7 +34,7 @@ vi.mock("../../services/agent", () => ({
 }));
 vi.mock("../../services/container", () => ({
   container: {
-    workspace: { subscribe: () => () => undefined, getActiveWorkspace: () => null },
+    workspace: { subscribe: () => () => undefined, subscribeWorkspace: () => () => undefined, getActiveWorkspace: () => null },
     ipc: { openExternalUrl: vi.fn(() => Promise.resolve()) },
   },
 }));
@@ -129,3 +129,4 @@ it("shows saved conversations instead of hiding history above the current transc
   expect(screen.getByRole("button", { name: /Saved project task/ })).toBeInTheDocument();
   expect(screen.queryByText("Welcome")).not.toBeInTheDocument();
 });
+

@@ -2856,5 +2856,10 @@
   "agent.settings.visionEndpoint": "Image reading · local vision API URL",
   "agent.settings.imageEndpoint": "Image generation · local image API URL",
   "agent.capabilities.hint": "Optional capabilities require a running server: SearXNG with JSON enabled for search, an OpenAI-compatible vision server with a loaded vision model for image reading, and an A1111-compatible server started with --api for image generation. Leave a URL empty to disable it. Images stay on this computer; web queries go to your configured search server. Tools run only when needed for your request, following the selected permission mode.",
-  "agent.capabilities.check": "Check connections"
+  "agent.capabilities.check": "Check connections",
+  "agent.welcome.start": "What would you like to build? Ask about your project or start something new.",
+  "agent.composer.commands": "Shortcuts",
+  "agent.composer.files": "Project files",
+  "agent.composer.model": "Model",
+  "agent.composer.hint": "Enter to send · Shift+Enter for a new line · / for shortcuts"
 }

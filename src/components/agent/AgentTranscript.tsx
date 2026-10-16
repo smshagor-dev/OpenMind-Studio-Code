@@ -1,4 +1,5 @@
 import { useState } from "react";
+import agentLogo from "../../assets/openmindai-agent.png";
 
 import type { Entry } from "../../services/agent/agentModel";
 import { agent } from "../../services/agent";
@@ -21,23 +22,13 @@ export function AgentWelcome({ folder }: { folder: string | null }) {
   const t = useT();
   return (
     <div className="agent-welcome agent-enter">
-      <div className="agent-welcome__box">
-        <div className="agent-welcome__title">
-          <span className="agent-welcome__star" aria-hidden="true">
-            ✻
-          </span>
-          {t("agent.welcome.title")}
-        </div>
-        <div className="agent-welcome__cwd">{folder ?? t("agent.welcome.noFolder")}</div>
-      </div>
-      <div className="agent-welcome__tips">
-        <div className="agent-welcome__tips-title">{t("agent.welcome.tipsTitle")}</div>
-        <ol>
-          <li>{t("agent.welcome.tip1")}</li>
-          <li>{t("agent.welcome.tip2")}</li>
-          <li>{t("agent.welcome.tip3")}</li>
-          <li>{t("agent.welcome.tip4")}</li>
-        </ol>
+      <img className="agent-welcome__logo" src={agentLogo} alt="" />
+      <h2 className="agent-welcome__title">OpenMindAI Agent</h2>
+      <p className="agent-welcome__subtitle">{t("agent.welcome.start")}</p>
+      <div className="agent-welcome__cwd" title={folder ?? undefined}>{folder ?? t("agent.welcome.noFolder")}</div>
+      <div className="agent-welcome__shortcuts">
+        <span><kbd>/</kbd> {t("agent.composer.commands")}</span>
+        <span><kbd>@</kbd> {t("agent.composer.files")}</span>
       </div>
     </div>
   );
@@ -205,3 +196,4 @@ export function AgentTranscript({ entries, busy, showReasoning = true }: { entri
     </>
   );
 }
+

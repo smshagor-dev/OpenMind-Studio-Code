@@ -76,7 +76,7 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
               {...rest}
               group={group}
               active={group.id === state.activeGroupId}
-              showWelcome={state.groups.length === 1}
+              showWelcome={index === 0}
             />
           </div>
         </Fragment>
@@ -84,3 +84,4 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
     </div>
   );
 }
+

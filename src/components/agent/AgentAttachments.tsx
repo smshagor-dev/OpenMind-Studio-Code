@@ -40,14 +40,16 @@ export function AgentAttachments() {
       />
       <button
         type="button"
+        className="agent-composer__attach"
+        aria-label={t("agent.attach.add")}
+        title={t("agent.attach.hint")}
         disabled={loading}
         onClick={() => {
           input.current?.click();
         }}
       >
-        {loading ? t("agent.loading") : t("agent.attach.add")}
+        <span aria-hidden="true">{loading ? "…" : "+"}</span>
       </button>
-      <span>{t("agent.attach.hint")}</span>
       {(state.attachments ?? []).map((item) => (
         <span className="agent-attachment" key={item.id}>
           {item.data ? <img src={item.data} alt="" /> : null}
@@ -66,3 +68,4 @@ export function AgentAttachments() {
     </div>
   );
 }
+

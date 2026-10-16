@@ -36,7 +36,8 @@ export function registerFileCommands(deps: FileCommandDeps): void {
   const notTextReason = () =>
     hasActiveTab(workspace) && !isText() ? t("editor.previewNothingToSave") : undefined;
 
-  commands.register("file.new", () => {
+  commands.register("file.new", async () => {
+    await workspace.ensureWorkspace();
     workspace.createUntitled();
   });
 
@@ -112,13 +113,13 @@ function registerExplorerCommands(
 ): void {
   // As in VS Code: the Explorer asks for the name in the tree; nothing is created until one is given.
   commands.register("explorer.newFile", async () => {
-    if (!explorer.getSnapshot().rootPath) return;
+    if (!explorer.getSnapshot().rootPath && !await workspace.ensureWorkspace()) return;
     await layout.showView("explorer");
     await explorer.beginCreate("file");
   });
 
   commands.register("explorer.newFolder", async () => {
-    if (!explorer.getSnapshot().rootPath) return;
+    if (!explorer.getSnapshot().rootPath && !await workspace.ensureWorkspace()) return;
     await layout.showView("explorer");
     await explorer.beginCreate("folder");
   });
@@ -142,3 +143,4 @@ function registerExplorerCommands(
     }
   });
 }
+

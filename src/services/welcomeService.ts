@@ -11,8 +11,10 @@ export interface WelcomeSettings {
 }
 
 export interface WelcomeState {
-  /** The Welcome tab is shown (in the first group, while no file is open). */
+  /** The Welcome page is open in the first editor group. */
   open: boolean;
+  /** A startup page in front of restored tabs, until a file is selected. */
+  foreground?: boolean;
   showOnStartup: boolean;
 }
 
@@ -42,7 +44,7 @@ export class WelcomeService {
     };
   }
 
-  async initialize(): Promise<void> {
+  async initialize(forceOpen = false): Promise<void> {
     const legacy = await this.ipc.settingsGet(WELCOME_ON_STARTUP_KEY).catch(() => null);
     let showOnStartup = legacy !== "false";
     if (this.settings !== null) {
@@ -52,15 +54,15 @@ export class WelcomeService {
       }
       showOnStartup = this.settings.bool(WELCOME_ON_STARTUP_KEY, true);
     }
-    this.update({ showOnStartup, open: showOnStartup });
+    this.update({ showOnStartup, open: forceOpen || showOnStartup, ...(forceOpen ? { foreground: true } : {}) });
   }
 
   open(): void {
-    this.update({ open: true });
+    this.update({ open: true, foreground: true });
   }
 
   close(): void {
-    this.update({ open: false });
+    this.update({ open: false, foreground: false });
   }
 
   async setShowOnStartup(showOnStartup: boolean): Promise<void> {
@@ -79,3 +81,4 @@ export class WelcomeService {
     for (const listener of this.listeners) listener();
   }
 }
+

@@ -15,6 +15,8 @@ export interface AgentHost {
   uiLanguage: () => string;
   /** Whether a folder is open (the agent works inside one). */
   hasFolder: () => boolean;
+  /** Opens the default Documents workspace when no project is selected. */
+  ensureWorkspace?: () => Promise<boolean>;
   workspacePath?: () => string | null;
   taskScope?: string;
   historyIpc?: HistoryIpc;
@@ -213,6 +215,7 @@ export class AgentService {
       }
       if (mode === "ask" || mode === "acceptEdits" || mode === "auto" || mode === "plan") this.set({ mode });
       if (model) this.set({ modelId: model });
+      if (!this.host.hasFolder()) await this.host.ensureWorkspace?.();
       const active = await this.host.settingGet(`agent.active.${this.host.taskScope ?? "main"}`).catch(() => null);
       if (active && this.history) await this.restoreHistory(active, true);
       await this.refresh();
@@ -275,7 +278,7 @@ export class AgentService {
   /** Why Send is unavailable, or `null`. */
   sendBlocker(): string | null {
     if (this.attaching) return this.host.text("agent.loading");
-    if (!this.host.hasFolder()) return this.host.text("agent.blocker.noFolder");
+    if (!this.host.hasFolder() && !this.host.ensureWorkspace) return this.host.text("agent.blocker.noFolder");
     if (!this.ready()) return this.host.text("agent.blocker.noModel");
 
     return null;
@@ -406,10 +409,18 @@ export class AgentService {
     if (event.type === "turnEnd") { this.tasks.finish(event.reason); void this.history?.flush(); void this.refresh(); }
   }
 
-  send(text: string, first = false, savedAttachments?: AgentAttachment[]): Promise<boolean> {
+  async send(text: string, first = false, savedAttachments?: AgentAttachment[]): Promise<boolean> {
     const message = text.trim();
     const attachments = savedAttachments ?? this.state.attachments ?? [];
     if ((!message && !attachments.length) || message.length > 100000) return Promise.resolve(false);
+    if (!this.host.hasFolder() && this.host.ensureWorkspace) {
+      try {
+        if (!await this.host.ensureWorkspace()) return false;
+      } catch (error) {
+        this.host.notify(String(error));
+        return false;
+      }
+    }
     const blocker = this.sendBlocker();
     if (blocker) { this.host.notify(blocker); return Promise.resolve(false); }
     const modelId = this.state.modelId;
@@ -525,4 +536,5 @@ export class AgentService {
     return this.host.suggestFiles(query).catch(() => []);
   }
 }
+
 

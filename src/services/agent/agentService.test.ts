@@ -371,3 +371,29 @@ it("keeps attachment context on Continue with unique transcript entry IDs", asyn
   expect(new Set(documents.map((entry) => entry.id)).size).toBe(2);
   expect(ipc.send).toHaveBeenLastCalledWith(expect.objectContaining({ attachments: [expect.objectContaining({ name: "code.ts", text: "const answer = 42;" })] }));
 });
+
+
+it("opens Documents before queuing a chat when no folder is selected", async () => {
+  const { service, host, ipc } = setup([model("a", "ready")]);
+  let path: string | null = null;
+  host.hasFolder = () => path !== null;
+  host.workspacePath = () => path;
+  host.ensureWorkspace = vi.fn(async () => { path = "C:/Users/Student/Documents"; return true; });
+  await service.start();
+  expect(service.sendBlocker()).toBeNull();
+  expect(await service.send("Create a Python file")).toBe(true);
+  await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+  expect(host.ensureWorkspace).toHaveBeenCalledOnce();
+  expect(ipc.send).toHaveBeenCalledWith(expect.objectContaining({ workspace: "C:/Users/Student/Documents" }));
+  service.dispose();
+});
+
+it("keeps the chat draft when Documents cannot be opened", async () => {
+  const { service, host, ipc } = setup([model("a", "ready")]);
+  host.hasFolder = () => false;
+  host.ensureWorkspace = vi.fn(async () => false);
+  await service.start();
+  expect(await service.send("Keep this request")).toBe(false);
+  expect(ipc.send).not.toHaveBeenCalled();
+  service.dispose();
+});
