@@ -2,12 +2,13 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 
 import "../../styles/agent.css";
 import "../../styles/agentMedia.css";
+import "../../styles/agentChat.css";
 
 import type { Todo } from "../../services/agent/agentIpc";
 import { agent } from "../../services/agent";
 import { container } from "../../services/container";
 import { useT } from "../../i18n";
-import { AgentAttachments } from "./AgentAttachments";
+import agentLogo from "../../assets/openmindai-agent.png";
 import { AgentHistoryView } from "./AgentHistoryView";
 import { AgentQueue } from "./AgentQueue";
 import { AgentPermission } from "./AgentPermission";
@@ -71,6 +72,7 @@ function Header() {
           aria-label={t(`agent.ui.${state.engineState}`)}
           title={t(`agent.ui.${state.engineState}`)}
         />
+        <img className="agent-header__logo" src={agentLogo} alt="" />
         <span className="agent-model-chip__name">OpenMindAI Agent</span>
         {model && agent.ready() ? <span className="agent-tier">{agentTier(model)}</span> : null}
       </button>
@@ -89,14 +91,14 @@ function Header() {
           disabled={transcript.entries.length === 0 && !state.taskState?.tasks.length}
           onClick={() => void agent.newChat()}
         >
-          ＋
+          +
         </button>
       </div>
     </div>
   );
 }
 
-/** The OpenMindAI Agent side bar view: setup until a model is ready, then the conversation (Claude Code's layout). */
+/** The OpenMindAI Agent side bar view: setup until a model is ready, then the branded conversation. */
 export function AgentView() {
   const t = useT();
   const state = useAgent();
@@ -156,7 +158,7 @@ export function AgentView() {
       <div className="agent-acceleration" role="status">{t("agent.gpu.status", { mode: state.overview.acceleration?.[1] != null ? (state.overview.acceleration[1] > 0 ? "GPU" : "CPU") : state.overview.acceleration?.[0] === false ? "CPU" : "Auto", layers: state.overview.acceleration?.[1] ?? "—", vram: ((state.overview.hardware.gpus.reduce((sum, gpu) => sum + gpu.vramBytes, 0)) / 1024 ** 3).toFixed(1) })}</div>
       <div
         ref={scroller}
-        className="agent-view__scroll"
+        className={transcript.entries.length === 0 && !state.showHistory ? "agent-view__scroll agent-view__scroll--welcome" : "agent-view__scroll"}
         onScroll={(event) => {
           const el = event.currentTarget;
           pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
@@ -176,7 +178,6 @@ export function AgentView() {
         {transcript.permission ? (
           <AgentPermission request={transcript.permission} onAnswer={(decision) => void agent.answer(decision)} />
         ) : null}
-          <AgentAttachments />
           <AgentPrompt
             mode={state.mode}
             busy={transcript.busy || !!state.taskState?.activeId}
@@ -187,3 +188,4 @@ export function AgentView() {
     </div>
   );
 }
+
