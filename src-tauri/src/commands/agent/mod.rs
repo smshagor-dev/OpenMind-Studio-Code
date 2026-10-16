@@ -3,7 +3,9 @@
 //! permission questions with `agent_answer` and can stop it at any time. An existing setup is preloaded at editor
 //! startup; a conversation starts only after the user sends a message. The engine stops with the app.
 
+pub mod control;
 mod engine;
+mod mcp;
 mod turn;
 use turn::run_turn;
 pub mod capabilities;
@@ -38,6 +40,7 @@ impl Drop for BusyGuard {
 #[derive(Default)]
 pub struct Chat {
     session: Mutex<Option<Session>>,
+    mcp: mcp::Registry,
     /// The folder the conversation works in (a new folder starts a new conversation).
     root: Mutex<Option<PathBuf>>,
     cancel: Mutex<Arc<AtomicBool>>,
@@ -568,4 +571,3 @@ mod reset_tests {
         assert!(!chat.busy.load(Ordering::SeqCst));
     }
 }
-

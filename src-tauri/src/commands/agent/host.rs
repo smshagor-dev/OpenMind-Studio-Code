@@ -148,15 +148,32 @@ impl WindowHost<'_> {
 
 impl AgentHost for WindowHost<'_> {
     fn external_tools(&self) -> Vec<openmind_agent::external::ExternalTool> {
-        self.options
+        let mut tools = self
+            .options
             .map(super::capabilities::specs)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        tools.extend(
+            self.app
+                .state::<super::AgentRuntime>()
+                .chat(&self.label)
+                .mcp
+                .specs(),
+        );
+        tools
     }
     fn external_call(
         &self,
         call: &openmind_agent::wire::ToolCall,
         cancel: &AtomicBool,
     ) -> openmind_agent::tools::Outcome {
+        if call.name.starts_with("mcp_") {
+            return self
+                .app
+                .state::<super::AgentRuntime>()
+                .chat(&self.label)
+                .mcp
+                .call(call, cancel);
+        }
         match self.options {
             Some(options) => super::capabilities::call(self, options, call, cancel),
             None => openmind_agent::tools::Outcome::failed("Capability unavailable"),

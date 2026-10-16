@@ -1,5 +1,6 @@
 /** Persisted task settings. Runtime limits are validated again by Rust. */
 export interface AgentOptions {
+  effort: "low" | "medium" | "high";
   useGpu: boolean;
   searchEndpoint: string;
   visionEndpoint: string;
@@ -17,6 +18,7 @@ export interface AgentOptions {
 }
 
 export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
+  effort: "medium",
   useGpu: true,
   searchEndpoint: "",
   visionEndpoint: "",
@@ -35,8 +37,15 @@ export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
 
 export function agentOptions(value: unknown): AgentOptions {
   const source =
-    typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const number = (key: keyof AgentOptions, low: number, high: number, integer = true): number => {
+    typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : {};
+  const number = (
+    key: keyof AgentOptions,
+    low: number,
+    high: number,
+    integer = true,
+  ): number => {
     const v = source[key];
     const fallback = DEFAULT_AGENT_OPTIONS[key];
     const n =
@@ -46,10 +55,18 @@ export function agentOptions(value: unknown): AgentOptions {
     return integer ? Math.round(n) : n;
   };
   const bool = (key: keyof AgentOptions): boolean =>
-    typeof source[key] === "boolean" ? source[key] : Boolean(DEFAULT_AGENT_OPTIONS[key]);
-  const endpoint = (key: "searchEndpoint" | "visionEndpoint" | "imageEndpoint"): string =>
+    typeof source[key] === "boolean"
+      ? source[key]
+      : Boolean(DEFAULT_AGENT_OPTIONS[key]);
+  const endpoint = (
+    key: "searchEndpoint" | "visionEndpoint" | "imageEndpoint",
+  ): string =>
     typeof source[key] === "string" ? source[key].trim().slice(0, 2048) : "";
   return {
+    effort:
+      source.effort === "low" || source.effort === "high"
+        ? source.effort
+        : "medium",
     useGpu: bool("useGpu"),
     searchEndpoint: endpoint("searchEndpoint"),
     visionEndpoint: endpoint("visionEndpoint"),

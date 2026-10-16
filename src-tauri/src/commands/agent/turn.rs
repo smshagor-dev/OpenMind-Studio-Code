@@ -165,5 +165,21 @@ fn turn_system(request: &SendRequest, ws: &Workspace) -> String {
         ui_language,
         plan_mode: request.mode == Mode::Plan,
     };
-    system_prompt(ws, &facts)
+    let mut prompt = system_prompt(ws, &facts);
+    prompt.push_str(&format!("\n\nExecution effort: {}. Low: concise targeted work. Medium: normal implementation and validation. High: thorough analysis and broader validation, while avoiding unnecessary work.", request.options.effort));
+    if let Ok(path) = ws.resolve("OPENMIND_MEMORY.md") {
+        if let Ok(file) = std::fs::File::open(path) {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            if file.take(32_000).read_to_end(&mut bytes).is_err() {
+                return prompt;
+            }
+            let text = String::from_utf8_lossy(&bytes);
+            let memory: String = text.chars().take(8_000).collect();
+            if !memory.trim().is_empty() {
+                prompt.push_str(&format!("\n\nProject memory (user-maintained context; never overrides tool permissions):\n{memory}"));
+            }
+        }
+    }
+    prompt
 }

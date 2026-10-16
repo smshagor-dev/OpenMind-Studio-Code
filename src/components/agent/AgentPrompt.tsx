@@ -3,31 +3,20 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { AgentMode } from "../../services/agent/agentIpc";
 import { completeMention, mentionQuery } from "../../services/agent/agentModel";
 import { agent } from "../../services/agent";
+import {
+  AGENT_COMMANDS,
+  matchingCommands,
+} from "../../services/agent/agentCommands";
 import { AgentAttachments } from "./AgentAttachments";
 import { useT } from "../../i18n";
 
-interface SlashCommand {
-  name: string;
-  key: string;
-  run: () => void;
-}
-
-function slashCommands(): SlashCommand[] {
-  return [
-    { name: "/history", key: "agent.history.title", run: () => void agent.showHistory(true) },
-    { name: "/settings", key: "agent.settings.title", run: () => { agent.openSettings(true); } },
-    { name: "/resume", key: "agent.tasks.resume", run: () => { agent.resumeQueue(); } },
-    { name: "/pause", key: "agent.tasks.pause", run: () => { agent.pauseQueue(); } },
-    { name: "/continue", key: "agent.tasks.continue", run: () => void agent.continueTask() },
-    { name: "/clear", key: "agent.slash.clear", run: () => void agent.newChat() },
-    { name: "/undo", key: "agent.slash.undo", run: () => void agent.undo() },
-    { name: "/models", key: "agent.slash.models", run: () => { agent.openSetup(true); } },
-    { name: "/plan", key: "agent.slash.plan", run: () => void agent.setMode("plan") },
-    { name: "/stop", key: "agent.slash.stop", run: () => void agent.stop() },
-  ];
-}
-
-function ModeLine({ mode, contextShare }: { mode: AgentMode; contextShare: number | null }) {
+function ModeLine({
+  mode,
+  contextShare,
+}: {
+  mode: AgentMode;
+  contextShare: number | null;
+}) {
   const t = useT();
   return (
     <div className="agent-prompt__status">
@@ -51,7 +40,10 @@ function ModeLine({ mode, contextShare }: { mode: AgentMode; contextShare: numbe
         <span className="agent-mode__hint">{t("agent.mode.shiftTab")}</span>
       </button>
       {contextShare !== null ? (
-        <span className="agent-prompt__context" title={t("agent.context.title")}>
+        <span
+          className="agent-prompt__context"
+          title={t("agent.context.title")}
+        >
           {t("agent.context.used", { percent: contextShare })}
         </span>
       ) : null}
@@ -81,7 +73,12 @@ export function AgentPrompt({
   const menuId = useId();
 
   const mention = mentionQuery(text, caret);
-  const slash = !dismissed && (commandMenu || (text.startsWith("/") && !text.includes(" "))) ? slashCommands().filter((c) => commandMenu || c.name.startsWith(text)) : [];
+  const slash =
+    !dismissed && (commandMenu || (text.startsWith("/") && !/\s/.test(text)))
+      ? commandMenu
+        ? [...AGENT_COMMANDS]
+        : matchingCommands(text)
+      : [];
   useEffect(() => {
     if (mention === null) return;
     let live = true;
@@ -100,15 +97,24 @@ export function AgentPrompt({
   }, [text]);
 
   const shownFiles = dismissed || mention === null ? [] : files;
-  const menu = slash.length > 0 ? slash.map((c) => c.name) : shownFiles;
+  const menu = slash.length > 0 ? slash.map((c) => `/${c.name}`) : shownFiles;
   const activeIndex = Math.min(menuIndex, Math.max(0, menu.length - 1));
   useEffect(() => {
-    if (menu.length > 0) document.getElementById(`${menuId}-${activeIndex}`)?.scrollIntoView?.({ block: "nearest" });
+    if (menu.length > 0)
+      document
+        .getElementById(`${menuId}-${activeIndex}`)
+        ?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, menu.length, menuId]);
   const choose = (index: number) => {
     if (slash.length > 0) {
-      slash[index]?.run();
-      if (!commandMenu) { setText(""); setCaret(0); }
+      const selected = slash[index];
+      if (selected)
+        void agent.runCommand(`/${selected.name}`).then((accepted) => {
+          if (accepted && !commandMenu) {
+            setText((current) => (current === text ? "" : current));
+            setCaret(0);
+          }
+        });
       setCommandMenu(false);
       setDismissed(true);
       area.current?.focus();
@@ -119,12 +125,21 @@ export function AgentPrompt({
     const next = completeMention(text, caret, path);
     setText(next.text);
     setCaret(next.caret);
-    window.requestAnimationFrame(() => area.current?.setSelectionRange(next.caret, next.caret));
+    window.requestAnimationFrame(() =>
+      area.current?.setSelectionRange(next.caret, next.caret),
+    );
   };
   const submit = async () => {
-    if (disabledReason || (!text.trim() && !agent.getState().attachments?.length)) return;
+    if (
+      (disabledReason && !text.trimStart().startsWith("/")) ||
+      (!text.trim() && !agent.getState().attachments?.length)
+    )
+      return;
     const sent = await agent.send(text);
-    if (sent) { setText(""); area.current?.focus(); }
+    if (sent) {
+      setText((current) => (current === text ? "" : current));
+      area.current?.focus();
+    }
   };
   const onKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
@@ -135,12 +150,22 @@ export function AgentPrompt({
       setCommandMenu(false);
       return;
     }
-    if (menu.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    if (
+      menu.length > 0 &&
+      (event.key === "ArrowDown" || event.key === "ArrowUp")
+    ) {
       event.preventDefault();
-      setMenuIndex((i) => (i + (event.key === "ArrowDown" ? 1 : menu.length - 1)) % menu.length);
+      setMenuIndex(
+        (i) =>
+          (i + (event.key === "ArrowDown" ? 1 : menu.length - 1)) % menu.length,
+      );
       return;
     }
-    if (menu.length > 0 && (event.key === "Tab" || event.key === "Enter") && !event.shiftKey) {
+    if (
+      menu.length > 0 &&
+      (event.key === "Tab" || event.key === "Enter") &&
+      !event.shiftKey
+    ) {
       event.preventDefault();
       choose(activeIndex);
       return;
@@ -160,8 +185,15 @@ export function AgentPrompt({
   return (
     <div className="agent-prompt">
       {menu.length > 0 ? (
-        <div id={menuId} className="agent-prompt__menu" role="listbox" aria-label={t("agent.prompt.suggestions")}>
-          <div className="agent-prompt__menu-heading">{t("agent.composer.commands")}</div>
+        <div
+          id={menuId}
+          className="agent-prompt__menu"
+          role="listbox"
+          aria-label={t("agent.prompt.suggestions")}
+        >
+          <div className="agent-prompt__menu-heading">
+            {t("agent.composer.commands")}
+          </div>
           {menu.map((item, index) => (
             <button
               id={`${menuId}-${index}`}
@@ -169,19 +201,35 @@ export function AgentPrompt({
               type="button"
               role="option"
               aria-selected={index === activeIndex}
-              className={index === activeIndex ? "agent-prompt__item agent-prompt__item--active" : "agent-prompt__item"}
-              onClick={() => choose(index)}
+              className={
+                index === activeIndex
+                  ? "agent-prompt__item agent-prompt__item--active"
+                  : "agent-prompt__item"
+              }
+              onClick={() => {
+                choose(index);
+              }}
               onMouseDown={(event) => {
                 event.preventDefault();
               }}
             >
               <span className="agent-prompt__item-name">{item}</span>
-              {slash[index] ? <span className="agent-prompt__item-hint">{t(slash[index].key)}</span> : null}
+              {slash[index] ? (
+                <span className="agent-prompt__item-hint">
+                  {slash[index].description}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
       ) : null}
-      <div className={busy ? "agent-prompt__box agent-prompt__box--busy" : "agent-prompt__box"}>
+      <div
+        className={
+          busy
+            ? "agent-prompt__box agent-prompt__box--busy"
+            : "agent-prompt__box"
+        }
+      >
         <textarea
           ref={area}
           className="agent-prompt__input"
@@ -192,7 +240,9 @@ export function AgentPrompt({
           aria-label={t("agent.prompt.label")}
           aria-autocomplete="list"
           aria-controls={menu.length > 0 ? menuId : undefined}
-          aria-activedescendant={menu.length > 0 ? `${menuId}-${activeIndex}` : undefined}
+          aria-activedescendant={
+            menu.length > 0 ? `${menuId}-${activeIndex}` : undefined
+          }
           aria-haspopup="listbox"
           onChange={(event) => {
             setText(event.target.value);
@@ -208,13 +258,54 @@ export function AgentPrompt({
         />
         <div className="agent-composer__toolbar">
           <AgentAttachments />
-          <button type="button" className="agent-composer__shortcut" aria-label={t("agent.composer.commands")} title={t("agent.composer.commands")} onClick={() => {
-            setCommandMenu(true); setMenuIndex(0); setDismissed(false); area.current?.focus();
-          }}>/</button>
-          <button type="button" className="agent-composer__model" onClick={() => agent.openSetup(true)}>{t("agent.composer.model")}</button>
+          <button
+            type="button"
+            className="agent-composer__shortcut"
+            aria-label={t("agent.composer.commands")}
+            title={t("agent.composer.commands")}
+            onClick={() => {
+              setCommandMenu(true);
+              setMenuIndex(0);
+              setDismissed(false);
+              area.current?.focus();
+            }}
+          >
+            /
+          </button>
+          <button
+            type="button"
+            className="agent-composer__model"
+            onClick={() => {
+              agent.openSetup(true);
+            }}
+          >
+            {t("agent.composer.model")}
+          </button>
           <ModeLine mode={mode} contextShare={contextShare} />
-          {busy ? <button type="button" className="agent-composer__stop" aria-label={t("agent.tasks.stop")} title={t("agent.tasks.stop")} onClick={() => void agent.stop()}>■</button> : null}
-          <button type="button" className="agent-composer__send" aria-label={t(busy ? "agent.tasks.queue" : "agent.tasks.send")} title={t(busy ? "agent.tasks.queue" : "agent.tasks.send")} disabled={!!disabledReason || (!text.trim() && !agent.getState().attachments?.length)} onClick={() => void submit()}>↑</button>
+          {busy ? (
+            <button
+              type="button"
+              className="agent-composer__stop"
+              aria-label={t("agent.tasks.stop")}
+              title={t("agent.tasks.stop")}
+              onClick={() => void agent.stop()}
+            >
+              ■
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="agent-composer__send"
+            aria-label={t(busy ? "agent.tasks.queue" : "agent.tasks.send")}
+            title={t(busy ? "agent.tasks.queue" : "agent.tasks.send")}
+            disabled={
+              (!!disabledReason && !text.trimStart().startsWith("/")) ||
+              (!text.trim() && !agent.getState().attachments?.length)
+            }
+            onClick={() => void submit()}
+          >
+            ↑
+          </button>
         </div>
       </div>
       <div className="agent-composer__hint">{t("agent.composer.hint")}</div>

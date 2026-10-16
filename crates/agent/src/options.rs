@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct SessionOptions {
+    pub effort: String,
     pub context_tokens: u32,
     pub max_output_tokens: u32,
     pub max_steps: usize,
@@ -20,6 +21,7 @@ pub struct SessionOptions {
 impl Default for SessionOptions {
     fn default() -> Self {
         Self {
+            effort: "medium".into(),
             context_tokens: 0,
             max_output_tokens: 16_384,
             max_steps: 128,
@@ -37,6 +39,9 @@ impl Default for SessionOptions {
 
 impl SessionOptions {
     pub fn bounded(mut self, model_context: u32) -> Self {
+        if !matches!(self.effort.as_str(), "low" | "medium" | "high") {
+            self.effort = "medium".into();
+        }
         let ceiling = model_context.max(1_024);
         self.context_tokens = if self.context_tokens == 0 {
             ceiling

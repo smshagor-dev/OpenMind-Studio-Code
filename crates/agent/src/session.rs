@@ -113,6 +113,55 @@ impl Session {
         &self.messages
     }
 
+    /// Conservative estimates; actual tokenizer usage is reported by streamed Usage events.
+    pub fn context_snapshot(&self) -> Value {
+        serde_json::json!({
+            "model": self.model,
+            "contextTokens": self.context_tokens,
+            "maxOutputTokens": self.options.max_output_tokens,
+            "estimatedInputTokens": crate::context::estimate(&crate::context::with_memory(&self.messages, &self.memory)),
+            "messages": self.messages.len(),
+            "checkpointBytes": self.memory.len(),
+            "estimateIsApproximate": true
+        })
+    }
+
+    /// Explicit compaction is transactional and preserves the current request and valid tool pairs.
+    pub fn compact_now(&mut self) -> Result<Value, String> {
+        let before =
+            crate::context::estimate(&crate::context::with_memory(&self.messages, &self.memory));
+        if self.messages.len() <= 2 {
+            return Ok(
+                serde_json::json!({"beforeTokens":before,"afterTokens":before,"compacted":false}),
+            );
+        }
+        let mut messages = self.messages.clone();
+        let mut memory = self.memory.clone();
+        let latest = messages
+            .iter()
+            .rev()
+            .find_map(|m| {
+                if let Message::User { content } = m {
+                    Some(content.clone())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_default();
+        let minimum = messages
+            .first()
+            .map_or(0, |m| crate::context::estimate(std::slice::from_ref(m)))
+            + latest.len().div_ceil(2)
+            + 512;
+        let budget = (before / 2).max(minimum);
+        let (_, after) = crate::context::compact(&mut messages, &mut memory, &latest, budget)?;
+        self.messages = messages;
+        self.memory = memory;
+        Ok(
+            serde_json::json!({"beforeTokens":before,"afterTokens":after,"compacted":after < before,"estimateIsApproximate":true}),
+        )
+    }
+
     pub fn can_undo(&self) -> bool {
         !self.turns.is_empty()
     }
@@ -523,3 +572,41 @@ impl Session {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod manual_context_tests {
+    use super::*;
+    #[test]
+    fn manual_compaction_changes_live_context_and_preserves_latest_request() {
+        let mut session = Session::new("Rules".into(), "model".into(), 32768, Mode::Ask);
+        for _ in 0..20 {
+            session.add_history("user", &"old history ".repeat(100));
+            session.add_history("assistant", &"old answer ".repeat(100));
+        }
+        session.add_history("user", "Finish current task");
+        let before = session.context_snapshot()["estimatedInputTokens"]
+            .as_u64()
+            .unwrap();
+        let result = session.compact_now().unwrap();
+        assert!(result["compacted"].as_bool().unwrap());
+        assert!(
+            session.context_snapshot()["estimatedInputTokens"]
+                .as_u64()
+                .unwrap()
+                < before
+        );
+        assert!(session
+            .messages()
+            .iter()
+            .any(|m| matches!(m,Message::User{content} if content == "Finish current task")));
+        assert!(
+            matches!(session.messages().first(),Some(Message::System{content}) if content=="Rules")
+        );
+    }
+    #[test]
+    fn empty_context_compaction_is_a_noop() {
+        let mut session = Session::new("Rules".into(), "model".into(), 32768, Mode::Ask);
+        assert_eq!(session.compact_now().unwrap()["compacted"], false);
+        assert_eq!(session.messages().len(), 1);
+    }
+}
