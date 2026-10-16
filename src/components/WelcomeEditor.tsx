@@ -111,7 +111,7 @@ export function WelcomeContent({ recents }: { recents: Recents }) {
       onNewWindow={() => {
         container.run("workbench.newWindow");
       }}
-      onOpenRecentFile={(path) => void container.workspace.openPath(path)}
+      onOpenRecentFile={(path) => { container.welcome.close(); void container.workspace.openPath(path); }}
       onOpenRecentFolder={(path) => void container.workspace.openFolder(path)}
       onUnpinFolder={(path) => void container.workspace.unpinFolder(path)}
       onShowOnStartupChange={(show) => void container.welcome.setShowOnStartup(show)}
@@ -150,3 +150,4 @@ export function EditorWatermark() {
     </div>
   );
 }
+

@@ -1,6 +1,7 @@
 import { getTauriVersion, getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { documentDir } from "@tauri-apps/api/path";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import type { SymbolHit } from "./searchIpc";
@@ -1125,7 +1126,8 @@ export const tauriIpcClient: IpcClient = {
   },
 
   async saveDocumentDialog(defaultPath) {
-    const selected = await saveDialog({ defaultPath });
+    const folder = defaultPath === undefined ? await invoke<WorkspaceInfo | null>("workspace_active_folder") : null;
+    const selected = await saveDialog({ defaultPath: defaultPath ?? folder?.path ?? await documentDir() });
     return selected ?? null;
   },
 
@@ -1422,3 +1424,4 @@ export const tauriIpcClient: IpcClient = {
   startupReport: (marks, usableMs) => invoke<string>("startup_report", { marks, usableMs }),
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };
+

@@ -340,3 +340,29 @@ describe("WorkspaceService", () => {
     expect(parentFolder("f.py")).toBeNull();
   });
 });
+
+
+it("shares a single Documents lookup when several operations need a default workspace", async () => {
+  const folder = { path: "C:/Users/Student/Documents", name: "Documents" } as WorkspaceInfo;
+  const ipc = createFakeIpc({ workspaceActiveFolder: vi.fn(async () => folder) });
+  const events = new EventBus<AppEvents>();
+  const workspace = new WorkspaceService(new DocumentService(ipc, new BufferManager(), events), ipc, events);
+  const changed = vi.fn();
+  events.on("workspaceFolderChanged", changed);
+  const results = await Promise.all([workspace.ensureWorkspace(), workspace.ensureWorkspace()]);
+  expect(results).toEqual([folder, folder]);
+  expect(ipc.workspaceActiveFolder).toHaveBeenCalledOnce();
+  expect(changed).toHaveBeenCalledOnce();
+  expect(await workspace.ensureWorkspace()).toEqual(folder);
+  expect(ipc.workspaceActiveFolder).toHaveBeenCalledOnce();
+});
+
+it("never replaces an explicitly opened project with the Documents fallback", async () => {
+  const folder = { path: "D:/Project", name: "Project" } as WorkspaceInfo;
+  const ipc = createFakeIpc({ workspaceOpenFolder: vi.fn(async () => folder) });
+  const events = new EventBus<AppEvents>();
+  const workspace = new WorkspaceService(new DocumentService(ipc, new BufferManager(), events), ipc, events);
+  await workspace.openFolder(folder.path);
+  expect(await workspace.ensureWorkspace()).toEqual(folder);
+  expect(ipc.workspaceActiveFolder).not.toHaveBeenCalled();
+});

@@ -1,5 +1,5 @@
 use openmind_workspace::{ExplorerState, RecentFileInfo, SessionSnapshot, WorkspaceInfo};
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::app_state::AppState;
 use crate::windows::{is_main, window_workspace};
@@ -107,13 +107,25 @@ pub async fn workspace_recent_folders(
         .map_err(|err| err.to_string())
 }
 
-/// The folder open in the calling window (`null` in a new, empty window).
+/// The calling window's workspace, defaulting to the OS-configured Documents directory.
 #[tauri::command]
 pub async fn workspace_active_folder(
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<Option<WorkspaceInfo>, String> {
-    window_workspace(&state, window.label()).await
+    if let Some(folder) = window_workspace(&state, window.label()).await? {
+        return Ok(Some(folder));
+    }
+    let documents = window
+        .app_handle()
+        .path()
+        .document_dir()
+        .map_err(|err| format!("Could not locate your Documents folder: {err}"))?;
+    std::fs::create_dir_all(&documents)
+        .map_err(|err| format!("Could not access your Documents folder: {err}"))?;
+    workspace_open_folder(documents.to_string_lossy().into_owned(), window, state)
+        .await
+        .map(Some)
 }
 
 #[tauri::command]
@@ -154,3 +166,4 @@ pub async fn recent_files_rename(
         .await
         .map_err(|err| err.to_string())
 }
+

@@ -35,3 +35,12 @@ describe("WelcomeService", () => {
     expect(listener).toHaveBeenCalledTimes(3);
   });
 });
+
+
+it("shows the startup page in front of restored editors in a newly opened window", async () => {
+  const welcome = new WelcomeService(createFakeIpc({ settingsGet: vi.fn().mockResolvedValue("false") }));
+  await welcome.initialize(true);
+  expect(welcome.getState()).toMatchObject({ open: true, foreground: true });
+  welcome.close();
+  expect(welcome.getState()).toMatchObject({ open: false, foreground: false });
+});

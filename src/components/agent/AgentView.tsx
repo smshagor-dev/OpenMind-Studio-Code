@@ -26,7 +26,7 @@ function useAgent() {
 
 function useFolder(): string | null {
   return useSyncExternalStore(
-    (listener) => container.workspace.subscribe(listener),
+    (listener) => container.workspace.subscribeWorkspace(listener),
     () => container.workspace.getActiveWorkspace()?.path ?? null,
   );
 }
@@ -181,7 +181,7 @@ export function AgentView() {
           <AgentPrompt
             mode={state.mode}
             busy={transcript.busy || !!state.taskState?.activeId}
-            disabledReason={folder ? null : t("agent.blocker.noFolder")}
+            disabledReason={null}
             contextShare={share}
           />
       </div>

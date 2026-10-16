@@ -140,7 +140,7 @@
 }
 
 .pane-section__actions {
-  display: none;
+  display: flex;
   gap: 2px;
 }
 
@@ -805,3 +805,4 @@
 .php-view__log {
   min-height: 60px;
 }
+

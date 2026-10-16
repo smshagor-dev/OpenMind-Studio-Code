@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import type { Recents } from "../appHooks";
 import { MonacoHost } from "../editor/MonacoHost";
 import { container } from "../services/container";
@@ -35,7 +36,12 @@ export function EditorGroupView(props: EditorGroupViewProps) {
   const { group, active } = props;
   const activeTab = group.tabs.find((tab) => tab.id === group.activeTabId) ?? null;
   const welcome = useWelcome();
-  const welcomeTab = props.showWelcome && group.tabs.length === 0 && welcome.open;
+  const welcomeTab = props.showWelcome && welcome.open && (group.tabs.length === 0 || welcome.foreground);
+  const previous = useRef({ ready: props.ready, activeId: group.activeTabId });
+  useEffect(() => {
+    if (previous.current.ready && props.ready && previous.current.activeId !== group.activeTabId) container.welcome.close();
+    previous.current = { ready: props.ready, activeId: group.activeTabId };
+  }, [props.ready, group.activeTabId]);
   return (
     <main
       className={active ? "editor-group editor-group--active" : "editor-group"}
@@ -49,8 +55,9 @@ export function EditorGroupView(props: EditorGroupViewProps) {
         {welcomeTab ? <WelcomeTab /> : null}
         <TabBar
           tabs={group.tabs}
-          activeId={group.activeTabId}
+          activeId={welcomeTab ? null : group.activeTabId}
           onSelect={(id) => {
+            container.welcome.close();
             container.workspace.activateTab(group.id, id);
           }}
           onClose={(id) => void container.workspace.closeTab(group.id, id)}
@@ -66,7 +73,7 @@ export function EditorGroupView(props: EditorGroupViewProps) {
           active={active}
         />
       </div>
-      {activeTab && props.breadcrumbsVisible ? (
+      {!welcomeTab && activeTab && props.breadcrumbsVisible ? (
         <Breadcrumbs
           path={activeTab.path}
           title={activeTab.title}
@@ -74,8 +81,8 @@ export function EditorGroupView(props: EditorGroupViewProps) {
           docId={activeTab.docId}
         />
       ) : null}
-      {activeTab && activeTab.kind === "text" ? <ExternalChangeBanner tab={activeTab} /> : null}
-      <GroupContent {...props} docId={activeTab?.docId ?? null} kind={activeTab?.kind ?? null} />
+      {!welcomeTab && activeTab && activeTab.kind === "text" ? <ExternalChangeBanner tab={activeTab} /> : null}
+      {welcomeTab && props.ready ? <div className="editor-group__content"><WelcomeContent recents={props.recents} /></div> : <GroupContent {...props} docId={activeTab?.docId ?? null} kind={activeTab?.kind ?? null} />}
     </main>
   );
 }
@@ -142,3 +149,4 @@ function EmptyFirstGroup({ recents }: { recents: Recents }) {
   const welcome = useWelcome();
   return welcome.open ? <WelcomeContent recents={recents} /> : <EditorWatermark />;
 }
+
