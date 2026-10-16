@@ -74,6 +74,7 @@ impl EngineSlot {
     }
 
     /// The engine running `model`, started (and waited for) when needed.
+    #[allow(clippy::too_many_arguments)]
     pub fn ensure(
         &self,
         use_gpu: bool,
