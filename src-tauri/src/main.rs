@@ -358,6 +358,7 @@ fn main() {
             commands::agent::history::agent_history_delete,
             commands::agent::capabilities::agent_document_read,
             commands::agent::capabilities::agent_capabilities_check,
+            commands::agent::control::agent_control,
             commands::agent::agent_send,
             commands::agent::agent_answer,
             commands::agent::agent_guard_answer,
@@ -597,3 +598,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

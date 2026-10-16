@@ -15,9 +15,20 @@ function currentState(): AgentState {
 vi.mock("../../services/agent", () => ({
   agent: {
     getState: () => currentState(),
-    subscribe: (listener: () => void) => { harness.listeners.add(listener); return () => { harness.listeners.delete(listener); }; },
+    subscribe: (listener: () => void) => {
+      harness.listeners.add(listener);
+      return () => {
+        harness.listeners.delete(listener);
+      };
+    },
     start: vi.fn(() => Promise.resolve()),
-    ready: () => Boolean(harness.state?.overview?.engineInstalled && harness.state.overview.models.some((m) => m.id === harness.state?.modelId && m.local.state === "ready")),
+    ready: () =>
+      Boolean(
+        harness.state?.overview?.engineInstalled &&
+        harness.state.overview.models.some(
+          (m) => m.id === harness.state?.modelId && m.local.state === "ready",
+        ),
+      ),
     openSettings: vi.fn(),
     openSetup: (showSetup: boolean) => {
       harness.state = { ...currentState(), showSetup };
@@ -34,19 +45,35 @@ vi.mock("../../services/agent", () => ({
 }));
 vi.mock("../../services/container", () => ({
   container: {
-    workspace: { subscribe: () => () => undefined, subscribeWorkspace: () => () => undefined, getActiveWorkspace: () => null },
+    workspace: {
+      subscribe: () => () => undefined,
+      subscribeWorkspace: () => () => undefined,
+      getActiveWorkspace: () => null,
+    },
     ipc: { openExternalUrl: vi.fn(() => Promise.resolve()) },
   },
 }));
 vi.mock("../../i18n", () => ({
-  useT: () => (key: string, params?: Record<string, string | number>) => key === "agent.setup.requirements" || key === "agent.setup.minimum" ? JSON.stringify(params) : ({
-    "agent.ui.notConfigured": "Agent not Configured", "agent.ui.configureNow": "Configure now",
-    "agent.ui.ready": "Agent is live", "agent.ui.configure": "Configure agent",
-    "agent.ui.done": "Done", "agent.model.download": "Download",
-    "agent.ui.acceptLicense": "I accept the", "agent.ui.license": "licence",
-  } as Record<string, string>)[key] ?? key,
+  useT: () => (key: string, params?: Record<string, string | number>) =>
+    key === "agent.setup.requirements" || key === "agent.setup.minimum"
+      ? JSON.stringify(params)
+      : ((
+          {
+            "agent.ui.notConfigured": "Agent not Configured",
+            "agent.ui.configureNow": "Configure now",
+            "agent.ui.ready": "Agent is live",
+            "agent.ui.configure": "Configure agent",
+            "agent.ui.done": "Done",
+            "agent.model.download": "Download",
+            "agent.ui.acceptLicense": "I accept the",
+            "agent.ui.license": "licence",
+          } as Record<string, string>
+        )[key] ?? key),
 }));
-vi.mock("./AgentTranscript", () => ({ AgentTranscript: () => null, AgentWelcome: () => <div>Welcome</div> }));
+vi.mock("./AgentTranscript", () => ({
+  AgentTranscript: () => null,
+  AgentWelcome: () => <div>Welcome</div>,
+}));
 vi.mock("./AgentPrompt", () => ({ AgentPrompt: () => <div>Prompt</div> }));
 vi.mock("./AgentPermission", () => ({ AgentPermission: () => null }));
 vi.mock("./AgentSpinner", () => ({ AgentSpinner: () => null }));
@@ -57,29 +84,65 @@ import { AgentSetupDialog } from "./AgentSetupDialog";
 
 function overview(ready = false): AgentOverview {
   return {
-    hardware: { totalRamBytes: 16e9, availableRamBytes: 8e9, gpus: [], cpuThreads: 8, avx2: true },
-    engineInstalled: ready, runningModel: ready ? "internal" : null,
-    modelsDir: "/private/models", freeDiskBytes: 50e9, recommended: "internal",
-    models: [{
-      id: "internal", family: "Nemotron", name: "Private model name", quant: "Q4_K_M",
-      publisher: "Private publisher", description: "Private technical description",
-      totalParamsB: 4, activeParamsB: 4, contextTokens: 32768, repo: "private/repo",
-      license: { name: "Licence", url: "https://example.com/license" }, sizeBytes: 2e9,
-      fit: { level: "cpu", neededBytes: 3e9, tokensPerSecond: 8 },
-      local: { state: ready ? "ready" : "notDownloaded", bytesOnDisk: ready ? 2e9 : 0 }, downloading: false,
-    }],
+    hardware: {
+      totalRamBytes: 16e9,
+      availableRamBytes: 8e9,
+      gpus: [],
+      cpuThreads: 8,
+      avx2: true,
+    },
+    engineInstalled: ready,
+    runningModel: ready ? "internal" : null,
+    modelsDir: "/private/models",
+    freeDiskBytes: 50e9,
+    recommended: "internal",
+    models: [
+      {
+        id: "internal",
+        family: "Nemotron",
+        name: "Private model name",
+        quant: "Q4_K_M",
+        publisher: "Private publisher",
+        description: "Private technical description",
+        totalParamsB: 4,
+        activeParamsB: 4,
+        contextTokens: 32768,
+        repo: "private/repo",
+        license: { name: "Licence", url: "https://example.com/license" },
+        sizeBytes: 2e9,
+        fit: { level: "cpu", neededBytes: 3e9, tokensPerSecond: 8 },
+        local: {
+          state: ready ? "ready" : "notDownloaded",
+          bytesOnDisk: ready ? 2e9 : 0,
+        },
+        downloading: false,
+      },
+    ],
   };
 }
 beforeEach(() => {
   vi.clearAllMocks();
   harness.listeners.clear();
   harness.state = {
-    overview: overview(), overviewError: null, loadingOverview: false, installingEngine: false,
-    downloads: {}, modelId: null, mode: "ask", transcript: EMPTY_TRANSCRIPT, showSetup: false, engineState: "idle",
+    overview: overview(),
+    overviewError: null,
+    loadingOverview: false,
+    installingEngine: false,
+    downloads: {},
+    modelId: null,
+    mode: "ask",
+    transcript: EMPTY_TRANSCRIPT,
+    showSetup: false,
+    engineState: "idle",
   };
 });
 function mount() {
-  return render(<div><AgentView /><AgentSetupDialog /></div>);
+  return render(
+    <div>
+      <AgentView />
+      <AgentSetupDialog />
+    </div>,
+  );
 }
 it("keeps setup out of the sidebar and opens it in a dialog on Configure now", () => {
   mount();
@@ -89,9 +152,13 @@ it("keeps setup out of the sidebar and opens it in a dialog on Configure now", (
   fireEvent.click(screen.getByRole("button", { name: "Configure now" }));
   const dialog = screen.getByRole("dialog", { name: "OpenMindAI Agent" });
   expect(within(dialog).getByText("Lite")).toBeInTheDocument();
-  expect(within(dialog).getByText('{"size":"1.9 GB","memory":"2.8 GB"}')).toBeInTheDocument();
+  expect(
+    within(dialog).getByText('{"size":"1.9 GB","memory":"2.8 GB"}'),
+  ).toBeInTheDocument();
   expect(within(dialog).getByText('{"ram":"7.0 GB"}')).toBeInTheDocument();
-  expect(document.body.textContent).not.toMatch(/Private model|Private publisher|Q4_K_M|Nemotron|private\/models/);
+  expect(document.body.textContent).not.toMatch(
+    /Private model|Private publisher|Q4_K_M|Nemotron|private\/models/,
+  );
   fireEvent.keyDown(dialog, { key: "Escape" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Configure now" })).toHaveFocus();
@@ -109,24 +176,62 @@ it("requires licence consent before starting a setup download", () => {
 });
 describe("configured header", () => {
   it("shows only the product, edition and live status", () => {
-    harness.state = { ...currentState(), overview: overview(true), modelId: "internal", engineState: "ready" };
+    harness.state = {
+      ...currentState(),
+      overview: overview(true),
+      modelId: "internal",
+      engineState: "ready",
+    };
     mount();
-    expect(screen.getByRole("status", { name: "Agent is live" })).toHaveClass("agent-live--ready");
+    expect(screen.getByRole("status", { name: "Agent is live" })).toHaveClass(
+      "agent-live--ready",
+    );
     expect(screen.getByText("Lite")).toBeInTheDocument();
     expect(screen.queryByText("Agent not Configured")).not.toBeInTheDocument();
     expect(document.body.textContent).not.toContain("Private model name");
   });
   it("does not show a green dot while the engine is loading", () => {
-    harness.state = { ...currentState(), overview: overview(true), modelId: "internal", engineState: "loading" };
+    harness.state = {
+      ...currentState(),
+      overview: overview(true),
+      modelId: "internal",
+      engineState: "loading",
+    };
     const { container } = mount();
     expect(container.querySelector(".agent-live--ready")).toBeNull();
   });
 });
 
 it("shows saved conversations instead of hiding history above the current transcript", () => {
-  harness.state = { ...currentState(), overview: overview(true), modelId: "internal", showHistory: true, history: [{ id: "saved", title: "Saved project task", providerId: "/project", updatedAt: 1, messageCount: 2 }] };
+  harness.state = {
+    ...currentState(),
+    overview: overview(true),
+    modelId: "internal",
+    showHistory: true,
+    history: [
+      {
+        id: "saved",
+        title: "Saved project task",
+        providerId: "/project",
+        updatedAt: 1,
+        messageCount: 2,
+      },
+    ],
+  };
   mount();
-  expect(screen.getByRole("button", { name: /Saved project task/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /Saved project task/ }),
+  ).toBeInTheDocument();
   expect(screen.queryByText("Welcome")).not.toBeInTheDocument();
 });
 
+it("renders exactly one command dialog above the chat", () => {
+  harness.state = {
+    ...currentState(),
+    commandPanel: { title: "Command help", body: "/help", kind: "report" },
+  };
+  render(<AgentView />);
+  expect(screen.getAllByRole("dialog", { name: "Command help" })).toHaveLength(
+    1,
+  );
+});

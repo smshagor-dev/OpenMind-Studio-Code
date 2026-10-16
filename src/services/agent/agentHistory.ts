@@ -43,6 +43,7 @@ export class AgentHistory {
   private writes: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pending: HistorySnapshot | null = null;
+  private writeError: string | null = null;
   constructor(
     private readonly ipc: HistoryIpc,
     private readonly failed: (error: unknown) => void,
@@ -51,15 +52,19 @@ export class AgentHistory {
     return this.ipc.list();
   }
   async load(id: string): Promise<HistorySnapshot | null> {
-    await this.flush();
+    await this.flush(true);
     const value = await this.ipc.load(id);
     if (!value || value.model !== "agent-v1") return null;
     const entries: Entry[] = [];
     const tasks: AgentTask[] = [];
-    const attached: { taskId: string; value: import("./agentAttachments").AgentAttachment }[] = [];
+    const attached: {
+      taskId: string;
+      value: import("./agentAttachments").AgentAttachment;
+    }[] = [];
     for (const message of value.messages) {
       const parsed: unknown = JSON.parse(message.content);
-      if (!parsed || typeof parsed !== "object") throw new Error("Invalid history entry");
+      if (!parsed || typeof parsed !== "object")
+        throw new Error("Invalid history entry");
       if (message.role === "entry") {
         if (!entry(parsed)) throw new Error("Invalid history entry");
         entries.push(parsed);
@@ -74,7 +79,11 @@ export class AgentHistory {
     }
     for (const item of attached) {
       const task = tasks.find((t) => t.id === item.taskId);
-      if (task) task.attachments = [...(task.attachments ?? []), item.value].slice(0, 6);
+      if (task)
+        task.attachments = [...(task.attachments ?? []), item.value].slice(
+          0,
+          6,
+        );
     }
     return {
       id: value.id,
@@ -93,7 +102,7 @@ export class AgentHistory {
         void this.flush();
       }, 350);
   }
-  flush(): Promise<void> {
+  flush(requireSuccess = false): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
@@ -131,9 +140,29 @@ export class AgentHistory {
           ),
         ],
       };
-      this.writes = this.writes.then(() => this.ipc.save(value)).catch(this.failed);
+      this.writes = this.writes
+        .then(async () => {
+          await this.ipc.save(value);
+          this.writeError = null;
+        })
+        .catch((error: unknown) => {
+          this.writeError =
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "Storage operation failed";
+          this.failed(error);
+        });
     }
-    return this.writes;
+    return requireSuccess
+      ? this.writes.then(() => {
+          if (this.writeError !== null)
+            throw new Error(
+              `Chat history could not be saved: ${this.writeError}`,
+            );
+        })
+      : this.writes;
   }
   async delete(id: string): Promise<void> {
     await this.flush();

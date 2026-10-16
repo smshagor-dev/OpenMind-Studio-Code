@@ -1,3 +1,8 @@
+import {
+  agentGitChanges,
+  agentPlugins,
+  exportAgentChat,
+} from "./agentNativeActions";
 // The OpenMindAI Agent of this window, built from the app's own services (kept out of container.ts, which is at its
 // size limit). Editor startup preloads an existing setup; downloading always needs an explicit action.
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -27,17 +32,25 @@ function unsavedPaths(): string[] {
 }
 
 function taskScope(): string {
-  try { return getCurrentWebviewWindow().label; } catch { return "main"; }
+  try {
+    return getCurrentWebviewWindow().label;
+  } catch {
+    return "main";
+  }
 }
 
 export function agentHost(): AgentHost {
   return {
     unsavedPaths,
+    gitChanges: () => agentGitChanges(container),
+    plugins: (argument) => agentPlugins(container, argument),
+    exportChat: (markdown) => exportAgentChat(container, markdown),
     historyIpc,
     taskScope: taskScope(),
     uiLanguage: () => LANGUAGE_NAMES[i18n.language] ?? "English",
     hasFolder: () => container.workspace.getActiveWorkspace() !== null,
-    ensureWorkspace: async () => Boolean(await container.workspace.ensureWorkspace()),
+    ensureWorkspace: async () =>
+      Boolean(await container.workspace.ensureWorkspace()),
     workspacePath: () => container.workspace.getActiveWorkspace()?.path ?? null,
     installEngine: () => container.runtime.install("llamacpp", null),
     confirm: async (message, okLabel) => {
@@ -66,9 +79,11 @@ export function agentHost(): AgentHost {
   };
 }
 
-export function createAgent(ipc: AgentIpc = tauriAgentIpc, host: AgentHost = agentHost()): AgentService {
+export function createAgent(
+  ipc: AgentIpc = tauriAgentIpc,
+  host: AgentHost = agentHost(),
+): AgentService {
   return new AgentService(ipc, host);
 }
 
 export const agent = createAgent();
-
