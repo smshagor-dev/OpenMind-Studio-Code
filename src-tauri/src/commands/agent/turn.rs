@@ -1,5 +1,7 @@
 use super::*;
-use openmind_agent::{system_prompt, AgentEvent, HttpModel, ModelClient, PromptFacts, TurnInput, Workspace};
+use openmind_agent::{
+    system_prompt, AgentEvent, HttpModel, ModelClient, PromptFacts, TurnInput, Workspace,
+};
 
 /// Track whether a request was abandoned while a synchronous HTTP reader
 /// could still be connected to the single llama.cpp inference slot.
@@ -55,7 +57,16 @@ pub(super) fn run_turn(
     env: &CommandEnv,
     cancel: &AtomicBool,
 ) -> AgentEvent {
-    let end = |message: String| turn_end("error", Some(message));
+    let end = |message: String| {
+        turn_end(
+            if cancel.load(Ordering::Relaxed) {
+                "cancelled"
+            } else {
+                "error"
+            },
+            Some(message),
+        )
+    };
     let ws = match Workspace::new(root) {
         Ok(ws) => ws,
         Err(message) => return end(message),
@@ -93,7 +104,10 @@ pub(super) fn run_turn(
     if abandoned.load(Ordering::Acquire)
         || (attempted.load(Ordering::Acquire) && terminal_is_error(&terminal))
     {
-        tracing::info!(model = %model.id, "reclaiming local engine after interrupted or failed HTTP stream");
+        tracing::info!(
+            model = %model.id,
+            "reclaiming local engine after interrupted or failed HTTP stream"
+        );
         agent.engine.stop();
     }
     terminal
@@ -115,7 +129,11 @@ fn execute_turn(
 ) -> AgentEvent {
     let end = |message: String| {
         turn_end(
-            if cancel.load(Ordering::Relaxed) { "cancelled" } else { "error" },
+            if cancel.load(Ordering::Relaxed) {
+                "cancelled"
+            } else {
+                "error"
+            },
             Some(message),
         )
     };
