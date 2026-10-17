@@ -69,7 +69,7 @@ jobs:
           cargo fetch --locked
           node scripts/third-party-licenses.mjs --check
           node scripts/legal-texts.mjs --check
-      - name: Validate manual and adaptive context allocation
+      - name: Validate context allocation and observed GPU layer placement
         run: cargo test --locked -p openmind-studio --bin openmind-studio commands::agent::engine::tests -- --nocapture
       - name: Validate context lease exclusions
         run: cargo test --locked -p openmind-studio --bin openmind-studio commands::agent::engine::lease_tests -- --nocapture
@@ -96,7 +96,7 @@ jobs:
         run: pnpm exec tsc --noEmit -p .
       - name: Lint context settings, panel and IPC
         run: pnpm exec eslint src/components/agent/AgentSettings.tsx src/components/agent/AgentSettings.test.tsx src/components/agent/AgentView.tsx src/services/agent/agentService.ts src/services/agent/agentService.test.ts src/services/agent/agentIpc.ts
-      - name: Test Auto/Manual UI and preload/reconfiguration
+      - name: Test context UI, GPU status and idle engine reconfiguration
         run: pnpm exec vitest run src/components/agent/AgentSettings.test.tsx src/components/agent/AgentView.test.tsx src/services/agent/agentOptions.test.ts src/services/agent/agentService.test.ts
       - name: Prepare frontend assets and build
         run: |
