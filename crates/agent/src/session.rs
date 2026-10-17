@@ -56,30 +56,45 @@ fn execute_project_read(call: &crate::wire::ToolCall, ctx: &ToolContext<'_>) -> 
     }
 }
 
+/// Result order is identical to input order regardless of worker completion
+/// order. This helper is also exercised with synchronized workers in tests.
+fn scoped_map<T, R, F>(
+    items: &[T],
+    run: F,
+) -> Vec<std::thread::Result<R>>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
+    std::thread::scope(|scope| {
+        let work = &run;
+        let handles: Vec<_> = items
+            .iter()
+            .map(|item| scope.spawn(move || work(item)))
+            .collect();
+        handles.into_iter().map(|handle| handle.join()).collect()
+    })
+}
+
 fn parallel_project_reads(
     calls: &[crate::wire::ToolCall],
     ctx: &ToolContext<'_>,
 ) -> Vec<ReadResult> {
     // The caller limits each slice to MAX_CONCURRENT_READS. Scoped threads
     // borrow the validated workspace and cancel flag without unsafe lifetimes.
-    std::thread::scope(|scope| {
-        let handles: Vec<_> = calls
-            .iter()
-            .map(|call| scope.spawn(move || execute_project_read(call, ctx)))
-            .collect();
-        calls
-            .iter()
-            .zip(handles)
-            .map(|(call, handle)| {
-                handle.join().unwrap_or_else(|_| ReadResult {
-                    kind: tools::ToolKind::Read,
-                    title: call.name.clone(),
-                    target: String::new(),
-                    outcome: tools::Outcome::failed("The parallel read worker failed."),
-                })
+    calls
+        .iter()
+        .zip(scoped_map(calls, |call| execute_project_read(call, ctx)))
+        .map(|(call, result)| {
+            result.unwrap_or_else(|_| ReadResult {
+                kind: tools::ToolKind::Read,
+                title: call.name.clone(),
+                target: String::new(),
+                outcome: tools::Outcome::failed("The parallel read worker failed."),
             })
-            .collect()
-    })
+        })
+        .collect()
 }
 
 const STREAM_BATCH_INTERVAL: Duration = Duration::from_millis(50);
