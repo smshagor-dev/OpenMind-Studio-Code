@@ -320,6 +320,20 @@ impl Session {
         host: &dyn AgentHost,
         input: &TurnInput<'_>,
     ) {
+        host.emit(self.run_turn_deferred(text, client, host, input));
+    }
+
+    /// Finish a turn without publishing its terminal event yet. The desktop
+    /// uses this to release the shared engine lease and reclaim an abandoned
+    /// llama.cpp inference slot before allowing the next queued task to run.
+    /// The ordinary run_turn API still emits exactly one TurnEnd for callers.
+    pub fn run_turn_deferred(
+        &mut self,
+        text: &str,
+        client: &dyn ModelClient,
+        host: &dyn AgentHost,
+        input: &TurnInput<'_>,
+    ) -> AgentEvent {
         self.goal = text.to_string();
         self.messages.push(Message::User {
             content: text.to_string(),
@@ -329,7 +343,7 @@ impl Session {
         if !changes.is_empty() {
             self.turns.push(changes);
         }
-        host.emit(AgentEvent::TurnEnd { reason, message });
+        AgentEvent::TurnEnd { reason, message }
     }
 
     fn turn_loop(
