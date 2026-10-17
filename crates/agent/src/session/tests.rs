@@ -147,7 +147,10 @@ fn session(mode: Mode) -> Session {
 #[test]
 fn reasoning_budget_is_sent_on_every_model_request() {
     let project = Project::new();
-    let model = Script::new(vec![say("Answer without excessive thinking")]);
+    let model = Script::new(vec![
+        call("read", "read_file", json!({"path": "main.py"})),
+        say("Answer without excessive thinking"),
+    ]);
     let panel = Panel::new(vec![]);
     let mut s = session(Mode::Ask);
     s.set_options(crate::SessionOptions {
@@ -158,9 +161,11 @@ fn reasoning_budget_is_sent_on_every_model_request() {
     s.run_turn("Reply quickly", &model, &panel, &project.input());
     assert_eq!(panel.end(), "done");
     let requests = model.requests.lock().expect("lock");
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0]["thinking_budget_tokens"], 768);
-    assert_eq!(requests[0]["max_tokens"], 2_048);
+    assert_eq!(requests.len(), 2);
+    for request in requests.iter() {
+        assert_eq!(request["thinking_budget_tokens"], 768);
+        assert_eq!(request["max_tokens"], 2_048);
+    }
 }
 
 #[test]
