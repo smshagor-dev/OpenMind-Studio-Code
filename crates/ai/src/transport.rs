@@ -242,7 +242,7 @@ mod tests {
             "{response:?}"
         );
         stop.join().expect("stop thread");
-        let cancelled_at = cancelled_at.lock().expect("timestamp").expect("Stop was sent");
+        let cancelled_at = cancelled_at.lock().expect("timestamp").as_ref().copied().expect("Stop was sent");
         assert!(
             cancelled_at.elapsed() < Duration::from_millis(750),
             "Stop must not wait for the blocked HTTP reader"
