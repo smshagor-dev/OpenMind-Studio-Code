@@ -124,6 +124,11 @@ fn drive(
     cancel: &AtomicBool,
     on_line: &mut dyn FnMut(&str) -> Result<bool, AiError>,
 ) -> Result<(), AiError> {
+    // A queued task may already be stopped before it reaches HTTP. Do not
+    // create an unnecessary network thread for a cancelled request.
+    if cancel.load(Ordering::Relaxed) {
+        return Err(AiError::Cancelled);
+    }
     let rx = spawn(req.clone(), mode);
     let mut status = 0u16;
     let mut error_body = String::new();
