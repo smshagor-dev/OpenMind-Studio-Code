@@ -281,7 +281,6 @@ pub async fn agent_send(
     let agent = agent.inner().clone();
     let root = PathBuf::from(&folder.path);
     std::thread::spawn(move || {
-        let _busy = BusyGuard(Arc::clone(&chat));
         let host = WindowHost {
             app,
             label,
@@ -289,9 +288,17 @@ pub async fn agent_send(
             task_id: request.task_id.as_deref(),
             options: Some(&request.options),
         };
-        run_turn(
-            &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
-        );
+        let terminal = {
+            let _busy = BusyGuard(Arc::clone(&chat));
+            run_turn(
+                &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
+            )
+            // BusyGuard releases only after the engine lease and cancelled
+            // HTTP worker have been cleaned up.
+        };
+        // Publish turnEnd *after* the prior worker is idle. Frontend task
+        // queues resume on this event; publishing it earlier races the lease.
+        host.send(&terminal);
     });
     Ok(())
 }
