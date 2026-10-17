@@ -44,8 +44,18 @@ export interface ModelView {
   downloading: boolean;
 }
 
+/** llama.cpp layer placement for the currently running engine. */
+export interface GpuReport {
+  requested: boolean;
+  mode: "cpu" | "cpuFallback" | "partial" | "gpu" | "unknown";
+  offloadedLayers: number | null;
+  totalLayers: number | null;
+}
+
 export interface AgentOverview {
+  /** Legacy field retained for existing clients. */
   acceleration?: [boolean, number | null];
+  gpuReport?: GpuReport | null;
   hardware: Hardware;
   models: ModelView[];
   recommended: string | null;
