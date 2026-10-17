@@ -223,25 +223,29 @@ export function AgentView() {
       }}
     >
       <Header />
-      <div className="agent-acceleration" role="status">
-        {t("agent.gpu.status", {
-          mode:
-            state.overview.acceleration?.[1] != null
-              ? state.overview.acceleration[1] > 0
-                ? "GPU"
-                : "CPU"
-              : state.overview.acceleration?.[0] === false
-                ? "CPU"
-                : "Auto",
-          layers: state.overview.acceleration?.[1] ?? "—",
-          vram: (
-            state.overview.hardware.gpus.reduce(
-              (sum, gpu) => sum + gpu.vramBytes,
-              0,
-            ) /
-            1024 ** 3
-          ).toFixed(1),
-        })}
+      <div className="agent-acceleration" role="status" data-testid="agent-acceleration-status">
+        {state.overview.gpuReport
+          ? t(`agent.gpu.mode.${state.overview.gpuReport.mode}`, {
+              layers: state.overview.gpuReport.offloadedLayers ?? "—",
+              total: state.overview.gpuReport.totalLayers ?? "—",
+            })
+          : state.overview.runningModel
+            ? t("agent.gpu.mode.unknown")
+            : t("agent.gpu.mode.idle")}
+        {state.overview.hardware.gpus.length > 0 ? (
+          <span>
+            {" · "}
+            {t("agent.gpu.detectedVram", {
+              vram: (
+                state.overview.hardware.gpus.reduce(
+                  (sum, gpu) => sum + gpu.vramBytes,
+                  0,
+                ) /
+                1024 ** 3
+              ).toFixed(1),
+            })}
+          </span>
+        ) : null}
         {state.overview.runningContextTokens != null ? (
           <span>
             {" · "}
