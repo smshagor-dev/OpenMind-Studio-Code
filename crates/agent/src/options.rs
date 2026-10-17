@@ -68,6 +68,30 @@ impl SessionOptions {
 mod tests {
     use super::*;
     #[test]
+    fn automatic_defaults_to_real_engine_window_and_caps_output() {
+        let small = SessionOptions::default().bounded(8_192);
+        assert_eq!(small.context_tokens, 8_192);
+        assert_eq!(small.max_output_tokens, 4_096);
+        let larger = SessionOptions::default().bounded(32_768);
+        assert_eq!(larger.context_tokens, 32_768);
+        assert_eq!(larger.max_output_tokens, 16_384);
+    }
+
+    #[test]
+    fn manual_context_stays_within_the_actual_allocation() {
+        let requested = SessionOptions {
+            context_tokens: 32_768,
+            ..Default::default()
+        };
+        assert_eq!(requested.bounded(16_384).context_tokens, 16_384);
+        let requested = SessionOptions {
+            context_tokens: 4_096,
+            ..Default::default()
+        };
+        assert_eq!(requested.bounded(32_768).context_tokens, 4_096);
+    }
+
+    #[test]
     fn callers_cannot_overallocate_the_models_context_or_remove_limits() {
         let options = SessionOptions {
             context_tokens: 1_000_000,
