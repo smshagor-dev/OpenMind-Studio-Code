@@ -63,11 +63,13 @@ pub async fn workspace_open_folder(
     state: State<'_, AppState>,
 ) -> Result<WorkspaceInfo, String> {
     if is_main(window.label()) {
-        return state
+        let folder = state
             .workspace_folder
             .open_folder(&path)
             .await
-            .map_err(|err| err.to_string());
+            .map_err(|err| err.to_string())?;
+        state.editor_windows.set_folder(window.label(), None);
+        return Ok(folder);
     }
     let info = state
         .workspace_folder
@@ -85,8 +87,8 @@ pub async fn workspace_close_folder(
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    state.editor_windows.set_folder(window.label(), None);
     if !is_main(window.label()) {
-        state.editor_windows.set_folder(window.label(), None);
         return Ok(());
     }
     state
@@ -107,25 +109,46 @@ pub async fn workspace_recent_folders(
         .map_err(|err| err.to_string())
 }
 
-/// The calling window's workspace, defaulting to the OS-configured Documents directory.
+/// Reading the current folder never creates one. Only an explicit operation requests a fallback.
 #[tauri::command]
 pub async fn workspace_active_folder(
+    fallback: Option<String>,
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<Option<WorkspaceInfo>, String> {
     if let Some(folder) = window_workspace(&state, window.label()).await? {
         return Ok(Some(folder));
     }
+    let Some(fallback) = fallback else {
+        return Ok(None);
+    };
+    if fallback != "documents" && fallback != "agent" {
+        return Err("Unknown workspace fallback.".into());
+    }
     let documents = window
         .app_handle()
         .path()
         .document_dir()
         .map_err(|err| format!("Could not locate your Documents folder: {err}"))?;
-    std::fs::create_dir_all(&documents)
-        .map_err(|err| format!("Could not access your Documents folder: {err}"))?;
-    workspace_open_folder(documents.to_string_lossy().into_owned(), window, state)
+    let path = if fallback == "agent" {
+        documents.join("OpenMind Studio")
+    } else {
+        documents
+    };
+    std::fs::create_dir_all(&path)
+        .map_err(|err| format!("Could not access the default workspace: {err}"))?;
+    let folder = state
+        .workspace_folder
+        .remember_folder(&path.to_string_lossy())
         .await
-        .map(Some)
+        .map_err(|err| err.to_string())?;
+    // An explicitly opened project wins if it was selected during folder creation.
+    if let Some(current) = window_workspace(&state, window.label()).await? {
+        return Ok(Some(current));
+    }
+    // Automatic roots belong to this window session; they do not become the next startup workspace.
+    state.editor_windows.set_folder(window.label(), Some(folder.clone()));
+    Ok(Some(folder))
 }
 
 #[tauri::command]
@@ -166,4 +189,5 @@ pub async fn recent_files_rename(
         .await
         .map_err(|err| err.to_string())
 }
+
 

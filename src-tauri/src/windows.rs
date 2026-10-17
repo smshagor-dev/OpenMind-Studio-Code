@@ -22,10 +22,10 @@ use crate::app_state::AppState;
 /// Labels of the extra editor windows start with this (the capability file allows `window-*`).
 pub const EDITOR_WINDOW_PREFIX: &str = "window-";
 
-/// Per-window state the backend keeps for the extra editor windows.
+/// Per-window state, including session-only automatic workspace roots.
 #[derive(Default)]
 pub struct EditorWindows {
-    /// The folder open in each extra window (the main window's is in the database).
+    /// Extra-window folders and automatic roots; explicitly selected main projects are in the database.
     folders: Mutex<HashMap<String, WorkspaceInfo>>,
     /// Which window created each terminal, so closing a window ends its terminals.
     terminals: Mutex<HashMap<String, String>>,
@@ -142,12 +142,15 @@ pub fn page_started(app: &AppHandle, label: &str) {
     crate::commands::collab::net_voice::window_closed(app, label);
 }
 
-/// The folder open in the window `label`: the saved one for `main`, the
-/// in-memory one for an extra window.
+/// A window's current folder: a session-only automatic root, a saved main-window
+/// project, or an extra window's in-memory project.
 pub async fn window_workspace(
     state: &AppState,
     label: &str,
 ) -> Result<Option<WorkspaceInfo>, String> {
+    if let Some(folder) = state.editor_windows.folder(label) {
+        return Ok(Some(folder));
+    }
     if is_main(label) {
         return state
             .workspace_folder
@@ -388,3 +391,4 @@ mod tests {
         assert!(!is_editor_window_extra("php-server"));
     }
 }
+

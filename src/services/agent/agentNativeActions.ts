@@ -2,7 +2,9 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import type { GitSnapshot, GitDiffSides } from "../ipc";
 export interface AgentEditorActions {
-  workspace: { ensureWorkspace: () => Promise<unknown> };
+  workspace: {
+    ensureWorkspace: (fallback?: "documents" | "agent") => Promise<unknown>;
+  };
   sourceControl: {
     refresh: () => Promise<void>;
     getState: () => { snapshot: GitSnapshot | null; error?: string | null };
@@ -49,7 +51,7 @@ export async function exportAgentChat(
 export async function agentGitChanges(
   host: AgentEditorActions,
 ): Promise<string> {
-  await host.workspace.ensureWorkspace();
+  await host.workspace.ensureWorkspace("agent");
   await host.sourceControl.refresh();
   const git = host.sourceControl.getState();
   if (git.error) throw new Error(git.error);

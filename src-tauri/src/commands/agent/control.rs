@@ -40,7 +40,11 @@ pub async fn agent_control(
     if argument.len() > 32_000 {
         return Err("Command arguments exceed 32 KB.".into());
     }
-    let folder = super::super::workspace::workspace_active_folder(window.clone(), state)
+    let folder = super::super::workspace::workspace_active_folder(
+        Some("agent".into()),
+        window.clone(),
+        state,
+    )
         .await?
         .ok_or("The workspace could not be opened.")?;
     let label = window.label().to_string();
@@ -92,3 +96,4 @@ pub async fn agent_control(
         }
     }).await.map_err(|e|e.to_string())?
 }
+
