@@ -337,6 +337,35 @@ fn reasoning_only_length_limit_does_not_loop_or_claim_success() {
 }
 
 #[test]
+fn bounded_scoped_workers_overlap_but_results_remain_in_call_order() {
+    use std::sync::atomic::AtomicUsize;
+    use std::time::{Duration, Instant};
+
+    let running = AtomicUsize::new(0);
+    let peak = AtomicUsize::new(0);
+    let results = scoped_map(&[0, 1, 2], |index| {
+        let count = running.fetch_add(1, Ordering::SeqCst) + 1;
+        peak.fetch_max(count, Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_millis(750);
+        while running.load(Ordering::SeqCst) < 3 && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        // Deliberately make the first item finish last. Publish order must
+        // still match model tool-call order, not thread completion order.
+        if *index == 0 {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        running.fetch_sub(1, Ordering::SeqCst);
+        *index
+    });
+    assert_eq!(
+        results.into_iter().map(|item| item.expect("worker")).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert!(peak.load(Ordering::SeqCst) >= 2, "reads never overlapped");
+}
+
+#[test]
 fn independent_reads_retain_order_and_original_model_tool_ids() {
     let project = Project::new();
     fs::write(project.ws.root().join("notes.txt"), "hello notes").expect("write");
