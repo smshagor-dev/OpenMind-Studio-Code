@@ -30,6 +30,7 @@ pub(super) fn run_turn(
     };
     let connection = match agent.engine.ensure(
         request.options.use_gpu,
+        request.options.context_tokens,
         program,
         &agent.store,
         model,

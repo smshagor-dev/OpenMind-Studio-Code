@@ -2881,6 +2881,7 @@
   "agent.attach.hint": "Текст, PDF, DOCX или изображения · до 10 МБ/файл · до 6 файлов",
   "agent.attach.remove": "Удалить вложение",
   "agent.gpu.status": "{mode} · слоёв на GPU: {layers} · обнаружено VRAM: {vram} ГБ",
+  "agent.context.active": "контекст движка: {tokens} токенов",
   "agent.settings.useGpu": "Использовать GPU (со следующей задачи; зависит от совместимости и памяти)",
   "agent.settings.searchEndpoint": "Веб-поиск · адрес сервера SearXNG",
   "agent.settings.visionEndpoint": "Чтение изображений · адрес локального API",

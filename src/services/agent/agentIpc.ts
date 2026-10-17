@@ -51,6 +51,7 @@ export interface AgentOverview {
   recommended: string | null;
   engineInstalled: boolean;
   runningModel: string | null;
+  runningContextTokens?: number | null;
   modelsDir: string;
   freeDiskBytes: number | null;
 }
@@ -184,7 +185,7 @@ export interface AgentIpc {
     failed: string[];
     canUndo: boolean;
   }>;
-  startEngine: (id: string, useGpu?: boolean) => Promise<boolean>;
+  startEngine: (id: string, useGpu?: boolean, contextTokens?: number) => Promise<boolean>;
   stopEngine: () => Promise<void>;
   onEvent: (listener: (event: AgentEvent) => void) => Promise<() => void>;
   onDownload: (listener: (event: DownloadEvent) => void) => Promise<() => void>;
@@ -207,8 +208,12 @@ export const tauriAgentIpc: AgentIpc = {
     invoke<{ restored: string[]; failed: string[]; canUndo: boolean }>(
       "agent_undo",
     ),
-  startEngine: (id, useGpu) =>
-    invoke<boolean>("agent_engine_start", { id, useGpu: useGpu ?? true }),
+  startEngine: (id, useGpu, contextTokens) =>
+    invoke<boolean>("agent_engine_start", {
+      id,
+      useGpu: useGpu ?? true,
+      contextTokens: contextTokens ?? 0,
+    }),
   stopEngine: () => invoke("agent_engine_stop"),
   onEvent: async (listener) => {
     const off = await listen<AgentEvent>(

@@ -292,10 +292,28 @@ describe("Agent startup", () => {
   it("preloads an existing setup without downloading or starting a turn", async () => {
     const { service, ipc } = setup([model("a", "ready")]);
     await service.start();
-    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a", true);
+    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a", true, 0);
     expect(ipc.download).not.toHaveBeenCalled();
     expect(ipc.send).not.toHaveBeenCalled();
     expect(service.getState().engineState).toBe("ready");
+  });
+
+  it("preloads the previously selected context allocation", async () => {
+    const { service, ipc, settings } = setup([model("a", "ready")]);
+    settings.set("agent.options", JSON.stringify({ contextTokens: 4_096 }));
+    await service.start();
+    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a", true, 4_096);
+  });
+
+  it("restarts an idle engine when the allocated context changes", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    await service.updateOptions({ contextTokens: 4_096 });
+    expect(ipc.startEngine).toHaveBeenNthCalledWith(2, "a", true, 4_096);
+    await service.updateOptions({ maxSteps: 64 });
+    expect(ipc.startEngine).toHaveBeenCalledTimes(2);
+    await service.updateOptions({ contextTokens: 0 });
+    expect(ipc.startEngine).toHaveBeenNthCalledWith(3, "a", true, 0);
   });
 
   it("leaves an unconfigured editor alone", async () => {

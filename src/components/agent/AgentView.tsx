@@ -242,6 +242,14 @@ export function AgentView() {
             1024 ** 3
           ).toFixed(1),
         })}
+        {state.overview.runningContextTokens != null ? (
+          <span>
+            {" · "}
+            {t("agent.context.active", {
+              tokens: state.overview.runningContextTokens.toLocaleString(),
+            })}
+          </span>
+        ) : null}
       </div>
       <div
         ref={scroller}
