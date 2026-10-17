@@ -51,9 +51,8 @@ fn gpu_mode(requested: bool, offload: Option<Offload>) -> &'static str {
         // Actual loader placement is stronger evidence than the user toggle.
         Some(Offload { layers, total }) if layers == total => "gpu",
         Some(Offload { layers, .. }) if layers > 0 => "partial",
-        Some(_) if requested => "cpuFallback",
-        Some(_) | None if !requested => "cpu",
-        None => "unknown",
+        Some(_) => if requested { "cpuFallback" } else { "cpu" },
+        None => if requested { "unknown" } else { "cpu" },
     }
 }
 
