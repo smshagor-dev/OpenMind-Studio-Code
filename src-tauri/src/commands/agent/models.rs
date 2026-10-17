@@ -38,6 +38,7 @@ pub struct Overview {
     models_dir: String,
     free_disk_bytes: Option<u64>,
     acceleration: (bool, Option<u32>),
+    gpu_report: Option<super::engine::GpuReport>,
 }
 
 /// Downloads in progress, by model id.
@@ -127,6 +128,7 @@ pub(super) fn build_overview(agent: &AgentRuntime, engine_installed: bool) -> Ov
         running_context_tokens: agent.engine.running_context_tokens(),
         models_dir: agent.store.dir().display().to_string(),
         acceleration: agent.engine.acceleration(),
+        gpu_report: agent.engine.gpu_report(),
         free_disk_bytes: free_disk_bytes(agent.store.dir()),
     }
 }

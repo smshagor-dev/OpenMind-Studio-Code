@@ -29,13 +29,46 @@ pub struct Connection {
     pub context_tokens: u32,
 }
 
+/// llama.cpp's actual startup layer placement, not detected VRAM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Offload {
+    layers: u32,
+    total: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuReport {
+    pub requested: bool,
+    /// "gpu", "partial", "cpuFallback", "cpu" or "unknown".
+    pub mode: &'static str,
+    pub offloaded_layers: Option<u32>,
+    pub total_layers: Option<u32>,
+}
+
+fn gpu_mode(requested: bool, offload: Option<Offload>) -> &'static str {
+    match offload {
+        // Actual loader placement is stronger evidence than the user toggle.
+        Some(Offload { layers, total }) if layers == total => "gpu",
+        Some(Offload { layers, .. }) if layers > 0 => "partial",
+        Some(_) => match requested {
+            true => "cpuFallback",
+            false => "cpu",
+        },
+        None => match requested {
+            true => "unknown",
+            false => "cpu",
+        },
+    }
+}
+
 #[derive(Default)]
 pub struct EngineSlot {
     lease: Mutex<()>,
     engine: Mutex<Option<Engine>>,
     gpu_mode: Mutex<bool>,
     auto_context: Mutex<bool>,
-    offloaded: Mutex<Option<u32>>,
+    offload: Mutex<Option<Offload>>,
 }
 
 impl EngineSlot {
@@ -56,29 +89,37 @@ impl EngineSlot {
         engine.exited().is_none().then_some(engine.context_tokens)
     }
 
-    pub fn acceleration(&self) -> (bool, Option<u32>) {
-        let slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
+    /// Only show a placement report while the engine process is alive.
+    pub fn gpu_report(&self) -> Option<GpuReport> {
+        let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
+        let engine = slot.as_mut()?;
+        if engine.exited().is_some() {
+            return None;
+        }
         let requested = *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner);
-        let layers = if slot.is_some() {
-            *self
-                .offloaded
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-        } else {
-            None
-        };
-        (requested, layers)
+        let offload = *self.offload.lock().unwrap_or_else(PoisonError::into_inner);
+        Some(GpuReport {
+            requested,
+            mode: gpu_mode(requested, offload),
+            offloaded_layers: offload.map(|data| data.layers),
+            total_layers: offload.map(|data| data.total),
+        })
+    }
+
+    /// Preserve old overview shape for compatibility.
+    pub fn acceleration(&self) -> (bool, Option<u32>) {
+        match self.gpu_report() {
+            Some(report) => (report.requested, report.offloaded_layers),
+            None => (false, None),
+        }
     }
 
     pub fn stop(&self) {
-        if let Some(mut engine) = self
-            .engine
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take()
-        {
+        let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(mut engine) = slot.take() {
             engine.stop();
         }
+        *self.offload.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 
     /// The engine running `model`, started (and waited for) when needed.
@@ -121,10 +162,7 @@ impl EngineSlot {
         if let Some(mut old) = slot.take() {
             old.stop();
         }
-        *self
-            .offloaded
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = None;
+        *self.offload.lock().unwrap_or_else(PoisonError::into_inner) = None;
         let entry = store.ready_entry(model).map_err(|e| e.to_string())?;
         let event = |state: &'static str, message: Option<String>| EngineEvent {
             kind: "engine",
@@ -172,7 +210,30 @@ impl EngineSlot {
             std::thread::sleep(Duration::from_millis(300));
         }
         tracing::info!(model = %model.id, seconds = started.elapsed().as_secs_f32(), "local model ready");
-        notify(event("ready", None));
+        // --gpu-layers auto is a request, not a guarantee: inspect actual
+        // placement from this process's startup log before reporting GPU use.
+        let offload = offload_layers(&engine.log_tail(3_000));
+        let status = gpu_mode(use_gpu, offload);
+        let notice = if use_gpu {
+            match status {
+                "cpuFallback" => Some(
+                    "GPU requested but llama.cpp offloaded no layers; running on CPU. Check the GPU backend, drivers and VRAM.".to_string(),
+                ),
+                "partial" => Some(
+                    "Model partially offloaded to GPU; CPU layers may reduce generation speed.".to_string(),
+                ),
+                "unknown" => Some(
+                    "GPU requested but llama.cpp did not report GPU layer placement; acceleration is unverified.".to_string(),
+                ),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some(warning) = &notice {
+            tracing::warn!(model = %model.id, mode = status, "{warning}");
+        }
+        notify(event("ready", notice));
         let connection = Connection {
             base_url: engine.base_url(),
             key: engine.key().to_string(),
@@ -180,10 +241,7 @@ impl EngineSlot {
         };
         *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) = use_gpu;
         *self.auto_context.lock().unwrap_or_else(PoisonError::into_inner) = automatic;
-        *self
-            .offloaded
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner) = offloaded_layers(&engine.log_tail(500));
+        *self.offload.lock().unwrap_or_else(PoisonError::into_inner) = offload;
         *slot = Some(engine);
         Ok(connection)
     }
@@ -270,10 +328,17 @@ fn automatic_context_tokens(
         .min(model.context_tokens.max(1_024))
 }
 
-fn offloaded_layers(log: &str) -> Option<u32> {
+fn offload_layers(log: &str) -> Option<Offload> {
     log.lines().rev().find_map(|line| {
-        let tail = line.split("offloaded ").nth(1)?;
-        tail.split('/').next()?.trim().parse::<u32>().ok()
+        // Ignore "offloading N layers" intentions, only parse placement.
+        let (_, tail) = line.split_once("offloaded ")?;
+        let (count, rest) = tail.split_once('/')?;
+        if !rest.contains("layers to GPU") {
+            return None;
+        }
+        let total = rest.split_whitespace().next()?.parse::<u32>().ok()?;
+        let layers = count.trim().parse::<u32>().ok()?;
+        (total != 0 && layers <= total).then_some(Offload { layers, total })
     })
 }
 
@@ -362,15 +427,47 @@ mod tests {
 
     #[test]
     fn gpu_offload_comes_from_the_engine_report_not_detected_capacity() {
+        let full = offload_layers("load_tensors: offloaded 33/33 layers to GPU");
+        assert_eq!(full, Some(Offload { layers: 33, total: 33 }));
+        assert_eq!(gpu_mode(true, full), "gpu");
+
+        let mixed = offload_layers("llm_load_tensors: offloaded 16/33 layers to GPU");
+        assert_eq!(mixed, Some(Offload { layers: 16, total: 33 }));
+        assert_eq!(gpu_mode(true, mixed), "partial");
+
+        let cpu = offload_layers("load_tensors: offloaded 0/33 layers to GPU");
+        assert_eq!(gpu_mode(true, cpu), "cpuFallback");
+        // Inconsistent launcher flags must not overwrite an observed GPU count.
+        assert_eq!(gpu_mode(false, full), "gpu");
+    }
+
+    #[test]
+    fn gpu_status_is_unknown_without_a_reliable_engine_report() {
+        let log = "ggml_vulkan: found a device\nload_tensors: offloading 33 repeating layers to GPU";
+        assert_eq!(offload_layers(log), None);
+        assert_eq!(gpu_mode(true, None), "unknown");
+        assert_eq!(gpu_mode(false, None), "cpu");
+        assert_eq!(offload_layers("Vulkan device: 8 GB VRAM"), None);
         assert_eq!(
-            offloaded_layers("load_tensors: offloaded 33/33 layers to GPU"),
-            Some(33)
+            offload_layers("load_tensors: offloaded 34/33 layers to GPU"),
+            None
         );
-        assert_eq!(
-            offloaded_layers("load_tensors: offloaded 0/33 layers to GPU"),
-            Some(0)
-        );
-        assert_eq!(offloaded_layers("Vulkan device: 8 GB VRAM"), None);
+        assert_eq!(offload_layers("load_tensors: offloaded 0/0 layers to GPU"), None);
+    }
+
+    #[test]
+    fn latest_offload_report_wins_when_multiple_are_present() {
+        let log = "load_tensors: offloaded 4/33 layers to GPU\nload_tensors: offloaded 19/33 layers to GPU";
+        assert_eq!(offload_layers(log), Some(Offload { layers: 19, total: 33 }));
+    }
+
+    #[test]
+    fn stopped_or_missing_engine_has_no_gpu_report() {
+        let slot = EngineSlot::default();
+        assert!(slot.gpu_report().is_none());
+        slot.stop();
+        assert!(slot.gpu_report().is_none());
+        assert_eq!(slot.acceleration(), (false, None));
     }
 
     #[test]

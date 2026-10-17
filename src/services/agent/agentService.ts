@@ -1144,6 +1144,7 @@ export class AgentService {
               }
             : null,
           acceleration: this.state.overview?.acceleration,
+          gpuReport: this.state.overview?.gpuReport,
           hardware: this.state.overview?.hardware,
           activeTask: this.tasks.getState().activeId,
           options: {
