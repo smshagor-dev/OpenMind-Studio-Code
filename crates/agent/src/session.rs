@@ -40,6 +40,14 @@ struct ReadResult {
 /// Parallelize both phases and never mutate the session, policy or UI from
 /// workers. The calling thread publishes results in original call order.
 fn execute_project_read(call: &crate::wire::ToolCall, ctx: &ToolContext<'_>) -> ReadResult {
+    if ctx.cancel.load(Ordering::Relaxed) {
+        return ReadResult {
+            kind: tools::ToolKind::Read,
+            title: call.name.clone(),
+            target: String::new(),
+            outcome: tools::Outcome::failed("Cancelled"),
+        };
+    }
     let prepared = tools::prepare(&call.name, &call.arguments, ctx, true);
     let (kind, title, target) =
         (prepared.kind, prepared.title.clone(), prepared.target.clone());
