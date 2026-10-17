@@ -40,6 +40,8 @@ pub struct Engine {
     port: u16,
     key: String,
     pub alias: String,
+    /// Context allocated by llama-server at startup.
+    pub context_tokens: u32,
     log_file: PathBuf,
 }
 
@@ -141,6 +143,7 @@ impl Engine {
             port,
             key,
             alias: config.alias.clone(),
+            context_tokens: config.context_tokens,
             log_file: config.log_file.clone(),
         })
     }
@@ -223,6 +226,15 @@ mod tests {
             use_gpu: true,
             log_file: PathBuf::from("engine.log"),
         }
+    }
+
+    #[test]
+    fn allocated_context_is_forwarded_to_llama_server() {
+        let mut config = config();
+        config.context_tokens = 4_096;
+        let args = arguments(&config, 4242, "key");
+        let index = args.iter().position(|arg| arg == "--ctx-size").unwrap();
+        assert_eq!(args[index + 1], "4096");
     }
 
     #[test]

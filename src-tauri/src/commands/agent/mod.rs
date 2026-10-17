@@ -457,6 +457,7 @@ pub async fn agent_undo(
 pub async fn agent_engine_start(
     id: String,
     use_gpu: Option<bool>,
+    context_tokens: Option<u32>,
     app: AppHandle,
     state: State<'_, AppState>,
     agent: State<'_, AgentRuntime>,
@@ -480,6 +481,7 @@ pub async fn agent_engine_start(
         }
         agent.engine.ensure(
             use_gpu.unwrap_or(true),
+            context_tokens.unwrap_or(0),
             &program,
             &agent.store,
             &model,

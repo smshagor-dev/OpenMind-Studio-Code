@@ -48,6 +48,12 @@ impl EngineSlot {
         engine.exited().is_none().then(|| engine.alias.clone())
     }
 
+    pub fn running_context_tokens(&self) -> Option<u32> {
+        let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
+        let engine = slot.as_mut()?;
+        engine.exited().is_none().then_some(engine.context_tokens)
+    }
+
     pub fn acceleration(&self) -> (bool, Option<u32>) {
         let slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
         let requested = *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner);
@@ -78,6 +84,7 @@ impl EngineSlot {
     pub fn ensure(
         &self,
         use_gpu: bool,
+        requested_context_tokens: u32,
         program: &Path,
         store: &ModelStore,
         model: &ModelEntry,
@@ -86,9 +93,11 @@ impl EngineSlot {
         notify: &dyn Fn(EngineEvent),
     ) -> Result<Connection, String> {
         let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
+        let context_tokens = effective_context_tokens(requested_context_tokens, model.context_tokens);
         if let Some(engine) = slot.as_mut() {
             if *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) == use_gpu
                 && engine.alias == model.id
+                && engine.context_tokens == context_tokens
                 && engine.exited().is_none()
                 && engine.health() == Health::Ready
             {
@@ -117,7 +126,7 @@ impl EngineSlot {
             program: program.to_path_buf(),
             model: entry,
             alias: model.id.clone(),
-            context_tokens: model.context_tokens,
+            context_tokens,
             use_gpu,
             log_file: log_dir.join("llama-server.log"),
         };
@@ -167,6 +176,16 @@ impl EngineSlot {
     }
 }
 
+// Keep the allocated KV cache aligned with SessionOptions::bounded.
+fn effective_context_tokens(requested: u32, model_limit: u32) -> u32 {
+    let ceiling = model_limit.max(1_024);
+    if requested == 0 {
+        ceiling
+    } else {
+        requested.clamp(1_024, ceiling)
+    }
+}
+
 fn offloaded_layers(log: &str) -> Option<u32> {
     log.lines().rev().find_map(|line| {
         let tail = line.split("offloaded ").nth(1)?;
@@ -199,6 +218,15 @@ pub fn program_in(dir: PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selected_context_is_bounded_before_engine_allocation() {
+        assert_eq!(effective_context_tokens(0, 32_768), 32_768);
+        assert_eq!(effective_context_tokens(4_096, 32_768), 4_096);
+        assert_eq!(effective_context_tokens(65_536, 32_768), 32_768);
+        assert_eq!(effective_context_tokens(100, 32_768), 1_024);
+        assert_eq!(effective_context_tokens(0, 512), 1_024);
+    }
 
     #[test]
     fn gpu_offload_comes_from_the_engine_report_not_detected_capacity() {

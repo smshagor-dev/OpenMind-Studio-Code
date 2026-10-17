@@ -318,6 +318,7 @@ export class AgentService {
   }
 
   async updateOptions(change: Partial<AgentOptions>): Promise<void> {
+    const previousContext = this.options().contextTokens;
     const options = agentOptions({ ...this.options(), ...change });
     this.set({ options });
     await this.host
@@ -372,6 +373,16 @@ export class AgentService {
       .catch(() => {
         this.host.notify(this.host.text("agent.tasks.saveFailed"));
       });
+    // Changing the context needs a new KV cache, not just a smaller prompt.
+    // Do not interrupt an active turn; its next request will reconcile the engine.
+    if (
+      previousContext !== options.contextTokens &&
+      !this.state.transcript.busy &&
+      !this.tasks.getState().activeId &&
+      !this.warming
+    ) {
+      await this.activate();
+    }
   }
 
   getState(): AgentState {
@@ -453,7 +464,11 @@ export class AgentService {
     this.set({ engineState: "loading" });
     this.warming = (async () => {
       try {
-        const ready = await this.ipc.startEngine(id, this.options().useGpu);
+        const ready = await this.ipc.startEngine(
+          id,
+          this.options().useGpu,
+          this.options().contextTokens,
+        );
         await this.refresh();
         this.set({
           engineState:

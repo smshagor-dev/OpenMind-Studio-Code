@@ -2851,6 +2851,7 @@
   "agent.attach.hint": "Text, PDF, DOCX or images · 10 MB/file · up to 6 files",
   "agent.attach.remove": "Remove attachment",
   "agent.gpu.status": "{mode} · offloaded layers: {layers} · detected VRAM capacity: {vram} GB",
+  "agent.context.active": "allocated context: {tokens} tokens",
   "agent.settings.useGpu": "Use GPU acceleration (applies to the next task; CPU fallback if unavailable)",
   "agent.settings.searchEndpoint": "Web search · SearXNG server URL",
   "agent.settings.visionEndpoint": "Image reading · local vision API URL",
