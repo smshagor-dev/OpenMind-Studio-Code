@@ -86,6 +86,44 @@ describe("AgentHistory", () => {
     vi.mocked(ipc.load).mockResolvedValueOnce(saved);
     await expect(history.load("chat")).rejects.toThrow("Invalid history entry");
   });
+  it("debounces streaming snapshots while checkpointing long-running replies", async () => {
+    vi.useFakeTimers();
+    try {
+      const { history, ipc, snapshot } = fixture();
+      history.schedule(snapshot);
+      for (let t = 0; t < 4_500; t += 100) {
+        await vi.advanceTimersByTimeAsync(100);
+        history.schedule({ ...snapshot, title: `latest-${t}` });
+      }
+      expect(ipc.save).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(ipc.save).toHaveBeenCalledTimes(1);
+      // A pause still flushes the final snapshot without waiting 5 seconds.
+      history.schedule({ ...snapshot, title: "final answer" });
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(ipc.save).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(ipc.save).mock.calls[1]?.[0].title).toBe("final answer");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("forces a synchronous snapshot handoff for turn completion and navigation", async () => {
+    vi.useFakeTimers();
+    try {
+      const { history, ipc, snapshot } = fixture();
+      history.schedule(snapshot);
+      history.schedule({ ...snapshot, title: "finished" });
+      await history.flush(true);
+      expect(ipc.save).toHaveBeenCalledOnce();
+      expect(vi.mocked(ipc.save).mock.calls[0]?.[0].title).toBe("finished");
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(ipc.save).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("serializes writes and flushes before delete", async () => {
     const { ipc, history, snapshot } = fixture();
     const order: string[] = [];
