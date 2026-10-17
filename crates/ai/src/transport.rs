@@ -184,7 +184,7 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Instant;
 
     #[test]
@@ -192,6 +192,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
         let addr = listener.local_addr().expect("local address");
         listener.set_nonblocking(true).expect("nonblocking accept");
+        let (ready_tx, ready_rx) = mpsc::channel();
         let server = std::thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(2);
             let (mut socket, _) = loop {
@@ -212,6 +213,7 @@ mod tests {
             socket
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
                 .expect("send headers");
+            ready_tx.send(()).expect("signal streaming response");
             // The server has no reply: caller must not wait for this sleep.
             std::thread::sleep(Duration::from_millis(1_800));
         });
@@ -223,21 +225,28 @@ mod tests {
         };
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&cancel);
+        let cancelled_at = Arc::new(Mutex::new(None));
+        let stop_timestamp = Arc::clone(&cancelled_at);
         let stop = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(90));
+            // Guarantee that cancellation happens during the blocked body
+            // read, not before a slow CI runner establishes the connection.
+            ready_rx
+                .recv_timeout(Duration::from_secs(3))
+                .expect("local HTTP stream never started");
             flag.store(true, Ordering::Release);
+            *stop_timestamp.lock().expect("timestamp") = Some(Instant::now());
         });
-        let start = Instant::now();
         let response = stream_lines(&req, "", &cancel, &mut |_line| Ok(true));
         assert!(
             matches!(&response, Err(AiError::Cancelled)),
             "{response:?}"
         );
+        stop.join().expect("stop thread");
+        let cancelled_at = cancelled_at.lock().expect("timestamp").expect("Stop was sent");
         assert!(
-            start.elapsed() < Duration::from_millis(1_200),
+            cancelled_at.elapsed() < Duration::from_millis(750),
             "Stop must not wait for the blocked HTTP reader"
         );
-        stop.join().expect("stop thread");
         server.join().expect("test server");
     }
 
