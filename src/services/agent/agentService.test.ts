@@ -187,6 +187,33 @@ describe("AgentService", () => {
     }
   });
 
+  it("does not rewrite chat history on unrelated settings and overview refresh", async () => {
+    const history = {
+      list: vi.fn(() => Promise.resolve([])),
+      save: vi.fn(() => Promise.resolve()),
+      delete: vi.fn(() => Promise.resolve(true)),
+      load: vi.fn(() => Promise.resolve(null)),
+    };
+    const { service, ipc, event } = setup([model("a", "ready")], true, history);
+    await service.start();
+    await service.send("Save an answer");
+    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    event({ type: "text", text: "Saved exactly once" });
+    event({ type: "turnEnd", reason: "done", message: null });
+    await vi.waitFor(() => expect(history.save).toHaveBeenCalled());
+    const count = history.save.mock.calls.length;
+    vi.useFakeTimers();
+    try {
+      await service.refresh();
+      await service.updateOptions({ autoScroll: false });
+      await vi.advanceTimersByTimeAsync(1_500);
+      expect(history.save).toHaveBeenCalledTimes(count);
+    } finally {
+      service.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("never commits batched old-task tokens into a different active task", async () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
