@@ -174,6 +174,101 @@ it("requires licence consent before starting a setup download", () => {
   fireEvent.click(download);
   expect(downloadSpy).toHaveBeenCalledWith("internal", true);
 });
+describe("actual GPU layer diagnostics", () => {
+  it("shows partial offload with the actual layer ratio", () => {
+    harness.state = {
+      ...currentState(),
+      overview: {
+        ...overview(true),
+        gpuReport: {
+          requested: true,
+          mode: "partial",
+          offloadedLayers: 16,
+          totalLayers: 33,
+        },
+      },
+      modelId: "internal",
+      engineState: "ready",
+    };
+    mount();
+    expect(screen.getByTestId("agent-acceleration-status")).toHaveTextContent(
+      "agent.gpu.mode.partial",
+    );
+  });
+
+  it("does not claim GPU acceleration on CPU fallback", () => {
+    harness.state = {
+      ...currentState(),
+      overview: {
+        ...overview(true),
+        gpuReport: {
+          requested: true,
+          mode: "cpuFallback",
+          offloadedLayers: 0,
+          totalLayers: 33,
+        },
+      },
+      modelId: "internal",
+    };
+    mount();
+    expect(screen.getByTestId("agent-acceleration-status")).toHaveTextContent(
+      "agent.gpu.mode.cpuFallback",
+    );
+  });
+
+  it("treats a running engine without verifiable GPU data as unknown", () => {
+    harness.state = {
+      ...currentState(),
+      overview: {
+        ...overview(true),
+        gpuReport: {
+          requested: true,
+          mode: "unknown",
+          offloadedLayers: null,
+          totalLayers: null,
+        },
+      },
+      modelId: "internal",
+    };
+    mount();
+    expect(screen.getByTestId("agent-acceleration-status")).toHaveTextContent(
+      "agent.gpu.mode.unknown",
+    );
+  });
+
+  it("shows idle rather than automatic GPU when no engine runs", () => {
+    harness.state = {
+      ...currentState(),
+      overview: overview(),
+      modelId: "internal",
+    };
+    mount();
+    expect(screen.getByTestId("agent-acceleration-status")).toHaveTextContent(
+      "agent.gpu.mode.idle",
+    );
+  });
+
+  it("shows explicit CPU mode without suggesting a failed GPU", () => {
+    harness.state = {
+      ...currentState(),
+      overview: {
+        ...overview(true),
+        gpuReport: {
+          requested: false,
+          mode: "cpu",
+          offloadedLayers: null,
+          totalLayers: null,
+        },
+      },
+      modelId: "internal",
+    };
+    mount();
+    expect(screen.getByTestId("agent-acceleration-status")).toHaveTextContent(
+      "agent.gpu.mode.cpu",
+    );
+  });
+});
+
 describe("configured header", () => {
   it("shows only the product, edition and live status", () => {
     harness.state = {
