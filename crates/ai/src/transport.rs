@@ -173,3 +173,67 @@ pub fn stream_lines(
 ) -> Result<(), AiError> {
     drive(req, key, Mode::Lines, cancel, on_line)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    #[test]
+    fn cancellation_unblocks_caller_while_http_stream_is_stalled() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("local address");
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().expect("accept");
+            socket
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set timeout");
+            let mut buf = [0u8; 4096];
+            let _ = socket.read(&mut buf);
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
+                .expect("send headers");
+            // The server has no reply: caller must not wait for this sleep.
+            std::thread::sleep(Duration::from_millis(650));
+        });
+        let req = WireRequest {
+            method: Method::Get,
+            url: format!("http://{addr}/v1/chat/completions"),
+            headers: Vec::new(),
+            body: None,
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&cancel);
+        let stop = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(90));
+            flag.store(true, Ordering::Release);
+        });
+        let start = Instant::now();
+        let response = stream_lines(&req, "", &cancel, &mut |_line| Ok(true));
+        assert!(matches!(response, Err(AiError::Cancelled)), "{response:?}");
+        assert!(
+            start.elapsed() < Duration::from_millis(500),
+            "Stop must not wait for the blocked HTTP reader"
+        );
+        stop.join().expect("stop thread");
+        server.join().expect("test server");
+    }
+
+    #[test]
+    fn already_cancelled_request_never_reports_a_successful_reply() {
+        let cancel = AtomicBool::new(true);
+        let req = WireRequest {
+            method: Method::Get,
+            url: "http://127.0.0.1:1/v1/chat/completions".into(),
+            headers: Vec::new(),
+            body: None,
+        };
+        assert!(matches!(
+            stream_lines(&req, "", &cancel, &mut |_line| Ok(true)),
+            Err(AiError::Cancelled)
+        ));
+    }
+}
