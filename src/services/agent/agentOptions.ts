@@ -7,6 +7,7 @@ export interface AgentOptions {
   imageEndpoint: string;
   contextTokens: number;
   maxOutputTokens: number;
+  reasoningBudgetTokens: number;
   maxSteps: number;
   maxContinuations: number;
   temperature: number;
@@ -24,7 +25,8 @@ export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
   visionEndpoint: "",
   imageEndpoint: "",
   contextTokens: 0,
-  maxOutputTokens: 16384,
+  maxOutputTokens: 4096,
+  reasoningBudgetTokens: 1024,
   maxSteps: 128,
   maxContinuations: 8,
   temperature: 0.6,
@@ -73,6 +75,7 @@ export function agentOptions(value: unknown): AgentOptions {
     imageEndpoint: endpoint("imageEndpoint"),
     contextTokens: number("contextTokens", 0, 131072),
     maxOutputTokens: number("maxOutputTokens", 1024, 32768),
+    reasoningBudgetTokens: number("reasoningBudgetTokens", 0, 8192),
     maxSteps: number("maxSteps", 8, 512),
     maxContinuations: number("maxContinuations", 0, 16),
     temperature: number("temperature", 0, 1, false),

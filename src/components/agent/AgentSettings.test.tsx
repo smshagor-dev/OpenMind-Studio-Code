@@ -16,7 +16,8 @@ vi.mock("../../services/agent", () => ({
       visionEndpoint: "",
       imageEndpoint: "",
       contextTokens: 0,
-      maxOutputTokens: 16384,
+      maxOutputTokens: 4096,
+      reasoningBudgetTokens: 1024,
       maxSteps: 128,
       maxContinuations: 8,
       temperature: 0.6,
@@ -40,6 +41,25 @@ vi.mock("../../i18n", () => ({ useT: () => (key: string) => key }));
 vi.mock("./AgentCapabilities", () => ({ AgentCapabilities: () => null }));
 
 describe("context window settings", () => {
+  it("saves a separate reasoning budget, including zero", async () => {
+    harness.updateOptions.mockClear();
+    render(<AgentSettings />);
+    const reasoning = screen.getByRole("spinbutton", {
+      name: "agent.settings.reasoningBudgetTokens",
+    });
+    expect(reasoning).toHaveValue(1024);
+    fireEvent.change(reasoning, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
+    await waitFor(() =>
+      expect(harness.updateOptions).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reasoningBudgetTokens: 0,
+          maxOutputTokens: 4096,
+        }),
+      ),
+    );
+  });
+
   it("defaults to automatic and hides manual token allocation", () => {
     render(<AgentSettings />);
     expect(screen.getByRole("combobox", { name: "agent.settings.contextMode" }))

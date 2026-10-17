@@ -145,6 +145,59 @@ fn session(mode: Mode) -> Session {
 }
 
 #[test]
+fn reasoning_budget_is_sent_on_every_model_request() {
+    let project = Project::new();
+    let model = Script::new(vec![say("Answer without excessive thinking")]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.set_options(crate::SessionOptions {
+        reasoning_budget_tokens: 768,
+        max_output_tokens: 2_048,
+        ..Default::default()
+    });
+    s.run_turn("Reply quickly", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let requests = model.requests.lock().expect("lock");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["thinking_budget_tokens"], 768);
+    assert_eq!(requests[0]["max_tokens"], 2_048);
+}
+
+#[test]
+fn disabled_reasoning_still_sends_zero_budget() {
+    let project = Project::new();
+    let model = Script::new(vec![say("Direct answer")]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.set_options(crate::SessionOptions {
+        reasoning_budget_tokens: 0,
+        ..Default::default()
+    });
+    s.run_turn("Reply", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let requests = model.requests.lock().expect("lock");
+    assert_eq!(requests[0]["thinking_budget_tokens"], 0);
+}
+
+#[test]
+fn reasoning_only_length_limit_does_not_loop_or_claim_success() {
+    let project = Project::new();
+    let reasoning_only = r#"data: {"choices":[{"delta":{"reasoning_content":"Still thinking"},"finish_reason":"length"}]}"#;
+    let model = Script::new(vec![
+        vec![reasoning_only.into(), "data: [DONE]".into()],
+        say("This should not be requested"),
+    ]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Reply", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "limit");
+    assert_eq!(model.requests.lock().expect("lock").len(), 1);
+    assert!(panel.events.lock().expect("lock").iter().any(|event| {
+        matches!(event, AgentEvent::TurnEnd { message: Some(detail), .. } if detail.contains("reasoning"))
+    }));
+}
+
+#[test]
 fn the_agent_reads_asks_edits_and_answers() {
     let project = Project::new();
     let model = Script::new(vec![
