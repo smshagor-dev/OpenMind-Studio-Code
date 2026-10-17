@@ -5,6 +5,10 @@
 A native desktop code editor (Rust + Tauri 2 + React/TypeScript + Monaco), portable-first,
 targeting Windows primarily with future Linux/macOS support. Not a web app.
 
+## AI feature and release claim policy
+
+The provider-based AI chat foundation is documented as already implemented. A complete AI Coding Agent is **not** verified as shipped in v1.0.3 or the prepared v1.0.4 packages. Do not treat proposed autonomous coding, workspace-wide edits, tool execution or approval-policy features as released until relevant source paths, integration tests and packaged-app behavior have been checked. Keep future AI work separate from confirmed release notes.
+
 ## Ecosystem
 
 OpenMind Studio is the desktop IDE in the broader OpenMind ecosystem:
