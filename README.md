@@ -37,6 +37,14 @@ The v1.0.4 packages are not Authenticode-signed. Physical multi-computer univers
   local-first collaboration (preview).
 - Settings, keyboard shortcuts, themes and profiles; English and Russian.
 
+## AI assistance and coding agent status
+
+**Available foundation:** The project includes a configurable AI chat/provider integration. AI requests depend on the provider and model configured by the user; this is not a bundled, guaranteed-offline coding agent.
+
+**Planned / not release-verified:** A full workspace-aware coding agent with multi-file edits, tool execution, approval controls, persistent task state, and end-to-end autonomous coding workflows is an upcoming direction. These capabilities are **not advertised as completed in v1.0.3 or v1.0.4** without source-level tests and release validation.
+
+For v1.0.4, see the [release notes](docs/release-notes-1.0.4.md) for verified changes. AI coding-agent work is not included in the confirmed v1.0.4 change list.
+
 ## Platforms
 
 | Platform | Packages |
