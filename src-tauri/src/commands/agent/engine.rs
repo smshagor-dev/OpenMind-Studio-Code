@@ -212,9 +212,15 @@ impl EngineSlot {
         let status = gpu_mode(use_gpu, offload);
         let notice = if use_gpu {
             match status {
-                "cpuFallback" => Some("GPU requested but llama.cpp offloaded no layers; running on CPU. Check the GPU backend, drivers and VRAM.".to_string()),
-                "partial" => Some("Model partially offloaded to GPU; CPU layers may reduce generation speed.".to_string()),
-                "unknown" => Some("GPU requested but llama.cpp did not report GPU layer placement; acceleration is unverified.".to_string()),
+                "cpuFallback" => Some(
+                    "GPU requested but llama.cpp offloaded no layers; running on CPU. Check the GPU backend, drivers and VRAM.".to_string(),
+                ),
+                "partial" => Some(
+                    "Model partially offloaded to GPU; CPU layers may reduce generation speed.".to_string(),
+                ),
+                "unknown" => Some(
+                    "GPU requested but llama.cpp did not report GPU layer placement; acceleration is unverified.".to_string(),
+                ),
                 _ => None,
             }
         } else {
@@ -437,7 +443,10 @@ mod tests {
         assert_eq!(gpu_mode(true, None), "unknown");
         assert_eq!(gpu_mode(false, None), "cpu");
         assert_eq!(offload_layers("Vulkan device: 8 GB VRAM"), None);
-        assert_eq!(offload_layers("load_tensors: offloaded 34/33 layers to GPU"), None);
+        assert_eq!(
+            offload_layers("load_tensors: offloaded 34/33 layers to GPU"),
+            None
+        );
         assert_eq!(offload_layers("load_tensors: offloaded 0/0 layers to GPU"), None);
     }
 
