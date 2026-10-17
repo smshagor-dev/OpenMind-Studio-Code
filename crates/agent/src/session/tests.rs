@@ -145,6 +145,38 @@ fn session(mode: Mode) -> Session {
 }
 
 #[test]
+fn deferred_turn_preserves_all_output_but_does_not_signal_completion_early() {
+    let project = Project::new();
+    let model = Script::new(vec![say("The final answer")]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    let terminal = s.run_turn_deferred("What happened?", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "", "desktop must own the terminal-event timing");
+    assert!(panel.events.lock().expect("events").iter().any(|event| {
+        matches!(event, AgentEvent::Text { text } if text == "The final answer")
+    }));
+    assert!(matches!(terminal, AgentEvent::TurnEnd { ref reason, .. } if reason == "done"));
+    panel.emit(terminal);
+    assert_eq!(panel.end(), "done");
+    assert_eq!(panel.events.lock().expect("events").iter().filter(|event| {
+        matches!(event, AgentEvent::TurnEnd { .. })
+    }).count(), 1);
+}
+
+#[test]
+fn deferred_turn_respects_early_cancellation_without_calling_the_model() {
+    let project = Project::new();
+    project.cancel.store(true, Ordering::Relaxed);
+    let model = Script::new(vec![say("Should not run")]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    let terminal = s.run_turn_deferred("Stop now", &model, &panel, &project.input());
+    assert!(matches!(terminal, AgentEvent::TurnEnd { ref reason, .. } if reason == "cancelled"));
+    assert!(model.requests.lock().expect("requests").is_empty());
+    assert_eq!(panel.end(), "");
+}
+
+#[test]
 fn tiny_text_deltas_are_batched_without_losing_the_answer() {
     let project = Project::new();
     let mut reply: Vec<String> = (0..250)
