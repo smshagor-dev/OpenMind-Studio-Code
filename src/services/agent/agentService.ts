@@ -141,6 +141,10 @@ export class AgentService {
   private restoringHistory = false;
   private savedActiveId: string | null = null;
   private saves: Promise<void> = Promise.resolve();
+  /** High-frequency stream chunks are coalesced before notifying React. */
+  private streamQueue: AgentEvent[] = [];
+  private streamTimer: ReturnType<typeof setTimeout> | null = null;
+  private streamBytes = 0;
 
   constructor(
     private readonly ipc: AgentIpc,
@@ -397,7 +401,50 @@ export class AgentService {
   private set(change: Partial<AgentState>): void {
     this.state = { ...this.state, ...change };
     for (const listener of this.listeners) listener();
-    this.saveHistory();
+    // Settings, heartbeat/overview refresh and panel state do not change
+    // persisted conversation content. Avoid queueing disk writes for them.
+    if (change.transcript !== undefined || change.taskState !== undefined)
+      this.saveHistory();
+  }
+
+  private flushStream(): void {
+    if (this.streamTimer !== null) {
+      clearTimeout(this.streamTimer);
+      this.streamTimer = null;
+    }
+    const pending = this.streamQueue;
+    this.streamQueue = [];
+    this.streamBytes = 0;
+    if (!pending.length) return;
+    const say = (notice: { key: string; message: string | null }) =>
+      notice.message
+        ? `${this.host.text(notice.key)} ${notice.message}`
+        : this.host.text(notice.key);
+    let transcript = this.state.transcript;
+    for (const event of pending) transcript = applyEvent(transcript, event, say);
+    this.set({ transcript });
+  }
+
+  private bufferStream(event: AgentEvent): void {
+    const previous = this.streamQueue[this.streamQueue.length - 1];
+    if (
+      (event.type === "text" || event.type === "reasoning") &&
+      previous?.type === event.type
+    ) {
+      this.streamQueue[this.streamQueue.length - 1] = {
+        ...event,
+        text: previous.text + event.text,
+      };
+    } else if (event.type !== "thinking" || previous?.type !== "thinking") {
+      this.streamQueue.push(event);
+    }
+    if (event.type === "text" || event.type === "reasoning")
+      this.streamBytes += event.text.length;
+    if (this.streamBytes >= 8 * 1024 || this.streamQueue.length >= 128) {
+      this.flushStream();
+    } else if (this.streamTimer === null) {
+      this.streamTimer = setTimeout(() => this.flushStream(), 50);
+    }
   }
 
   /** Called once per editor window; restores and preloads an existing setup without downloading. */
@@ -486,6 +533,8 @@ export class AgentService {
   }
 
   dispose(): void {
+    this.flushStream();
+    void this.history?.flush();
     for (const off of this.unlisten) off();
     this.unlisten = [];
     this.started = false;
@@ -668,6 +717,17 @@ export class AgentService {
 
   private onEvent(event: AgentEvent): void {
     if (event.taskId && event.taskId !== this.tasks.getState().activeId) return;
+    if (
+      event.type === "text" ||
+      event.type === "reasoning" ||
+      event.type === "thinking"
+    ) {
+      this.bufferStream(event);
+      return;
+    }
+    // Tool calls, permission prompts, usage updates and turn completion must
+    // observe all preceding token deltas in order and without a timer delay.
+    this.flushStream();
     if (event.type === "engine") {
       if (event.model !== this.state.modelId) {
         this.set({ engineState: "idle" });
