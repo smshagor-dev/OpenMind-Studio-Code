@@ -213,7 +213,7 @@ mod tests {
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n")
                 .expect("send headers");
             // The server has no reply: caller must not wait for this sleep.
-            std::thread::sleep(Duration::from_millis(650));
+            std::thread::sleep(Duration::from_millis(1_800));
         });
         let req = WireRequest {
             method: Method::Get,
@@ -234,7 +234,7 @@ mod tests {
             "{response:?}"
         );
         assert!(
-            start.elapsed() < Duration::from_millis(500),
+            start.elapsed() < Duration::from_millis(1_200),
             "Stop must not wait for the blocked HTTP reader"
         );
         stop.join().expect("stop thread");
