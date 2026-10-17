@@ -118,6 +118,98 @@ function setup(
 }
 
 describe("AgentService", () => {
+  it("renders many tiny stream deltas in one batch and retains exact output", async () => {
+    const { service, event, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    await service.send("Stream many tokens");
+    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    vi.useFakeTimers();
+    try {
+      const changed = vi.fn();
+      const unsubscribe = service.subscribe(changed);
+      for (let i = 0; i < 100; i++) {
+        event({ type: "text", text: "x" });
+      }
+      expect(changed).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(50);
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(service.getState().transcript.entries.at(-1)).toMatchObject({
+        kind: "assistant",
+        text: "x".repeat(100),
+      });
+      unsubscribe();
+    } finally {
+      service.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("flushes reasoning before text, tool boundaries, permission and turnEnd", async () => {
+    const { service, event, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    await service.send("Fix file");
+    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    vi.useFakeTimers();
+    try {
+      event({ type: "reasoning", text: "inspect " });
+      event({ type: "reasoning", text: "first" });
+      event({ type: "text", text: "Working" });
+      event({
+        type: "toolStart", id: "c1", name: "edit_file",
+        kind: "edit", title: "Update", target: "main.py",
+      });
+      expect(service.getState().transcript.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          kind: "assistant", reasoning: "inspect first", text: "Working",
+        }),
+        expect.objectContaining({ kind: "tool", id: "c1", status: "running" }),
+      ]));
+      event({
+        type: "permission",
+        request: {
+          id: "c1", kind: "edit", title: "Update", target: "main.py", diff: null,
+        },
+      });
+      expect(service.getState().transcript.permission?.id).toBe("c1");
+      event({ type: "text", text: "Final." });
+      event({ type: "turnEnd", reason: "cancelled", message: null });
+      expect(service.getState().transcript.busy).toBe(false);
+      expect(service.getState().transcript.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "assistant", text: "Final." }),
+      ]));
+      vi.advanceTimersByTime(100);
+      expect(service.getState().transcript.entries.filter(
+        (entry) => entry.kind === "assistant" && entry.text === "Final.",
+      )).toHaveLength(1);
+    } finally {
+      service.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("never commits batched old-task tokens into a different active task", async () => {
+    const { service, event, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    await service.send("First");
+    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
+    vi.useFakeTimers();
+    try {
+      event({ type: "text", text: "first answer", taskId: id });
+      event({ type: "turnEnd", reason: "done", message: null, taskId: id });
+      event({ type: "text", text: "stale data", taskId: id });
+      vi.advanceTimersByTime(50);
+      const messages = service.getState().transcript.entries
+        .filter((entry) => entry.kind === "assistant");
+      expect(messages).toEqual([
+        expect.objectContaining({ text: "first answer" }),
+      ]);
+    } finally {
+      service.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it("is not ready until the engine is installed and a model is downloaded", async () => {
     const { service } = setup([model("a", "notDownloaded")], false);
     await service.start();
