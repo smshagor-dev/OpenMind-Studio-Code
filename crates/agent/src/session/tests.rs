@@ -361,7 +361,7 @@ fn independent_reads_retain_order_and_original_model_tool_ids() {
     }).collect();
     let finished: Vec<_> = events.iter().filter_map(|event| match event {
         AgentEvent::ToolEnd { id, ok, .. } => {
-            assert!(ok, "read tool {id} failed");
+            assert!(*ok, "read tool {id} failed");
             Some(id.as_str())
         }
         _ => None,
@@ -416,7 +416,7 @@ fn edits_and_permission_prompts_remain_between_read_batches() {
     assert!(results[2].contains("Added 1 line") || results[2].contains("Update"));
     assert!(results[3].contains("return a + b"));
     assert!(results[4].contains("return a + b"));
-    assert_eq!(project.text(), "def add(a, b):\\n    return a + b\\n".replace("\\n", "\n"));
+    assert_eq!(project.text(), "def add(a, b):\n    return a + b\n");
     assert!(s.can_undo());
 }
 
