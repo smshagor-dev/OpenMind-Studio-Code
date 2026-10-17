@@ -2,6 +2,12 @@
 
 Prepared Windows (x64, x86) and Linux (x64, x86) packages. Not yet published. Built from the private source `main` after v1.0.3 (`8a75e2d`).
 
+## AI functionality and scope
+
+- **Existing foundation (not new in this release):** Configurable AI chat and provider integration are described in the project architecture.
+- **Upcoming, not confirmed for v1.0.4:** Workspace-aware AI Coding Agent, multi-file changes, tool execution, approval controls and persistent agent tasks. These are development goals, **not shipped features** and are excluded from the confirmed updates below.
+- No new AI Coding Agent capability is claimed for this build without implementation evidence and test results.
+
 ## New
 
 - **Network Deployment** (Help > Network Deployment, or `OpenMindStudio.exe --deploy ...`). Finds OpenMind Studio
