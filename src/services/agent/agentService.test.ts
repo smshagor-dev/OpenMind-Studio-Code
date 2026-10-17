@@ -550,13 +550,13 @@ it("keeps attachment context on Continue with unique transcript entry IDs", asyn
   );
 });
 
-it("opens Documents before queuing a chat when no folder is selected", async () => {
+it("opens the default agent workspace only before queuing a chat", async () => {
   const { service, host, ipc } = setup([model("a", "ready")]);
   let path: string | null = null;
   host.hasFolder = () => path !== null;
   host.workspacePath = () => path;
   host.ensureWorkspace = vi.fn(() => {
-    path = "C:/Users/Student/Documents";
+    path = "C:/Users/Student/Documents/OpenMind Studio";
     return Promise.resolve(true);
   });
   await service.start();
@@ -567,7 +567,9 @@ it("opens Documents before queuing a chat when no folder is selected", async () 
   });
   expect(host.ensureWorkspace).toHaveBeenCalledOnce();
   expect(ipc.send).toHaveBeenCalledWith(
-    expect.objectContaining({ workspace: "C:/Users/Student/Documents" }),
+    expect.objectContaining({
+      workspace: "C:/Users/Student/Documents/OpenMind Studio",
+    }),
   );
   service.dispose();
 });
@@ -871,4 +873,36 @@ it("does not save a memory editor draft into another workspace", async () => {
   expect(await service.send("/memory set Changed notes")).toBe(false);
   expect(ipc.control).not.toHaveBeenCalledWith("memory_write", "Changed notes");
   expect(service.getState().commandPanel?.error).toContain("workspace changed");
+});
+
+it("does not open a default workspace on agent startup or help", async () => {
+  const { service, host } = setup([]);
+  host.hasFolder = () => false;
+  host.ensureWorkspace = vi.fn(() => Promise.resolve(true));
+  await service.start();
+  expect(host.ensureWorkspace).not.toHaveBeenCalled();
+  expect(await service.send("/help")).toBe(true);
+  expect(host.ensureWorkspace).not.toHaveBeenCalled();
+});
+
+it("opens the agent workspace before native init, but never during startup", async () => {
+  const { service, host, ipc } = setup([]);
+  let folder: string | null = null;
+  host.hasFolder = () => folder !== null;
+  host.workspacePath = () => folder;
+  host.ensureWorkspace = vi.fn(() => {
+    folder = "C:/Users/Student/Documents/OpenMind Studio";
+    return Promise.resolve(true);
+  });
+  ipc.control = vi.fn(() => {
+    expect(folder).toBe("C:/Users/Student/Documents/OpenMind Studio");
+    return Promise.resolve(`${folder}/OPENMIND.md`);
+  });
+  await service.start();
+  expect(host.ensureWorkspace).not.toHaveBeenCalled();
+  expect(await service.send("/init")).toBe(true);
+  expect(host.ensureWorkspace).toHaveBeenCalledOnce();
+  expect(host.openFile).toHaveBeenCalledWith(
+    "C:/Users/Student/Documents/OpenMind Studio/OPENMIND.md",
+  );
 });

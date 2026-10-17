@@ -366,3 +366,26 @@ it("never replaces an explicitly opened project with the Documents fallback", as
   expect(await workspace.ensureWorkspace()).toEqual(folder);
   expect(ipc.workspaceActiveFolder).not.toHaveBeenCalled();
 });
+
+
+it("keeps a fresh startup empty without requesting any fallback", async () => {
+  const ipc = createFakeIpc({workspaceActiveFolder: vi.fn().mockResolvedValue(null)});
+  const events = new EventBus<AppEvents>();
+  const workspace = new WorkspaceService(new DocumentService(ipc,new BufferManager(),events),ipc,events);
+  expect(await workspace.restoreActiveWorkspace()).toBeNull();
+  expect(workspace.getActiveWorkspace()).toBeNull();
+  expect(ipc.workspaceActiveFolder).toHaveBeenCalledWith();
+  expect(ipc.workspaceOpenFolder).not.toHaveBeenCalled();
+});
+it("requests the dedicated agent folder lazily and retains an explicit project", async () => {
+  const folder:WorkspaceInfo={id:1,path:"C:/Users/Student/Documents/OpenMind Studio",name:"OpenMind Studio"};
+  const project:WorkspaceInfo={id:2,path:"D:/Project",name:"Project"};
+  const ipc=createFakeIpc({workspaceActiveFolder:vi.fn().mockResolvedValue(folder),workspaceOpenFolder:vi.fn().mockResolvedValue(project)});
+  const events=new EventBus<AppEvents>();
+  const workspace=new WorkspaceService(new DocumentService(ipc,new BufferManager(),events),ipc,events);
+  expect(await workspace.ensureWorkspace("agent")).toEqual(folder);
+  expect(ipc.workspaceActiveFolder).toHaveBeenCalledWith("agent");
+  await workspace.openFolder(project.path);
+  expect(await workspace.ensureWorkspace("agent")).toEqual(project);
+  expect(ipc.workspaceActiveFolder).toHaveBeenCalledOnce();
+});

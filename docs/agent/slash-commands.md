@@ -39,7 +39,7 @@ Existing tasks retain their captured model, policy and options. Model switching 
 
 Memory is UTF-8 in `OPENMIND_MEMORY.md` at the active workspace root, up to 32,000 bytes. The first 8,000 characters (within a bounded 32 KB read) are included on future turns as project context; permissions remain enforced by the host. Saving uses the same cross-window dirty-editor check and workspace path validation as agent edits. Save/discard editor changes first if that file is open with unsaved edits.
 
-If no folder is open, native commands resolve the OS Documents workspace through the existing workspace service. `/init` creates project instructions there. Memory and init do not require a downloaded model.
+Startup and the Welcome page never create or open a default folder. If no folder is open when an agent operation needs one, it creates and uses `OpenMind Studio` inside the OS Documents directory (for example, `Documents/OpenMind Studio`). This automatic root lasts for the current window session and is not saved as the next startup workspace. Explicitly selected projects keep their normal restore behavior. `/init` creates project instructions in the agent workspace; memory and init do not require a downloaded model.
 
 Compaction operates on the actual native conversation and preserves the latest request, system instructions and complete tool exchanges. Estimates are conservative, not tokenizer-exact. Export, fork and history preserve the full visible transcript; restoring/forking seeds a fresh native context, so previous compaction is not a destructive history edit. A restored/forked conversation has no native undo stack.
 
@@ -64,3 +64,4 @@ Authentication/OAuth, stdio subprocess servers, legacy HTTP+SSE endpoints, resou
 `/goal Implement feature X and run its tests` starts a task and adds the goal to its model request. The agent can continue for at most eight turns per start/resume. A final answer ending in `[OPENMIND_GOAL_COMPLETE]` marks completion. Failures, cancellation, user-queued work or the turn cap pause the goal; the goal strip exposes Pause, Resume and Clear. `/goal complete` records completion manually.
 
 Goals retain the selected permission policy, so approval requests still require answers. They restore paused after app restart or history resume, and fork into the paused state. Stop invalidates any in-flight continuation before another task can be queued. A model's completion marker records its claim; inspect its validation evidence when assessing the result.
+

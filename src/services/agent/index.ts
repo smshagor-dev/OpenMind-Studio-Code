@@ -50,7 +50,7 @@ export function agentHost(): AgentHost {
     uiLanguage: () => LANGUAGE_NAMES[i18n.language] ?? "English",
     hasFolder: () => container.workspace.getActiveWorkspace() !== null,
     ensureWorkspace: async () =>
-      Boolean(await container.workspace.ensureWorkspace()),
+      Boolean(await container.workspace.ensureWorkspace("agent")),
     workspacePath: () => container.workspace.getActiveWorkspace()?.path ?? null,
     installEngine: () => container.runtime.install("llamacpp", null),
     confirm: async (message, okLabel) => {

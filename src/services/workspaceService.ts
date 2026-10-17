@@ -590,12 +590,12 @@ export class WorkspaceService {
 
   // --- Workspace folder ---
 
-  /** Resolves the Documents workspace once when no project is open. Explicit projects always win. */
-  async ensureWorkspace(): Promise<WorkspaceInfo | null> {
+  /** Explicit operations may create a fallback; startup only reads the previously selected folder. */
+  async ensureWorkspace(fallback: "documents" | "agent" = "documents"): Promise<WorkspaceInfo | null> {
     if (this.activeWorkspace) return this.activeWorkspace;
     if (!this.defaultWorkspace) {
       this.defaultWorkspace = (async () => {
-        const info = await safely(this.events, () => this.ipc.workspaceActiveFolder(), "open the Documents workspace", null);
+        const info = await safely(this.events, () => this.ipc.workspaceActiveFolder(fallback), "open the default workspace", null);
         if (!this.activeWorkspace && info) {
           this.activeWorkspace = info;
           this.events.emit("workspaceFolderChanged", { workspace: info });
@@ -774,4 +774,5 @@ export function parentFolder(path: string): string | null {
   if (folder === "") return path.slice(0, 1);
   return /^[A-Za-z]:$/.test(folder) ? `${folder}${path[cut]}` : folder;
 }
+
 

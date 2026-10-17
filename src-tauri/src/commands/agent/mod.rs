@@ -228,9 +228,13 @@ pub async fn agent_send(
         return Err("Type a message first.".into());
     }
     let label = window.label().to_string();
-    let folder = super::workspace::workspace_active_folder(window.clone(), state.clone())
+    let folder = super::workspace::workspace_active_folder(
+        Some("agent".into()),
+        window.clone(),
+        state.clone(),
+    )
         .await?
-        .ok_or("Your Documents workspace could not be opened.")?;
+        .ok_or("Your default agent workspace could not be opened.")?;
     if request.workspace.as_ref().is_some_and(|expected| {
         std::path::Path::new(expected) != std::path::Path::new(&folder.path)
     }) {
@@ -571,3 +575,4 @@ mod reset_tests {
         assert!(!chat.busy.load(Ordering::SeqCst));
     }
 }
+

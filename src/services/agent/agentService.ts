@@ -46,7 +46,7 @@ export interface AgentHost {
   uiLanguage: () => string;
   /** Whether a folder is open (the agent works inside one). */
   hasFolder: () => boolean;
-  /** Opens the default Documents workspace when no project is selected. */
+  /** Opens Documents/OpenMind Studio on demand when no project is selected. */
   ensureWorkspace?: () => Promise<boolean>;
   workspacePath?: () => string | null;
   taskScope?: string;
@@ -432,11 +432,11 @@ export class AgentService {
       )
         this.set({ mode });
       if (model) this.set({ modelId: model });
-      if (!this.host.hasFolder()) await this.host.ensureWorkspace?.();
       const active = await this.host
         .settingGet(`agent.active.${this.host.taskScope ?? "main"}`)
         .catch(() => null);
-      if (active && this.history) await this.restoreHistory(active, true);
+      if (active && this.history && this.host.hasFolder())
+        await this.restoreHistory(active, true);
       await this.refresh();
       await this.activate();
     } catch {
@@ -974,13 +974,19 @@ export class AgentService {
         "Stop or cancel queued work before changing conversation state.",
       );
   }
-  private control(action: string, argument = ""): Promise<unknown> {
+  private async control(action: string, argument = ""): Promise<unknown> {
     if (!this.ipc.control)
       return Promise.reject(
         new Error(
           "This app build does not include the native command backend. Update OpenMind Studio.",
         ),
       );
+    if (
+      !this.host.hasFolder() &&
+      this.host.ensureWorkspace &&
+      !(await this.host.ensureWorkspace())
+    )
+      throw new Error("The default agent workspace could not be opened.");
     return this.ipc.control(action, argument);
   }
   async contextCommand(action: "context" | "compact"): Promise<boolean> {

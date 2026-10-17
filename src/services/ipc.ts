@@ -556,7 +556,7 @@ export interface IpcClient
   workspaceOpenFolder: (path: string) => Promise<WorkspaceInfo>;
   workspaceCloseFolder: () => Promise<void>;
   workspaceRecentFolders: () => Promise<WorkspaceInfo[]>;
-  workspaceActiveFolder: () => Promise<WorkspaceInfo | null>;
+  workspaceActiveFolder: (fallback?: "documents" | "agent") => Promise<WorkspaceInfo | null>;
   explorerStateLoad: (workspacePath: string) => Promise<ExplorerState>;
   explorerStateSave: (workspacePath: string, state: ExplorerState) => Promise<void>;
   pinFolder: (path: string, label: string | undefined) => Promise<void>;
@@ -1168,7 +1168,7 @@ export const tauriIpcClient: IpcClient = {
 
   workspaceRecentFolders: () => invoke<WorkspaceInfo[]>("workspace_recent_folders"),
 
-  workspaceActiveFolder: () => invoke<WorkspaceInfo | null>("workspace_active_folder"),
+  workspaceActiveFolder: (fallback) => invoke<WorkspaceInfo | null>("workspace_active_folder", { fallback: fallback ?? null }),
 
   explorerStateLoad: (workspacePath) =>
     invoke<ExplorerState>("explorer_state_load", { workspacePath }),
@@ -1424,4 +1424,5 @@ export const tauriIpcClient: IpcClient = {
   startupReport: (marks, usableMs) => invoke<string>("startup_report", { marks, usableMs }),
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };
+
 
