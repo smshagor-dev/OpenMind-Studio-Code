@@ -93,7 +93,8 @@ impl EngineSlot {
         notify: &dyn Fn(EngineEvent),
     ) -> Result<Connection, String> {
         let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
-        let context_tokens = effective_context_tokens(requested_context_tokens, model.context_tokens);
+        let context_tokens =
+            effective_context_tokens(requested_context_tokens, model.context_tokens);
         if let Some(engine) = slot.as_mut() {
             if *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) == use_gpu
                 && engine.alias == model.id
