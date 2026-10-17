@@ -242,7 +242,10 @@ export class AgentService {
   }
   async showHistory(open: boolean): Promise<void> {
     try {
-      if (open) await this.history?.flush(true);
+      if (open) {
+        this.flushStream();
+        await this.history?.flush(true);
+      }
       this.set({
         showHistory: open,
         history: open ? ((await this.history?.list()) ?? []) : [],
@@ -254,6 +257,7 @@ export class AgentService {
   async restoreHistory(id: string, startup = false): Promise<boolean> {
     if (!this.history) return false;
     try {
+      this.flushStream();
       const saved = await this.history.load(id);
       if (!saved) return false;
       if (saved.workspace !== (this.host.workspacePath?.() ?? null))
@@ -947,6 +951,7 @@ export class AgentService {
   }
 
   async stop(): Promise<void> {
+    this.flushStream();
     const savedGoal =
       this.state.goal?.state === "active"
         ? this.setGoal({ ...this.state.goal, state: "paused" })
@@ -967,6 +972,7 @@ export class AgentService {
       this.goalRevision++;
       if (this.state.transcript.busy) await this.ipc.stop();
       await this.ipc.reset();
+      this.flushStream();
       await this.history?.flush(true);
       this.restoringHistory = true;
       this.tasks.clear();
