@@ -428,8 +428,8 @@ export class AgentService {
   private bufferStream(event: AgentEvent): void {
     const previous = this.streamQueue[this.streamQueue.length - 1];
     if (
-      (event.type === "text" || event.type === "reasoning") &&
-      previous?.type === event.type
+      ((event.type === "text" && previous?.type === "text") ||
+        (event.type === "reasoning" && previous?.type === "reasoning"))
     ) {
       this.streamQueue[this.streamQueue.length - 1] = {
         ...event,
