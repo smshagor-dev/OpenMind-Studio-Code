@@ -145,6 +145,85 @@ fn session(mode: Mode) -> Session {
 }
 
 #[test]
+fn tiny_text_deltas_are_batched_without_losing_the_answer() {
+    let project = Project::new();
+    let mut reply: Vec<String> = (0..250)
+        .map(|_| r#"data: {"choices":[{"delta":{"content":"x"}}]}"#.to_string())
+        .collect();
+    reply.push(r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#.into());
+    reply.push("data: [DONE]".into());
+    let model = Script::new(vec![reply]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Give me a long answer", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let events = panel.events.lock().expect("events");
+    let pieces: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(pieces.concat(), "x".repeat(250));
+    assert!(
+        pieces.len() < 20,
+        "250 tiny chunks should be coalesced into far fewer UI events"
+    );
+}
+
+#[test]
+fn reasoning_is_flushed_before_text_and_before_usage() {
+    let project = Project::new();
+    let reply = vec![
+        r#"data: {"choices":[{"delta":{"reasoning_content":"think-"}}]}"#.into(),
+        r#"data: {"choices":[{"delta":{"reasoning_content":"first"}}]}"#.into(),
+        r#"data: {"choices":[{"delta":{"content":"answer-"}}]}"#.into(),
+        r#"data: {"choices":[{"delta":{"content":"now"}}]}"#.into(),
+        r#"data: {"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":5}}"#.into(),
+        r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#.into(),
+        "data: [DONE]".into(),
+    ];
+    let model = Script::new(vec![reply]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Answer", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let events = panel.events.lock().expect("events");
+    let order: Vec<&str> = events.iter().filter_map(|event| match event {
+        AgentEvent::Reasoning { text } if text == "think-first" => Some("reasoning"),
+        AgentEvent::Text { text } if text == "answer-now" => Some("text"),
+        AgentEvent::Usage { .. } => Some("usage"),
+        AgentEvent::TurnEnd { .. } => Some("end"),
+        _ => None,
+    }).collect();
+    assert_eq!(order, ["reasoning", "text", "usage", "end"]);
+}
+
+#[test]
+fn request_failure_flushes_buffered_output_before_error() {
+    struct BrokenStream;
+    impl ModelClient for BrokenStream {
+        fn stream(
+            &self,
+            _body: &Value,
+            _cancel: &AtomicBool,
+            on_line: &mut dyn FnMut(&str) -> bool,
+        ) -> Result<(), String> {
+            on_line(r#"data: {"choices":[{"delta":{"content":"partial answer"}}]}"#);
+            Err("network lost".into())
+        }
+    }
+    let project = Project::new();
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Answer", &BrokenStream, &panel, &project.input());
+    assert_eq!(panel.end(), "error");
+    let events = panel.events.lock().expect("events");
+    assert!(events.iter().any(|event| matches!(event, AgentEvent::Text { text } if text == "partial answer")));
+}
+
+#[test]
 fn reasoning_budget_is_sent_on_every_model_request() {
     let project = Project::new();
     let model = Script::new(vec![

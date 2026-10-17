@@ -38,11 +38,17 @@ export const historyIpc: HistoryIpc = {
   save: (conversation) => invoke("agent_history_save", { conversation }),
   delete: (id) => invoke("agent_history_delete", { id }),
 };
+// Quiet intervals coalesce partial replies; max age still checkpoints long
+// streams for recovery when the desktop process ends unexpectedly.
+const SAVE_IDLE_MS = 1_000;
+const SAVE_MAX_MS = 5_000;
+
 /** Serialized writes prevent a slow older snapshot overwriting the latest streamed reply. */
 export class AgentHistory {
   private writes: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private pending: HistorySnapshot | null = null;
+  private pendingSince: number | null = null;
   private writeError: string | null = null;
   constructor(
     private readonly ipc: HistoryIpc,
@@ -96,11 +102,17 @@ export class AgentHistory {
   }
   schedule(snapshot: HistorySnapshot): void {
     this.pending = snapshot;
-    if (!this.timer)
-      this.timer = setTimeout(() => {
-        this.timer = null;
-        void this.flush();
-      }, 350);
+    const now = Date.now();
+    this.pendingSince ??= now;
+    if (this.timer) clearTimeout(this.timer);
+    // During fast streaming do not rewrite the entire transcript every
+    // 350ms, but checkpoint at least every 5 seconds if streaming continues.
+    const age = Math.max(0, now - this.pendingSince);
+    const delay = Math.max(0, Math.min(SAVE_IDLE_MS, SAVE_MAX_MS - age));
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.flush();
+    }, delay);
   }
   flush(requireSuccess = false): Promise<void> {
     if (this.timer) {
@@ -109,6 +121,7 @@ export class AgentHistory {
     }
     const snapshot = this.pending;
     this.pending = null;
+    this.pendingSince = null;
     if (snapshot) {
       const value: Stored = {
         id: snapshot.id,

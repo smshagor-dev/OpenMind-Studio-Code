@@ -3,6 +3,7 @@
 //! model answers without a tool call, the user stops it or declines an action, or the step limit is reached.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -15,6 +16,59 @@ use crate::wire::{request_body, Delta, Message, StreamState};
 
 /// Model calls in one turn before the agent stops and asks the user to continue.
 const PREVIEW_CHARS: usize = 1_200;
+const STREAM_BATCH_INTERVAL: Duration = Duration::from_millis(50);
+const STREAM_BATCH_BYTES: usize = 4 * 1024;
+
+/// Collapse only adjacent deltas of the same kind, never crossing a tool,
+/// usage, reasoning/text boundary. Transport and UI both receive fewer
+/// events while final output and the model's StreamState remain complete.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OutputKind {
+    Text,
+    Reasoning,
+}
+
+struct OutputBatch {
+    kind: Option<OutputKind>,
+    value: String,
+    last_emit: Instant,
+}
+
+impl OutputBatch {
+    fn new() -> Self {
+        Self {
+            kind: None,
+            value: String::new(),
+            last_emit: Instant::now(),
+        }
+    }
+
+    fn append(&mut self, kind: OutputKind, fragment: &str, host: &dyn AgentHost) {
+        if self.kind != Some(kind) {
+            self.flush(host);
+            self.kind = Some(kind);
+        }
+        self.value.push_str(fragment);
+        if self.value.len() >= STREAM_BATCH_BYTES
+            || self.last_emit.elapsed() >= STREAM_BATCH_INTERVAL
+        {
+            self.flush(host);
+        }
+    }
+
+    fn flush(&mut self, host: &dyn AgentHost) {
+        if let Some(kind) = self.kind.take() {
+            if !self.value.is_empty() {
+                let text = std::mem::take(&mut self.value);
+                host.emit(match kind {
+                    OutputKind::Text => AgentEvent::Text { text },
+                    OutputKind::Reasoning => AgentEvent::Reasoning { text },
+                });
+            }
+        }
+        self.last_emit = Instant::now();
+    }
+}
 
 /// The panel: shows events and answers permission questions.
 pub trait AgentHost: Send + Sync {
@@ -212,24 +266,40 @@ impl Session {
         // budget: that would force a model restart whenever a user edits it.
         body["thinking_budget_tokens"] = serde_json::json!(self.options.reasoning_budget_tokens);
         let mut state = StreamState::default();
+        let mut output = OutputBatch::new();
         let mut failure = None;
         let result = client.stream(&body, cancel, &mut |line| {
             for delta in state.feed(line) {
                 match delta {
-                    Delta::Text(text) => host.emit(AgentEvent::Text { text }),
-                    Delta::Reasoning(text) => host.emit(AgentEvent::Reasoning { text }),
-                    Delta::Usage(usage) => host.emit(AgentEvent::Usage {
-                        prompt_tokens: usage.prompt_tokens,
-                        completion_tokens: usage.completion_tokens,
-                        context_tokens: self.context_tokens,
-                    }),
-                    Delta::Error(message) => failure = Some(message),
-                    Delta::Done => return false,
-                    Delta::ToolStarted { .. } | Delta::Nothing => {}
+                    Delta::Text(text) => output.append(OutputKind::Text, &text, host),
+                    Delta::Reasoning(text) => {
+                        output.append(OutputKind::Reasoning, &text, host)
+                    }
+                    Delta::Usage(usage) => {
+                        output.flush(host);
+                        host.emit(AgentEvent::Usage {
+                            prompt_tokens: usage.prompt_tokens,
+                            completion_tokens: usage.completion_tokens,
+                            context_tokens: self.context_tokens,
+                        });
+                    }
+                    Delta::Error(message) => {
+                        output.flush(host);
+                        failure = Some(message);
+                    }
+                    Delta::Done => {
+                        output.flush(host);
+                        return false;
+                    }
+                    Delta::ToolStarted { .. } => output.flush(host),
+                    Delta::Nothing => {}
                 }
             }
             failure.is_none()
         });
+        // Also flush on cancellation, connection errors or missing [DONE];
+        // no emitted visible output may be silently discarded.
+        output.flush(host);
         if let Some(message) = failure {
             return Err(message);
         }

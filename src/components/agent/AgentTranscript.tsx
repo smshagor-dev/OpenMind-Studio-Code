@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import agentLogo from "../../assets/openmindai-agent.png";
 
 import type { Entry } from "../../services/agent/agentModel";
@@ -57,7 +57,7 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
   );
 }
 
-function Assistant({ entry, live, showReasoning }: { entry: Extract<Entry, { kind: "assistant" }>; live: boolean; showReasoning: boolean }) {
+const Assistant = memo(function Assistant({ entry, live, showReasoning }: { entry: Extract<Entry, { kind: "assistant" }>; live: boolean; showReasoning: boolean }) {
   return (
     <div className="agent-message agent-message--assistant agent-enter">
       {showReasoning && entry.reasoning.trim() ? <Reasoning text={entry.reasoning} live={live && !entry.text} /> : null}
@@ -73,7 +73,7 @@ function Assistant({ entry, live, showReasoning }: { entry: Extract<Entry, { kin
       ) : null}
     </div>
   );
-}
+});
 
 function toolLabel(t: (key: string) => string, title: string): string {
   const key = `agent.tool.${title.replace(/\s+/g, "")}`;
@@ -104,7 +104,7 @@ function Preview({ text }: { text: string }) {
   );
 }
 
-function ToolCard({ entry }: { entry: ToolEntry }) {
+const ToolCard = memo(function ToolCard({ entry }: { entry: ToolEntry }) {
   const t = useT();
   const showPreview = entry.preview && (entry.toolKind === "command" || entry.status === "failed");
   const summary =
@@ -157,7 +157,7 @@ function ToolCard({ entry }: { entry: ToolEntry }) {
       ) : null}
     </div>
   );
-}
+});
 
 export function AgentTranscript({ entries, busy, showReasoning = true }: { entries: Entry[]; busy: boolean; showReasoning?: boolean }) {
   const last = entries[entries.length - 1];

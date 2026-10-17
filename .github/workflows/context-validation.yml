@@ -37,7 +37,7 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Validate llama-server context arguments and model limits
         run: cargo test --locked -p openmind-llm --lib
-      - name: Validate session budgets and history continuity
+      - name: Validate session budgets, history and streaming output batches
         run: cargo test --locked -p openmind-agent --lib
       - name: Validate request-level reasoning budget
         run: cargo test --locked -p openmind-agent --lib reasoning_budget
@@ -96,8 +96,8 @@ jobs:
         run: pnpm exec tsc --noEmit -p .
       - name: Lint context settings, panel and IPC
         run: pnpm exec eslint src/components/agent/AgentSettings.tsx src/components/agent/AgentSettings.test.tsx src/components/agent/AgentView.tsx src/services/agent/agentService.ts src/services/agent/agentService.test.ts src/services/agent/agentIpc.ts
-      - name: Test context UI, GPU status and idle engine reconfiguration
-        run: pnpm exec vitest run src/components/agent/AgentSettings.test.tsx src/components/agent/AgentView.test.tsx src/services/agent/agentOptions.test.ts src/services/agent/agentService.test.ts
+      - name: Test context, GPU status, stream coalescing and history persistence
+        run: pnpm exec vitest run src/components/agent/AgentSettings.test.tsx src/components/agent/AgentView.test.tsx src/services/agent/agentOptions.test.ts src/services/agent/agentService.test.ts src/services/agent/agentHistory.test.ts
       - name: Prepare frontend assets and build
         run: |
           node scripts/copy-monaco-workers.mjs
