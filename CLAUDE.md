@@ -1,5 +1,7 @@
 # OpenMind Studio
 
+**Release baseline:** v1.0.3 is the published release; the `main` source is being prepared as v1.0.4, with built but unpublished packages. For release-specific features and limitations use `docs/release-notes-1.0.3.md` and `docs/release-notes-1.0.4.md`. Do not attribute the network deployment and lab Desktop-shortcut functionality to v1.0.3.
+
 A native desktop code editor (Rust + Tauri 2 + React/TypeScript + Monaco), portable-first,
 targeting Windows primarily with future Linux/macOS support. Not a web app.
 
