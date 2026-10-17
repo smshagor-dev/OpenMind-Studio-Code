@@ -12,6 +12,7 @@ const NUMBERS: {
   step: number;
 }[] = [
   { key: "maxOutputTokens", min: 1024, max: 32768, step: 1024 },
+  { key: "reasoningBudgetTokens", min: 0, max: 8192, step: 256 },
   { key: "maxSteps", min: 8, max: 512, step: 1 },
   { key: "maxContinuations", min: 0, max: 16, step: 1 },
   { key: "temperature", min: 0, max: 1, step: 0.1 },
@@ -135,6 +136,7 @@ export function AgentSettings() {
         </label>
       ))}
       <p>{t("agent.settings.contextHint")}</p>
+      <p>{t("agent.settings.reasoningHint")}</p>
       <AgentCapabilities draft={draft} onChange={setDraft} />
       {TOGGLES.map((key) => (
         <label key={key}>

@@ -7,6 +7,8 @@ pub struct SessionOptions {
     pub effort: String,
     pub context_tokens: u32,
     pub max_output_tokens: u32,
+    /// Per-request llama.cpp thinking budget (0 means no reasoning, if supported by the model/template).
+    pub reasoning_budget_tokens: u32,
     pub max_steps: usize,
     pub max_continuations: usize,
     pub temperature: f64,
@@ -23,7 +25,8 @@ impl Default for SessionOptions {
         Self {
             effort: "medium".into(),
             context_tokens: 0,
-            max_output_tokens: 16_384,
+            max_output_tokens: 4_096,
+            reasoning_budget_tokens: 1_024,
             max_steps: 128,
             max_continuations: 8,
             temperature: 0.6,
@@ -52,6 +55,12 @@ impl SessionOptions {
             .max_output_tokens
             .clamp(256, 32_768)
             .min(self.context_tokens / 2);
+        // max_tokens includes reasoning as well as answer tokens. Preserve at
+        // least 512 tokens for a visible answer and complete tool-call JSON.
+        self.reasoning_budget_tokens = self
+            .reasoning_budget_tokens
+            .min(8_192)
+            .min(self.max_output_tokens.saturating_sub(512));
         self.max_steps = self.max_steps.clamp(8, 512);
         self.max_continuations = self.max_continuations.min(16);
         self.command_timeout_seconds = self.command_timeout_seconds.clamp(10, 600);
@@ -74,7 +83,8 @@ mod tests {
         assert_eq!(small.max_output_tokens, 4_096);
         let larger = SessionOptions::default().bounded(32_768);
         assert_eq!(larger.context_tokens, 32_768);
-        assert_eq!(larger.max_output_tokens, 16_384);
+        assert_eq!(larger.max_output_tokens, 4_096);
+        assert_eq!(larger.reasoning_budget_tokens, 1_024);
     }
 
     #[test]
@@ -105,5 +115,45 @@ mod tests {
         assert_eq!(options.max_output_tokens, 16_384);
         assert_eq!(options.max_steps, 512);
         assert_eq!(options.temperature, 0.6);
+    }
+
+    #[test]
+    fn reasoning_budget_is_independent_bounded_and_off_is_preserved() {
+        let options = SessionOptions {
+            reasoning_budget_tokens: 8_192,
+            max_output_tokens: 1_024,
+            ..Default::default()
+        }
+        .bounded(32_768);
+        assert_eq!(options.reasoning_budget_tokens, 512);
+        assert_eq!(options.max_output_tokens, 1_024);
+
+        let off = SessionOptions {
+            reasoning_budget_tokens: 0,
+            max_output_tokens: 4_096,
+            ..Default::default()
+        }
+        .bounded(32_768);
+        assert_eq!(off.reasoning_budget_tokens, 0);
+
+        let maximum = SessionOptions {
+            reasoning_budget_tokens: u32::MAX,
+            max_output_tokens: u32::MAX,
+            ..Default::default()
+        }
+        .bounded(65_536);
+        assert_eq!(maximum.reasoning_budget_tokens, 8_192);
+        assert_eq!(maximum.max_output_tokens, 32_768);
+    }
+
+    #[test]
+    fn legacy_options_without_reasoning_field_receive_safe_default() {
+        let options: SessionOptions = serde_json::from_str(
+            r#"{"contextTokens":0,"maxOutputTokens":16384,"effort":"high"}"#,
+        )
+        .expect("legacy options deserialize");
+        assert_eq!(options.reasoning_budget_tokens, 1_024);
+        // Keep a user's pre-existing output preference rather than overwriting it.
+        assert_eq!(options.bounded(32_768).max_output_tokens, 16_384);
     }
 }

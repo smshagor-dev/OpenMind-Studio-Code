@@ -207,6 +207,10 @@ impl Session {
             self.options.max_output_tokens,
         );
         body["temperature"] = serde_json::json!(self.options.temperature);
+        // llama.cpp accepts this request-scoped field when the model's
+        // template supports reasoning control. Do not set a global server
+        // budget: that would force a model restart whenever a user edits it.
+        body["thinking_budget_tokens"] = serde_json::json!(self.options.reasoning_budget_tokens);
         let mut state = StreamState::default();
         let mut failure = None;
         let result = client.stream(&body, cancel, &mut |line| {
@@ -297,6 +301,14 @@ impl Session {
                 Err(message) => return ("error".into(), Some(message)),
             };
             if state.finish_reason.as_deref() == Some("length") {
+                // Some older engines/models ignore thinking_budget_tokens.
+                // Do not spend automatic continuations on invisible reasoning.
+                if state.text.trim().is_empty() && !state.reasoning.is_empty() {
+                    return (
+                        "limit".into(),
+                        Some("The model exhausted the output limit while reasoning. Reduce the reasoning budget or increase the output limit; some model templates cannot enforce a thinking budget.".into()),
+                    );
+                }
                 self.messages.push(Message::Assistant {
                     content: state.text.clone(),
                     tool_calls: Vec::new(),

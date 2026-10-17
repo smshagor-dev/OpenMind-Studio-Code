@@ -147,6 +147,30 @@ describe("AgentService", () => {
     expect(t.busy).toBe(true);
     expect(t.entries[0]).toMatchObject({ kind: "user", text: "fix the bug" });
     expect(t.startedAt).toBe(5000);
+    const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
+    expect(request?.options?.reasoningBudgetTokens).toBe(1024);
+    expect(request?.options?.maxOutputTokens).toBe(4096);
+  });
+
+  it("persists a reasoning budget and forwards it with the next request", async () => {
+    const { service, ipc, settings } = setup([model("a", "ready")]);
+    await service.start();
+    await service.updateOptions({
+      reasoningBudgetTokens: 256,
+      maxOutputTokens: 2048,
+    });
+    // A per-request budget change must not reload the model's KV cache.
+    expect(ipc.startEngine).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(settings.get("agent.options") ?? "{}")).toMatchObject({
+      reasoningBudgetTokens: 256,
+      maxOutputTokens: 2048,
+    });
+    expect(await service.send("explain")).toBe(true);
+    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    expect(vi.mocked(ipc.send).mock.calls[0]?.[0]?.options).toMatchObject({
+      reasoningBudgetTokens: 256,
+      maxOutputTokens: 2048,
+    });
   });
 
   it("remembers the chosen model and mode", async () => {
