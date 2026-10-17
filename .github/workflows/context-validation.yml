@@ -37,8 +37,10 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Validate llama-server context arguments and model limits
         run: cargo test --locked -p openmind-llm --lib
-      - name: Validate session budgets, history and streaming output batches
+      - name: Validate session budgets, streaming and deferred completion
         run: cargo test --locked -p openmind-agent --lib
+      - name: Validate HTTP cancellation on a stalled local stream
+        run: cargo test --locked -p openmind-ai --lib transport::tests -- --nocapture
       - name: Validate request-level reasoning budget
         run: cargo test --locked -p openmind-agent --lib reasoning_budget
 
@@ -73,6 +75,10 @@ jobs:
         run: cargo test --locked -p openmind-studio --bin openmind-studio commands::agent::engine::tests -- --nocapture
       - name: Validate context lease exclusions
         run: cargo test --locked -p openmind-studio --bin openmind-studio commands::agent::engine::lease_tests -- --nocapture
+      - name: Validate stream recovery and completion ordering
+        run: |
+          cargo test --locked -p openmind-studio --bin openmind-studio commands::agent::turn::cancellation_tests -- --nocapture
+          cargo test --locked -p openmind-studio --bin openmind-studio commands::agent::completion_tests -- --nocapture
 
   frontend-context:
     name: context / settings and IPC
