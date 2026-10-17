@@ -159,6 +159,8 @@ describe("AgentService", () => {
       reasoningBudgetTokens: 256,
       maxOutputTokens: 2048,
     });
+    // A per-request budget change must not reload the model's KV cache.
+    expect(ipc.startEngine).toHaveBeenCalledTimes(1);
     expect(JSON.parse(settings.get("agent.options") ?? "{}")).toMatchObject({
       reasoningBudgetTokens: 256,
       maxOutputTokens: 2048,
