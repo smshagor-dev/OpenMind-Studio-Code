@@ -191,8 +191,19 @@ mod tests {
     fn cancellation_unblocks_caller_while_http_stream_is_stalled() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
         let addr = listener.local_addr().expect("local address");
+        listener.set_nonblocking(true).expect("nonblocking accept");
         let server = std::thread::spawn(move || {
-            let (mut socket, _) = listener.accept().expect("accept");
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let (mut socket, _) = loop {
+                match listener.accept() {
+                    Ok(connection) => break connection,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        assert!(Instant::now() < deadline, "local test client never connected");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(err) => panic!("cannot accept local test request: {err}"),
+                }
+            };
             socket
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .expect("set timeout");
@@ -218,7 +229,10 @@ mod tests {
         });
         let start = Instant::now();
         let response = stream_lines(&req, "", &cancel, &mut |_line| Ok(true));
-        assert!(matches!(response, Err(AiError::Cancelled)), "{response:?}");
+        assert!(
+            matches!(&response, Err(AiError::Cancelled)),
+            "{response:?}"
+        );
         assert!(
             start.elapsed() < Duration::from_millis(500),
             "Stop must not wait for the blocked HTTP reader"
