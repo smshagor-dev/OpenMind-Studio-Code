@@ -1,5 +1,38 @@
 use super::*;
-use openmind_agent::{system_prompt, HttpModel, PromptFacts, TurnInput, Workspace};
+use openmind_agent::{system_prompt, AgentEvent, HttpModel, ModelClient, PromptFacts, TurnInput, Workspace};
+
+/// Track whether a request was abandoned while a synchronous HTTP reader
+/// could still be connected to the single llama.cpp inference slot.
+struct ObservedHttpModel<'a> {
+    inner: HttpModel,
+    abandoned: &'a AtomicBool,
+}
+
+impl ModelClient for ObservedHttpModel<'_> {
+    fn stream(
+        &self,
+        body: &serde_json::Value,
+        cancel: &AtomicBool,
+        on_line: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<(), String> {
+        let result = self.inner.stream(body, cancel, on_line);
+        if cancelled_stream_needs_recovery(cancel, &result) {
+            self.abandoned.store(true, Ordering::Release);
+        }
+        result
+    }
+}
+
+fn cancelled_stream_needs_recovery(cancel: &AtomicBool, result: &Result<(), String>) -> bool {
+    cancel.load(Ordering::Acquire) && result.is_err()
+}
+
+fn turn_end(reason: &str, message: Option<String>) -> AgentEvent {
+    AgentEvent::TurnEnd {
+        reason: reason.into(),
+        message,
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_turn(
@@ -13,13 +46,8 @@ pub(super) fn run_turn(
     text: &str,
     env: &CommandEnv,
     cancel: &AtomicBool,
-) {
-    let end = |message: String| {
-        host.send(&openmind_agent::AgentEvent::TurnEnd {
-            reason: "error".into(),
-            message: Some(message),
-        });
-    };
+) -> AgentEvent {
+    let end = |message: String| turn_end("error", Some(message));
     let ws = match Workspace::new(root) {
         Ok(ws) => ws,
         Err(message) => return end(message),
@@ -41,17 +69,22 @@ pub(super) fn run_turn(
         &|event| host.send(&event),
     ) {
         Ok(connection) => connection,
-        Err(_) if cancel.load(Ordering::Relaxed) => {
-            return host.send(&openmind_agent::AgentEvent::TurnEnd {
-                reason: "cancelled".into(),
-                message: None,
-            })
-        }
+        Err(_) if cancel.load(Ordering::Relaxed) => return turn_end("cancelled", None),
         Err(message) => return end(message),
     };
-    execute_turn(
-        chat, host, model, &ws, request, text, env, cancel, connection,
+    let abandoned = AtomicBool::new(false);
+    let terminal = execute_turn(
+        chat, host, model, &ws, request, text, env, cancel, connection, &abandoned,
     );
+    // Cancellation releases the caller promptly, but the network transport
+    // owns a blocking reader thread. A lone --parallel 1 slot can remain busy.
+    // Tear down just the cancelled engine while our lease is held; the next
+    // turn lazily starts a clean instance instead of waiting for its old slot.
+    if abandoned.load(Ordering::Acquire) {
+        tracing::info!(model = %model.id, "restarting local engine after interrupted HTTP stream");
+        agent.engine.stop();
+    }
+    terminal
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -65,17 +98,13 @@ fn execute_turn(
     env: &CommandEnv,
     cancel: &AtomicBool,
     connection: engine::Connection,
-) {
+    abandoned: &AtomicBool,
+) -> AgentEvent {
     let end = |message: String| {
-        host.send(&openmind_agent::AgentEvent::TurnEnd {
-            reason: if cancel.load(Ordering::Relaxed) {
-                "cancelled"
-            } else {
-                "error"
-            }
-            .into(),
-            message: Some(message),
-        })
+        turn_end(
+            if cancel.load(Ordering::Relaxed) { "cancelled" } else { "error" },
+            Some(message),
+        )
     };
     let system = turn_system(request, ws);
     let mut slot = chat.session.lock().unwrap_or_else(PoisonError::into_inner);
@@ -109,9 +138,12 @@ fn execute_turn(
     session.set_options(request.options.clone());
     session.set_system(system);
     let unsaved: Vec<PathBuf> = request.unsaved.iter().map(PathBuf::from).collect();
-    let client = HttpModel {
-        base_url: connection.base_url,
-        key: connection.key,
+    let client = ObservedHttpModel {
+        inner: HttpModel {
+            base_url: connection.base_url,
+            key: connection.key,
+        },
+        abandoned,
     };
     let attachments =
         match capabilities::attachment_text(&request.attachments, text, &request.options, cancel) {
@@ -124,7 +156,7 @@ fn execute_turn(
         });
     }
     let prompt = format!("{text}\n{attachments}");
-    session.run_turn(
+    session.run_turn_deferred(
         &prompt,
         &client,
         host,
@@ -134,7 +166,7 @@ fn execute_turn(
             unsaved: &unsaved,
             cancel,
         },
-    );
+    )
 }
 
 // Match the existing session only for the same workspace and conversation.
