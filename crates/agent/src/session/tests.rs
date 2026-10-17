@@ -252,7 +252,9 @@ fn request_failure_flushes_buffered_output_before_error() {
     s.run_turn("Answer", &BrokenStream, &panel, &project.input());
     assert_eq!(panel.end(), "error");
     let events = panel.events.lock().expect("events");
-    assert!(events.iter().any(|event| matches!(event, AgentEvent::Text { text } if text == "partial answer")));
+    assert!(events.iter().any(|event| {
+        matches!(event, AgentEvent::Text { text } if text == "partial answer")
+    }));
 }
 
 #[test]
