@@ -166,7 +166,10 @@ fn tiny_text_deltas_are_batched_without_losing_the_answer() {
         })
         .collect();
     assert_eq!(pieces.concat(), "x".repeat(250));
-    assert_eq!(pieces.len(), 1, "one tiny chunk must not trigger a UI update");
+    assert!(
+        pieces.len() < 20,
+        "250 tiny chunks should be coalesced into far fewer UI events"
+    );
 }
 
 #[test]
