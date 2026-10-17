@@ -36,6 +36,20 @@ impl Drop for BusyGuard {
     }
 }
 
+/// The turnEnd event wakes the frontend task queue. Never send it while the
+/// previous worker is busy or still holding the one shared inference lease.
+fn complete_turn(
+    chat: &Arc<Chat>,
+    work: impl FnOnce() -> openmind_agent::AgentEvent,
+    publish: impl FnOnce(openmind_agent::AgentEvent),
+) {
+    let terminal = {
+        let _busy = BusyGuard(Arc::clone(chat));
+        work()
+    };
+    publish(terminal);
+}
+
 /// A window's conversation.
 #[derive(Default)]
 pub struct Chat {
@@ -288,17 +302,15 @@ pub async fn agent_send(
             task_id: request.task_id.as_deref(),
             options: Some(&request.options),
         };
-        let terminal = {
-            let _busy = BusyGuard(Arc::clone(&chat));
-            run_turn(
-                &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
-            )
-            // BusyGuard releases only after the engine lease and cancelled
-            // HTTP worker have been cleaned up.
-        };
-        // Publish turnEnd *after* the prior worker is idle. Frontend task
-        // queues resume on this event; publishing it earlier races the lease.
-        host.send(&terminal);
+        complete_turn(
+            &chat,
+            || {
+                run_turn(
+                    &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
+                )
+            },
+            |terminal| host.send(&terminal),
+        );
     });
     Ok(())
 }
@@ -516,6 +528,38 @@ pub async fn agent_engine_stop(agent: State<'_, AgentRuntime>) -> Result<(), Str
     })
     .await
     .map_err(|err| err.to_string())?
+}
+
+#[cfg(test)]
+mod completion_tests {
+    use super::*;
+
+    #[test]
+    fn queued_next_turn_is_not_notified_until_busy_guard_and_lease_are_released() {
+        let chat = Arc::new(Chat::default());
+        let engine = Arc::new(EngineSlot::default());
+        chat.busy.store(true, Ordering::SeqCst);
+        complete_turn(
+            &chat,
+            || {
+                let _lease = engine.lease().expect("first turn owns engine");
+                assert!(chat.busy.load(Ordering::SeqCst));
+                assert!(engine.lease().is_err());
+                openmind_agent::AgentEvent::TurnEnd {
+                    reason: "cancelled".into(),
+                    message: None,
+                }
+            },
+            |terminal| {
+                assert!(!chat.busy.load(Ordering::SeqCst));
+                assert!(engine.lease().is_ok());
+                assert!(matches!(
+                    terminal,
+                    openmind_agent::AgentEvent::TurnEnd { reason, .. } if reason == "cancelled"
+                ));
+            },
+        );
+    }
 }
 
 #[cfg(test)]
