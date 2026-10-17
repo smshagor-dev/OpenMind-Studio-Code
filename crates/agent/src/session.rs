@@ -828,7 +828,7 @@ mod manual_context_tests {
         session.set_model_context(32_768);
         session.set_options(crate::SessionOptions::default());
         assert_eq!(session.context_tokens, 32_768);
-        assert_eq!(session.context_snapshot()["maxOutputTokens"], 16_384);
+        assert_eq!(session.context_snapshot()["maxOutputTokens"], 4_096);
         assert!(session
             .messages()
             .iter()
