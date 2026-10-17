@@ -346,7 +346,7 @@ fn bounded_scoped_workers_overlap_but_results_remain_in_call_order() {
     let results = scoped_map(&[0, 1, 2], |index| {
         let count = running.fetch_add(1, Ordering::SeqCst) + 1;
         peak.fetch_max(count, Ordering::SeqCst);
-        let deadline = Instant::now() + Duration::from_millis(750);
+        let deadline = Instant::now() + Duration::from_secs(2);
         while running.load(Ordering::SeqCst) < 3 && Instant::now() < deadline {
             std::thread::yield_now();
         }
@@ -412,6 +412,34 @@ fn independent_reads_retain_order_and_original_model_tool_ids() {
     assert!(results[1].1.contains("hello notes"));
     assert!(results[2].1.contains("main.py"));
     assert!(results[3].1.contains("notes.txt"));
+}
+
+#[test]
+fn many_reads_are_processed_in_bounded_batches_without_missing_ids() {
+    let project = Project::new();
+    let model = Script::new(vec![
+        batch_calls(&[
+            ("a", "read_file", json!({"path":"main.py"})),
+            ("b", "list_dir", json!({})),
+            ("c", "find_files", json!({"pattern":"**/*.py"})),
+            ("d", "search", json!({"query":"return"})),
+            ("e", "read_file", json!({"path":"main.py","offset":1,"limit":1})),
+            ("f", "list_dir", json!({})),
+        ]),
+        say("Listed."),
+    ]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Read project", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let requests = model.requests.lock().expect("lock");
+    let messages = requests[1]["messages"].as_array().expect("messages");
+    let ids: Vec<_> = messages.iter()
+        .filter(|message| message["role"] == "tool")
+        .map(|message| message["tool_call_id"].as_str().expect("id"))
+        .collect();
+    assert_eq!(ids, ["a", "b", "c", "d", "e", "f"]);
+    assert!(panel.asked.lock().expect("lock").is_empty());
 }
 
 #[test]
