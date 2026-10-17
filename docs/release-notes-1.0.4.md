@@ -1,6 +1,6 @@
-# OpenMind Studio v1.0.4
+# OpenMind Studio v1.0.4 (upcoming; built, not published)
 
-Windows (x64, x86) and Linux (x64, x86). Built from the private source `main` after v1.0.3 (`8a75e2d`).
+Prepared Windows (x64, x86) and Linux (x64, x86) packages. Not yet published. Built from the private source `main` after v1.0.3 (`8a75e2d`).
 
 ## New
 
