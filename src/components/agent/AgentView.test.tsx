@@ -175,6 +175,26 @@ it("requires licence consent before starting a setup download", () => {
   expect(downloadSpy).toHaveBeenCalledWith("internal", true);
 });
 describe("actual GPU layer diagnostics", () => {
+  it("shows full offload only with a matching layer count", () => {
+    harness.state = {
+      ...currentState(),
+      overview: {
+        ...overview(true),
+        gpuReport: {
+          requested: true,
+          mode: "gpu",
+          offloadedLayers: 33,
+          totalLayers: 33,
+        },
+      },
+      modelId: "internal",
+    };
+    mount();
+    expect(screen.getByTestId("agent-acceleration-status")).toHaveTextContent(
+      "agent.gpu.mode.gpu",
+    );
+  });
+
   it("shows partial offload with the actual layer ratio", () => {
     harness.state = {
       ...currentState(),
@@ -239,7 +259,7 @@ describe("actual GPU layer diagnostics", () => {
   it("shows idle rather than automatic GPU when no engine runs", () => {
     harness.state = {
       ...currentState(),
-      overview: overview(),
+      overview: { ...overview(true), runningModel: null },
       modelId: "internal",
     };
     mount();
