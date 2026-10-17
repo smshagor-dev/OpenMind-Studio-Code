@@ -97,6 +97,27 @@ fn call(id: &str, name: &str, args: serde_json::Value) -> Vec<String> {
     ]
 }
 
+/// Multiple independent function calls returned by one model response.
+fn batch_calls(specs: &[(&str, &str, Value)]) -> Vec<String> {
+    let items: Vec<Value> = specs
+        .iter()
+        .enumerate()
+        .map(|(index, (id, name, args))| {
+            json!({
+                "index": index,
+                "id": id,
+                "function": {"name": name, "arguments": args.to_string()}
+            })
+        })
+        .collect();
+    let chunk = json!({"choices": [{"delta": {"tool_calls": items}}]});
+    vec![
+        format!("data: {chunk}"),
+        r#"data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#.into(),
+        "data: [DONE]".into(),
+    ]
+}
+
 fn say(text: &str) -> Vec<String> {
     let chunk = json!({"choices": [{"delta": {"content": text}, "finish_reason": "stop"}]});
     vec![format!("data: {chunk}"), "data: [DONE]".into()]
@@ -313,6 +334,211 @@ fn reasoning_only_length_limit_does_not_loop_or_claim_success() {
     assert!(panel.events.lock().expect("lock").iter().any(|event| {
         matches!(event, AgentEvent::TurnEnd { message: Some(detail), .. } if detail.contains("reasoning"))
     }));
+}
+
+#[test]
+fn bounded_scoped_workers_overlap_but_results_remain_in_call_order() {
+    use std::sync::atomic::AtomicUsize;
+    use std::time::{Duration, Instant};
+
+    let running = AtomicUsize::new(0);
+    let peak = AtomicUsize::new(0);
+    let results = scoped_map(&[0, 1, 2], |index| {
+        let count = running.fetch_add(1, Ordering::SeqCst) + 1;
+        peak.fetch_max(count, Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while running.load(Ordering::SeqCst) < 3 && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        // Deliberately make the first item finish last. Publish order must
+        // still match model tool-call order, not thread completion order.
+        if *index == 0 {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        running.fetch_sub(1, Ordering::SeqCst);
+        *index
+    });
+    assert_eq!(
+        results.into_iter().map(|item| item.expect("worker")).collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert!(peak.load(Ordering::SeqCst) >= 2, "reads never overlapped");
+}
+
+#[test]
+fn independent_reads_retain_order_and_original_model_tool_ids() {
+    let project = Project::new();
+    fs::write(project.ws.root().join("notes.txt"), "hello notes").expect("write");
+    let model = Script::new(vec![
+        batch_calls(&[
+            ("read_1", "read_file", json!({"path":"main.py"})),
+            ("read_2", "read_file", json!({"path":"notes.txt"})),
+            ("read_3", "search", json!({"query":"def add"})),
+            ("read_4", "list_dir", json!({})),
+        ]),
+        say("Finished reading."),
+    ]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Inspect project", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    assert!(panel.asked.lock().expect("lock").is_empty());
+    let events = panel.events.lock().expect("lock");
+    let started: Vec<_> = events.iter().filter_map(|event| match event {
+        AgentEvent::ToolStart { id, .. } => Some(id.as_str()),
+        _ => None,
+    }).collect();
+    let finished: Vec<_> = events.iter().filter_map(|event| match event {
+        AgentEvent::ToolEnd { id, ok, .. } => {
+            assert!(*ok, "read tool {id} failed");
+            Some(id.as_str())
+        }
+        _ => None,
+    }).collect();
+    assert_eq!(started, ["read_1", "read_2", "read_3", "read_4"]);
+    assert_eq!(finished, started);
+    let requests = model.requests.lock().expect("lock");
+    let messages = requests[1]["messages"].as_array().expect("messages");
+    let results: Vec<_> = messages.iter()
+        .filter(|message| message["role"] == "tool")
+        .map(|message| (
+            message["tool_call_id"].as_str().expect("id"),
+            message["content"].as_str().expect("content")
+        ))
+        .collect();
+    assert_eq!(results.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        ["read_1", "read_2", "read_3", "read_4"]);
+    assert!(results[0].1.contains("return a - b"));
+    assert!(results[1].1.contains("hello notes"));
+    assert!(results[2].1.contains("main.py"));
+    assert!(results[3].1.contains("notes.txt"));
+}
+
+#[test]
+fn many_reads_are_processed_in_bounded_batches_without_missing_ids() {
+    let project = Project::new();
+    let model = Script::new(vec![
+        batch_calls(&[
+            ("a", "read_file", json!({"path":"main.py"})),
+            ("b", "list_dir", json!({})),
+            ("c", "find_files", json!({"pattern":"**/*.py"})),
+            ("d", "search", json!({"query":"return"})),
+            ("e", "read_file", json!({"path":"main.py","offset":1,"limit":1})),
+            ("f", "list_dir", json!({})),
+        ]),
+        say("Listed."),
+    ]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Read project", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let requests = model.requests.lock().expect("lock");
+    let messages = requests[1]["messages"].as_array().expect("messages");
+    let ids: Vec<_> = messages.iter()
+        .filter(|message| message["role"] == "tool")
+        .map(|message| message["tool_call_id"].as_str().expect("id"))
+        .collect();
+    assert_eq!(ids, ["a", "b", "c", "d", "e", "f"]);
+    assert!(panel.asked.lock().expect("lock").is_empty());
+}
+
+#[test]
+fn edits_and_permission_prompts_remain_between_read_batches() {
+    let project = Project::new();
+    let model = Script::new(vec![
+        batch_calls(&[
+            ("r1", "read_file", json!({"path":"main.py"})),
+            ("r2", "list_dir", json!({})),
+            ("e1", "edit_file", json!({
+                "path":"main.py", "old_string":"a - b", "new_string":"a + b"
+            })),
+            ("r3", "read_file", json!({"path":"main.py"})),
+            ("r4", "search", json!({"query":"return a + b"})),
+        ]),
+        say("Fixed."),
+    ]);
+    let panel = Panel::new(vec![Decision::Allow]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Inspect and fix", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    assert_eq!(panel.asked.lock().expect("lock").len(), 1);
+    let requests = model.requests.lock().expect("lock");
+    let messages = requests[1]["messages"].as_array().expect("messages");
+    let results: Vec<_> = messages.iter()
+        .filter(|message| message["role"] == "tool")
+        .map(|message| message["content"].as_str().expect("tool content"))
+        .collect();
+    assert_eq!(results.len(), 5);
+    assert!(results[0].contains("return a - b"));
+    assert!(results[2].contains("Added 1 line") || results[2].contains("Update"));
+    assert!(results[3].contains("return a + b"));
+    assert!(results[4].contains("return a + b"));
+    assert_eq!(project.text(), "def add(a, b):\n    return a + b\n");
+    assert!(s.can_undo());
+}
+
+#[test]
+fn parallel_path_never_runs_unknown_or_external_tools_as_internal_reads() {
+    struct Override(Panel);
+    impl AgentHost for Override {
+        fn emit(&self, event: AgentEvent) { self.0.emit(event); }
+        fn ask(&self, request: PermissionRequest, cancel: &AtomicBool) -> Decision {
+            self.0.ask(request, cancel)
+        }
+        fn external_tools(&self) -> Vec<crate::external::ExternalTool> {
+            vec![crate::external::ExternalTool {
+                name: "read_file".into(),
+                description: "different external source".into(),
+                parameters: json!({"type":"object"}),
+                kind: tools::ToolKind::Command,
+                read_only: true,
+            }]
+        }
+    }
+    let host = Override(Panel::new(vec![]));
+    let internal = crate::wire::ToolCall {
+        id: "r".into(), name: "search".into(), arguments: "{}".into()
+    };
+    let shadowed = crate::wire::ToolCall {
+        id: "e".into(), name: "read_file".into(), arguments: "{}".into()
+    };
+    let unknown = crate::wire::ToolCall {
+        id: "u".into(), name: "invented_read".into(), arguments: "{}".into()
+    };
+    assert!(is_project_read(&internal, &host));
+    assert!(!is_project_read(&shadowed, &host));
+    assert!(!is_project_read(&unknown, &host));
+}
+
+#[test]
+fn cancellation_between_read_batches_skips_mutating_actions() {
+    struct CancelHost<'a> {
+        panel: Panel,
+        cancel: &'a AtomicBool,
+    }
+    impl AgentHost for CancelHost<'_> {
+        fn emit(&self, event: AgentEvent) {
+            if let AgentEvent::ToolEnd { ref id, .. } = event {
+                if id == "r2" { self.cancel.store(true, Ordering::Relaxed); }
+            }
+            self.panel.emit(event);
+        }
+        fn ask(&self, request: PermissionRequest, cancel: &AtomicBool) -> Decision {
+            self.panel.ask(request, cancel)
+        }
+    }
+    let project = Project::new();
+    let host = CancelHost { panel: Panel::new(vec![]), cancel: &project.cancel };
+    let model = Script::new(vec![batch_calls(&[
+        ("r1", "read_file", json!({"path":"main.py"})),
+        ("r2", "list_dir", json!({})),
+        ("write", "write_file", json!({"path":"should_not_exist.txt","content":"bad"})),
+    ])]);
+    let mut s = session(Mode::Auto);
+    s.run_turn("Inspect then mutate", &model, &host, &project.input());
+    assert_eq!(host.panel.end(), "cancelled");
+    assert!(!project.ws.root().join("should_not_exist.txt").exists());
+    assert!(host.panel.asked.lock().expect("lock").is_empty());
 }
 
 #[test]

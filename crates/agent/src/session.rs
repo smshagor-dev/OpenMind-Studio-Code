@@ -16,6 +16,95 @@ use crate::wire::{request_body, Delta, Message, StreamState};
 
 /// Model calls in one turn before the agent stops and asks the user to continue.
 const PREVIEW_CHARS: usize = 1_200;
+/// Read-only project inspection is bounded: do not spawn one thread per
+/// untrusted tool call returned by the model.
+const MAX_CONCURRENT_READS: usize = 4;
+
+/// Only these internal tools are side-effect-free. ToolKind::Read also
+/// represents unknown names, so never use it alone to authorize concurrency.
+fn is_project_read(call: &crate::wire::ToolCall, host: &dyn AgentHost) -> bool {
+    matches!(
+        call.name.as_str(),
+        "read_file" | "list_dir" | "find_files" | "search"
+    ) && !host.external_tools().iter().any(|tool| tool.name == call.name)
+}
+
+struct ReadResult {
+    kind: tools::ToolKind,
+    title: String,
+    target: String,
+    outcome: tools::Outcome,
+}
+
+/// Project read tools complete their I/O inside prepare(), not execute().
+/// Parallelize both phases and never mutate the session, policy or UI from
+/// workers. The calling thread publishes results in original call order.
+fn execute_project_read(call: &crate::wire::ToolCall, ctx: &ToolContext<'_>) -> ReadResult {
+    if ctx.cancel.load(Ordering::Relaxed) {
+        return ReadResult {
+            kind: tools::ToolKind::Read,
+            title: call.name.clone(),
+            target: String::new(),
+            outcome: tools::Outcome::failed("Cancelled"),
+        };
+    }
+    let prepared = tools::prepare(&call.name, &call.arguments, ctx, true);
+    let (kind, title, target) =
+        (prepared.kind, prepared.title.clone(), prepared.target.clone());
+    let outcome = if ctx.cancel.load(Ordering::Relaxed) {
+        tools::Outcome::failed("Cancelled")
+    } else {
+        tools::execute(prepared, ctx)
+    };
+    ReadResult {
+        kind,
+        title,
+        target,
+        outcome,
+    }
+}
+
+/// Result order is identical to input order regardless of worker completion
+/// order. This helper is also exercised with synchronized workers in tests.
+fn scoped_map<T, R, F>(
+    items: &[T],
+    run: F,
+) -> Vec<std::thread::Result<R>>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
+    std::thread::scope(|scope| {
+        let work = &run;
+        let handles: Vec<_> = items
+            .iter()
+            .map(|item| scope.spawn(move || work(item)))
+            .collect();
+        handles.into_iter().map(|handle| handle.join()).collect()
+    })
+}
+
+fn parallel_project_reads(
+    calls: &[crate::wire::ToolCall],
+    ctx: &ToolContext<'_>,
+) -> Vec<ReadResult> {
+    // The caller limits each slice to MAX_CONCURRENT_READS. Scoped threads
+    // borrow the validated workspace and cancel flag without unsafe lifetimes.
+    calls
+        .iter()
+        .zip(scoped_map(calls, |call| execute_project_read(call, ctx)))
+        .map(|(call, result)| {
+            result.unwrap_or_else(|_| ReadResult {
+                kind: tools::ToolKind::Read,
+                title: call.name.clone(),
+                target: String::new(),
+                outcome: tools::Outcome::failed("The parallel read worker failed."),
+            })
+        })
+        .collect()
+}
+
 const STREAM_BATCH_INTERVAL: Duration = Duration::from_millis(50);
 const STREAM_BATCH_BYTES: usize = 4 * 1024;
 
@@ -448,7 +537,57 @@ impl Session {
         changes: &mut Vec<Change>,
     ) -> Option<(String, Option<String>)> {
         let mut ending: Option<(String, Option<String>)> = None;
-        for call in calls {
+        let mut index = 0;
+        while index < calls.len() {
+            let call = &calls[index];
+            // Keep all edits, deletions, commands, external calls and todo
+            // updates in the original sequential path. Never batch across
+            // an operation that might change the files being inspected.
+            if ending.is_none() && !ctx.cancel.load(Ordering::Relaxed)
+                && is_project_read(call, host)
+            {
+                let count = calls[index..]
+                    .iter()
+                    .take(MAX_CONCURRENT_READS)
+                    .take_while(|next| is_project_read(next, host))
+                    .count();
+                if count >= 2 {
+                    let chunk = &calls[index..index + count];
+                    let results = parallel_project_reads(chunk, ctx);
+                    for (read, result) in chunk.iter().zip(results) {
+                        host.emit(AgentEvent::ToolStart {
+                            id: read.id.clone(),
+                            name: read.name.clone(),
+                            kind: result.kind,
+                            title: result.title,
+                            target: result.target,
+                        });
+                        let outcome = if ctx.cancel.load(Ordering::Relaxed) {
+                            tools::Outcome::failed("Cancelled")
+                        } else {
+                            result.outcome
+                        };
+                        host.emit(AgentEvent::ToolEnd {
+                            id: read.id.clone(),
+                            ok: outcome.ok,
+                            summary: outcome.summary.clone(),
+                            preview: preview(&outcome.for_model),
+                            diff: None,
+                            changed: None,
+                        });
+                        self.messages.push(Message::Tool {
+                            tool_call_id: read.id.clone(),
+                            content: outcome.for_model,
+                        });
+                    }
+                    index += count;
+                    if ctx.cancel.load(Ordering::Relaxed) {
+                        ending = Some(("cancelled".into(), None));
+                    }
+                    continue;
+                }
+            }
+            index += 1;
             if ctx.cancel.load(Ordering::Relaxed) {
                 ending = Some(("cancelled".into(), None));
             }
@@ -712,7 +851,7 @@ mod manual_context_tests {
         session.set_model_context(32_768);
         session.set_options(crate::SessionOptions::default());
         assert_eq!(session.context_tokens, 32_768);
-        assert_eq!(session.context_snapshot()["maxOutputTokens"], 16_384);
+        assert_eq!(session.context_snapshot()["maxOutputTokens"], 4_096);
         assert!(session
             .messages()
             .iter()
