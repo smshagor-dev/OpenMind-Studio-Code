@@ -245,9 +245,14 @@ export function AgentView() {
         {state.overview.runningContextTokens != null ? (
           <span>
             {" · "}
-            {t("agent.context.active", {
-              tokens: state.overview.runningContextTokens.toLocaleString(),
-            })}
+            {t(
+              state.options?.contextTokens === 0
+                ? "agent.context.auto"
+                : "agent.context.active",
+              {
+                tokens: state.overview.runningContextTokens.toLocaleString(),
+              },
+            )}
           </span>
         ) : null}
       </div>

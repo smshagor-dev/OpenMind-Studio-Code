@@ -28,9 +28,11 @@ pub(super) fn run_turn(
         Ok(lease) => lease,
         Err(message) => return end(message),
     };
+    let estimated_input_tokens = estimated_input_tokens(chat, request, model, ws.root());
     let connection = match agent.engine.ensure(
         request.options.use_gpu,
         request.options.context_tokens,
+        estimated_input_tokens,
         program,
         &agent.store,
         model,
@@ -89,7 +91,7 @@ fn execute_turn(
         *slot = Some(Session::new(
             system.clone(),
             model.id.clone(),
-            model.context_tokens,
+            connection.context_tokens,
             request.mode,
         ));
         *root_slot = Some(ws.root().to_path_buf());
@@ -103,6 +105,7 @@ fn execute_turn(
         return end("The conversation could not be started.".into());
     };
     session.set_mode(request.mode);
+    session.set_model_context(connection.context_tokens);
     session.set_options(request.options.clone());
     session.set_system(system);
     let unsaved: Vec<PathBuf> = request.unsaved.iter().map(PathBuf::from).collect();
@@ -132,6 +135,58 @@ fn execute_turn(
             cancel,
         },
     );
+}
+
+// Match the existing session only for the same workspace and conversation.
+fn estimated_input_tokens(
+    chat: &Chat,
+    request: &SendRequest,
+    model: &openmind_llm::ModelEntry,
+    root: &std::path::Path,
+) -> usize {
+    let session = chat.session.lock().unwrap_or_else(PoisonError::into_inner);
+    let same = chat
+        .root
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_deref() == Some(root)
+        && *chat
+            .conversation_id
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            == request.conversation_id;
+    let saved_tokens = if same {
+        session
+            .as_ref()
+            .filter(|s| s.model == model.id)
+            .and_then(|s| s.context_snapshot()["estimatedInputTokens"].as_u64())
+            .unwrap_or(0) as usize
+    } else {
+        // Equivalent to the history seeding limit; do not size from unlimited
+        // stale history that will never be loaded.
+        let mut remaining = 200_000usize;
+        request
+            .history
+            .iter()
+            .rev()
+            .take(80)
+            .filter(|msg| {
+                if msg.content.len() > remaining {
+                    return false;
+                }
+                remaining -= msg.content.len();
+                true
+            })
+            .map(|msg| msg.content.len().div_ceil(2))
+            .sum()
+    };
+    saved_tokens.saturating_add(request.text.len().div_ceil(2))
+        .saturating_add(
+            request.attachments.iter()
+                .filter_map(|attachment| attachment.text.as_ref())
+                .map(|text| text.len().div_ceil(2))
+                .sum::<usize>(),
+        )
 }
 
 fn seed_history(session: &mut Session, history: &[HistoryMessage]) {
