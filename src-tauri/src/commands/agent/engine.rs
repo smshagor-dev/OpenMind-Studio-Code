@@ -107,11 +107,7 @@ impl EngineSlot {
                 && *self.auto_context.lock().unwrap_or_else(PoisonError::into_inner) == automatic
                 && engine.alias == model.id
                 // Reuse a larger Auto window rather than repeatedly reloading the model.
-                && (if automatic {
-                    engine.context_tokens >= context_tokens
-                } else {
-                    engine.context_tokens == context_tokens
-                })
+                && context_allocation_matches(engine.context_tokens, context_tokens, automatic)
                 && engine.exited().is_none()
                 && engine.health() == Health::Ready
             {
@@ -200,6 +196,16 @@ fn effective_context_tokens(requested: u32, model_limit: u32) -> u32 {
         ceiling
     } else {
         requested.clamp(1_024, ceiling)
+    }
+}
+
+/// A manual window must match exactly. Auto reuses larger allocations until a
+/// model or mode change, to avoid thrashing the local engine.
+fn context_allocation_matches(allocated: u32, requested: u32, automatic: bool) -> bool {
+    if automatic {
+        allocated >= requested
+    } else {
+        allocated == requested
     }
 }
 
@@ -323,6 +329,15 @@ mod tests {
             cpu_threads: 8,
             avx2: true,
         }
+    }
+
+    #[test]
+    fn auto_reuses_sufficient_window_but_manual_requires_exact_match() {
+        assert!(context_allocation_matches(32_768, 16_384, true));
+        assert!(context_allocation_matches(32_768, 32_768, true));
+        assert!(!context_allocation_matches(8_192, 16_384, true));
+        assert!(context_allocation_matches(16_384, 16_384, false));
+        assert!(!context_allocation_matches(32_768, 16_384, false));
     }
 
     #[test]
