@@ -8,6 +8,20 @@ no administrator rights, no dependency on globally installed software, and nothi
 - **Source:** this repository · **Licence:** [Apache-2.0](LICENSE) · **Third-party licences:** [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 - **Security reports:** [SECURITY.md](SECURITY.md) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Privacy:** [docs/legal/privacy-policy.md](docs/legal/privacy-policy.md)
 
+## Release status
+
+- **Current published release: v1.0.3.** Download from the [official releases page](https://github.com/smshagor-dev/OpenMind-Studio/releases). Read [v1.0.3 release notes](docs/release-notes-1.0.3.md).
+- **Upcoming: v1.0.4.** Source code and release packages have been prepared, but publication is pending. See [v1.0.4 release notes](docs/release-notes-1.0.4.md). The source package version may therefore show `1.0.4` while the latest publicly available version remains `1.0.3`.
+
+### What's coming in v1.0.4
+
+- Network Deployment for discovering, trusting and installing from LAN deployments, with signed-package verification and a diagnostic test.
+- Per-user Desktop shortcuts for shared Windows installations, with IT deployment controls.
+- Fixes for shared runtimes, concurrent language-tool installation, mapped-drive profiles, and per-computer caches.
+- Security hardening for network discovery and package serving.
+
+The v1.0.4 packages are not Authenticode-signed. Physical multi-computer university-network validation is still pending; deployment across separate subnets requires manual addressing. Do not treat prepared builds as publicly released.
+
 ## What it does
 
 - Explorer, Monaco editor with tabs and split editors, Markdown and file previews (images, PDF, DOCX, XLSX, CSV).
