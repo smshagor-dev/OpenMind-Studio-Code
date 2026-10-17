@@ -326,6 +326,16 @@ export class AgentService {
       .catch(() => {
         this.host.notify(this.host.text("agent.tasks.saveFailed"));
       });
+    // A changed context needs a new KV cache, not only a smaller prompt.
+    // Running turns keep their engine until completion; the next turn reconciles it.
+    if (
+      previousContext !== options.contextTokens &&
+      !this.state.transcript.busy &&
+      !this.tasks.getState().activeId &&
+      !this.warming
+    ) {
+      await this.activate();
+    }
   }
 
   openSettings(open: boolean): void {
@@ -373,16 +383,6 @@ export class AgentService {
       .catch(() => {
         this.host.notify(this.host.text("agent.tasks.saveFailed"));
       });
-    // Changing the context needs a new KV cache, not just a smaller prompt.
-    // Do not interrupt an active turn; its next request will reconcile the engine.
-    if (
-      previousContext !== options.contextTokens &&
-      !this.state.transcript.busy &&
-      !this.tasks.getState().activeId &&
-      !this.warming
-    ) {
-      await this.activate();
-    }
   }
 
   getState(): AgentState {
