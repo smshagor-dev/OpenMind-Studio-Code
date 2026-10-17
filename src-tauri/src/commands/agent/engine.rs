@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn gpu_status_is_unknown_without_a_reliable_engine_report() {
-        let log = "ggml_vulkan: found a device\\nload_tensors: offloading 33 repeating layers to GPU";
+        let log = "ggml_vulkan: found a device\nload_tensors: offloading 33 repeating layers to GPU";
         assert_eq!(offload_layers(log), None);
         assert_eq!(gpu_mode(true, None), "unknown");
         assert_eq!(gpu_mode(false, None), "cpu");
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn latest_offload_report_wins_when_multiple_are_present() {
-        let log = "load_tensors: offloaded 4/33 layers to GPU\\nload_tensors: offloaded 19/33 layers to GPU";
+        let log = "load_tensors: offloaded 4/33 layers to GPU\nload_tensors: offloaded 19/33 layers to GPU";
         assert_eq!(offload_layers(log), Some(Offload { layers: 19, total: 33 }));
     }
 
