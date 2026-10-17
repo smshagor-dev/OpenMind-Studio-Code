@@ -39,6 +39,12 @@ jobs:
         run: cargo test --locked -p openmind-llm --lib
       - name: Validate session budgets, streaming and deferred completion
         run: cargo test --locked -p openmind-agent --lib
+      - name: Validate bounded parallel read scheduling and ordered tool results
+        run: |
+          cargo test --locked -p openmind-agent --lib bounded_scoped_workers
+          cargo test --locked -p openmind-agent --lib independent_reads
+          cargo test --locked -p openmind-agent --lib edits_and_permission
+          cargo test --locked -p openmind-agent --lib cancellation_between_read_batches
       - name: Validate HTTP cancellation on a stalled local stream
         run: cargo test --locked -p openmind-ai --lib transport::tests -- --nocapture
       - name: Validate request-level reasoning budget
