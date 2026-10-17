@@ -271,3 +271,31 @@ fn turn_system(request: &SendRequest, ws: &Workspace) -> String {
     }
     prompt
 }
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+
+    #[test]
+    fn only_an_aborted_in_flight_request_requires_engine_recovery() {
+        let cancel = AtomicBool::new(false);
+        let failed: Result<(), String> = Err("broken pipe".into());
+        assert!(!cancelled_stream_needs_recovery(&cancel, &failed));
+        cancel.store(true, Ordering::Release);
+        assert!(cancelled_stream_needs_recovery(&cancel, &failed));
+        assert!(cancelled_stream_needs_recovery(
+            &cancel,
+            &Err("cancelled".into())
+        ));
+        assert!(!cancelled_stream_needs_recovery(&cancel, &Ok(())));
+    }
+
+    #[test]
+    fn deferred_terminal_states_are_serializable_for_the_window() {
+        let event = turn_end("cancelled", None);
+        let payload = serde_json::to_value(&event).expect("serialize");
+        assert_eq!(payload["type"], "turnEnd");
+        assert_eq!(payload["reason"], "cancelled");
+        assert!(payload["message"].is_null());
+    }
+}
