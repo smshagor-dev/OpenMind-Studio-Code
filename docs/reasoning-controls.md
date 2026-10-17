@@ -20,8 +20,8 @@ not have it. New installations use a 4K response limit. Existing users' stored
 `maxOutputTokens` values are **not overwritten** by the new default.
 
 Rust bounds the thinking budget to 8,192 tokens and, on each model call,
-reserves at least 512 of the configured output tokens for a visible answer or
-complete tool-call JSON. Both controls are also capped by the running model
+caps the requested thinking budget to leave at least 512 tokens available
+for a visible answer or complete tool-call JSON when the model honors it. Both controls are also capped by the running model
 context. For example, an output limit of 1,024 allows a thinking budget of at
 most 512.
 
