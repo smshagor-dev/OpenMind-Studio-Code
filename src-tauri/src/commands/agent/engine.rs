@@ -47,13 +47,12 @@ pub struct GpuReport {
 }
 
 fn gpu_mode(requested: bool, offload: Option<Offload>) -> &'static str {
-    if !requested {
-        return "cpu";
-    }
     match offload {
-        Some(Offload { layers: 0, .. }) => "cpuFallback",
+        // Actual loader placement is stronger evidence than the user toggle.
         Some(Offload { layers, total }) if layers == total => "gpu",
-        Some(_) => "partial",
+        Some(Offload { layers, .. }) if layers > 0 => "partial",
+        Some(_) if requested => "cpuFallback",
+        Some(_) | None if !requested => "cpu",
         None => "unknown",
     }
 }
@@ -433,7 +432,8 @@ mod tests {
 
         let cpu = offload_layers("load_tensors: offloaded 0/33 layers to GPU");
         assert_eq!(gpu_mode(true, cpu), "cpuFallback");
-        assert_eq!(gpu_mode(false, full), "cpu");
+        // Inconsistent launcher flags must not overwrite an observed GPU count.
+        assert_eq!(gpu_mode(false, full), "gpu");
     }
 
     #[test]
