@@ -155,7 +155,7 @@ fn deferred_turn_preserves_all_output_but_does_not_signal_completion_early() {
     assert!(panel.events.lock().expect("events").iter().any(|event| {
         matches!(event, AgentEvent::Text { text } if text == "The final answer")
     }));
-    assert!(matches!(terminal, AgentEvent::TurnEnd { ref reason, .. } if reason == "done"));
+    assert!(matches!(&terminal, AgentEvent::TurnEnd { reason, .. } if reason == "done"));
     panel.emit(terminal);
     assert_eq!(panel.end(), "done");
     assert_eq!(panel.events.lock().expect("events").iter().filter(|event| {
