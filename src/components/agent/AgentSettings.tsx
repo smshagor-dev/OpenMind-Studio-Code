@@ -11,7 +11,6 @@ const NUMBERS: {
   max: number;
   step: number;
 }[] = [
-  { key: "contextTokens", min: 0, max: 131072, step: 1024 },
   { key: "maxOutputTokens", min: 1024, max: 32768, step: 1024 },
   { key: "maxSteps", min: 8, max: 512, step: 1 },
   { key: "maxContinuations", min: 0, max: 16, step: 1 },
@@ -28,6 +27,13 @@ const TOGGLES = [
 export function AgentSettings() {
   const t = useT();
   const [draft, setDraft] = useState(agent.options());
+  const [manualContext, setManualContext] = useState(
+    agent.options().contextTokens || 16_384,
+  );
+  const contextLimit =
+    agent.getState().overview?.models.find(
+      (model) => model.id === agent.getState().modelId,
+    )?.contextTokens ?? 131_072;
   const [mode, setMode] = useState<AgentMode>(agent.getState().mode);
   const [saving, setSaving] = useState(false);
   return (
@@ -78,21 +84,48 @@ export function AgentSettings() {
           <option value="high">High</option>
         </select>
       </label>
+      <label>
+        {t("agent.settings.contextMode")}
+        <select
+          value={draft.contextTokens === 0 ? "auto" : "manual"}
+          onChange={(event) => {
+            setDraft({
+              ...draft,
+              contextTokens:
+                event.target.value === "auto"
+                  ? 0
+                  : Math.min(Math.max(manualContext, 1_024), contextLimit),
+            });
+          }}
+        >
+          <option value="auto">{t("agent.settings.contextAuto")}</option>
+          <option value="manual">{t("agent.settings.contextManual")}</option>
+        </select>
+      </label>
+      {draft.contextTokens > 0 ? (
+        <label>
+          {t("agent.settings.contextTokens")}
+          <input
+            type="number"
+            min={1024}
+            max={contextLimit}
+            step={1024}
+            value={draft.contextTokens}
+            onChange={(event) => {
+              const value = Number(event.target.value);
+              setManualContext(value);
+              setDraft({ ...draft, contextTokens: value });
+            }}
+          />
+        </label>
+      ) : null}
       {NUMBERS.map(({ key, min, max, step }) => (
         <label key={key}>
           {t(`agent.settings.${key}`)}
           <input
             type="number"
             min={min}
-            max={
-              key === "contextTokens"
-                ? (agent
-                    .getState()
-                    .overview?.models.find(
-                      (m) => m.id === agent.getState().modelId,
-                    )?.contextTokens ?? max)
-                : max
-            }
+            max={max}
             step={step}
             value={Number(draft[key])}
             onChange={(event) => {

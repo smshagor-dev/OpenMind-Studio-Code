@@ -482,6 +482,7 @@ pub async fn agent_engine_start(
         agent.engine.ensure(
             use_gpu.unwrap_or(true),
             context_tokens.unwrap_or(0),
+            0,
             &program,
             &agent.store,
             &model,

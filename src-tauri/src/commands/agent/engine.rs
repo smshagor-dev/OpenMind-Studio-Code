@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use openmind_llm::{Engine, EngineConfig, Health, ModelEntry, ModelStore};
+use openmind_llm::{detect, Engine, EngineConfig, Hardware, Health, ModelEntry, ModelStore};
 use serde::Serialize;
 
 /// The largest model can take minutes to read from a slow disk.
@@ -26,6 +26,7 @@ pub struct EngineEvent {
 pub struct Connection {
     pub base_url: String,
     pub key: String,
+    pub context_tokens: u32,
 }
 
 #[derive(Default)]
@@ -33,6 +34,7 @@ pub struct EngineSlot {
     lease: Mutex<()>,
     engine: Mutex<Option<Engine>>,
     gpu_mode: Mutex<bool>,
+    auto_context: Mutex<bool>,
     offloaded: Mutex<Option<u32>>,
 }
 
@@ -85,6 +87,7 @@ impl EngineSlot {
         &self,
         use_gpu: bool,
         requested_context_tokens: u32,
+        estimated_input_tokens: usize,
         program: &Path,
         store: &ModelStore,
         model: &ModelEntry,
@@ -93,18 +96,29 @@ impl EngineSlot {
         notify: &dyn Fn(EngineEvent),
     ) -> Result<Connection, String> {
         let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
-        let context_tokens =
-            effective_context_tokens(requested_context_tokens, model.context_tokens);
+        let automatic = requested_context_tokens == 0;
+        let context_tokens = if automatic {
+            automatic_context_tokens(model, &detect(), use_gpu, estimated_input_tokens)
+        } else {
+            effective_context_tokens(requested_context_tokens, model.context_tokens)
+        };
         if let Some(engine) = slot.as_mut() {
             if *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) == use_gpu
+                && *self.auto_context.lock().unwrap_or_else(PoisonError::into_inner) == automatic
                 && engine.alias == model.id
-                && engine.context_tokens == context_tokens
+                // Reuse a larger Auto window rather than repeatedly reloading the model.
+                && (if automatic {
+                    engine.context_tokens >= context_tokens
+                } else {
+                    engine.context_tokens == context_tokens
+                })
                 && engine.exited().is_none()
                 && engine.health() == Health::Ready
             {
                 return Ok(Connection {
                     base_url: engine.base_url(),
                     key: engine.key().to_string(),
+                    context_tokens: engine.context_tokens,
                 });
             }
         }
@@ -166,8 +180,10 @@ impl EngineSlot {
         let connection = Connection {
             base_url: engine.base_url(),
             key: engine.key().to_string(),
+            context_tokens: engine.context_tokens,
         };
         *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) = use_gpu;
+        *self.auto_context.lock().unwrap_or_else(PoisonError::into_inner) = automatic;
         *self
             .offloaded
             .lock()
@@ -185,6 +201,67 @@ fn effective_context_tokens(requested: u32, model_limit: u32) -> u32 {
     } else {
         requested.clamp(1_024, ceiling)
     }
+}
+
+/// Conservative memory-based tiers, not a prediction of exact KV-cache size.
+/// The engine may still refuse a window on a memory-constrained system.
+fn automatic_context_tokens(
+    model: &ModelEntry,
+    hardware: &Hardware,
+    use_gpu: bool,
+    estimated_input_tokens: usize,
+) -> u32 {
+    const GIB: u64 = 1024 * 1024 * 1024;
+    // Reserve room for OS/editor, GPU buffers and KV cache.
+    // Dedicated VRAM capacity is not currently free VRAM.
+    let gpu_weights = if use_gpu && hardware.vram_bytes() >= 2 * GIB {
+        model.size_bytes().min(hardware.vram_bytes().saturating_sub(GIB))
+    } else {
+        0
+    };
+    let ram_weights = model.size_bytes().saturating_sub(gpu_weights);
+    let ram_room = hardware
+        .total_ram_bytes
+        .saturating_sub(3 * GIB)
+        .saturating_sub(ram_weights);
+    let gpu_room = if gpu_weights > 0 {
+        hardware
+            .vram_bytes()
+            .saturating_sub(gpu_weights)
+            .saturating_sub(GIB)
+            .min(8 * GIB)
+    } else {
+        0
+    };
+    let memory_room = ram_room.saturating_add(gpu_room);
+    let mut limit = if memory_room >= 20 * GIB {
+        65_536
+    } else if memory_room >= 8 * GIB {
+        32_768
+    } else if memory_room >= 3 * GIB {
+        16_384
+    } else {
+        8_192
+    };
+    if hardware.available_ram_bytes > 0
+        && hardware.available_ram_bytes < 2 * GIB
+        && gpu_room < 2 * GIB
+    {
+        limit = limit.min(8_192);
+    }
+    let base = limit.min(16_384);
+    // Reserve response, system prompt and tool schemas; in-turn compaction
+    // still protects the remaining window.
+    let demand = estimated_input_tokens
+        .saturating_add(estimated_input_tokens / 4)
+        .saturating_add(6_144);
+    let tier = [8_192, 16_384, 32_768, 65_536, 131_072]
+        .into_iter()
+        .find(|&size| size as usize >= demand)
+        .unwrap_or(131_072);
+    base.max(tier)
+        .min(limit)
+        .min(model.context_tokens.max(1_024))
 }
 
 fn offloaded_layers(log: &str) -> Option<u32> {
@@ -227,6 +304,45 @@ mod tests {
         assert_eq!(effective_context_tokens(65_536, 32_768), 32_768);
         assert_eq!(effective_context_tokens(100, 32_768), 1_024);
         assert_eq!(effective_context_tokens(0, 512), 1_024);
+    }
+
+    fn hardware(ram_gib: u64, available_gib: u64, vram_gib: u64) -> Hardware {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        Hardware {
+            total_ram_bytes: ram_gib * GIB,
+            available_ram_bytes: available_gib * GIB,
+            gpus: if vram_gib == 0 {
+                vec![]
+            } else {
+                vec![openmind_llm::Gpu {
+                    name: "test GPU".into(),
+                    vendor: "amd".into(),
+                    vram_bytes: vram_gib * GIB,
+                }]
+            },
+            cpu_threads: 8,
+            avx2: true,
+        }
+    }
+
+    #[test]
+    fn automatic_window_starts_small_and_grows_for_long_inputs() {
+        let catalog = openmind_llm::Catalog::builtin().expect("catalog");
+        let model = catalog.get("nemotron-3-nano-4b-q4").expect("model");
+        let hw = hardware(16, 8, 8);
+        assert_eq!(automatic_context_tokens(model, &hw, true, 0), 16_384);
+        assert_eq!(automatic_context_tokens(model, &hw, true, 12_000), 32_768);
+        assert_eq!(automatic_context_tokens(model, &hw, true, 100_000), 32_768);
+    }
+
+    #[test]
+    fn automatic_window_respects_low_memory_and_manual_override() {
+        let catalog = openmind_llm::Catalog::builtin().expect("catalog");
+        let model = catalog.get("nemotron-3-nano-4b-q4").expect("model");
+        let hw = hardware(8, 1, 0);
+        assert_eq!(automatic_context_tokens(model, &hw, false, 0), 8_192);
+        assert_eq!(automatic_context_tokens(model, &hw, false, 30_000), 8_192);
+        assert_eq!(effective_context_tokens(4_096, model.context_tokens), 4_096);
     }
 
     #[test]

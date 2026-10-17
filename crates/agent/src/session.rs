@@ -166,6 +166,12 @@ impl Session {
         !self.turns.is_empty()
     }
 
+    /// Update the live engine's allocation without clearing the conversation.
+    /// The next options update will bound input/output to this actual window.
+    pub fn set_model_context(&mut self, context_tokens: u32) {
+        self.model_context = context_tokens.max(1_024);
+    }
+
     pub fn set_options(&mut self, options: crate::SessionOptions) {
         self.options = options.bounded(self.model_context);
         self.context_tokens = self.options.context_tokens;
@@ -603,6 +609,20 @@ mod manual_context_tests {
             matches!(session.messages().first(),Some(Message::System{content}) if content=="Rules")
         );
     }
+    #[test]
+    fn growing_context_preserves_existing_conversation() {
+        let mut session = Session::new("Rules".into(), "model".into(), 8_192, Mode::Ask);
+        session.add_history("user", "Please finish this");
+        session.set_model_context(32_768);
+        session.set_options(crate::SessionOptions::default());
+        assert_eq!(session.context_tokens, 32_768);
+        assert_eq!(session.context_snapshot()["maxOutputTokens"], 16_384);
+        assert!(session
+            .messages()
+            .iter()
+            .any(|m| matches!(m, Message::User { content } if content == "Please finish this")));
+    }
+
     #[test]
     fn empty_context_compaction_is_a_noop() {
         let mut session = Session::new("Rules".into(), "model".into(), 32768, Mode::Ask);
