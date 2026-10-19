@@ -88,7 +88,8 @@ export function agentOptions(value: unknown): AgentOptions {
     showReasoning: bool("showReasoning"),
     autoScroll: bool("autoScroll"),
     afterEditCommand:
-      typeof source.afterEditCommand === "string" && !/[\u0000-\u001f]/.test(source.afterEditCommand)
+      typeof source.afterEditCommand === "string" &&
+      ![...source.afterEditCommand].some((c) => c.charCodeAt(0) < 32)
         ? source.afterEditCommand.trim().slice(0, 2000)
         : "",
   };
