@@ -16,6 +16,7 @@ use crate::tools::{self, Change, ChangeKind, CommandEnv, ToolContext};
 use crate::wire::{request_body, Delta, Message, StreamState};
 
 mod guard;
+mod subagent;
 use guard::{TurnGuard, Verdict};
 
 /// Model calls in one turn before the agent stops and asks the user to continue.
@@ -209,6 +210,8 @@ pub struct Session {
     token_scale: f64,
     /// The conversation's terminal (working directory, background commands); dropping it stops them all.
     shell: Arc<tools::Shell>,
+    /// A sub-agent (see `subagent.rs`) gets no `task` tool of its own.
+    subagent: bool,
 }
 
 fn preview(text: &str) -> String {
@@ -236,6 +239,7 @@ impl Session {
             guard: TurnGuard::default(),
             token_scale: 1.0,
             shell: Arc::new(tools::Shell::new()),
+            subagent: false,
         }
     }
 
@@ -501,6 +505,9 @@ impl Session {
                         .filter(|tool| !self.policy.read_only() || tool.read_only)
                         .map(crate::external::ExternalTool::schema),
                 );
+                if !self.subagent {
+                    list.push(subagent::spec());
+                }
             }
             if let Err(message) = self.fit_context(&tools, host) {
                 return ("limit".into(), Some(message));
@@ -583,7 +590,7 @@ impl Session {
                 }
                 return ("done".into(), None);
             }
-            if let Some(end) = self.run_calls(&calls, host, &ctx, changes) {
+            if let Some(end) = self.run_calls(&calls, client, host, &ctx, changes) {
                 return end;
             }
         }
@@ -600,6 +607,7 @@ impl Session {
     fn run_calls(
         &mut self,
         calls: &[crate::wire::ToolCall],
+        client: &dyn ModelClient,
         host: &dyn AgentHost,
         ctx: &ToolContext<'_>,
         changes: &mut Vec<Change>,
@@ -700,6 +708,10 @@ impl Session {
                 continue;
             }
             let arguments = self.command_arguments(call);
+            if call.name == subagent::TOOL && !self.subagent {
+                self.run_subagent(call, client, host, ctx);
+                continue;
+            }
             if self.guarded(call, &arguments, host) {
                 continue;
             }

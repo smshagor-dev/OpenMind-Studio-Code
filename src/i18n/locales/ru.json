@@ -2752,6 +2752,7 @@
   "agent.tool.Stop": "Остановка",
   "agent.tool.Move": "Перемещение",
   "agent.tool.Fetch": "Загрузка страницы",
+  "agent.tool.Agent": "Субагент",
   "agent.tool.get_diagnostics": "Проверка",
   "agent.tool.UpdateTodos": "Список задач",
   "agent.tool.moreLines": "Показать ещё {count} строк",

@@ -230,6 +230,62 @@ fn thinking_that_fills_the_output_is_told_to_act_twice_then_the_turn_pauses() {
 }
 
 #[test]
+fn a_sub_agent_researches_read_only_and_reports_back_as_one_line() {
+    let project = Project::new();
+    let model = Script::new(vec![
+        call(
+            "t",
+            "task",
+            json!({"description": "Find the add bug", "prompt": "Where is add wrong in main.py?"}),
+        ),
+        call("r", "read_file", json!({"path": "main.py"})),
+        say("main.py line 2 subtracts: return a - b."),
+        say("The sub-agent found the bug on line 2."),
+    ]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Find the bug in add", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let requests = model.requests.lock().expect("requests");
+    let names = |i: usize| -> Vec<String> {
+        requests[i]["tools"]
+            .as_array()
+            .expect("tools")
+            .iter()
+            .filter_map(|t| t["function"]["name"].as_str().map(str::to_string))
+            .collect()
+    };
+    assert!(
+        names(0).contains(&"task".to_string()),
+        "the main agent is offered task"
+    );
+    let sub = names(1);
+    assert!(
+        !sub.contains(&"task".to_string())
+            && !sub.contains(&"edit_file".to_string())
+            && !sub.contains(&"run_command".to_string()),
+        "{sub:?}"
+    );
+    drop(requests);
+    assert!(tool_results(&model, 3)[0]
+        .contains("Report from the sub-agent (1 steps):\nmain.py line 2 subtracts"));
+    let events = panel.events.lock().expect("events");
+    let titles: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            AgentEvent::ToolStart { title, .. } => Some(title.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        titles,
+        ["Agent"],
+        "the sub-agent's own steps stay out of the panel"
+    );
+    assert!(project.text().contains("a - b"), "nothing was changed");
+}
+
+#[test]
 fn a_tool_call_written_as_text_still_runs() {
     let project = Project::new();
     let model = Script::new(vec![

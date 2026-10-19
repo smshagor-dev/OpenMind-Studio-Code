@@ -114,7 +114,8 @@ const ToolCard = memo(function ToolCard({ entry }: { entry: ToolEntry }) {
     (entry.toolKind === "command" ||
       entry.status === "failed" ||
       entry.name === "command_output" ||
-      entry.name === "get_diagnostics");
+      entry.name === "get_diagnostics" ||
+      entry.name === "task");
   const summary =
     entry.status === "declined"
       ? t("agent.tool.declined")
