@@ -135,6 +135,9 @@ pub(crate) struct TurnGuard {
     /// The model's task list as of its last update in this turn.
     todos: Vec<Todo>,
     nudges: u32,
+    /// After-edit checks run this turn, and how many changes the last one saw.
+    pub(super) hook_runs: u32,
+    pub(super) hook_seen: usize,
 }
 
 /// A call's identity: the tool and its arguments with object keys sorted (the model may reorder them).

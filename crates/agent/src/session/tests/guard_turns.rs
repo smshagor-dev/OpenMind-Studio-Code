@@ -286,6 +286,49 @@ fn a_sub_agent_researches_read_only_and_reports_back_as_one_line() {
 }
 
 #[test]
+fn a_failing_after_edit_check_sends_the_model_back_until_it_passes() {
+    let project = Project::new();
+    let check = if cfg!(windows) {
+        "if (Test-Path ok.txt) { exit 0 } else { Write-Output 'lint: ok.txt is missing'; exit 1 }"
+    } else {
+        "if [ -f ok.txt ]; then exit 0; else echo 'lint: ok.txt is missing'; exit 1; fi"
+    };
+    let model = Script::new(vec![
+        call("w1", "write_file", json!({"path": "a.txt", "content": "a"})),
+        say("Done."),
+        call(
+            "w2",
+            "write_file",
+            json!({"path": "ok.txt", "content": "ok"}),
+        ),
+        say("Fixed the lint problem."),
+    ]);
+    // Edits are accepted by the mode; the check (a command) is allowed twice.
+    let panel = Panel::new(vec![Decision::Allow, Decision::Allow]);
+    let mut s = session(Mode::AcceptEdits);
+    let mut options = crate::SessionOptions::default();
+    options.after_edit_command = check.into();
+    s.set_options(options);
+    s.run_turn("Make a.txt", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    assert_eq!(model.requests.lock().expect("requests").len(), 4);
+    let reminder = last_user_message(&model, 2);
+    assert!(
+        reminder.contains("after-edit check") && reminder.contains("ok.txt is missing"),
+        "{reminder}"
+    );
+    let hooks = panel
+        .events
+        .lock()
+        .expect("events")
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::ToolStart { title, .. } if title == "Hook"))
+        .count();
+    assert_eq!(hooks, 2, "checked after each change set");
+    assert_eq!(panel.asked.lock().expect("asked").len(), 2);
+}
+
+#[test]
 fn a_tool_call_written_as_text_still_runs() {
     let project = Project::new();
     let model = Script::new(vec![

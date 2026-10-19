@@ -16,6 +16,8 @@ export interface AgentOptions {
   autoRunQueue: boolean;
   showReasoning: boolean;
   autoScroll: boolean;
+  /** One command line run after a turn changed files (empty = none). */
+  afterEditCommand: string;
 }
 
 export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
@@ -35,6 +37,7 @@ export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
   autoRunQueue: true,
   showReasoning: true,
   autoScroll: true,
+  afterEditCommand: "",
 };
 
 export function agentOptions(value: unknown): AgentOptions {
@@ -84,5 +87,9 @@ export function agentOptions(value: unknown): AgentOptions {
     autoRunQueue: bool("autoRunQueue"),
     showReasoning: bool("showReasoning"),
     autoScroll: bool("autoScroll"),
+    afterEditCommand:
+      typeof source.afterEditCommand === "string" && !/[\u0000-\u001f]/.test(source.afterEditCommand)
+        ? source.afterEditCommand.trim().slice(0, 2000)
+        : "",
   };
 }

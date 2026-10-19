@@ -137,6 +137,19 @@ export function AgentSettings() {
       ))}
       <p>{t("agent.settings.contextHint")}</p>
       <p>{t("agent.settings.reasoningHint")}</p>
+      <label>
+        {t("agent.settings.afterEditCommand")}
+        <input
+          type="text"
+          value={draft.afterEditCommand}
+          placeholder="npm run lint"
+          spellCheck={false}
+          onChange={(event) => {
+            setDraft({ ...draft, afterEditCommand: event.target.value });
+          }}
+        />
+      </label>
+      <p>{t("agent.settings.afterEditHint")}</p>
       <AgentCapabilities draft={draft} onChange={setDraft} />
       {TOGGLES.map((key) => (
         <label key={key}>

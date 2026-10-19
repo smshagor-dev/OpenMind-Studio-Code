@@ -18,6 +18,8 @@ pub struct SessionOptions {
     pub search_endpoint: String,
     pub vision_endpoint: String,
     pub image_endpoint: String,
+    /// The user's after-edit check (one command line), run when a turn changed files; empty = none.
+    pub after_edit_command: String,
 }
 
 impl Default for SessionOptions {
@@ -36,6 +38,7 @@ impl Default for SessionOptions {
             search_endpoint: String::new(),
             vision_endpoint: String::new(),
             image_endpoint: String::new(),
+            after_edit_command: String::new(),
         }
     }
 }
@@ -62,6 +65,12 @@ impl SessionOptions {
             .min(8_192)
             .min(self.max_output_tokens.saturating_sub(512));
         self.max_steps = self.max_steps.clamp(8, 512);
+        self.after_edit_command = self.after_edit_command.trim().to_string();
+        if self.after_edit_command.len() > 2_000
+            || self.after_edit_command.chars().any(char::is_control)
+        {
+            self.after_edit_command.clear();
+        }
         self.max_continuations = self.max_continuations.min(16);
         self.command_timeout_seconds = self.command_timeout_seconds.clamp(10, 600);
         self.temperature = if self.temperature.is_finite() {

@@ -16,6 +16,7 @@ use crate::tools::{self, Change, ChangeKind, CommandEnv, ToolContext};
 use crate::wire::{request_body, Delta, Message, StreamState};
 
 mod guard;
+mod hooks;
 mod subagent;
 use guard::{TurnGuard, Verdict};
 
@@ -583,6 +584,10 @@ impl Session {
             if calls.is_empty() {
                 if input.cancel.load(Ordering::Relaxed) {
                     return ("cancelled".into(), None);
+                }
+                // A failing after-edit check sends the model back to fix it.
+                if self.after_edit_check(changes, host, &ctx) {
+                    continue;
                 }
                 // Stopping with open items on its task list, or with no answer, is not the end of the work.
                 if self.keep_going(&content) {
