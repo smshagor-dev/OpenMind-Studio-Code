@@ -1,5 +1,5 @@
 //! The rest of Claude Code's file and terminal tools: several replacements in one file as one change (`multi_edit`),
-//! moving or renaming a file (`move_file`), and reading or stopping a background command. A move is prepared like any
+//! moving or renaming a file or folder (`move_file`), and reading or stopping a background command. A move is prepared like any
 //! change (paths inside the folder, never over an existing file, never a file with unsaved editor changes), checked
 //! again after approval, and recorded as two changes so Undo can put the file back.
 
@@ -16,6 +16,9 @@ use crate::textfile;
 const MAX_EDITS: usize = 50;
 /// A file moved in one step is read into memory (for Undo); bigger files are refused.
 const MAX_MOVE_BYTES: u64 = 32 * 1024 * 1024;
+/// A folder moved in one step: at most this many files and bytes (kept in memory for Undo).
+const MAX_MOVE_FILES: usize = 2_000;
+const MAX_MOVE_FOLDER_BYTES: u64 = 64 * 1024 * 1024;
 
 pub fn multi_edit(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
     let (Ok(path_arg), Some(edits)) = (arg_str(args, "path"), args["edits"].as_array()) else {
@@ -93,22 +96,11 @@ pub fn move_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
         Err(e) => return refused("Move", target, e),
     };
     let target = format!("{} → {}", ctx.ws.relative(&from), ctx.ws.relative(&to));
-    match fs::symlink_metadata(&from) {
-        Ok(meta) if meta.is_file() && meta.len() <= MAX_MOVE_BYTES => {}
-        Ok(meta) if meta.is_file() => {
-            return refused("Move", target, "The file is too big to move in one step.")
-        }
-        Ok(_) => {
-            return refused(
-                "Move",
-                target,
-                "Only files can be moved (not folders or links). Use run_command for a folder.",
-            )
-        }
-        Err(_) => return refused("Move", target, "The file to move does not exist."),
-    }
     if from == to {
         return refused("Move", target, "The old and the new place are the same.");
+    }
+    if to.starts_with(&from) {
+        return refused("Move", target, "A folder can't be moved into itself.");
     }
     if to.exists() {
         return refused(
@@ -120,25 +112,100 @@ pub fn move_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
     if ctx.is_unsaved(&from) {
         return refused("Move", target, UNSAVED);
     }
-    let bytes = match fs::read(&from) {
-        Ok(bytes) => bytes,
-        Err(e) => return refused("Move", target, e.to_string()),
+    let files = match fs::symlink_metadata(&from) {
+        Ok(meta) if meta.is_file() && meta.len() <= MAX_MOVE_BYTES => match fs::read(&from) {
+            Ok(bytes) => vec![(None, bytes)],
+            Err(e) => return refused("Move", target, e.to_string()),
+        },
+        Ok(meta) if meta.is_file() => {
+            return refused("Move", target, "The file is too big to move in one step.")
+        }
+        Ok(meta) if meta.is_dir() => match folder_files(&from) {
+            Ok(files) => files
+                .into_iter()
+                .map(|(rel, bytes)| (Some(rel), bytes))
+                .collect(),
+            Err(message) => return refused("Move", target, message),
+        },
+        Ok(_) => return refused("Move", target, "Links are not moved."),
+        Err(_) => return refused("Move", target, "There is nothing to move at that path."),
     };
     Prepared {
         kind: ToolKind::Edit,
         title: "Move".into(),
         target,
         diff: None,
-        op: Op::Move { from, to, bytes },
+        op: Op::Move { from, to, files },
     }
 }
 
-pub fn apply_move(ctx: &ToolContext<'_>, from: PathBuf, to: PathBuf, bytes: Vec<u8>) -> Outcome {
+/// Every file in a folder (paths relative to it) with its bytes, for the move's Undo. Links and Git internals are
+/// refused; a folder too big to keep in memory is refused (use run_command for it).
+fn folder_files(dir: &std::path::Path) -> Result<Vec<(PathBuf, Vec<u8>)>, String> {
+    let mut pending = vec![dir.to_path_buf()];
+    let mut files = Vec::new();
+    let mut total = 0u64;
+    while let Some(current) = pending.pop() {
+        for entry in fs::read_dir(&current).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+            if meta.file_type().is_symlink() {
+                return Err(
+                    "The folder contains a link; it is not moved in one step. Use run_command."
+                        .into(),
+                );
+            }
+            if path
+                .file_name()
+                .is_some_and(|n| n.eq_ignore_ascii_case(".git"))
+            {
+                return Err("The folder contains Git internals (.git); it is not moved.".into());
+            }
+            if meta.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            total += meta.len();
+            if files.len() >= MAX_MOVE_FILES || total > MAX_MOVE_FOLDER_BYTES {
+                return Err(format!(
+                    "The folder is too big to move in one step (more than {MAX_MOVE_FILES} files or {} MB). Use run_command.",
+                    MAX_MOVE_FOLDER_BYTES / (1024 * 1024)
+                ));
+            }
+            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+            let rel = path
+                .strip_prefix(dir)
+                .map_err(|e| e.to_string())?
+                .to_path_buf();
+            files.push((rel, bytes));
+        }
+    }
+    Ok(files)
+}
+
+pub fn apply_move(
+    ctx: &ToolContext<'_>,
+    from: PathBuf,
+    to: PathBuf,
+    files: Vec<(Option<PathBuf>, Vec<u8>)>,
+) -> Outcome {
     if let Err(e) = validate_now(ctx, &from).and_then(|()| validate_now(ctx, &to)) {
         return Outcome::failed(e);
     }
     let (from_rel, to_rel) = (ctx.ws.relative(&from), ctx.ws.relative(&to));
-    if fs::read(&from).ok().as_deref() != Some(bytes.as_slice()) {
+    let place = |base: &PathBuf, rel: &Option<PathBuf>| {
+        rel.as_ref().map_or_else(|| base.clone(), |r| base.join(r))
+    };
+    let unchanged = files
+        .iter()
+        .all(|(rel, bytes)| fs::read(place(&from, rel)).ok().as_deref() == Some(bytes.as_slice()));
+    let is_folder = from.is_dir();
+    let now_files = if is_folder {
+        folder_files(&from).map(|f| f.len()).unwrap_or(usize::MAX)
+    } else {
+        1
+    };
+    if !unchanged || now_files != files.len() {
         return Outcome::failed(format!(
             "{from_rel} changed after the move was prepared. Look at it again."
         ));
@@ -157,26 +224,39 @@ pub fn apply_move(ctx: &ToolContext<'_>, from: PathBuf, to: PathBuf, bytes: Vec<
         return Outcome::failed(format!("{from_rel} could not be moved: {e}"));
     }
     let root = ctx.ws.root().to_path_buf();
-    Outcome {
-        ok: true,
-        for_model: format!("Moved {from_rel} to {to_rel}."),
-        summary: format!("Moved to {to_rel}"),
-        change: Some(Change {
+    let mut changes = Vec::new();
+    for (rel, bytes) in files {
+        let (new_path, old_path) = (place(&to, &rel), place(&from, &rel));
+        changes.push(Change {
             root: root.clone(),
-            path: to,
-            rel: to_rel,
+            rel: ctx.ws.relative(&new_path),
+            path: new_path,
             kind: ChangeKind::Created,
             before: None,
             after: Some(bytes.clone()),
-        }),
-        more_changes: vec![Change {
-            root,
-            path: from,
-            rel: from_rel,
+        });
+        changes.push(Change {
+            root: root.clone(),
+            rel: ctx.ws.relative(&old_path),
+            path: old_path,
             kind: ChangeKind::Deleted,
             before: Some(bytes),
             after: None,
-        }],
+        });
+    }
+    let count = changes.len() / 2;
+    let what = if is_folder {
+        format!("the folder {from_rel} ({count} files)")
+    } else {
+        from_rel.clone()
+    };
+    let mut changes = changes.into_iter();
+    Outcome {
+        ok: true,
+        for_model: format!("Moved {what} to {to_rel}."),
+        summary: format!("Moved to {to_rel}"),
+        change: changes.next(),
+        more_changes: changes.collect(),
         ..Outcome::default()
     }
 }

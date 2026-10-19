@@ -342,6 +342,31 @@ fn a_moved_file_is_put_back_by_undo() {
 }
 
 #[test]
+fn a_moved_folder_is_put_back_file_by_file_by_undo() {
+    let project = Project::new();
+    let root = project.ws.root().to_path_buf();
+    std::fs::create_dir_all(root.join("pkg/sub")).expect("mkdir");
+    std::fs::write(root.join("pkg/a.txt"), "a").expect("write");
+    std::fs::write(root.join("pkg/sub/b.txt"), "b").expect("write");
+    let model = Script::new(vec![
+        call("m", "move_file", json!({"from": "pkg", "to": "vendor/pkg"})),
+        say("Moved."),
+    ]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::AcceptEdits);
+    s.run_turn("Move pkg into vendor", &model, &panel, &project.input());
+    assert!(root.join("vendor/pkg/sub/b.txt").is_file() && !root.join("pkg").exists());
+    let (restored, failed) = s.undo_last();
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(restored.len(), 4);
+    assert_eq!(
+        std::fs::read_to_string(root.join("pkg/sub/b.txt")).expect("read"),
+        "b"
+    );
+    assert!(!root.join("vendor/pkg/a.txt").exists());
+}
+
+#[test]
 fn a_plan_mode_turn_says_nothing_was_changed() {
     let project = Project::new();
     let model = Script::new(vec![say("1. Change a - b to a + b in main.py.")]);

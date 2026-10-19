@@ -77,9 +77,9 @@ fn move_file_never_overwrites_and_refuses_folders_unsaved_files_and_the_outside(
         "keep me"
     );
     assert!(
-        !f.run("move_file", json!({"from": "src", "to": "source"}))
+        !f.run("move_file", json!({"from": "src", "to": "src/inner"}))
             .ok,
-        "folders are not moved"
+        "a folder is not moved into itself"
     );
     assert!(
         !f.run(
@@ -257,4 +257,44 @@ fn real_web_fetch_reads_a_page_as_text() {
         out.for_model
     );
     assert!(!out.for_model.contains("<html"), "markup removed");
+}
+
+#[test]
+fn a_folder_moves_with_every_file_recorded_for_undo_and_git_folders_are_refused() {
+    let f = Fixture::new();
+    fs::create_dir_all(f.ws.root().join("src/util")).expect("mkdir");
+    fs::write(f.ws.root().join("src/util/helpers.py"), "X = 1\n").expect("write");
+    let out = f.run("move_file", json!({"from": "src", "to": "lib/src"}));
+    assert!(out.ok, "{}", out.for_model);
+    assert!(
+        out.for_model.contains("the folder src (2 files)"),
+        "{}",
+        out.for_model
+    );
+    assert!(!f.ws.root().join("src").exists());
+    assert!(
+        f.ws.root().join("lib/src/main.py").is_file()
+            && f.ws.root().join("lib/src/util/helpers.py").is_file()
+    );
+    let created =
+        std::iter::once(out.change.as_ref().expect("first")).chain(out.more_changes.iter());
+    let kinds: Vec<ChangeKind> = created.map(|c| c.kind).collect();
+    assert_eq!(
+        kinds.iter().filter(|k| **k == ChangeKind::Created).count(),
+        2
+    );
+    assert_eq!(
+        kinds.iter().filter(|k| **k == ChangeKind::Deleted).count(),
+        2
+    );
+
+    fs::create_dir_all(f.ws.root().join("repo/.git")).expect("mkdir");
+    fs::write(f.ws.root().join("repo/.git/HEAD"), "ref").expect("write");
+    let refused = f.run("move_file", json!({"from": "repo", "to": "elsewhere"}));
+    assert!(
+        !refused.ok && refused.for_model.contains(".git"),
+        "{}",
+        refused.for_model
+    );
+    assert!(f.ws.root().join("repo/.git/HEAD").is_file());
 }

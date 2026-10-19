@@ -123,7 +123,8 @@ pub(crate) enum Op {
     Move {
         from: PathBuf,
         to: PathBuf,
-        bytes: Vec<u8>,
+        /// The file (`None`) or each file of the folder (its path inside it), with its bytes for Undo.
+        files: Vec<(Option<PathBuf>, Vec<u8>)>,
     },
     Todos(Vec<Todo>),
 }
@@ -300,7 +301,7 @@ pub fn specs(read_only: bool) -> Value {
             ),
             function(
                 "move_file",
-                "Move or rename a file inside the project. Missing folders of the new place are created; an existing file there is never overwritten.",
+                "Move or rename a file or a folder inside the project. Missing folders of the new place are created; nothing that already exists there is overwritten.",
                 json!({"type": "object", "properties": {
                     "from": {"type": "string"},
                     "to": {"type": "string"}
@@ -416,7 +417,7 @@ pub fn execute(prepared: Prepared, ctx: &ToolContext<'_>) -> Outcome {
             snapshot,
         } => change::apply_delete(ctx, path, before_bytes, snapshot),
         Op::Command(planned) => command::run(&planned, ctx),
-        Op::Move { from, to, bytes } => more::apply_move(ctx, from, to, bytes),
+        Op::Move { from, to, files } => more::apply_move(ctx, from, to, files),
         Op::Fetch(url) => web::fetch(&url, ctx),
         Op::Todos(list) => {
             let mut outcome = Outcome::done(
