@@ -8,7 +8,6 @@ import { MANAGE_MENU } from "../services/menus";
 import {
   AgentIcon,
   AiIcon,
-  BookmarkIcon,
   DebugIcon,
   ExtensionsIcon,
   FilesIcon,
@@ -55,12 +54,6 @@ const VIEW_ITEMS: readonly ViewItem[] = [
     label: "view.dependencies",
     command: "view.showDependencies",
     icon: <PackageIcon />,
-  },
-  {
-    view: "bookmarks",
-    label: "view.bookmarks",
-    command: "bookmarks.list",
-    icon: <BookmarkIcon />,
   },
   { view: "collab", label: "view.collaboration", icon: <RemoteIcon /> },
   { view: "agent", label: "view.agent", icon: <AgentIcon /> },

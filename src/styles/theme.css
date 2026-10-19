@@ -144,8 +144,6 @@
 
   /* Debugger */
   --debug-breakpoint: #e51400;
-  /* Bookmarks follow each theme's info colour. */
-  --bookmark-fg: var(--info-fg);
   --debug-breakpoint-off: #848484;
   --debug-current-arrow: #ffcc00;
   --debug-current-line-bg: rgba(255, 238, 0, 0.18);

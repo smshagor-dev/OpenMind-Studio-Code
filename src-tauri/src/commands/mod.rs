@@ -2,7 +2,6 @@ pub mod about;
 pub mod agent;
 pub mod ai;
 pub mod assembly;
-pub mod bookmarks;
 pub mod broker;
 pub mod collab;
 pub mod composer_dirs;

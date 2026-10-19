@@ -41,7 +41,6 @@ import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { container } from "./services/container";
 import { agent } from "./services/agent";
-import { startBookmarks } from "./services/bookmarks";
 import { AgentSetupDialog } from "./components/agent/AgentSetupDialog";
 import { buildMenuBar, projectMenuCommands } from "./services/menus";
 
@@ -67,10 +66,7 @@ export function App() {
   const { workspaceState, activeWorkspace, themeKind, layout } = useWorkbenchState();
   const ready = useAppStartup();
   useEffect(() => {
-    if (ready) {
-      void agent.start();
-      void startBookmarks();
-    }
+    if (ready) void agent.start();
   }, [ready]);
   const [toasts, dismissToast] = useToasts();
   const [recents, refreshRecents] = useRecents();
