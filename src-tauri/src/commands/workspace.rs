@@ -62,6 +62,7 @@ pub async fn workspace_open_folder(
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<WorkspaceInfo, String> {
+    checked_folder(&path)?;
     if is_main(window.label()) {
         let folder = state
             .workspace_folder
@@ -147,7 +148,9 @@ pub async fn workspace_active_folder(
         return Ok(Some(current));
     }
     // Automatic roots belong to this window session; they do not become the next startup workspace.
-    state.editor_windows.set_folder(window.label(), Some(folder.clone()));
+    state
+        .editor_windows
+        .set_folder(window.label(), Some(folder.clone()));
     Ok(Some(folder))
 }
 
@@ -190,4 +193,45 @@ pub async fn recent_files_rename(
         .map_err(|err| err.to_string())
 }
 
+/// A folder to open must be a full path to a folder that exists. `E:project` (relative to E:'s current folder) or a
+/// path relative to the app would open a different folder than the one named, or one that isn't there.
+fn checked_folder(path: &str) -> Result<(), String> {
+    let folder = std::path::Path::new(path);
+    if path.trim().is_empty() || path.contains('\0') || !folder.is_absolute() {
+        return Err(format!("\"{path}\" is not a full folder path."));
+    }
+    if !folder.is_dir() {
+        return Err(format!("The folder \"{path}\" doesn't exist."));
+    }
+    Ok(())
+}
 
+#[cfg(test)]
+mod tests {
+    use super::checked_folder;
+
+    #[test]
+    fn only_an_existing_folder_named_by_a_full_path_opens() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let folder = dir.path().join("My Project");
+        std::fs::create_dir(&folder).expect("mkdir");
+        assert!(checked_folder(&folder.to_string_lossy()).is_ok());
+        assert!(checked_folder(&folder.to_string_lossy().replace('\\', "/")).is_ok());
+        let file = folder.join("a.txt");
+        std::fs::write(&file, "x").expect("write");
+        assert!(
+            checked_folder(&file.to_string_lossy()).is_err(),
+            "a file is not a folder"
+        );
+        assert!(checked_folder(&folder.join("missing").to_string_lossy()).is_err());
+        assert!(checked_folder("").is_err());
+        assert!(checked_folder("relative/project").is_err());
+        assert!(checked_folder("a\0b").is_err());
+        #[cfg(windows)]
+        {
+            // Drive-relative and root-relative: they name a folder only relative to some current directory.
+            assert!(checked_folder("E:omagent-e2eMy Project").is_err());
+            assert!(checked_folder(r"\Users").is_err());
+        }
+    }
+}
