@@ -2,6 +2,9 @@ name: PascalABC.NET validation
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/pascalabc-runtime-integration]
+    paths: [.github/workflows/pascalabc.yml]
 
 permissions:
   contents: read
