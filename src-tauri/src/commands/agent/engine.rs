@@ -83,35 +83,34 @@ impl EngineSlot {
         engine.exited().is_none().then(|| engine.alias.clone())
     }
 
-    pub fn running_context_tokens(&self) -> Option<u32> {
-        let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
-        let engine = slot.as_mut()?;
-        engine.exited().is_none().then_some(engine.context_tokens)
-    }
-
-    /// Only show a placement report while the engine process is alive.
-    pub fn gpu_report(&self) -> Option<GpuReport> {
-        let mut slot = self.engine.lock().unwrap_or_else(PoisonError::into_inner);
-        let engine = slot.as_mut()?;
+    /// What the overview shows — running model, its context, the GPU report — without waiting. `ensure` holds the engine
+    /// lock while a model loads (minutes for a big one), and the panel must stay responsive meanwhile: a busy lock reads
+    /// as "not running yet" (the window already shows the load from the engine's own events).
+    pub fn snapshot(&self) -> (Option<String>, Option<u32>, Option<GpuReport>) {
+        let mut slot = match self.engine.try_lock() {
+            Ok(guard) => guard,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => return (None, None, None),
+        };
+        let Some(engine) = slot.as_mut() else {
+            return (None, None, None);
+        };
         if engine.exited().is_some() {
-            return None;
+            return (None, None, None);
         }
         let requested = *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner);
         let offload = *self.offload.lock().unwrap_or_else(PoisonError::into_inner);
-        Some(GpuReport {
+        let report = GpuReport {
             requested,
             mode: gpu_mode(requested, offload),
             offloaded_layers: offload.map(|data| data.layers),
             total_layers: offload.map(|data| data.total),
-        })
-    }
-
-    /// Preserve old overview shape for compatibility.
-    pub fn acceleration(&self) -> (bool, Option<u32>) {
-        match self.gpu_report() {
-            Some(report) => (report.requested, report.offloaded_layers),
-            None => (false, None),
-        }
+        };
+        (
+            Some(engine.alias.clone()),
+            Some(engine.context_tokens),
+            Some(report),
+        )
     }
 
     pub fn stop(&self) {
@@ -490,11 +489,11 @@ mod tests {
 
     #[test]
     fn stopped_or_missing_engine_has_no_gpu_report() {
+        // Only a live engine process has a placement report.
         let slot = EngineSlot::default();
-        assert!(slot.gpu_report().is_none());
+        assert!(slot.snapshot().2.is_none());
         slot.stop();
-        assert!(slot.gpu_report().is_none());
-        assert_eq!(slot.acceleration(), (false, None));
+        assert!(slot.snapshot().2.is_none());
     }
 
     #[test]
@@ -509,6 +508,17 @@ mod tests {
         let slot = EngineSlot::default();
         assert_eq!(slot.running_model(), None);
         slot.stop();
+    }
+
+    #[test]
+    fn the_overview_snapshot_never_waits_for_a_loading_engine() {
+        let slot = EngineSlot::default();
+        assert!(matches!(slot.snapshot(), (None, None, None)));
+        // ensure() holds this lock for the whole load; the snapshot must answer at once instead of blocking.
+        let _loading = slot.engine.lock().expect("lock");
+        let started = std::time::Instant::now();
+        assert!(matches!(slot.snapshot(), (None, None, None)));
+        assert!(started.elapsed() < std::time::Duration::from_millis(100));
     }
 }
 

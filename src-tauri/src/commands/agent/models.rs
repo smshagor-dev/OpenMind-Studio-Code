@@ -119,16 +119,21 @@ pub(super) fn build_overview(agent: &AgentRuntime, engine_installed: bool) -> Ov
             entry: entry.clone(),
         })
         .collect();
+    // Never waits for a model that is loading (see EngineSlot::snapshot).
+    let (running_model, running_context_tokens, gpu_report) = agent.engine.snapshot();
+    let acceleration = gpu_report.as_ref().map_or((false, None), |report| {
+        (report.requested, report.offloaded_layers)
+    });
     Overview {
         recommended: recommended(agent.catalog.models(), &hardware).map(|m| m.id.clone()),
         hardware,
         models,
         engine_installed,
-        running_model: agent.engine.running_model(),
-        running_context_tokens: agent.engine.running_context_tokens(),
+        running_model,
+        running_context_tokens,
         models_dir: agent.store.dir().display().to_string(),
-        acceleration: agent.engine.acceleration(),
-        gpu_report: agent.engine.gpu_report(),
+        acceleration,
+        gpu_report,
         free_disk_bytes: free_disk_bytes(agent.store.dir()),
     }
 }
