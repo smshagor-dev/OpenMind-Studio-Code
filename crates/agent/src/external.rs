@@ -20,6 +20,35 @@ impl ExternalTool {
     }
 }
 
+/// A call's arguments as a person reads them: one text value alone (`src/a.ts`), several as `key: value` pairs, empty ones
+/// left out (so `{"path":""}` shows nothing). Arguments that aren't a JSON object are shown as they came.
+pub(crate) fn shown_arguments(arguments: &str) -> String {
+    let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(arguments) else {
+        return arguments.trim().to_string();
+    };
+    let shown: Vec<(&String, String)> = fields
+        .iter()
+        .filter_map(|(key, value)| {
+            let text = match value {
+                Value::Null => return None,
+                Value::String(text) => text.trim().to_string(),
+                Value::Array(items) if items.is_empty() => return None,
+                Value::Object(map) if map.is_empty() => return None,
+                other => other.to_string(),
+            };
+            (!text.is_empty()).then_some((key, text))
+        })
+        .collect();
+    match shown.as_slice() {
+        [(key, text)] if fields[key.as_str()].is_string() => text.clone(),
+        _ => shown
+            .iter()
+            .map(|(key, text)| format!("{key}: {text}"))
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
+}
+
 pub fn run(
     call: &ToolCall,
     tool: &ExternalTool,
@@ -33,7 +62,7 @@ pub fn run(
         name: call.name.clone(),
         kind: tool.kind,
         title: call.name.clone(),
-        target: call.arguments.chars().take(600).collect(),
+        target: shown_arguments(&call.arguments).chars().take(600).collect(),
     });
     let mut ending = None;
     let result = if cancel.load(Ordering::Relaxed) {
@@ -44,7 +73,7 @@ pub fn run(
                 id: call.id.clone(),
                 kind: tool.kind,
                 title: call.name.clone(),
-                target: call.arguments.clone(),
+                target: shown_arguments(&call.arguments),
                 diff: None,
             },
             cancel,
@@ -164,6 +193,18 @@ mod tests {
             host.events.lock().unwrap().last(),
             Some(AgentEvent::ToolEnd { ok: false, .. })
         ));
+    }
+    #[test]
+    fn arguments_are_shown_plainly() {
+        assert_eq!(shown_arguments(r#"{"path":""}"#), "");
+        assert_eq!(shown_arguments(r#"{"path":"src/a.ts"}"#), "src/a.ts");
+        assert_eq!(
+            shown_arguments(r#"{"query":"docs","limit":5}"#),
+            "query: docs, limit: 5"
+        );
+        assert_eq!(shown_arguments(r#"{"limit":5}"#), "limit: 5");
+        assert_eq!(shown_arguments("{}"), "");
+        assert_eq!(shown_arguments("not json"), "not json");
     }
     #[test]
     fn auto_dispatches_and_cancelled_calls_never_dispatch() {

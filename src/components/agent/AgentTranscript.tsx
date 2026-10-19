@@ -6,6 +6,7 @@ import { agent } from "../../services/agent";
 import { container } from "../../services/container";
 import { useT } from "../../i18n";
 import { MarkdownText } from "../MarkdownPreview";
+import { withoutToolMarkup } from "../../services/agent/toolMarkup";
 import { AgentDiff } from "./AgentDiff";
 
 type ToolEntry = Extract<Entry, { kind: "tool" }>;
@@ -60,16 +61,17 @@ export function Reasoning({ text, live }: { text: string; live: boolean }) {
 }
 
 const Assistant = memo(function Assistant({ entry, live, showReasoning }: { entry: Extract<Entry, { kind: "assistant" }>; live: boolean; showReasoning: boolean }) {
+  const text = withoutToolMarkup(entry.text);
   return (
     <div className="agent-message agent-message--assistant agent-enter">
-      {showReasoning && entry.reasoning.trim() ? <Reasoning text={entry.reasoning} live={live && !entry.text} /> : null}
-      {entry.text.trim() ? (
+      {showReasoning && entry.reasoning.trim() ? <Reasoning text={entry.reasoning} live={live && !text.trim()} /> : null}
+      {text.trim() ? (
         <div className="agent-message__row">
           <span className="agent-dot agent-dot--text" aria-hidden="true">
             ●
           </span>
           <div className="agent-message__body">
-            <MarkdownText text={entry.text} onLink={openLink} />
+            <MarkdownText text={text} onLink={openLink} />
           </div>
         </div>
       ) : null}
