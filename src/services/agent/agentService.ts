@@ -1,3 +1,4 @@
+import { AgentTabs, type AgentTab } from "./agentTabs";
 import { executeAgentCommand } from "./agentCommandActions";
 import { savedGoal, transcriptMarkdown, type AgentGoal } from "./agentCommands";
 // The OpenMindAI Agent panel's brain: the model list and downloads, the chosen model and mode, and the conversation
@@ -104,6 +105,8 @@ export interface AgentState {
   activeFile?: string | null;
   /** Whether that file is named to the agent with the next message (on unless the chip was clicked off). */
   includeActiveFile?: boolean;
+  /** Open conversation tabs (saved conversations; the current one may be a new, empty chat). */
+  tabs?: AgentTab[];
   /** The agent's background commands still running (the strip above the composer). */
   background?: { id: string; command: string }[];
 }
@@ -148,6 +151,8 @@ export class AgentService {
   private memoryWorkspace: string | null = null;
   private restoringHistory = false;
   private savedActiveId: string | null = null;
+  /** Conversation tabs (switch, open, close). */
+  readonly tabs: AgentTabs;
   private saves: Promise<void> = Promise.resolve();
   /** High-frequency stream chunks are coalesced before notifying React. */
   private streamQueue: AgentEvent[] = [];
@@ -160,6 +165,24 @@ export class AgentService {
     private readonly now: () => number = () => Date.now(),
   ) {
     this.state = { ...this.state, conversationId: this.conversation.id };
+    this.tabs = new AgentTabs({
+      current: () => ({
+        id: this.state.conversationId,
+        entries: this.state.transcript.entries,
+        busy: this.state.transcript.busy,
+        tabs: this.state.tabs ?? [],
+      }),
+      setTabs: (tabs) => {
+        this.state = { ...this.state, tabs };
+      },
+      save: (raw) => this.host.settingSet(`agent.tabs.${this.host.taskScope ?? "main"}`, raw),
+      restore: async (id) =>
+        (await this.history?.load(id).catch(() => null)) ? this.restoreHistory(id) : "missing",
+      newChat: () => this.newChat(),
+      notify: (key) => {
+        this.host.notify(this.host.text(key));
+      },
+    });
     if (host.historyIpc)
       this.history = new AgentHistory(host.historyIpc, () => {
         host.notify(host.text("agent.tasks.saveFailed"));
@@ -439,6 +462,7 @@ export class AgentService {
 
   private set(change: Partial<AgentState>): void {
     this.state = { ...this.state, ...change };
+    if (change.conversationId !== undefined || change.transcript !== undefined) this.tabs.sync();
     for (const listener of this.listeners) listener();
     // Settings, heartbeat/overview refresh and panel state do not change
     // persisted conversation content. Avoid queueing disk writes for them.
@@ -540,8 +564,12 @@ export class AgentService {
       const active = await this.host
         .settingGet(`agent.active.${this.host.taskScope ?? "main"}`)
         .catch(() => null);
+      this.tabs.load(
+        await this.host.settingGet(`agent.tabs.${this.host.taskScope ?? "main"}`).catch(() => null),
+      );
       if (active && this.history && this.host.hasFolder())
         await this.restoreHistory(active, true);
+      this.tabs.sync();
       await this.refresh();
       await this.activate();
     } catch {
