@@ -298,3 +298,70 @@ fn a_folder_moves_with_every_file_recorded_for_undo_and_git_folders_are_refused(
     );
     assert!(f.ws.root().join("repo/.git/HEAD").is_file());
 }
+
+fn have_git() -> bool {
+    std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
+}
+
+#[test]
+fn git_tools_show_status_and_diff_and_commit_only_what_was_named() {
+    if !have_git() {
+        eprintln!("skipped: no git on PATH");
+        return;
+    }
+    let f = Fixture::new();
+    let root = f.ws.root().to_path_buf();
+    for args in [
+        vec!["init", "-q"],
+        vec!["config", "user.email", "agent@example.com"],
+        vec!["config", "user.name", "Agent Test"],
+        vec!["config", "core.autocrlf", "false"],
+    ] {
+        assert!(std::process::Command::new("git")
+            .args(&args)
+            .current_dir(&root)
+            .status()
+            .expect("git")
+            .success());
+    }
+    let status = f.run("git_status", json!({}));
+    assert!(
+        status.ok && status.for_model.contains("?? "),
+        "{}",
+        status.for_model
+    );
+    fs::write(root.join("secret.env"), "TOKEN=1").expect("write");
+    let commit = f.run(
+        "git_commit",
+        json!({"message": "Add README", "paths": ["README.md"]}),
+    );
+    assert!(commit.ok, "{}", commit.for_model);
+    let tracked = std::process::Command::new("git")
+        .args(["ls-files"])
+        .current_dir(&root)
+        .output()
+        .expect("git");
+    let tracked = String::from_utf8_lossy(&tracked.stdout);
+    assert!(
+        tracked.contains("README.md") && !tracked.contains("secret.env"),
+        "only the named file: {tracked}"
+    );
+    fs::write(root.join("README.md"), "# App changed\n").expect("write");
+    let diff = f.run("git_diff", json!({"path": "README.md"}));
+    assert!(
+        diff.ok && diff.for_model.contains("+# App changed"),
+        "{}",
+        diff.for_model
+    );
+    let nothing = f.run("git_commit", json!({"message": "Nothing staged"}));
+    assert!(
+        !nothing.ok && nothing.for_model.contains("Nothing is staged"),
+        "{}",
+        nothing.for_model
+    );
+    assert!(!f.run("git_commit", json!({"message": ""})).ok);
+    assert!(!f.run("git_diff", json!({"path": "../outside"})).ok);
+}

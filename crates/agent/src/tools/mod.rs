@@ -4,6 +4,7 @@
 
 mod change;
 pub(crate) mod command;
+mod git;
 mod more;
 mod notebook;
 mod read;
@@ -121,6 +122,11 @@ pub(crate) enum Op {
     Command(command::Planned),
     /// `web_fetch` of this (checked) address.
     Fetch(String),
+    /// `git_commit`: stage `paths` (when any) and commit with `message`.
+    GitCommit {
+        message: String,
+        paths: Vec<String>,
+    },
     Move {
         from: PathBuf,
         to: PathBuf,
@@ -233,8 +239,31 @@ pub fn specs(read_only: bool) -> Value {
             }, "required": ["query"]}),
         ),
     ];
+    tools.extend([
+        function(
+            "git_status",
+            "Show the Git branch, the changed and untracked files, and the last commits of the project.",
+            json!({"type": "object", "properties": {}}),
+        ),
+        function(
+            "git_diff",
+            "Show what changed in the project since the last commit (or, with staged, what is staged), optionally for one path.",
+            json!({"type": "object", "properties": {
+                "path": {"type": "string"},
+                "staged": {"type": "boolean"}
+            }}),
+        ),
+    ]);
     if !read_only {
         tools.extend([
+            function(
+                "git_commit",
+                "Commit with a message: the files named in paths (they are staged first), or what is already staged. Never commits files you didn't name or stage. Use only when the user asked for a commit.",
+                json!({"type": "object", "properties": {
+                    "message": {"type": "string"},
+                    "paths": {"type": "array", "items": {"type": "string"}}
+                }, "required": ["message"]}),
+            ),
             function(
                 "edit_file",
                 "Change a file by replacing exact text. old_string must appear exactly once in the file (include enough surrounding lines to make it unique) unless replace_all is true. Read the file first.",
@@ -337,7 +366,7 @@ pub fn kind_of(name: &str) -> ToolKind {
         "edit_file" | "write_file" => ToolKind::Edit,
         "delete_file" => ToolKind::Delete,
         // Fetching sends the address off the computer: it asks like a command.
-        "run_command" | "web_fetch" => ToolKind::Command,
+        "run_command" | "web_fetch" | "git_commit" => ToolKind::Command,
         "multi_edit" | "move_file" | "notebook_edit" => ToolKind::Edit,
         // Reading a background command's output or stopping it touches nothing the user owns.
         "command_output" | "kill_command" => ToolKind::Read,
@@ -387,6 +416,9 @@ pub fn prepare(name: &str, arguments: &str, ctx: &ToolContext<'_>, read_only: bo
         "move_file" => more::move_file(&args, ctx),
         "notebook_edit" => notebook::notebook_edit(&args, ctx),
         "web_fetch" => web::prepare(&args, ctx),
+        "git_status" => git::status(ctx),
+        "git_diff" => git::diff(&args, ctx),
+        "git_commit" => git::commit(&args, ctx),
         "command_output" => more::background(&args, ctx, false),
         "kill_command" => more::background(&args, ctx, true),
         "todo_write" => todos(&args),
@@ -432,6 +464,7 @@ pub fn execute(prepared: Prepared, ctx: &ToolContext<'_>) -> Outcome {
         Op::Command(planned) => command::run(&planned, ctx),
         Op::Move { from, to, files } => more::apply_move(ctx, from, to, files),
         Op::Fetch(url) => web::fetch(&url, ctx),
+        Op::GitCommit { message, paths } => git::run_commit(&message, &paths, ctx),
         Op::Todos(list) => {
             let mut outcome = Outcome::done(
                 "The task list is updated.".into(),
