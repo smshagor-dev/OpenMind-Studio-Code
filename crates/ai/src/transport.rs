@@ -199,7 +199,10 @@ mod tests {
                 match listener.accept() {
                     Ok(connection) => break connection,
                     Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                        assert!(Instant::now() < deadline, "local test client never connected");
+                        assert!(
+                            Instant::now() < deadline,
+                            "local test client never connected"
+                        );
                         std::thread::sleep(Duration::from_millis(10));
                     }
                     Err(err) => panic!("cannot accept local test request: {err}"),
@@ -237,10 +240,7 @@ mod tests {
             *stop_timestamp.lock().expect("timestamp") = Some(Instant::now());
         });
         let response = stream_lines(&req, "", &cancel, &mut |_line| Ok(true));
-        assert!(
-            matches!(&response, Err(AiError::Cancelled)),
-            "{response:?}"
-        );
+        assert!(matches!(&response, Err(AiError::Cancelled)), "{response:?}");
         stop.join().expect("stop thread");
         let cancelled_at = cancelled_at
             .lock()

@@ -240,7 +240,10 @@ impl EngineSlot {
             context_tokens: engine.context_tokens,
         };
         *self.gpu_mode.lock().unwrap_or_else(PoisonError::into_inner) = use_gpu;
-        *self.auto_context.lock().unwrap_or_else(PoisonError::into_inner) = automatic;
+        *self
+            .auto_context
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = automatic;
         *self.offload.lock().unwrap_or_else(PoisonError::into_inner) = offload;
         *slot = Some(engine);
         Ok(connection)
@@ -279,7 +282,9 @@ fn automatic_context_tokens(
     // Reserve room for OS/editor, GPU buffers and KV cache.
     // Dedicated VRAM capacity is not currently free VRAM.
     let gpu_weights = if use_gpu && hardware.vram_bytes() >= 2 * GIB {
-        model.size_bytes().min(hardware.vram_bytes().saturating_sub(GIB))
+        model
+            .size_bytes()
+            .min(hardware.vram_bytes().saturating_sub(GIB))
     } else {
         0
     };
@@ -428,11 +433,23 @@ mod tests {
     #[test]
     fn gpu_offload_comes_from_the_engine_report_not_detected_capacity() {
         let full = offload_layers("load_tensors: offloaded 33/33 layers to GPU");
-        assert_eq!(full, Some(Offload { layers: 33, total: 33 }));
+        assert_eq!(
+            full,
+            Some(Offload {
+                layers: 33,
+                total: 33
+            })
+        );
         assert_eq!(gpu_mode(true, full), "gpu");
 
         let mixed = offload_layers("llm_load_tensors: offloaded 16/33 layers to GPU");
-        assert_eq!(mixed, Some(Offload { layers: 16, total: 33 }));
+        assert_eq!(
+            mixed,
+            Some(Offload {
+                layers: 16,
+                total: 33
+            })
+        );
         assert_eq!(gpu_mode(true, mixed), "partial");
 
         let cpu = offload_layers("load_tensors: offloaded 0/33 layers to GPU");
@@ -443,7 +460,8 @@ mod tests {
 
     #[test]
     fn gpu_status_is_unknown_without_a_reliable_engine_report() {
-        let log = "ggml_vulkan: found a device\nload_tensors: offloading 33 repeating layers to GPU";
+        let log =
+            "ggml_vulkan: found a device\nload_tensors: offloading 33 repeating layers to GPU";
         assert_eq!(offload_layers(log), None);
         assert_eq!(gpu_mode(true, None), "unknown");
         assert_eq!(gpu_mode(false, None), "cpu");
@@ -452,13 +470,22 @@ mod tests {
             offload_layers("load_tensors: offloaded 34/33 layers to GPU"),
             None
         );
-        assert_eq!(offload_layers("load_tensors: offloaded 0/0 layers to GPU"), None);
+        assert_eq!(
+            offload_layers("load_tensors: offloaded 0/0 layers to GPU"),
+            None
+        );
     }
 
     #[test]
     fn latest_offload_report_wins_when_multiple_are_present() {
         let log = "load_tensors: offloaded 4/33 layers to GPU\nload_tensors: offloaded 19/33 layers to GPU";
-        assert_eq!(offload_layers(log), Some(Offload { layers: 19, total: 33 }));
+        assert_eq!(
+            offload_layers(log),
+            Some(Offload {
+                layers: 19,
+                total: 33
+            })
+        );
     }
 
     #[test]

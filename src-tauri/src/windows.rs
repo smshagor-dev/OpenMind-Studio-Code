@@ -391,4 +391,3 @@ mod tests {
         assert!(!is_editor_window_extra("php-server"));
     }
 }
-

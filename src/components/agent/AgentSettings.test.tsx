@@ -50,13 +50,12 @@ describe("context window settings", () => {
     expect(reasoning).toHaveValue(1024);
     fireEvent.change(reasoning, { target: { value: "0" } });
     fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-    await waitFor(() =>
-      expect(harness.updateOptions).toHaveBeenCalledWith(
+    await waitFor(() => { expect(harness.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({
           reasoningBudgetTokens: 0,
           maxOutputTokens: 4096,
         }),
-      ),
+      ); },
     );
   });
 
@@ -80,17 +79,15 @@ describe("context window settings", () => {
     expect(manual).toHaveValue(16384);
     fireEvent.change(manual, { target: { value: "8192" } });
     fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-    await waitFor(() =>
-      expect(harness.updateOptions).toHaveBeenCalledWith(
+    await waitFor(() => { expect(harness.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({ contextTokens: 8192 }),
-      ),
+      ); },
     );
     fireEvent.change(selector, { target: { value: "auto" } });
     fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-    await waitFor(() =>
-      expect(harness.updateOptions).toHaveBeenCalledWith(
+    await waitFor(() => { expect(harness.updateOptions).toHaveBeenCalledWith(
         expect.objectContaining({ contextTokens: 0 }),
-      ),
+      ); },
     );
   });
 });

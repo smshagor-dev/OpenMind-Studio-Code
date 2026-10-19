@@ -148,10 +148,9 @@ mod tests {
 
     #[test]
     fn legacy_options_without_reasoning_field_receive_safe_default() {
-        let options: SessionOptions = serde_json::from_str(
-            r#"{"contextTokens":0,"maxOutputTokens":16384,"effort":"high"}"#,
-        )
-        .expect("legacy options deserialize");
+        let options: SessionOptions =
+            serde_json::from_str(r#"{"contextTokens":0,"maxOutputTokens":16384,"effort":"high"}"#)
+                .expect("legacy options deserialize");
         assert_eq!(options.reasoning_budget_tokens, 1_024);
         // Keep a user's pre-existing output preference rather than overwriting it.
         assert_eq!(options.bounded(32_768).max_output_tokens, 16_384);

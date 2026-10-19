@@ -122,7 +122,7 @@ describe("AgentService", () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("Stream many tokens");
-    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
     vi.useFakeTimers();
     try {
       const changed = vi.fn();
@@ -148,7 +148,7 @@ describe("AgentService", () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("Fix file");
-    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
     vi.useFakeTimers();
     try {
       event({ type: "reasoning", text: "inspect " });
@@ -197,10 +197,10 @@ describe("AgentService", () => {
     const { service, ipc, event } = setup([model("a", "ready")], true, history);
     await service.start();
     await service.send("Save an answer");
-    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
     event({ type: "text", text: "Saved exactly once" });
     event({ type: "turnEnd", reason: "done", message: null });
-    await vi.waitFor(() => expect(history.save).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(history.save).toHaveBeenCalled(); });
     const count = history.save.mock.calls.length;
     vi.useFakeTimers();
     try {
@@ -218,7 +218,7 @@ describe("AgentService", () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("First");
-    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
     const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
     vi.useFakeTimers();
     try {
@@ -285,7 +285,7 @@ describe("AgentService", () => {
       maxOutputTokens: 2048,
     });
     expect(await service.send("explain")).toBe(true);
-    await vi.waitFor(() => expect(ipc.send).toHaveBeenCalled());
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
     expect(vi.mocked(ipc.send).mock.calls[0]?.[0]?.options).toMatchObject({
       reasoningBudgetTokens: 256,
       maxOutputTokens: 2048,

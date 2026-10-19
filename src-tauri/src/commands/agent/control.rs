@@ -45,8 +45,8 @@ pub async fn agent_control(
         window.clone(),
         state,
     )
-        .await?
-        .ok_or("The workspace could not be opened.")?;
+    .await?
+    .ok_or("The workspace could not be opened.")?;
     let label = window.label().to_string();
     let chat = agent.chat(&label);
     let root = std::path::PathBuf::from(folder.path);
@@ -96,4 +96,3 @@ pub async fn agent_control(
         }
     }).await.map_err(|e|e.to_string())?
 }
-

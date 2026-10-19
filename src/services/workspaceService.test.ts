@@ -344,7 +344,7 @@ describe("WorkspaceService", () => {
 
 it("shares a single Documents lookup when several operations need a default workspace", async () => {
   const folder = { path: "C:/Users/Student/Documents", name: "Documents" } as WorkspaceInfo;
-  const ipc = createFakeIpc({ workspaceActiveFolder: vi.fn(async () => folder) });
+  const ipc = createFakeIpc({ workspaceActiveFolder: vi.fn(() => Promise.resolve(folder)) });
   const events = new EventBus<AppEvents>();
   const workspace = new WorkspaceService(new DocumentService(ipc, new BufferManager(), events), ipc, events);
   const changed = vi.fn();
@@ -359,7 +359,7 @@ it("shares a single Documents lookup when several operations need a default work
 
 it("never replaces an explicitly opened project with the Documents fallback", async () => {
   const folder = { path: "D:/Project", name: "Project" } as WorkspaceInfo;
-  const ipc = createFakeIpc({ workspaceOpenFolder: vi.fn(async () => folder) });
+  const ipc = createFakeIpc({ workspaceOpenFolder: vi.fn(() => Promise.resolve(folder)) });
   const events = new EventBus<AppEvents>();
   const workspace = new WorkspaceService(new DocumentService(ipc, new BufferManager(), events), ipc, events);
   await workspace.openFolder(folder.path);
