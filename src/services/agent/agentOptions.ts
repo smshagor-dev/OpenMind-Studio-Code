@@ -40,6 +40,14 @@ export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
   afterEditCommand: "",
 };
 
+/** A line break, tab or other control character (one command line must have none). */
+function hasControlCharacter(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) < 32) return true;
+  }
+  return false;
+}
+
 export function agentOptions(value: unknown): AgentOptions {
   const source =
     typeof value === "object" && value !== null
@@ -89,7 +97,7 @@ export function agentOptions(value: unknown): AgentOptions {
     autoScroll: bool("autoScroll"),
     afterEditCommand:
       typeof source.afterEditCommand === "string" &&
-      ![...source.afterEditCommand].some((c) => c.charCodeAt(0) < 32)
+      !hasControlCharacter(source.afterEditCommand)
         ? source.afterEditCommand.trim().slice(0, 2000)
         : "",
   };
