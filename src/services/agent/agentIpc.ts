@@ -200,6 +200,9 @@ export interface AgentIpc {
   }>;
   startEngine: (id: string, useGpu?: boolean, contextTokens?: number) => Promise<boolean>;
   stopEngine: () => Promise<void>;
+  /** The agent's background commands still running (id and command). */
+  backgroundList: () => Promise<{ id: string; command: string }[]>;
+  backgroundKill: (id: string) => Promise<string>;
   onEvent: (listener: (event: AgentEvent) => void) => Promise<() => void>;
   onDownload: (listener: (event: DownloadEvent) => void) => Promise<() => void>;
 }
@@ -228,6 +231,8 @@ export const tauriAgentIpc: AgentIpc = {
       contextTokens: contextTokens ?? 0,
     }),
   stopEngine: () => invoke("agent_engine_stop"),
+  backgroundList: () => invoke<{ id: string; command: string }[]>("agent_background_list"),
+  backgroundKill: (id) => invoke<string>("agent_background_kill", { id }),
   onEvent: async (listener) => {
     const off = await listen<AgentEvent>(
       "agent:event",

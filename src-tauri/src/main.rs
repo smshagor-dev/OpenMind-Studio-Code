@@ -365,6 +365,8 @@ fn main() {
             commands::agent::agent_stop,
             commands::agent::agent_wait_idle,
             commands::agent::agent_reset,
+            commands::agent::agent_background_list,
+            commands::agent::agent_background_kill,
             commands::agent::agent_undo,
             commands::agent::agent_engine_start,
             commands::agent::agent_engine_stop,

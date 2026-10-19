@@ -40,6 +40,8 @@ vi.mock("../../services/agent", () => ({
     selectModel: vi.fn(() => Promise.resolve()),
     deleteModel: vi.fn(() => Promise.resolve()),
     refresh: vi.fn(() => Promise.resolve()),
+    refreshBackground: vi.fn(() => Promise.resolve()),
+    killBackground: vi.fn(() => Promise.resolve()),
     activate: vi.fn(() => Promise.resolve()),
   },
 }));

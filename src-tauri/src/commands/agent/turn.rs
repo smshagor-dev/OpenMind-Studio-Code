@@ -163,6 +163,7 @@ fn execute_turn(
     let Some(session) = slot.as_mut() else {
         return end("The conversation could not be started.".into());
     };
+    *chat.shell.lock().unwrap_or_else(PoisonError::into_inner) = Some(session.shell());
     session.set_mode(request.mode);
     session.set_model_context(connection.context_tokens);
     session.set_options(request.options.clone());

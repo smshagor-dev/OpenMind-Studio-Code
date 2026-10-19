@@ -65,6 +65,8 @@ pub struct Chat {
     pending: Pending,
     mode: Mutex<Mode>,
     cancelled_tasks: Mutex<std::collections::VecDeque<String>>,
+    /// The conversation's terminal, readable while a turn holds the session (the background-command panel).
+    shell: Mutex<Option<Arc<openmind_agent::tools::Shell>>>,
 }
 
 #[derive(Clone)]
@@ -422,7 +424,39 @@ fn reset_chat(chat: Arc<Chat>) -> Result<(), String> {
     }
     let _busy = BusyGuard(Arc::clone(&chat));
     *chat.session.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    // The last reference: background commands of the old conversation stop here.
+    *chat.shell.lock().unwrap_or_else(PoisonError::into_inner) = None;
     Ok(())
+}
+
+/// A background command the agent started (the panel above the composer).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundJob {
+    id: String,
+    command: String,
+}
+
+/// The agent's background commands still running in this window's conversation.
+#[tauri::command]
+pub fn agent_background_list(window: tauri::Window, agent: State<'_, AgentRuntime>) -> Vec<BackgroundJob> {
+    let shell = agent.chat(window.label()).shell.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    shell
+        .map(|shell| shell.running().into_iter().map(|(id, command)| BackgroundJob { id, command }).collect())
+        .unwrap_or_default()
+}
+
+/// Stops one of the agent's background commands (and everything it started).
+#[tauri::command]
+pub fn agent_background_kill(id: String, window: tauri::Window, agent: State<'_, AgentRuntime>) -> Result<String, String> {
+    let shell = agent.chat(window.label()).shell.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let shell = shell.ok_or("The agent runs no background command.")?;
+    let outcome = shell.kill(id.trim());
+    if outcome.ok {
+        Ok(outcome.summary)
+    } else {
+        Err(outcome.summary)
+    }
 }
 
 #[derive(Serialize)]

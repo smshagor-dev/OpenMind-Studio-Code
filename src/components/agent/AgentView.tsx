@@ -12,6 +12,7 @@ import agentLogo from "../../assets/openmindai-agent.png";
 import { AgentHistoryView } from "./AgentHistoryView";
 import { AgentCommandPanel } from "./AgentCommandPanel";
 import { AgentQueue } from "./AgentQueue";
+import { AgentBackground } from "./AgentBackground";
 import { AgentPermission } from "./AgentPermission";
 import { AgentPrompt } from "./AgentPrompt";
 import { agentTier } from "../../services/agent/agentBrand";
@@ -54,7 +55,10 @@ function Header() {
   const model = state.overview?.models.find((m) => m.id === state.modelId);
   const { transcript } = state;
   useEffect(() => {
+    void agent.refreshBackground();
     const timer = window.setInterval(() => {
+      // A background server can exit by itself; the strip follows.
+      if (agent.getState().background?.length) void agent.refreshBackground();
       if (
         agent.getState().engineState !== "loading" &&
         !agent.getState().transcript.busy
@@ -326,6 +330,7 @@ export function AgentView() {
         ) : null}
         <Todos items={transcript.todos} />
         <AgentQueue state={state.taskState} />
+        <AgentBackground jobs={state.background} />
         {transcript.permission ? (
           <AgentPermission
             request={transcript.permission}

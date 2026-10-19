@@ -76,6 +76,8 @@ function setup(
     ),
     startEngine: vi.fn(() => Promise.resolve(true)),
     stopEngine: vi.fn(() => Promise.resolve()),
+    backgroundList: vi.fn(() => Promise.resolve([])),
+    backgroundKill: vi.fn(() => Promise.resolve("Stopped")),
     onEvent: (listener) => {
       onEvent = listener;
       return Promise.resolve(() => undefined);
@@ -1066,4 +1068,26 @@ it("opens the agent workspace before native init, but never during startup", asy
   expect(host.openFile).toHaveBeenCalledWith(
     "C:/Users/Student/Documents/OpenMind Studio/OPENMIND.md",
   );
+});
+
+describe("background commands", () => {
+  it("lists running commands after a tool ends and stops one on request", async () => {
+    const { service, ipc } = setup([]);
+    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([{ id: "bg-1", command: "node server.js" }]);
+    await service.refreshBackground();
+    expect(service.getState().background).toEqual([{ id: "bg-1", command: "node server.js" }]);
+    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([]);
+    await service.killBackground("bg-1");
+    expect(ipc.backgroundKill).toHaveBeenCalledWith("bg-1");
+    expect(service.getState().background).toEqual([]);
+  });
+
+  it("keeps the list when reading it fails", async () => {
+    const { service, ipc } = setup([]);
+    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([{ id: "bg-2", command: "vite" }]);
+    await service.refreshBackground();
+    vi.mocked(ipc.backgroundList).mockRejectedValueOnce(new Error("gone"));
+    await service.refreshBackground();
+    expect(service.getState().background).toEqual([{ id: "bg-2", command: "vite" }]);
+  });
 });

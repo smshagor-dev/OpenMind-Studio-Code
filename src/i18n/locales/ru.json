@@ -2753,6 +2753,8 @@
   "agent.tool.Move": "Перемещение",
   "agent.tool.Fetch": "Загрузка страницы",
   "agent.tool.Agent": "Субагент",
+  "agent.background.title": "Работает в фоне",
+  "agent.background.stop": "Остановить {id}",
   "agent.tool.Gitstatus": "Статус Git",
   "agent.tool.Gitdiff": "Изменения Git",
   "agent.tool.Gitcommit": "Коммит Git",

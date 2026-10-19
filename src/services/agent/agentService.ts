@@ -104,6 +104,8 @@ export interface AgentState {
   activeFile?: string | null;
   /** Whether that file is named to the agent with the next message (on unless the chip was clicked off). */
   includeActiveFile?: boolean;
+  /** The agent's background commands still running (the strip above the composer). */
+  background?: { id: string; command: string }[];
 }
 
 const MODEL_KEY = "agent.model";
@@ -350,6 +352,28 @@ export class AgentService {
     ) {
       await this.activate();
     }
+  }
+
+  /** Reads which background commands the agent still runs. */
+  async refreshBackground(): Promise<void> {
+    try {
+      const background = await this.ipc.backgroundList();
+      const before = this.state.background ?? [];
+      const same = before.length === background.length && before.every((job, i) => job.id === background[i]?.id);
+      if (!same) this.set({ background });
+    } catch {
+      // The list is only a convenience; a failed read leaves it as it was.
+    }
+  }
+
+  /** Stops one background command from the strip above the composer. */
+  async killBackground(id: string): Promise<void> {
+    try {
+      await this.ipc.backgroundKill(id);
+    } catch (error) {
+      this.host.notify(String(error));
+    }
+    await this.refreshBackground();
   }
 
   /** The composer's current-file chip: name the editor's front file to the agent, or not. */
@@ -777,6 +801,7 @@ export class AgentService {
         ),
       });
     }
+    if (event.type === "toolEnd" || event.type === "turnEnd") void this.refreshBackground();
     if (event.type === "turnEnd") {
       this.tasks.finish(event.reason);
       void this.history?.flush();

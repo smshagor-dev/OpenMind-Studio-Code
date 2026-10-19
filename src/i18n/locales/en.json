@@ -2723,6 +2723,8 @@
   "agent.tool.Move": "Move",
   "agent.tool.Fetch": "Fetch",
   "agent.tool.Agent": "Agent",
+  "agent.background.title": "Running in the background",
+  "agent.background.stop": "Stop {id}",
   "agent.tool.Gitstatus": "Git status",
   "agent.tool.Gitdiff": "Git diff",
   "agent.tool.Gitcommit": "Git commit",

@@ -258,6 +258,11 @@ impl Session {
         }
     }
 
+    /// The conversation's terminal (working directory, background commands), shared with the app's panel.
+    pub fn shell(&self) -> Arc<tools::Shell> {
+        Arc::clone(&self.shell)
+    }
+
     pub fn mode(&self) -> Mode {
         self.policy.mode
     }
