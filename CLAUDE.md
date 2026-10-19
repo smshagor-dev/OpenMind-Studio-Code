@@ -938,7 +938,10 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   conversation's `Shell` keeps the working directory between commands (a `<<OPENMIND_CWD>>` last line, stripped; never outside
   the folder) and runs `run_in_background` commands (≤ 6, each its own Job Object, killed with the conversation/app) read with
   `command_output` (only new output) and stopped with `kill_command`; `multi_edit` (all-or-nothing edits of one file),
-  `move_file` (files only, never over an existing file, two `Change`s so Undo puts it back); the app adds `get_diagnostics`
+  `move_file` (files only, never over an existing file, two `Change`s so Undo puts it back); `web_fetch` (`tools/web.rs`:
+  `openmind_network::http::agent` = https only + the user's proxy, http upgraded, loopback/private/link-local/`.local` hosts
+  refused, same-host redirects followed and a cross-host one reported, HTML to text, 2 MB read / 20 000 characters shown,
+  marked as web data; asks like a command, not in plan mode); the app adds `get_diagnostics`
   (`commands/agent/diagnostics.rs`: the language servers' latest diagnostics, cached from the LSP sink, errors first, only
   analysed files)); a call is **prepared** first (exact new text + `diff`) and re-checked
   before writing (a file changed meanwhile is refused); a file with unsaved editor changes is never changed. `policy` (`Ask` default:

@@ -3672,6 +3672,7 @@ dependencies = [
  "openmind-ai",
  "openmind-fs",
  "openmind-llm",
+ "openmind-network",
  "openmind-process",
  "openmind-search",
  "serde",

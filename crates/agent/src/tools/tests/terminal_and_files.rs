@@ -238,3 +238,23 @@ fn powershell_errors_reach_the_model_as_text_not_clixml() {
     );
     assert!(out.summary.starts_with("Exit code 3"), "{}", out.summary);
 }
+
+/// Needs the internet: `cargo test -p openmind-agent real_web_fetch -- --ignored`.
+#[test]
+#[ignore = "fetches https://example.com over the network"]
+fn real_web_fetch_reads_a_page_as_text() {
+    let f = Fixture::new();
+    let out = f.run("web_fetch", json!({"url": "http://example.com"}));
+    assert!(out.ok, "{}", out.for_model);
+    assert!(
+        out.for_model.contains("Content of https://example.com"),
+        "{}",
+        out.for_model
+    );
+    assert!(
+        out.for_model.contains("Example Domain"),
+        "{}",
+        out.for_model
+    );
+    assert!(!out.for_model.contains("<html"), "markup removed");
+}

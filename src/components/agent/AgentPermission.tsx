@@ -4,29 +4,25 @@ import type { Decision, PermissionRequest } from "../../services/agent/agentIpc"
 import { useT } from "../../i18n";
 import { AgentDiff } from "./AgentDiff";
 
+/** Fetching a web page and moving a file get their own words; everything else follows the tool's kind. */
+function variant(request: PermissionRequest): string {
+  if (request.kind === "command" && request.title === "Fetch") return "Fetch";
+  if (request.kind === "command") return "Command";
+  if (request.kind === "delete") return "Delete";
+  if (request.title === "Move") return "Move";
+  return request.title === "Create" ? "Create" : "Edit";
+}
+
 function headingKey(request: PermissionRequest): string {
-  switch (request.kind) {
-    case "command":
-      return "agent.permission.headingCommand";
-    case "delete":
-      return "agent.permission.headingDelete";
-    default:
-      return request.title === "Create" ? "agent.permission.headingCreate" : "agent.permission.headingEdit";
-  }
+  return `agent.permission.heading${variant(request)}`;
 }
 
 function questionKey(request: PermissionRequest): string {
-  switch (request.kind) {
-    case "command":
-      return "agent.permission.askCommand";
-    case "delete":
-      return "agent.permission.askDelete";
-    default:
-      return request.title === "Create" ? "agent.permission.askCreate" : "agent.permission.askEdit";
-  }
+  return `agent.permission.ask${variant(request)}`;
 }
 
 function sessionKey(request: PermissionRequest): string {
+  if (variant(request) === "Fetch") return "agent.permission.sessionFetch";
   switch (request.kind) {
     case "command":
       return "agent.permission.sessionCommand";
