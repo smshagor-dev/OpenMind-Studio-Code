@@ -11,6 +11,7 @@ import { container } from "../container";
 import { i18n, t } from "../../i18n";
 import { tauriAgentIpc, type AgentIpc } from "./agentIpc";
 import { AgentService, type AgentHost } from "./agentService";
+import { StarredChats } from "./agentStarred";
 
 const LANGUAGE_NAMES: Record<string, string> = { en: "English", ru: "Russian" };
 
@@ -119,3 +120,9 @@ export function createAgent(
 }
 
 export const agent = createAgent();
+
+/** Starred conversations (the history's Starred section and the header's star). */
+export const starredChats = new StarredChats(
+  (key) => container.ipc.settingsGet(key),
+  (key, value) => container.ipc.settingsSet(key, value),
+);

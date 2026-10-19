@@ -44,6 +44,14 @@ vi.mock("../../services/agent", () => ({
     killBackground: vi.fn(() => Promise.resolve()),
     activate: vi.fn(() => Promise.resolve()),
   },
+  starredChats: {
+    subscribe: () => () => undefined,
+    getVersion: () => 0,
+    list: () => [],
+    has: () => false,
+    toggle: vi.fn(),
+    remove: vi.fn(),
+  },
 }));
 vi.mock("../../services/container", () => ({
   container: {

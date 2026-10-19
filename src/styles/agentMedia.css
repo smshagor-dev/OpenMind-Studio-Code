@@ -17,6 +17,21 @@
   flex: 1;
   text-align: left;
 }
+.agent-history__group {
+  margin: 12px 0 2px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.agent-history__row .agent-history__star {
+  flex: none;
+  color: var(--fg-muted);
+}
+.agent-history__star--on,
+.agent-history__row .agent-history__star--on {
+  color: var(--warning-fg);
+}
 .agent-history small {
   display: block;
   color: var(--fg-muted);

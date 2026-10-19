@@ -9,7 +9,7 @@ import { agent } from "../../services/agent";
 import { container } from "../../services/container";
 import { useT } from "../../i18n";
 import agentLogo from "../../assets/openmindai-agent.png";
-import { AgentHistoryView } from "./AgentHistoryView";
+import { AgentHistoryView, StarCurrentChat } from "./AgentHistoryView";
 import { AgentCommandPanel } from "./AgentCommandPanel";
 import { AgentQueue } from "./AgentQueue";
 import { AgentBackground } from "./AgentBackground";
@@ -96,6 +96,7 @@ function Header() {
         ) : null}
       </button>
       <div className="agent-header__actions">
+        <StarCurrentChat id={state.conversationId} saved={transcript.entries.length > 0} />
         <button
           type="button"
           className="agent-icon-button"
