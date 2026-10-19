@@ -117,6 +117,7 @@ mod tests {
                 for_model: "untrusted results".into(),
                 diff: None,
                 change: None,
+                more_changes: Vec::new(),
                 todos: None,
             }
         }

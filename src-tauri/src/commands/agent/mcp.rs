@@ -353,6 +353,7 @@ impl Registry {
                         for_model: value.to_string(),
                         diff: None,
                         change: None,
+                        more_changes: Vec::new(),
                         todos: None,
                     }
                 }

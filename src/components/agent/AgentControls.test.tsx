@@ -4,7 +4,12 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_AGENT_OPTIONS } from "../../services/agent/agentOptions";
 
-const controlsState = vi.hoisted(() => ({ mode: "ask", overview: null }));
+const controlsState = vi.hoisted(
+  (): { mode: string; overview: null; activeFile?: string | null; includeActiveFile?: boolean } => ({
+    mode: "ask",
+    overview: null,
+  }),
+);
 
 vi.mock("../../services/agent", () => ({
   agent: {
@@ -21,6 +26,9 @@ vi.mock("../../services/agent", () => ({
     resumeQueue: vi.fn(),
     cancelTask: vi.fn(),
     cycleMode: vi.fn(() => Promise.resolve()),
+    toggleActiveFile: vi.fn(),
+    attachFiles: vi.fn(() => Promise.resolve()),
+    removeAttachment: vi.fn(),
     suggestFiles: vi.fn(() => Promise.resolve([])),
     options: () => ({ ...DEFAULT_AGENT_OPTIONS }),
     getState: () => controlsState,
@@ -37,6 +45,36 @@ import { AgentSettings } from "./AgentSettings";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  controlsState.activeFile = null;
+  controlsState.includeActiveFile = undefined;
+});
+
+it("shows the editor's file as a chip that leaves it out of the message when clicked", () => {
+  controlsState.activeFile = "src/stats.js";
+  const view = render(<AgentPrompt mode="ask" busy={false} disabledReason={null} contextShare={null} />);
+  const chip = screen.getByRole("button", { name: "stats.js" });
+  expect(chip).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(chip);
+  expect(agent.toggleActiveFile).toHaveBeenCalledOnce();
+  controlsState.includeActiveFile = false;
+  view.rerender(<AgentPrompt mode="plan" busy={false} disabledReason={null} contextShare={null} />);
+  expect(screen.getByRole("button", { name: "stats.js" })).toHaveAttribute("aria-pressed", "false");
+});
+
+it("has no context row without a file or attachments, and one send button while idle", () => {
+  const { container } = render(<AgentPrompt mode="ask" busy={false} disabledReason={null} contextShare={null} />);
+  expect(container.querySelector(".agent-composer__context")).toBeNull();
+  expect(screen.getByRole("button", { name: "agent.tasks.send" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "agent.tasks.stop" })).toBeNull();
+  expect(screen.getByRole("button", { name: /agent\.mode\.ask/ })).toBeInTheDocument();
+});
+
+it("while the agent works the send button becomes Stop until something is typed", () => {
+  render(<AgentPrompt mode="ask" busy disabledReason={null} contextShare={null} />);
+  expect(screen.queryByRole("button", { name: "agent.tasks.queue" })).toBeNull();
+  expect(screen.getByRole("button", { name: "agent.tasks.stop" })).toBeEnabled();
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "and then the docs" } });
+  expect(screen.getByRole("button", { name: "agent.tasks.queue" })).toBeEnabled();
 });
 it("queues a prompt while the agent is busy and keeps Stop available", async () => {
   render(
@@ -104,7 +142,9 @@ it("shows the preparing goal and offers Continue even with later prompts pending
     ],
   };
   const view = render(<AgentQueue state={state} />);
-  expect(screen.getByText("Preparing goal")).toBeInTheDocument();
+  // The running task is the transcript's last message; with nothing waiting there is no strip.
+  expect(screen.queryByText("Preparing goal")).toBeNull();
+  expect(screen.queryByRole("region", { name: "agent.tasks.title" })).toBeNull();
   const first = state.tasks[0];
   if (!first) throw new Error("missing task");
   view.rerender(

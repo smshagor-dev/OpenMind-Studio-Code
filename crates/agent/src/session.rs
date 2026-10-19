@@ -3,6 +3,7 @@
 //! model answers without a tool call, the user stops it or declines an action, or the step limit is reached.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -14,11 +15,16 @@ use crate::policy::{Mode, Policy};
 use crate::tools::{self, Change, ChangeKind, CommandEnv, ToolContext};
 use crate::wire::{request_body, Delta, Message, StreamState};
 
+mod guard;
+use guard::{TurnGuard, Verdict};
+
 /// Model calls in one turn before the agent stops and asks the user to continue.
 const PREVIEW_CHARS: usize = 1_200;
 /// Read-only project inspection is bounded: do not spawn one thread per
 /// untrusted tool call returned by the model.
 const MAX_CONCURRENT_READS: usize = 4;
+/// Answers that were all thinking and no action (the output limit hit) before the turn pauses.
+const MAX_REASONING_RETRIES: usize = 2;
 
 /// Only these internal tools are side-effect-free. ToolKind::Read also
 /// represents unknown names, so never use it alone to authorize concurrency.
@@ -26,7 +32,10 @@ fn is_project_read(call: &crate::wire::ToolCall, host: &dyn AgentHost) -> bool {
     matches!(
         call.name.as_str(),
         "read_file" | "list_dir" | "find_files" | "search"
-    ) && !host.external_tools().iter().any(|tool| tool.name == call.name)
+    ) && !host
+        .external_tools()
+        .iter()
+        .any(|tool| tool.name == call.name)
 }
 
 struct ReadResult {
@@ -49,8 +58,11 @@ fn execute_project_read(call: &crate::wire::ToolCall, ctx: &ToolContext<'_>) -> 
         };
     }
     let prepared = tools::prepare(&call.name, &call.arguments, ctx, true);
-    let (kind, title, target) =
-        (prepared.kind, prepared.title.clone(), prepared.target.clone());
+    let (kind, title, target) = (
+        prepared.kind,
+        prepared.title.clone(),
+        prepared.target.clone(),
+    );
     let outcome = if ctx.cancel.load(Ordering::Relaxed) {
         tools::Outcome::failed("Cancelled")
     } else {
@@ -66,10 +78,7 @@ fn execute_project_read(call: &crate::wire::ToolCall, ctx: &ToolContext<'_>) -> 
 
 /// Result order is identical to input order regardless of worker completion
 /// order. This helper is also exercised with synchronized workers in tests.
-fn scoped_map<T, R, F>(
-    items: &[T],
-    run: F,
-) -> Vec<std::thread::Result<R>>
+fn scoped_map<T, R, F>(items: &[T], run: F) -> Vec<std::thread::Result<R>>
 where
     T: Sync,
     R: Send,
@@ -194,6 +203,12 @@ pub struct Session {
     goal: String,
     /// The changes of each turn that changed something, newest last (for Undo).
     turns: Vec<Vec<Change>>,
+    /// Repeats and failed changes of the running turn.
+    guard: TurnGuard,
+    /// Real prompt tokens per estimated token, measured from the engine's usage report (1.0 until measured).
+    token_scale: f64,
+    /// The conversation's terminal (working directory, background commands); dropping it stops them all.
+    shell: Arc<tools::Shell>,
 }
 
 fn preview(text: &str) -> String {
@@ -218,6 +233,9 @@ impl Session {
             messages: vec![Message::System { content: system }],
             policy: Policy::new(mode),
             turns: Vec::new(),
+            guard: TurnGuard::default(),
+            token_scale: 1.0,
+            shell: Arc::new(tools::Shell::new()),
         }
     }
 
@@ -322,8 +340,12 @@ impl Session {
 
     fn fit_context(&mut self, tools: &Value, host: &dyn AgentHost) -> Result<(), String> {
         let schema = tools.to_string().len().div_ceil(2);
-        let budget = (self.context_tokens as usize)
-            .saturating_sub(self.options.max_output_tokens as usize + schema + 512);
+        // The estimate counts two bytes per token, far more than most text needs. Once the engine has reported the
+        // real prompt size, the budget is scaled by it, so the conversation isn't compacted (and the model doesn't
+        // lose results it just read) long before the context is really full.
+        let tokens = (self.context_tokens as usize)
+            .saturating_sub(self.options.max_output_tokens as usize + 512);
+        let budget = ((tokens as f64 / self.token_scale) as usize).saturating_sub(schema);
         let (before_tokens, after_tokens) =
             crate::context::compact(&mut self.messages, &mut self.memory, &self.goal, budget)?;
         if before_tokens > after_tokens {
@@ -354,6 +376,8 @@ impl Session {
         // template supports reasoning control. Do not set a global server
         // budget: that would force a model restart whenever a user edits it.
         body["thinking_budget_tokens"] = serde_json::json!(self.options.reasoning_budget_tokens);
+        let sent = crate::context::estimate(&messages) + tools.to_string().len().div_ceil(2);
+        let mut measured: Option<u64> = None;
         let mut state = StreamState::default();
         let mut output = OutputBatch::new();
         let mut failure = None;
@@ -361,11 +385,10 @@ impl Session {
             for delta in state.feed(line) {
                 match delta {
                     Delta::Text(text) => output.append(OutputKind::Text, &text, host),
-                    Delta::Reasoning(text) => {
-                        output.append(OutputKind::Reasoning, &text, host)
-                    }
+                    Delta::Reasoning(text) => output.append(OutputKind::Reasoning, &text, host),
                     Delta::Usage(usage) => {
                         output.flush(host);
+                        measured = Some(usage.prompt_tokens);
                         host.emit(AgentEvent::Usage {
                             prompt_tokens: usage.prompt_tokens,
                             completion_tokens: usage.completion_tokens,
@@ -389,6 +412,10 @@ impl Session {
         // Also flush on cancellation, connection errors or missing [DONE];
         // no emitted visible output may be silently discarded.
         output.flush(host);
+        if let Some(real) = measured.filter(|&real| real > 0 && sent > 0) {
+            // 10% headroom; never trust a ratio far outside what text can produce.
+            self.token_scale = (real as f64 * 1.1 / sent as f64).clamp(0.25, 1.5);
+        }
         if let Some(message) = failure {
             return Err(message);
         }
@@ -428,7 +455,16 @@ impl Session {
             content: text.to_string(),
         });
         let mut changes: Vec<Change> = Vec::new();
+        self.guard = TurnGuard::default();
         let (reason, message) = self.turn_loop(client, host, input, &mut changes);
+        // The model's summary may claim edits that were refused; say plainly that nothing was applied.
+        let failed = self.guard.failed_changes();
+        // In plan mode nothing can change: `failed: 0` tells the panel to say so, whatever the summary claims.
+        if reason == "done" && self.policy.read_only() {
+            host.emit(AgentEvent::Unchanged { failed: 0 });
+        } else if changes.is_empty() && failed > 0 && reason == "done" {
+            host.emit(AgentEvent::Unchanged { failed });
+        }
         if !changes.is_empty() {
             self.turns.push(changes);
         }
@@ -442,13 +478,16 @@ impl Session {
         input: &TurnInput<'_>,
         changes: &mut Vec<Change>,
     ) -> (String, Option<String>) {
+        let shell = Arc::clone(&self.shell);
         let ctx = ToolContext {
             ws: input.ws,
             env: input.env,
             cancel: input.cancel,
             unsaved: input.unsaved,
+            shell: &shell,
         };
         let mut continuations = 0;
+        let mut reasoning_retries = 0;
         for step in 0..self.options.max_steps {
             if input.cancel.load(Ordering::Relaxed) {
                 return ("cancelled".into(), None);
@@ -474,13 +513,25 @@ impl Session {
                 Err(message) => return ("error".into(), Some(message)),
             };
             if state.finish_reason.as_deref() == Some("length") {
-                // Some older engines/models ignore thinking_budget_tokens.
-                // Do not spend automatic continuations on invisible reasoning.
+                // Some older engines/models ignore thinking_budget_tokens: thinking alone filled the output. Tell the
+                // model to act, but only twice; a template that can't stop thinking would otherwise loop.
                 if state.text.trim().is_empty() && !state.reasoning.is_empty() {
-                    return (
-                        "limit".into(),
-                        Some("The model exhausted the output limit while reasoning. Reduce the reasoning budget or increase the output limit; some model templates cannot enforce a thinking budget.".into()),
-                    );
+                    if !self.options.auto_continue || reasoning_retries >= MAX_REASONING_RETRIES {
+                        return (
+                            "limit".into(),
+                            Some("The model exhausted the output limit while reasoning. Reduce the reasoning budget or increase the output limit; some model templates cannot enforce a thinking budget.".into()),
+                        );
+                    }
+                    reasoning_retries += 1;
+                    host.emit(AgentEvent::Continuing {
+                        attempt: reasoning_retries,
+                    });
+                    self.messages.push(Message::Assistant {
+                        content: String::new(),
+                        tool_calls: Vec::new(),
+                    });
+                    self.messages.push(Message::User { content: "Your thinking reached the output limit before you acted. Stop planning now: make the next tool call, or give your answer.".into() });
+                    continue;
                 }
                 self.messages.push(Message::Assistant {
                     content: state.text.clone(),
@@ -499,21 +550,38 @@ impl Session {
                 self.messages.push(Message::User { content: "Continue the original task from where you stopped. Incomplete tool arguments were discarded; issue complete tool calls again if needed.".into() });
                 continue;
             }
-            let calls = state.tool_calls(step);
+            let mut calls = state.tool_calls(step);
+            let mut content = state.text.clone();
+            if calls.is_empty() {
+                // A call the model wrote as text (its own template format) is still a call.
+                let offered: Vec<String> = tools
+                    .as_array()
+                    .map(|list| {
+                        list.iter()
+                            .filter_map(|t| t["function"]["name"].as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                if let Some((rest, parsed)) =
+                    crate::text_calls::extract(&state.text, step, &offered)
+                {
+                    calls = parsed;
+                    content = rest;
+                }
+            }
             self.messages.push(Message::Assistant {
-                content: state.text.clone(),
+                content: content.clone(),
                 tool_calls: calls.clone(),
             });
             if calls.is_empty() {
-                return (
-                    if input.cancel.load(Ordering::Relaxed) {
-                        "cancelled"
-                    } else {
-                        "done"
-                    }
-                    .into(),
-                    None,
-                );
+                if input.cancel.load(Ordering::Relaxed) {
+                    return ("cancelled".into(), None);
+                }
+                // Stopping with open items on its task list, or with no answer, is not the end of the work.
+                if self.keep_going(&content) {
+                    continue;
+                }
+                return ("done".into(), None);
             }
             if let Some(end) = self.run_calls(&calls, host, &ctx, changes) {
                 return end;
@@ -543,13 +611,23 @@ impl Session {
             // Keep all edits, deletions, commands, external calls and todo
             // updates in the original sequential path. Never batch across
             // an operation that might change the files being inspected.
-            if ending.is_none() && !ctx.cancel.load(Ordering::Relaxed)
+            if ending.is_none()
+                && !ctx.cancel.load(Ordering::Relaxed)
                 && is_project_read(call, host)
             {
                 let count = calls[index..]
                     .iter()
                     .take(MAX_CONCURRENT_READS)
-                    .take_while(|next| is_project_read(next, host))
+                    .take_while(|next| {
+                        is_project_read(next, host)
+                            && self.guard.check(
+                                &next.name,
+                                &next.arguments,
+                                tools::ToolKind::Read,
+                                "",
+                                &self.messages,
+                            ) == Verdict::Run
+                    })
                     .count();
                 if count >= 2 {
                     let chunk = &calls[index..index + count];
@@ -579,6 +657,13 @@ impl Session {
                             tool_call_id: read.id.clone(),
                             content: outcome.for_model,
                         });
+                        self.guard.record(
+                            &read.name,
+                            &read.arguments,
+                            tools::ToolKind::Read,
+                            &read.id,
+                            true,
+                        );
                     }
                     index += count;
                     if ctx.cancel.load(Ordering::Relaxed) {
@@ -615,6 +700,9 @@ impl Session {
                 continue;
             }
             let arguments = self.command_arguments(call);
+            if self.guarded(call, &arguments, host) {
+                continue;
+            }
             let prepared = tools::prepare(&call.name, &arguments, ctx, self.policy.read_only());
             host.emit(AgentEvent::ToolStart {
                 id: call.id.clone(),
@@ -650,10 +738,11 @@ impl Session {
             let checked = prepared
                 .change_path()
                 .map_or(Ok(()), |path| host.check_change(path, ctx.cancel));
-            let outcome = match checked {
+            let mut outcome = match checked {
                 Ok(()) => tools::execute(prepared, ctx),
                 Err(e) => tools::Outcome::failed(e),
             };
+            self.after_call(call, &arguments, kind, &mut outcome);
             if let Some(items) = outcome.todos.clone() {
                 host.emit(AgentEvent::Todos { items });
             }
@@ -677,6 +766,7 @@ impl Session {
             if let Some(change) = outcome.change {
                 changes.push(change);
             }
+            changes.extend(outcome.more_changes);
             self.messages.push(Message::Tool {
                 tool_call_id: call.id.clone(),
                 content: outcome.for_model,

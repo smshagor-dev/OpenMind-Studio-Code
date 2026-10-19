@@ -4,6 +4,7 @@
 //! startup; a conversation starts only after the user sends a message. The engine stops with the app.
 
 pub mod control;
+pub mod diagnostics;
 mod engine;
 mod mcp;
 mod turn;
@@ -196,6 +197,9 @@ pub struct SendRequest {
     /// The UI language's English name ("English", "Russian") for the agent's first words.
     #[serde(default)]
     ui_language: String,
+    /// The file in front in the editor, relative to the open folder (only named to the model when it is inside it).
+    #[serde(default)]
+    active_file: Option<String>,
 }
 
 async fn command_env(state: &AppState) -> CommandEnv {
@@ -247,8 +251,8 @@ pub async fn agent_send(
         window.clone(),
         state.clone(),
     )
-        .await?
-        .ok_or("Your default agent workspace could not be opened.")?;
+    .await?
+    .ok_or("Your default agent workspace could not be opened.")?;
     if request.workspace.as_ref().is_some_and(|expected| {
         std::path::Path::new(expected) != std::path::Path::new(&folder.path)
     }) {
@@ -629,4 +633,3 @@ mod reset_tests {
         assert!(!chat.busy.load(Ordering::SeqCst));
     }
 }
-

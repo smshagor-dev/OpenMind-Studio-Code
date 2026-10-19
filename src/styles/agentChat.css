@@ -1,8 +1,4 @@
 /* OpenMindAI's chat workspace. Existing tool and spinner animations stay intact. */
-.agent-view {
-  --agent-accent: #7692ff;
-  --agent-accent-soft: color-mix(in srgb, var(--agent-accent) 14%, transparent);
-}
 .agent-header {
   padding: 12px 14px;
 }
@@ -106,7 +102,7 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--editor-bg);
-  box-shadow: 0 2px 8px #00000012;
+  box-shadow: 0 2px 8px var(--overlay-1);
 }
 .agent-prompt__box:focus-within {
   border-color: var(--agent-accent);
@@ -267,7 +263,7 @@
   display: flex;
   align-items: center;
   padding: 12px;
-  background: #0006;
+  background: var(--scrim-bg);
 }
 .agent-command-panel {
   width: 100%;
@@ -278,7 +274,7 @@
   border-radius: 12px;
   background: var(--sidebar-bg, #202124);
   color: var(--fg, #eee);
-  box-shadow: 0 12px 40px #0006;
+  box-shadow: 0 12px 40px var(--widget-shadow);
 }
 .agent-command-panel header {
   display: flex;
@@ -316,7 +312,7 @@
   box-sizing: border-box;
   padding: 8px;
   color: inherit;
-  background: #0002;
+  background: var(--overlay-1);
   border: 1px solid var(--border, #777);
   border-radius: 6px;
 }
@@ -344,4 +340,294 @@
   overflow-wrap: anywhere;
   max-height: 60px;
   overflow: auto;
+}
+
+/* ---- Claude-style transcript ----
+   Your message is a soft card; the agent writes plain prose beside a small dot; its thinking streams open in quiet
+   italics under a "∴ Thinking…" line (click the line to fold it); tool steps stay compact monospace rows with ⎿
+   results, indented under the dot. Colours are theme tokens only. */
+.agent-view__scroll {
+  padding: 14px 14px 8px;
+}
+.agent-message {
+  margin: 12px 0;
+}
+.agent-message--user {
+  display: block;
+  margin: 18px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--agent-user-bg);
+  color: var(--fg-strong);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.agent-message--user:first-child {
+  margin-top: 4px;
+}
+.agent-message__row {
+  gap: 10px;
+}
+.agent-message__body .markdown-preview--embedded {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.agent-message__body .markdown-preview--embedded pre {
+  border-radius: 8px;
+}
+.agent-dot {
+  line-height: 21px;
+}
+.agent-reasoning {
+  margin: 4px 0 8px 22px;
+}
+.agent-reasoning__toggle {
+  gap: 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.agent-reasoning__toggle:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 2px;
+}
+.agent-reasoning__mark {
+  color: var(--fg-muted);
+  font-style: normal;
+}
+.agent-reasoning--live .agent-reasoning__label {
+  background: linear-gradient(90deg, var(--fg-muted) 0%, var(--fg-muted) 40%, var(--fg-strong) 50%, var(--fg-muted) 60%, var(--fg-muted) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: agent-shimmer 2.2s linear infinite;
+}
+.agent-reasoning__chevron {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.agent-reasoning__text {
+  margin-top: 6px;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--border);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.agent-tool {
+  margin: 6px 0 6px 0;
+}
+.agent-tool__head {
+  gap: 10px;
+}
+.agent-tool__title {
+  font-weight: 600;
+}
+.agent-tool__target {
+  color: var(--fg-muted);
+}
+.agent-tool__result,
+.agent-notice {
+  padding-left: 22px;
+  line-height: 1.5;
+}
+.agent-tool__nested {
+  margin: 6px 0 2px 22px;
+}
+.agent-tool__preview pre {
+  border-radius: 6px;
+}
+.agent-notice--error {
+  color: var(--error-fg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-reasoning--live .agent-reasoning__label {
+    animation: none;
+    background: none;
+    color: var(--fg-muted);
+  }
+}
+
+/* ---- Claude Code-style composer ----
+   One bordered box like VS Code's own inputs: the context chips (the editor's file, attachments) on top, the message,
+   then a single row: permission mode on the left; context use, attach, "/" and the send / stop button on the right.
+   No hint line under it (the placeholder says it). Colours are theme tokens only. */
+.agent-view__bottom {
+  padding: 6px 10px 10px;
+}
+.agent-prompt__box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  box-shadow: none;
+}
+.agent-prompt__box:focus-within {
+  border-color: var(--focus-border);
+  box-shadow: none;
+}
+.agent-prompt__box--busy {
+  animation: none;
+}
+.agent-composer__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 0;
+  min-width: 0;
+}
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--overlay-1);
+  color: var(--fg);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 20px;
+}
+button.agent-chip {
+  cursor: pointer;
+}
+button.agent-chip:hover {
+  background: var(--toolbar-hover-bg);
+  color: var(--fg-strong);
+}
+.agent-chip--file > span:first-child {
+  color: var(--agent-accent);
+  font-size: 9px;
+}
+.agent-chip--off {
+  color: var(--fg-muted);
+  text-decoration: line-through;
+}
+.agent-chip--off > span:first-child {
+  color: var(--fg-muted);
+}
+.agent-chip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-chip img {
+  width: 14px;
+  height: 14px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+.agent-chip__remove {
+  padding: 0 0 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.agent-chip__remove:hover {
+  color: var(--fg-strong);
+}
+.agent-prompt__input {
+  min-height: 60px;
+  padding: 8px 10px 4px;
+}
+.agent-composer__toolbar {
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 4px 6px 6px;
+}
+.agent-composer__spacer {
+  flex: 1;
+  min-width: 4px;
+}
+.agent-composer__toolbar .agent-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.agent-composer__toolbar .agent-mode--acceptEdits,
+.agent-composer__toolbar .agent-mode--auto {
+  color: var(--agent-accent);
+}
+.agent-composer__toolbar .agent-mode--plan {
+  color: var(--info-fg, var(--fg));
+}
+.agent-mode__icon {
+  font-size: 10px;
+}
+.agent-composer__context-use {
+  padding: 0 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.agent-composer__context-use--high {
+  color: var(--warning-fg, var(--fg));
+}
+.agent-composer__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+}
+.agent-composer__toolbar .agent-composer__attach {
+  font-size: 17px;
+}
+.agent-composer__send {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  border-radius: 4px;
+  color: var(--button-fg);
+  background: var(--agent-accent);
+  font-size: 15px !important;
+  line-height: 1;
+}
+.agent-composer__send:disabled {
+  opacity: 0.4;
+  background: var(--overlay-2);
+  color: var(--fg-muted);
+}
+.agent-composer__stop {
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: var(--fg-strong);
+  cursor: pointer;
+}
+.agent-composer__stop > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--input-bg);
+}
+.agent-composer__toolbar .agent-composer__stop:hover:not(:disabled) {
+  background: var(--fg);
 }

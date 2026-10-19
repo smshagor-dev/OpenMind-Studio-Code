@@ -48,6 +48,30 @@ describe("task controller", () => {
   });
 });
 
+it("a message sent after a declined turn runs at once", async () => {
+  const { queue, run } = setup();
+  queue.enqueue(task("a")); await tick();
+  queue.finish("rejected"); await tick();
+  expect(queue.getState().paused).toBe(true);
+  queue.enqueue(task("next")); await tick();
+  expect(run.mock.calls[1]?.[0]).toMatchObject({ id: "next" });
+});
+
+it("prompts waiting behind a failed turn stay held, also when another is added", async () => {
+  const { queue, run } = setup();
+  queue.enqueue(task("a")); queue.enqueue(task("b")); await tick();
+  queue.finish("error"); await tick();
+  queue.enqueue(task("c")); await tick();
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(queue.getState().paused).toBe(true);
+});
+
+it("a message never runs by itself when auto-run is off", async () => {
+  const { queue, run } = setup();
+  queue.enqueue({ ...task("a"), options: { ...DEFAULT_AGENT_OPTIONS, autoRunQueue: false } }); await tick();
+  expect(run).not.toHaveBeenCalled();
+});
+
 it("restoring history never turns a removed prompt into an interrupted task", () => {
   const { queue } = setup();
   queue.restore([{ ...task("stopped"), status: "cancelled", reason: "cancelled" }, { ...task("removed"), status: "cancelled", reason: null }]);

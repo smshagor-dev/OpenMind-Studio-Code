@@ -172,16 +172,30 @@ fn deferred_turn_preserves_all_output_but_does_not_signal_completion_early() {
     let panel = Panel::new(vec![]);
     let mut s = session(Mode::Ask);
     let terminal = s.run_turn_deferred("What happened?", &model, &panel, &project.input());
-    assert_eq!(panel.end(), "", "desktop must own the terminal-event timing");
-    assert!(panel.events.lock().expect("events").iter().any(|event| {
-        matches!(event, AgentEvent::Text { text } if text == "The final answer")
-    }));
+    assert_eq!(
+        panel.end(),
+        "",
+        "desktop must own the terminal-event timing"
+    );
+    assert!(panel
+        .events
+        .lock()
+        .expect("events")
+        .iter()
+        .any(|event| { matches!(event, AgentEvent::Text { text } if text == "The final answer") }));
     assert!(matches!(&terminal, AgentEvent::TurnEnd { reason, .. } if reason == "done"));
     panel.emit(terminal);
     assert_eq!(panel.end(), "done");
-    assert_eq!(panel.events.lock().expect("events").iter().filter(|event| {
-        matches!(event, AgentEvent::TurnEnd { .. })
-    }).count(), 1);
+    assert_eq!(
+        panel
+            .events
+            .lock()
+            .expect("events")
+            .iter()
+            .filter(|event| { matches!(event, AgentEvent::TurnEnd { .. }) })
+            .count(),
+        1
+    );
 }
 
 #[test]
@@ -243,13 +257,16 @@ fn reasoning_is_flushed_before_text_and_before_usage() {
     s.run_turn("Answer", &model, &panel, &project.input());
     assert_eq!(panel.end(), "done");
     let events = panel.events.lock().expect("events");
-    let order: Vec<&str> = events.iter().filter_map(|event| match event {
-        AgentEvent::Reasoning { text } if text == "think-first" => Some("reasoning"),
-        AgentEvent::Text { text } if text == "answer-now" => Some("text"),
-        AgentEvent::Usage { .. } => Some("usage"),
-        AgentEvent::TurnEnd { .. } => Some("end"),
-        _ => None,
-    }).collect();
+    let order: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::Reasoning { text } if text == "think-first" => Some("reasoning"),
+            AgentEvent::Text { text } if text == "answer-now" => Some("text"),
+            AgentEvent::Usage { .. } => Some("usage"),
+            AgentEvent::TurnEnd { .. } => Some("end"),
+            _ => None,
+        })
+        .collect();
     assert_eq!(order, ["reasoning", "text", "usage", "end"]);
 }
 
@@ -273,9 +290,9 @@ fn request_failure_flushes_buffered_output_before_error() {
     s.run_turn("Answer", &BrokenStream, &panel, &project.input());
     assert_eq!(panel.end(), "error");
     let events = panel.events.lock().expect("events");
-    assert!(events.iter().any(|event| {
-        matches!(event, AgentEvent::Text { text } if text == "partial answer")
-    }));
+    assert!(events
+        .iter()
+        .any(|event| { matches!(event, AgentEvent::Text { text } if text == "partial answer") }));
 }
 
 #[test]
@@ -319,24 +336,6 @@ fn disabled_reasoning_still_sends_zero_budget() {
 }
 
 #[test]
-fn reasoning_only_length_limit_does_not_loop_or_claim_success() {
-    let project = Project::new();
-    let reasoning_only = r#"data: {"choices":[{"delta":{"reasoning_content":"Still thinking"},"finish_reason":"length"}]}"#;
-    let model = Script::new(vec![
-        vec![reasoning_only.into(), "data: [DONE]".into()],
-        say("This should not be requested"),
-    ]);
-    let panel = Panel::new(vec![]);
-    let mut s = session(Mode::Ask);
-    s.run_turn("Reply", &model, &panel, &project.input());
-    assert_eq!(panel.end(), "limit");
-    assert_eq!(model.requests.lock().expect("lock").len(), 1);
-    assert!(panel.events.lock().expect("lock").iter().any(|event| {
-        matches!(event, AgentEvent::TurnEnd { message: Some(detail), .. } if detail.contains("reasoning"))
-    }));
-}
-
-#[test]
 fn bounded_scoped_workers_overlap_but_results_remain_in_call_order() {
     use std::sync::atomic::AtomicUsize;
     use std::time::{Duration, Instant};
@@ -359,7 +358,10 @@ fn bounded_scoped_workers_overlap_but_results_remain_in_call_order() {
         *index
     });
     assert_eq!(
-        results.into_iter().map(|item| item.expect("worker")).collect::<Vec<_>>(),
+        results
+            .into_iter()
+            .map(|item| item.expect("worker"))
+            .collect::<Vec<_>>(),
         vec![0, 1, 2]
     );
     assert!(peak.load(Ordering::SeqCst) >= 2, "reads never overlapped");
@@ -384,30 +386,41 @@ fn independent_reads_retain_order_and_original_model_tool_ids() {
     assert_eq!(panel.end(), "done");
     assert!(panel.asked.lock().expect("lock").is_empty());
     let events = panel.events.lock().expect("lock");
-    let started: Vec<_> = events.iter().filter_map(|event| match event {
-        AgentEvent::ToolStart { id, .. } => Some(id.as_str()),
-        _ => None,
-    }).collect();
-    let finished: Vec<_> = events.iter().filter_map(|event| match event {
-        AgentEvent::ToolEnd { id, ok, .. } => {
-            assert!(*ok, "read tool {id} failed");
-            Some(id.as_str())
-        }
-        _ => None,
-    }).collect();
+    let started: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::ToolStart { id, .. } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let finished: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            AgentEvent::ToolEnd { id, ok, .. } => {
+                assert!(*ok, "read tool {id} failed");
+                Some(id.as_str())
+            }
+            _ => None,
+        })
+        .collect();
     assert_eq!(started, ["read_1", "read_2", "read_3", "read_4"]);
     assert_eq!(finished, started);
     let requests = model.requests.lock().expect("lock");
     let messages = requests[1]["messages"].as_array().expect("messages");
-    let results: Vec<_> = messages.iter()
+    let results: Vec<_> = messages
+        .iter()
         .filter(|message| message["role"] == "tool")
-        .map(|message| (
-            message["tool_call_id"].as_str().expect("id"),
-            message["content"].as_str().expect("content")
-        ))
+        .map(|message| {
+            (
+                message["tool_call_id"].as_str().expect("id"),
+                message["content"].as_str().expect("content"),
+            )
+        })
         .collect();
-    assert_eq!(results.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
-        ["read_1", "read_2", "read_3", "read_4"]);
+    assert_eq!(
+        results.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        ["read_1", "read_2", "read_3", "read_4"]
+    );
     assert!(results[0].1.contains("return a - b"));
     assert!(results[1].1.contains("hello notes"));
     assert!(results[2].1.contains("main.py"));
@@ -423,7 +436,11 @@ fn many_reads_are_processed_in_bounded_batches_without_missing_ids() {
             ("b", "list_dir", json!({})),
             ("c", "find_files", json!({"pattern":"**/*.py"})),
             ("d", "search", json!({"query":"return"})),
-            ("e", "read_file", json!({"path":"main.py","offset":1,"limit":1})),
+            (
+                "e",
+                "read_file",
+                json!({"path":"main.py","offset":1,"limit":1}),
+            ),
             ("f", "list_dir", json!({})),
         ]),
         say("Listed."),
@@ -434,7 +451,8 @@ fn many_reads_are_processed_in_bounded_batches_without_missing_ids() {
     assert_eq!(panel.end(), "done");
     let requests = model.requests.lock().expect("lock");
     let messages = requests[1]["messages"].as_array().expect("messages");
-    let ids: Vec<_> = messages.iter()
+    let ids: Vec<_> = messages
+        .iter()
         .filter(|message| message["role"] == "tool")
         .map(|message| message["tool_call_id"].as_str().expect("id"))
         .collect();
@@ -449,9 +467,13 @@ fn edits_and_permission_prompts_remain_between_read_batches() {
         batch_calls(&[
             ("r1", "read_file", json!({"path":"main.py"})),
             ("r2", "list_dir", json!({})),
-            ("e1", "edit_file", json!({
-                "path":"main.py", "old_string":"a - b", "new_string":"a + b"
-            })),
+            (
+                "e1",
+                "edit_file",
+                json!({
+                    "path":"main.py", "old_string":"a - b", "new_string":"a + b"
+                }),
+            ),
             ("r3", "read_file", json!({"path":"main.py"})),
             ("r4", "search", json!({"query":"return a + b"})),
         ]),
@@ -464,7 +486,8 @@ fn edits_and_permission_prompts_remain_between_read_batches() {
     assert_eq!(panel.asked.lock().expect("lock").len(), 1);
     let requests = model.requests.lock().expect("lock");
     let messages = requests[1]["messages"].as_array().expect("messages");
-    let results: Vec<_> = messages.iter()
+    let results: Vec<_> = messages
+        .iter()
         .filter(|message| message["role"] == "tool")
         .map(|message| message["content"].as_str().expect("tool content"))
         .collect();
@@ -481,7 +504,9 @@ fn edits_and_permission_prompts_remain_between_read_batches() {
 fn parallel_path_never_runs_unknown_or_external_tools_as_internal_reads() {
     struct Override(Panel);
     impl AgentHost for Override {
-        fn emit(&self, event: AgentEvent) { self.0.emit(event); }
+        fn emit(&self, event: AgentEvent) {
+            self.0.emit(event);
+        }
         fn ask(&self, request: PermissionRequest, cancel: &AtomicBool) -> Decision {
             self.0.ask(request, cancel)
         }
@@ -497,13 +522,19 @@ fn parallel_path_never_runs_unknown_or_external_tools_as_internal_reads() {
     }
     let host = Override(Panel::new(vec![]));
     let internal = crate::wire::ToolCall {
-        id: "r".into(), name: "search".into(), arguments: "{}".into()
+        id: "r".into(),
+        name: "search".into(),
+        arguments: "{}".into(),
     };
     let shadowed = crate::wire::ToolCall {
-        id: "e".into(), name: "read_file".into(), arguments: "{}".into()
+        id: "e".into(),
+        name: "read_file".into(),
+        arguments: "{}".into(),
     };
     let unknown = crate::wire::ToolCall {
-        id: "u".into(), name: "invented_read".into(), arguments: "{}".into()
+        id: "u".into(),
+        name: "invented_read".into(),
+        arguments: "{}".into(),
     };
     assert!(is_project_read(&internal, &host));
     assert!(!is_project_read(&shadowed, &host));
@@ -519,7 +550,9 @@ fn cancellation_between_read_batches_skips_mutating_actions() {
     impl AgentHost for CancelHost<'_> {
         fn emit(&self, event: AgentEvent) {
             if let AgentEvent::ToolEnd { ref id, .. } = event {
-                if id == "r2" { self.cancel.store(true, Ordering::Relaxed); }
+                if id == "r2" {
+                    self.cancel.store(true, Ordering::Relaxed);
+                }
             }
             self.panel.emit(event);
         }
@@ -528,11 +561,18 @@ fn cancellation_between_read_batches_skips_mutating_actions() {
         }
     }
     let project = Project::new();
-    let host = CancelHost { panel: Panel::new(vec![]), cancel: &project.cancel };
+    let host = CancelHost {
+        panel: Panel::new(vec![]),
+        cancel: &project.cancel,
+    };
     let model = Script::new(vec![batch_calls(&[
         ("r1", "read_file", json!({"path":"main.py"})),
         ("r2", "list_dir", json!({})),
-        ("write", "write_file", json!({"path":"should_not_exist.txt","content":"bad"})),
+        (
+            "write",
+            "write_file",
+            json!({"path":"should_not_exist.txt","content":"bad"}),
+        ),
     ])]);
     let mut s = session(Mode::Auto);
     s.run_turn("Inspect then mutate", &model, &host, &project.input());
@@ -951,3 +991,5 @@ fn plan_exposes_search_but_excludes_image_generation() {
     assert!(names.contains(&"web_search"));
     assert!(!names.contains(&"generate_image"));
 }
+
+mod guard_turns;

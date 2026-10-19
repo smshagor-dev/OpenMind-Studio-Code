@@ -1,12 +1,17 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { agent } from "../../services/agent";
 import { useT } from "../../i18n";
-export function AgentAttachments() {
-  const t = useT();
-  const state = useSyncExternalStore(
+
+function useAgentState() {
+  return useSyncExternalStore(
     (listener) => agent.subscribe(listener),
     () => agent.getState(),
   );
+}
+
+/** The composer's attach button (bottom row): picks files and adds them to the next message. */
+export function AttachButton() {
+  const t = useT();
   const input = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const add = async (files: File[]) => {
@@ -18,16 +23,7 @@ export function AgentAttachments() {
     }
   };
   return (
-    <div
-      className="agent-attachments"
-      onDragOver={(event) => {
-        event.preventDefault();
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        if (!loading) void add(Array.from(event.dataTransfer.files));
-      }}
-    >
+    <>
       <input
         hidden
         ref={input}
@@ -40,7 +36,7 @@ export function AgentAttachments() {
       />
       <button
         type="button"
-        className="agent-composer__attach"
+        className="agent-composer__icon agent-composer__attach"
         aria-label={t("agent.attach.add")}
         title={t("agent.attach.hint")}
         disabled={loading}
@@ -50,12 +46,23 @@ export function AgentAttachments() {
       >
         <span aria-hidden="true">{loading ? "…" : "+"}</span>
       </button>
+    </>
+  );
+}
+
+/** The files added to the next message, as chips in the composer's context row. */
+export function AttachmentChips() {
+  const t = useT();
+  const state = useAgentState();
+  return (
+    <>
       {(state.attachments ?? []).map((item) => (
-        <span className="agent-attachment" key={item.id}>
-          {item.data ? <img src={item.data} alt="" /> : null}
-          {item.name}
+        <span className="agent-chip agent-attachment" key={item.id} title={item.name}>
+          {item.data ? <img src={item.data} alt="" /> : <span aria-hidden="true">▤</span>}
+          <span className="agent-chip__name">{item.name}</span>
           <button
             type="button"
+            className="agent-chip__remove"
             aria-label={t("agent.attach.remove")}
             onClick={() => {
               agent.removeAttachment(item.id);
@@ -65,7 +72,6 @@ export function AgentAttachments() {
           </button>
         </span>
       ))}
-    </div>
+    </>
   );
 }
-

@@ -531,6 +531,7 @@ fn main() {
             );
 
             // The OpenMindAI Agent: models live beside the runtimes (shared like them), its engine log with the app's logs.
+            app.manage(commands::agent::diagnostics::DiagnosticsCache::default());
             app.manage(commands::agent::AgentRuntime::new(
                 app_paths.runtimes_dir.with_file_name("models"),
                 app_paths.logs_dir.clone(),
@@ -598,4 +599,3 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

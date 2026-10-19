@@ -65,7 +65,13 @@ pub enum AgentEvent {
         completion_tokens: u64,
         context_tokens: u32,
     },
-    /// The turn ended: `done`, `cancelled`, `rejected`, `limit` or `error`.
+    /// The turn ended without applying a change, although the model tried `failed` changes that could not be applied
+    /// (`failed: 0` = a plan-mode turn, where nothing may change).
+    Unchanged {
+        failed: usize,
+    },
+    /// The turn ended: `done`, `cancelled`, `rejected`, `limit`, `repeating` (the same action kept coming back) or
+    /// `error`.
     TurnEnd {
         reason: String,
         message: Option<String>,

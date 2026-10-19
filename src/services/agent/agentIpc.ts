@@ -144,6 +144,7 @@ export type AgentEvent = (
       completionTokens: number;
       contextTokens: number;
     }
+  | { type: "unchanged"; failed: number }
   | {
       type: "turnEnd";
       reason: "done" | "cancelled" | "rejected" | "limit" | "error";
@@ -177,6 +178,8 @@ export interface SendRequest {
   mode: AgentMode;
   unsaved: string[];
   uiLanguage: string;
+  /** The file in front in the editor, relative to the open folder. */
+  activeFile?: string | null;
 }
 
 export interface AgentIpc {

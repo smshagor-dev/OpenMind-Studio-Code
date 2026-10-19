@@ -34,11 +34,12 @@ export function AgentWelcome({ folder }: { folder: string | null }) {
   );
 }
 
-function Reasoning({ text, live }: { text: string; live: boolean }) {
+/** The model's thinking, shown as it streams (Claude Code style); the header collapses it. */
+export function Reasoning({ text, live }: { text: string; live: boolean }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   return (
-    <div className="agent-reasoning">
+    <div className={`agent-reasoning${live ? " agent-reasoning--live" : ""}`}>
       <button
         type="button"
         className="agent-reasoning__toggle"
@@ -47,7 +48,8 @@ function Reasoning({ text, live }: { text: string; live: boolean }) {
           setOpen(!open);
         }}
       >
-        <span aria-hidden="true">∴</span> {live ? t("agent.reasoning.live") : t("agent.reasoning.done")}
+        <span className="agent-reasoning__mark" aria-hidden="true">∴</span>
+        <span className="agent-reasoning__label">{live ? t("agent.reasoning.live") : t("agent.reasoning.done")}</span>
         <span className="agent-reasoning__chevron" aria-hidden="true">
           {open ? "▾" : "▸"}
         </span>
@@ -106,7 +108,13 @@ function Preview({ text }: { text: string }) {
 
 const ToolCard = memo(function ToolCard({ entry }: { entry: ToolEntry }) {
   const t = useT();
-  const showPreview = entry.preview && (entry.toolKind === "command" || entry.status === "failed");
+  // Command output, a background command's new output and the code check are what the user wants to see.
+  const showPreview =
+    entry.preview &&
+    (entry.toolKind === "command" ||
+      entry.status === "failed" ||
+      entry.name === "command_output" ||
+      entry.name === "get_diagnostics");
   const summary =
     entry.status === "declined"
       ? t("agent.tool.declined")
@@ -172,9 +180,6 @@ export function AgentTranscript({ entries, busy, showReasoning = true }: { entri
           case "user":
             return (
               <div key={entry.id} className="agent-message agent-message--user agent-enter">
-                <span className="agent-message__prompt" aria-hidden="true">
-                  &gt;
-                </span>
                 <div className="agent-message__user-text">{entry.text}</div>
               </div>
             );

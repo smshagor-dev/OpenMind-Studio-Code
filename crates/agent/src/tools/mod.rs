@@ -3,8 +3,10 @@
 //! and its diff computed — so the permission prompt shows precisely what will happen; it runs only after approval.
 
 mod change;
-mod command;
+pub(crate) mod command;
+mod more;
 mod read;
+pub mod shell;
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -17,6 +19,7 @@ use crate::paths::Workspace;
 use crate::textfile::TextFile;
 
 pub use command::CommandEnv;
+pub use shell::Shell;
 
 /// What a tool does, which decides whether it needs the user's permission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,7 +67,7 @@ pub struct Change {
 }
 
 /// What a finished call reports.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Outcome {
     pub ok: bool,
     /// The text the model reads.
@@ -73,6 +76,8 @@ pub struct Outcome {
     pub summary: String,
     pub diff: Option<FileDiff>,
     pub change: Option<Change>,
+    /// Further files the same call changed (a move: the file at its old place), for Undo.
+    pub more_changes: Vec<Change>,
     pub todos: Option<Vec<Todo>>,
 }
 
@@ -83,9 +88,7 @@ impl Outcome {
             ok: false,
             for_model: format!("Error: {message}"),
             summary: message,
-            diff: None,
-            change: None,
-            todos: None,
+            ..Self::default()
         }
     }
 
@@ -94,9 +97,7 @@ impl Outcome {
             ok: true,
             for_model,
             summary,
-            diff: None,
-            change: None,
-            todos: None,
+            ..Self::default()
         }
     }
 }
@@ -116,6 +117,11 @@ pub(crate) enum Op {
         snapshot: change::DeleteSnapshot,
     },
     Command(command::Planned),
+    Move {
+        from: PathBuf,
+        to: PathBuf,
+        bytes: Vec<u8>,
+    },
     Todos(Vec<Todo>),
 }
 
@@ -160,6 +166,8 @@ pub struct ToolContext<'a> {
     pub cancel: &'a AtomicBool,
     /// Files with unsaved edits in the editor: the agent must not change them under the user.
     pub unsaved: &'a [PathBuf],
+    /// The conversation's terminal: working directory and background commands.
+    pub shell: &'a Shell,
 }
 
 impl ToolContext<'_> {
@@ -247,11 +255,46 @@ pub fn specs(read_only: bool) -> Value {
             ),
             function(
                 "run_command",
-                "Run a command in the project folder (PowerShell on Windows) and get its output, e.g. to run tests, a build or the program. Not for interactive programs.",
+                "Run a command in the terminal (PowerShell on Windows) and get its output: tests, builds, git, installs, the program. The working directory carries over between commands (a cd stays in effect; it starts in the project folder and never leaves it). For something that keeps running (a dev server, a watcher) set run_in_background, then read its output with command_output and stop it with kill_command. Not for interactive programs that wait for typed input. In PowerShell, curl and wget are aliases of Invoke-WebRequest: use curl.exe.",
                 json!({"type": "object", "properties": {
                     "command": {"type": "string"},
-                    "timeout_seconds": {"type": "integer", "description": "Default 120, at most 600"}
+                    "timeout_seconds": {"type": "integer", "description": "Default 120, at most 600 (not used in the background)"},
+                    "run_in_background": {"type": "boolean", "description": "Start it and return at once with an id"}
                 }, "required": ["command"]}),
+            ),
+            function(
+                "command_output",
+                "Read what a background command printed since the last look, and whether it is still running.",
+                json!({"type": "object", "properties": {
+                    "id": {"type": "string", "description": "The id run_command returned, e.g. bg-1"}
+                }, "required": ["id"]}),
+            ),
+            function(
+                "kill_command",
+                "Stop a background command and everything it started.",
+                json!({"type": "object", "properties": {
+                    "id": {"type": "string"}
+                }, "required": ["id"]}),
+            ),
+            function(
+                "multi_edit",
+                "Make several exact-text replacements in one file as one change (all or nothing). Each edit works like edit_file and applies to the result of the previous one. Read the file first.",
+                json!({"type": "object", "properties": {
+                    "path": {"type": "string"},
+                    "edits": {"type": "array", "items": {"type": "object", "properties": {
+                        "old_string": {"type": "string"},
+                        "new_string": {"type": "string"},
+                        "replace_all": {"type": "boolean"}
+                    }, "required": ["old_string", "new_string"]}}
+                }, "required": ["path", "edits"]}),
+            ),
+            function(
+                "move_file",
+                "Move or rename a file inside the project. Missing folders of the new place are created; an existing file there is never overwritten.",
+                json!({"type": "object", "properties": {
+                    "from": {"type": "string"},
+                    "to": {"type": "string"}
+                }, "required": ["from", "to"]}),
             ),
         ]);
     }
@@ -271,6 +314,9 @@ pub fn kind_of(name: &str) -> ToolKind {
         "edit_file" | "write_file" => ToolKind::Edit,
         "delete_file" => ToolKind::Delete,
         "run_command" => ToolKind::Command,
+        "multi_edit" | "move_file" => ToolKind::Edit,
+        // Reading a background command's output or stopping it touches nothing the user owns.
+        "command_output" | "kill_command" => ToolKind::Read,
         "todo_write" => ToolKind::Meta,
         _ => ToolKind::Read,
     }
@@ -313,6 +359,10 @@ pub fn prepare(name: &str, arguments: &str, ctx: &ToolContext<'_>, read_only: bo
         "write_file" => change::write_file(&args, ctx),
         "delete_file" => change::delete_file(&args, ctx),
         "run_command" => command::prepare(&args, ctx),
+        "multi_edit" => more::multi_edit(&args, ctx),
+        "move_file" => more::move_file(&args, ctx),
+        "command_output" => more::background(&args, ctx, false),
+        "kill_command" => more::background(&args, ctx, true),
         "todo_write" => todos(&args),
         other => Prepared::finished(
             ToolKind::Read,
@@ -354,6 +404,7 @@ pub fn execute(prepared: Prepared, ctx: &ToolContext<'_>) -> Outcome {
             snapshot,
         } => change::apply_delete(ctx, path, before_bytes, snapshot),
         Op::Command(planned) => command::run(&planned, ctx),
+        Op::Move { from, to, bytes } => more::apply_move(ctx, from, to, bytes),
         Op::Todos(list) => {
             let mut outcome = Outcome::done(
                 "The task list is updated.".into(),

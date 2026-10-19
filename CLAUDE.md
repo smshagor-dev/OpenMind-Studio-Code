@@ -933,12 +933,26 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   followed, `..` refused lexically first; `.git` readable but never changed), `textfile` (the model works with `\n`; a write keeps the
   file's encoding and CRLF; temp + rename; 4 MB limit; binaries refused), `tools` (`read_file` numbered/paged, `list_dir`, `find_files`
   = `openmind_search::find`, `search` = `openmind_search::walk`, `edit_file` exact unique match / `replace_all`, `write_file`,
-  `delete_file` = Recycle Bin via `trash`, `run_command` = PowerShell `-EncodedCommand` in the folder with the app's run environment,
-  Job Object, timeout ≤ 600 s, output capped, `todo_write`); a call is **prepared** first (exact new text + `diff`) and re-checked
+  `delete_file` = Recycle Bin via `trash`, `run_command` = PowerShell `-EncodedCommand` with the app's run environment,
+  Job Object, timeout ≤ 600 s, output capped, `todo_write`; Claude Code parity (`tools/shell.rs`, `tools/more.rs`): the
+  conversation's `Shell` keeps the working directory between commands (a `<<OPENMIND_CWD>>` last line, stripped; never outside
+  the folder) and runs `run_in_background` commands (≤ 6, each its own Job Object, killed with the conversation/app) read with
+  `command_output` (only new output) and stopped with `kill_command`; `multi_edit` (all-or-nothing edits of one file),
+  `move_file` (files only, never over an existing file, two `Change`s so Undo puts it back); the app adds `get_diagnostics`
+  (`commands/agent/diagnostics.rs`: the language servers' latest diagnostics, cached from the LSP sink, errors first, only
+  analysed files)); a call is **prepared** first (exact new text + `diff`) and re-checked
   before writing (a file changed meanwhile is refused); a file with unsaved editor changes is never changed. `policy` (`Ask` default:
   every edit/delete/command asks; `AcceptEdits`; `Plan` = changing tools not even offered; "don't ask again" per conversation for
-  edits, deletions or one exact command), `session` (the loop: ≤ 40 model calls a turn, declined → the turn ends and the model hears the
-  feedback, context trimmed oldest tool output first, `undo_last` restores the last turn's files), `prompt` (system prompt with the
+  edits, deletions or one exact command), `session` (the loop: at most `max_steps` model calls a turn — default 128, setting 8-512 —,
+  declined → the turn ends and the model hears the feedback, context trimmed oldest tool output first against a budget scaled by the
+  engine's real `prompt_tokens` (the chars÷2 estimate alone compacted every step and the model re-read what it had just lost),
+  `undo_last` restores the last turn's files; `session/guard.rs` keeps the turn going until the work is done and **never ends
+  it**: a repeated look whose result is still in context is answered "Not run again", the same call a 3rd time with no applied
+  change in between is refused with what to do instead, changes to one file are refused after 3 failures until it is read
+  again, an answer while the model's own todo list has open items (not in plan mode) or with no text sends it back to work (≤ 3
+  times a turn), all-thinking output that hit the length limit is told to act (≤ 2 times); a failed change reaches the model as
+  "Not applied: …", and a turn that ends with failed changes and none applied emits `Unchanged`. A turn ends only when the model
+  is done, the user stops or declines, or `max_steps` is reached), `prompt` (system prompt with the
   folder, OS, date, rules, "answer in the user's language", top-level listing and `OPENMIND.md`/`AGENTS.md`/`CLAUDE.md`).
   `tests/real_nemotron.rs` (ignored; `OPENMIND_TEST_LLAMA_SERVER`, `OPENMIND_TEST_GGUF`) drives the real engine + Nemotron 3 Nano 4B
   fixing a bug end to end.
@@ -951,6 +965,15 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   `index.ts` wiring outside `container.ts`), `components/agent/` (Claude Code's layout and motion: ● tool lines with ⎿ results,
   red/green diffs, the ✻ spinner with a shimmering verb + elapsed + tokens + "esc to interrupt", the 1/2/3 permission card, todos,
   `@file` and `/` menus, Shift+Tab modes), `styles/agent.css` (`--agent-*` tokens), activity bar item "OpenMindAI Agent" (always shown).
+  Composer (Claude Code's VS Code panel): one input-styled box — a context row (the editor's front file as a chip, on by default,
+  sent as `SendRequest.activeFile` and named in the system prompt only when it resolves to a file inside the folder; attachments),
+  the message, and one row: mode ("Ask before edits" / "Edit automatically" / "Auto (no approvals)" / "Plan mode", Shift+Tab),
+  context use, attach, `/`, send — Stop while the agent works (a typed message queues). The model is chosen from the header.
+  Transcript (Claude style, `styles/agentChat.css`): the user's message is a card, the model's thinking streams **open** under
+  "∴ Thinking…" (its header folds it), "context compacted" shows once per turn; the queue strip appears only while prompts wait (the
+  running one is already in the transcript), and a message typed while nothing runs or waits runs even after a declined/stopped turn.
+  **The configured model is preloaded at start-up** (`AgentService.activate`, ~3 GB in RAM/VRAM before the panel is opened) — the
+  one deliberate exception to "nothing starts by itself"; engine events refresh the status line, also inside a turn.
 
 ### Planned future crates (create only when the milestone that implements them lands — do not
 pre-scaffold empty crates)

@@ -59,6 +59,8 @@ export interface AgentHost {
   confirm: (message: string, okLabel: string) => Promise<boolean>;
   notify: (message: string) => void;
   openFile: (path: string) => void;
+  /** Follows the editor's front file (relative to the open folder, `null` for none); returns the unsubscribe. */
+  watchActiveFile?: (listener: (relativePath: string | null) => void) => () => void;
   /** Files of the open folder matching what is typed after `@` (relative paths). */
   suggestFiles: (query: string) => Promise<string[]>;
   settingGet: (key: string) => Promise<string | null>;
@@ -98,6 +100,10 @@ export interface AgentState {
   transcript: Transcript;
   /** The setup page is open over the conversation (choosing or downloading a model). */
   showSetup: boolean;
+  /** The file in front in the editor, relative to the open folder (the composer's context chip). */
+  activeFile?: string | null;
+  /** Whether that file is named to the agent with the next message (on unless the chip was clicked off). */
+  includeActiveFile?: boolean;
 }
 
 const MODEL_KEY = "agent.model";
@@ -346,6 +352,11 @@ export class AgentService {
     }
   }
 
+  /** The composer's current-file chip: name the editor's front file to the agent, or not. */
+  toggleActiveFile(): void {
+    this.set({ includeActiveFile: this.state.includeActiveFile === false });
+  }
+
   openSettings(open: boolean): void {
     this.set({ showSettings: open });
   }
@@ -449,7 +460,7 @@ export class AgentService {
     if (this.streamBytes >= 8 * 1024 || this.streamQueue.length >= 128) {
       this.flushStream();
     } else if (this.streamTimer === null) {
-      this.streamTimer = setTimeout(() => this.flushStream(), 50);
+      this.streamTimer = setTimeout(() => { this.flushStream(); }, 50);
     }
   }
 
@@ -468,6 +479,12 @@ export class AgentService {
           this.onDownload(event);
         }),
       );
+      if (this.host.watchActiveFile)
+        this.unlisten.push(
+          this.host.watchActiveFile((activeFile) => {
+            if (activeFile !== this.state.activeFile) this.set({ activeFile });
+          }),
+        );
       const [model, mode, savedOptions, savedTasks] = await Promise.all([
         this.host.settingGet(MODEL_KEY).catch(() => null),
         this.host.settingGet(MODE_KEY).catch(() => null),
@@ -740,6 +757,9 @@ export class AgentService {
         return;
       }
       this.set({ engineState: event.state });
+      // The status line under the header reads the overview (running model, GPU placement); an engine started or
+      // restarted inside a turn must update it now, not when the turn ends.
+      if (event.state !== "loading") void this.refresh();
       if (!this.state.transcript.busy) return;
     }
     const transcript = applyEvent(this.state.transcript, event, (notice) =>
@@ -925,6 +945,8 @@ export class AgentService {
         modelId: task.modelId,
         mode: task.mode,
         taskId: task.id,
+        activeFile:
+          this.state.includeActiveFile === false ? null : (this.state.activeFile ?? null),
         attachments: task.attachments ?? [],
         conversationId: this.conversation.id,
         history,

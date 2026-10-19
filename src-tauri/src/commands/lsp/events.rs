@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use openmind_lsp::{LogLevel, LspEvents, PublishedDiagnostics};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::app_state::AppState;
 
@@ -73,6 +73,13 @@ struct LogEvent {
 
 impl LspEvents for Sink {
     fn diagnostics(&self, server: &str, published: PublishedDiagnostics) {
+        // Kept for the agent's get_diagnostics (its "check"), as the Problems panel shows them.
+        if let Some(cache) = self
+            .app
+            .try_state::<crate::commands::agent::diagnostics::DiagnosticsCache>()
+        {
+            cache.put(server, &published);
+        }
         let _ = self.app.emit(
             "lsp:diagnostics",
             DiagnosticsEvent {

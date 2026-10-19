@@ -123,8 +123,8 @@
   --overlay-2: rgba(255, 255, 255, 0.1);
   --overlay-3: rgba(255, 255, 255, 0.15);
   /* OpenMindAI Agent: its warm accent (spinner, mode chip), diff lines and the user's message. */
-  --agent-accent: #d97757;
-  --agent-accent-soft: rgba(217, 119, 87, 0.16);
+  --agent-accent: #7692ff;
+  --agent-accent-soft: rgba(118, 146, 255, 0.14);
   --agent-diff-add-bg: rgba(78, 160, 98, 0.18);
   --agent-diff-add-fg: #8fd19e;
   --agent-diff-del-bg: rgba(218, 84, 84, 0.18);
@@ -265,8 +265,8 @@
   --overlay-1: rgba(0, 0, 0, 0.05);
   --overlay-2: rgba(0, 0, 0, 0.08);
   --overlay-3: rgba(0, 0, 0, 0.12);
-  --agent-accent: #c15f3c;
-  --agent-accent-soft: rgba(193, 95, 60, 0.12);
+  --agent-accent: #4a68e0;
+  --agent-accent-soft: rgba(74, 104, 224, 0.12);
   --agent-diff-add-bg: rgba(46, 160, 67, 0.14);
   --agent-diff-add-fg: #1a7f37;
   --agent-diff-del-bg: rgba(207, 34, 46, 0.12);
@@ -383,8 +383,8 @@
   --overlay-1: rgba(255, 255, 255, 0.12);
   --overlay-2: rgba(255, 255, 255, 0.2);
   --overlay-3: rgba(255, 255, 255, 0.3);
-  --agent-accent: #ff9a6b;
-  --agent-accent-soft: rgba(255, 154, 107, 0.25);
+  --agent-accent: #9fb2ff;
+  --agent-accent-soft: rgba(159, 178, 255, 0.25);
   --agent-diff-add-bg: rgba(0, 255, 0, 0.18);
   --agent-diff-add-fg: #7cff7c;
   --agent-diff-del-bg: rgba(255, 0, 0, 0.22);

@@ -121,6 +121,36 @@ describe("agent transcript", () => {
     const t = run([{ type: "todos", items: [{ content: "Fix add", status: "in_progress" }] }]);
     expect(t.todos).toEqual([{ content: "Fix add", status: "in_progress" }]);
   });
+
+  it("says once per turn that the context was compacted", () => {
+    const compacted: AgentEvent = { type: "compacted", beforeTokens: 9000, afterTokens: 6000 };
+    const read: AgentEvent[] = [
+      { type: "toolStart", id: "r", name: "read_file", kind: "read", title: "Read", target: "a.js" },
+      { type: "toolEnd", id: "r", ok: true, summary: "Read 5 lines", preview: "", diff: null, changed: null },
+    ];
+    const first = run([compacted, ...read, compacted, ...read, compacted]);
+    const notices = (t: Transcript) => t.entries.filter((e) => e.kind === "notice" && e.text === "agent.context.compacted");
+    expect(notices(first)).toHaveLength(1);
+    const next = run([compacted], addUser(first, "go on", 2000));
+    expect(notices(next)).toHaveLength(2);
+  });
+
+  it("reports a turn whose changes were never applied", () => {
+    const t = run([
+      { type: "unchanged", failed: 2 },
+      { type: "turnEnd", reason: "done", message: null },
+    ]);
+    const notices = t.entries.filter((e) => e.kind === "notice");
+    expect(notices).toEqual([expect.objectContaining({ tone: "error", text: "agent.end.unchanged" })]);
+    expect(t.busy).toBe(false);
+  });
+
+  it("says a plan-mode turn changed nothing", () => {
+    const t = run([{ type: "unchanged", failed: 0 }, { type: "turnEnd", reason: "done", message: null }]);
+    expect(t.entries.filter((e) => e.kind === "notice")).toEqual([
+      expect.objectContaining({ tone: "info", text: "agent.end.planOnly" }),
+    ]);
+  });
 });
 
 describe("agent helpers", () => {

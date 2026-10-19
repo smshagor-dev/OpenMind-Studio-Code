@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 
 import type { AgentMode } from "../../services/agent/agentIpc";
 import { completeMention, mentionQuery } from "../../services/agent/agentModel";
@@ -7,47 +7,46 @@ import {
   AGENT_COMMANDS,
   matchingCommands,
 } from "../../services/agent/agentCommands";
-import { AgentAttachments } from "./AgentAttachments";
+import { AttachButton, AttachmentChips } from "./AgentAttachments";
 import { useT } from "../../i18n";
 
-function ModeLine({
-  mode,
-  contextShare,
-}: {
-  mode: AgentMode;
-  contextShare: number | null;
-}) {
+const MODE_ICONS: Record<AgentMode, string> = { ask: "◇", acceptEdits: "⏵⏵", auto: "»", plan: "⏸" };
+
+/** The permission mode, bottom left of the composer as in Claude Code (click or Shift+Tab cycles it). */
+function ModeButton({ mode }: { mode: AgentMode }) {
   const t = useT();
   return (
-    <div className="agent-prompt__status">
-      <button
-        type="button"
-        className={`agent-mode agent-mode--${mode}`}
-        title={t("agent.mode.cycle")}
-        onClick={() => void agent.cycleMode()}
-      >
-        {mode === "acceptEdits" ? (
-          <>
-            <span aria-hidden="true">⏵⏵</span> {t("agent.mode.acceptEdits")}
-          </>
-        ) : mode === "plan" ? (
-          <>
-            <span aria-hidden="true">⏸</span> {t("agent.mode.plan")}
-          </>
-        ) : (
-          t(`agent.mode.${mode}`)
-        )}
-        <span className="agent-mode__hint">{t("agent.mode.shiftTab")}</span>
-      </button>
-      {contextShare !== null ? (
-        <span
-          className="agent-prompt__context"
-          title={t("agent.context.title")}
-        >
-          {t("agent.context.used", { percent: contextShare })}
-        </span>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      className={`agent-mode agent-mode--${mode}`}
+      title={t("agent.mode.cycle")}
+      onClick={() => void agent.cycleMode()}
+    >
+      <span className="agent-mode__icon" aria-hidden="true">
+        {MODE_ICONS[mode]}
+      </span>
+      <span>{t(`agent.mode.${mode}`)}</span>
+    </button>
+  );
+}
+
+/** The editor's front file, named to the agent with the message; a click leaves it out (Claude Code's file chip). */
+function ActiveFileChip({ path, included }: { path: string; included: boolean }) {
+  const t = useT();
+  const name = path.split("/").pop() ?? path;
+  return (
+    <button
+      type="button"
+      className={included ? "agent-chip agent-chip--file" : "agent-chip agent-chip--file agent-chip--off"}
+      aria-pressed={included}
+      title={t(included ? "agent.composer.fileIncluded" : "agent.composer.fileExcluded", { path })}
+      onClick={() => {
+        agent.toggleActiveFile();
+      }}
+    >
+      <span aria-hidden="true">{included ? "◉" : "○"}</span>
+      <span className="agent-chip__name">{name}</span>
+    </button>
   );
 }
 
@@ -63,6 +62,13 @@ export function AgentPrompt({
   contextShare: number | null;
 }) {
   const t = useT();
+  const agentState = useSyncExternalStore(
+    (listener) => agent.subscribe(listener),
+    () => agent.getState(),
+  );
+  const activeFile = agentState.activeFile ?? null;
+  const includeFile = agentState.includeActiveFile !== false;
+  const attachments = agentState.attachments?.length ?? 0;
   const [text, setText] = useState("");
   const [caret, setCaret] = useState(0);
   const [files, setFiles] = useState<string[]>([]);
@@ -93,7 +99,7 @@ export function AgentPrompt({
     const element = area.current;
     if (!element) return;
     element.style.height = "auto";
-    element.style.height = `${Math.max(104, Math.min(element.scrollHeight, 260))}px`;
+    element.style.height = `${Math.max(60, Math.min(element.scrollHeight, 260))}px`;
   }, [text]);
 
   const shownFiles = dismissed || mention === null ? [] : files;
@@ -129,12 +135,10 @@ export function AgentPrompt({
       area.current?.setSelectionRange(next.caret, next.caret),
     );
   };
+  const canSend =
+    !(disabledReason && !text.trimStart().startsWith("/")) && (text.trim() !== "" || attachments > 0);
   const submit = async () => {
-    if (
-      (disabledReason && !text.trimStart().startsWith("/")) ||
-      (!text.trim() && !agent.getState().attachments?.length)
-    )
-      return;
+    if (!canSend) return;
     const sent = await agent.send(text);
     if (sent) {
       setText((current) => (current === text ? "" : current));
@@ -229,11 +233,25 @@ export function AgentPrompt({
             ? "agent-prompt__box agent-prompt__box--busy"
             : "agent-prompt__box"
         }
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const dropped = Array.from(event.dataTransfer.files);
+          if (dropped.length) void agent.attachFiles(dropped);
+        }}
       >
+        {activeFile || attachments > 0 ? (
+          <div className="agent-composer__context">
+            {activeFile ? <ActiveFileChip path={activeFile} included={includeFile} /> : null}
+            <AttachmentChips />
+          </div>
+        ) : null}
         <textarea
           ref={area}
           className="agent-prompt__input"
-          rows={4}
+          rows={2}
           value={text}
           spellCheck={false}
           placeholder={disabledReason ?? t("agent.prompt.placeholder")}
@@ -257,10 +275,20 @@ export function AgentPrompt({
           onKeyDown={onKey}
         />
         <div className="agent-composer__toolbar">
-          <AgentAttachments />
+          <ModeButton mode={mode} />
+          <span className="agent-composer__spacer" />
+          {contextShare !== null && contextShare > 0 ? (
+            <span
+              className={contextShare >= 80 ? "agent-composer__context-use agent-composer__context-use--high" : "agent-composer__context-use"}
+              title={t("agent.context.title")}
+            >
+              {t("agent.context.used", { percent: contextShare })}
+            </span>
+          ) : null}
+          <AttachButton />
           <button
             type="button"
-            className="agent-composer__shortcut"
+            className="agent-composer__icon agent-composer__shortcut"
             aria-label={t("agent.composer.commands")}
             title={t("agent.composer.commands")}
             onClick={() => {
@@ -272,16 +300,18 @@ export function AgentPrompt({
           >
             /
           </button>
-          <button
-            type="button"
-            className="agent-composer__model"
-            onClick={() => {
-              agent.openSetup(true);
-            }}
-          >
-            {t("agent.composer.model")}
-          </button>
-          <ModeLine mode={mode} contextShare={contextShare} />
+          {!busy || text.trim() ? (
+            <button
+              type="button"
+              className="agent-composer__send"
+              aria-label={t(busy ? "agent.tasks.queue" : "agent.tasks.send")}
+              title={t(busy ? "agent.tasks.queue" : "agent.tasks.send")}
+              disabled={!canSend}
+              onClick={() => void submit()}
+            >
+              ↑
+            </button>
+          ) : null}
           {busy ? (
             <button
               type="button"
@@ -290,25 +320,11 @@ export function AgentPrompt({
               title={t("agent.tasks.stop")}
               onClick={() => void agent.stop()}
             >
-              ■
+              <span aria-hidden="true" />
             </button>
           ) : null}
-          <button
-            type="button"
-            className="agent-composer__send"
-            aria-label={t(busy ? "agent.tasks.queue" : "agent.tasks.send")}
-            title={t(busy ? "agent.tasks.queue" : "agent.tasks.send")}
-            disabled={
-              (!!disabledReason && !text.trimStart().startsWith("/")) ||
-              (!text.trim() && !agent.getState().attachments?.length)
-            }
-            onClick={() => void submit()}
-          >
-            ↑
-          </button>
         </div>
       </div>
-      <div className="agent-composer__hint">{t("agent.composer.hint")}</div>
     </div>
   );
 }

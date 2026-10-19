@@ -84,6 +84,7 @@ pub fn call(
             for_model: text,
             diff: None,
             change: None,
+            more_changes: Vec::new(),
             todos: None,
         },
         Err(error) => Outcome::failed(error),

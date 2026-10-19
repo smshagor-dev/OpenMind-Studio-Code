@@ -31,6 +31,37 @@ function unsavedPaths(): string[] {
   return [...paths];
 }
 
+/** The editor's front file relative to the open folder, or `null` (no folder, a preview, an outside or untitled file). */
+function activeFile(): string | null {
+  const folder = container.workspace.getActiveWorkspace()?.path;
+  const id = container.workspace.getState().activeId;
+  if (!folder || !id) return null;
+  let path: string | null;
+  try {
+    path = container.documents.snapshot(id).path;
+  } catch {
+    return null; // A preview tab is not a document.
+  }
+  if (!path) return null;
+  const root = folder.replace(/\\/g, "/").replace(/\/+$/, "");
+  const file = path.replace(/\\/g, "/");
+  if (file.toLowerCase().startsWith(`${root.toLowerCase()}/`)) return file.slice(root.length + 1);
+  return null;
+}
+
+function watchActiveFile(listener: (relativePath: string | null) => void): () => void {
+  let last: string | null | undefined;
+  const check = () => {
+    const now = activeFile();
+    if (now !== last) {
+      last = now;
+      listener(now);
+    }
+  };
+  check();
+  return container.workspace.subscribe(check);
+}
+
 function taskScope(): string {
   try {
     return getCurrentWebviewWindow().label;
@@ -42,6 +73,7 @@ function taskScope(): string {
 export function agentHost(): AgentHost {
   return {
     unsavedPaths,
+    watchActiveFile,
     gitChanges: () => agentGitChanges(container),
     plugins: (argument) => agentPlugins(container, argument),
     exportChat: (markdown) => exportAgentChat(container, markdown),

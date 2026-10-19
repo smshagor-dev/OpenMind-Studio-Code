@@ -63,7 +63,11 @@ export class AgentTasks {
     if (this.state.tasks.filter((t) => t.status === "pending").length >= 20) return false;
     const retained = this.state.tasks.filter((t) => t.status === "pending" || t.id === this.state.activeId);
     const history = this.state.tasks.filter((t) => !retained.includes(t)).slice(-79);
-    this.set({ tasks: [...history, ...(first ? [task, ...retained] : [...retained, task])], paused: this.state.paused || !task.options.autoRunQueue });
+    // A queue paused by a stopped, declined or failed turn holds back what was *waiting*. A message typed while
+    // nothing runs and nothing waits is the user's next instruction, so it runs (unless auto-run is off).
+    const idle = !this.state.activeId && retained.length === 0;
+    const paused = idle ? !task.options.autoRunQueue : this.state.paused || !task.options.autoRunQueue;
+    this.set({ tasks: [...history, ...(first ? [task, ...retained] : [...retained, task])], paused });
     void this.pump();
     return true;
   }

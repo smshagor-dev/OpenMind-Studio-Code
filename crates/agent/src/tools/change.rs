@@ -35,7 +35,7 @@ fn snapshot(path: &std::path::Path) -> Result<DeleteSnapshot, String> {
     Ok(DeleteSnapshot(rows))
 }
 
-fn validate_now(ctx: &ToolContext<'_>, path: &std::path::Path) -> Result<(), String> {
+pub(super) fn validate_now(ctx: &ToolContext<'_>, path: &std::path::Path) -> Result<(), String> {
     let resolved = ctx.ws.resolve_for_change(&path.to_string_lossy())?;
     if resolved != path {
         return Err("The path changed after preparation. Read it again.".into());
@@ -55,11 +55,11 @@ use super::{arg_str, Change, ChangeKind, Op, Outcome, Prepared, ToolContext, Too
 use crate::diff::{diff, FileDiff};
 use crate::textfile::{self, TextFile, MAX_TEXT_BYTES};
 
-fn refused(title: &str, target: String, message: impl Into<String>) -> Prepared {
+pub(super) fn refused(title: &str, target: String, message: impl Into<String>) -> Prepared {
     Prepared::finished(ToolKind::Edit, title, target, Outcome::failed(message))
 }
 
-const UNSAVED: &str =
+pub(super) const UNSAVED: &str =
     "The file has unsaved changes in the editor. Ask the user to save or discard them first.";
 
 fn plural(n: usize, word: &str) -> String {
@@ -110,42 +110,39 @@ pub fn edit_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
         Ok(f) => f,
         Err(e) => return refused("Update", rel, e),
     };
+    let replace_all = args["replace_all"].as_bool().unwrap_or(false);
+    match replace_text(&file.text, old, new, replace_all) {
+        Ok(text) => planned_write(path, rel, Some(file), text, "Update"),
+        Err(message) => refused("Update", rel, message),
+    }
+}
+
+/// One exact-text replacement (`edit_file`, and each step of `multi_edit`): `old` must be found exactly once unless
+/// `replace_all`.
+pub(super) fn replace_text(
+    text: &str,
+    old: &str,
+    new: &str,
+    replace_all: bool,
+) -> Result<String, String> {
     let old = old.replace("\r\n", "\n");
     let new = new.replace("\r\n", "\n");
     if old.is_empty() {
-        return refused(
-            "Update",
-            rel,
-            "old_string is empty. Use write_file to replace a whole file.",
-        );
+        return Err("old_string is empty. Use write_file to replace a whole file.".into());
     }
     if old == new {
-        return refused(
-            "Update",
-            rel,
-            "old_string and new_string are the same; nothing would change.",
-        );
+        return Err("old_string and new_string are the same; nothing would change.".into());
     }
-    let count = file.text.matches(old.as_str()).count();
-    let replace_all = args["replace_all"].as_bool().unwrap_or(false);
-    let text = match (count, replace_all) {
-        (0, _) => {
-            return refused(
-                "Update",
-                rel,
-                "old_string was not found in the file. Read the file again and copy the text exactly, with its indentation.",
-            )
-        }
-        (1, _) | (_, true) => file.text.replace(old.as_str(), &new),
-        (n, false) => {
-            return refused(
-                "Update",
-                rel,
-                format!("old_string appears {n} times. Add more surrounding lines so it is unique, or set replace_all."),
-            )
-        }
-    };
-    planned_write(path, rel, Some(file), text, "Update")
+    match (text.matches(old.as_str()).count(), replace_all) {
+        (0, _) => Err(
+            "old_string was not found in the file. Read the file again and copy the text exactly, with its indentation."
+                .into(),
+        ),
+        (1, _) | (_, true) => Ok(text.replace(old.as_str(), &new)),
+        (n, false) => Err(format!(
+            "old_string appears {n} times. Add more surrounding lines so it is unique, or set replace_all."
+        )),
+    }
 }
 
 pub fn write_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
@@ -178,7 +175,7 @@ pub fn write_file(args: &Value, ctx: &ToolContext<'_>) -> Prepared {
     planned_write(path, rel, before, content.replace("\r\n", "\n"), title)
 }
 
-fn planned_write(
+pub(super) fn planned_write(
     path: PathBuf,
     rel: String,
     before: Option<TextFile>,
@@ -255,6 +252,7 @@ pub fn apply_write(
             before: before_bytes,
             after: Some(after),
         }),
+        more_changes: Vec::new(),
         todos: None,
     }
 }
@@ -341,6 +339,7 @@ pub fn apply_delete(
             before: before_bytes,
             after: None,
         }),
+        more_changes: Vec::new(),
         todos: None,
     }
 }

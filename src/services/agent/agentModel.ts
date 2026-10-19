@@ -176,8 +176,17 @@ export function applyEvent(t: Transcript, event: AgentEvent, say: (notice: NonNu
         promptTokens: event.promptTokens,
         contextTokens: event.contextTokens,
       };
-    case "compacted":
-      return addNotice(t, "info", say({ tone: "info", key: "agent.context.compacted", message: null }));
+    case "compacted": {
+      // Once per turn is enough: a long turn can compact before every step.
+      const text = say({ tone: "info", key: "agent.context.compacted", message: null });
+      const lastUser = t.entries.map((e) => e.kind).lastIndexOf("user");
+      const already = t.entries.slice(lastUser + 1).some((e) => e.kind === "notice" && e.text === text);
+      return already ? t : addNotice(t, "info", text);
+    }
+    case "unchanged":
+      return event.failed === 0
+        ? addNotice(t, "info", say({ tone: "info", key: "agent.end.planOnly", message: null }))
+        : addNotice(t, "error", say({ tone: "error", key: "agent.end.unchanged", message: null }));
     case "continuing":
       return addNotice(t, "info", say({ tone: "info", key: "agent.context.continuing", message: null }));
     case "engine":

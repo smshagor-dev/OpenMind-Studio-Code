@@ -19,6 +19,7 @@ pub mod paths;
 pub mod policy;
 pub mod prompt;
 pub mod session;
+mod text_calls;
 pub mod textfile;
 pub mod tools;
 pub mod wire;

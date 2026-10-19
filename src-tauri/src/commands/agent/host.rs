@@ -159,6 +159,7 @@ impl AgentHost for WindowHost<'_> {
                 .mcp
                 .specs(),
         );
+        tools.push(super::diagnostics::spec());
         tools
     }
     fn external_call(
@@ -166,6 +167,20 @@ impl AgentHost for WindowHost<'_> {
         call: &openmind_agent::wire::ToolCall,
         cancel: &AtomicBool,
     ) -> openmind_agent::tools::Outcome {
+        if call.name == super::diagnostics::TOOL {
+            let root = self
+                .app
+                .state::<super::AgentRuntime>()
+                .chat(&self.label)
+                .root
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            return match self.app.try_state::<super::diagnostics::DiagnosticsCache>() {
+                Some(cache) => super::diagnostics::answer(&cache, root.as_deref(), &call.arguments),
+                None => openmind_agent::tools::Outcome::failed("Diagnostics are not available."),
+            };
+        }
         if call.name.starts_with("mcp_") {
             return self
                 .app

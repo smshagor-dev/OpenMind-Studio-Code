@@ -10,6 +10,7 @@ struct Fixture {
     env: CommandEnv,
     cancel: AtomicBool,
     unsaved: Vec<std::path::PathBuf>,
+    shell: Shell,
 }
 
 impl Fixture {
@@ -30,6 +31,7 @@ impl Fixture {
             env: CommandEnv::default(),
             cancel: AtomicBool::new(false),
             unsaved: Vec::new(),
+            shell: Shell::new(),
         }
     }
 
@@ -39,6 +41,7 @@ impl Fixture {
             env: &self.env,
             cancel: &self.cancel,
             unsaved: &self.unsaved,
+            shell: &self.shell,
         }
     }
 
@@ -341,3 +344,5 @@ fn unix_timeout_kills_inherited_output_pipes() {
     assert!(!result.ok);
     assert!(started.elapsed() < std::time::Duration::from_secs(6));
 }
+
+mod terminal_and_files;
