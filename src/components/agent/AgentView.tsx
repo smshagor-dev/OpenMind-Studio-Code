@@ -13,7 +13,6 @@ import { AgentHistoryView } from "./AgentHistoryView";
 import { AgentCommandPanel } from "./AgentCommandPanel";
 import { AgentQueue } from "./AgentQueue";
 import { AgentBackground } from "./AgentBackground";
-import { AgentTabsBar } from "./AgentTabsBar";
 import { AgentPermission } from "./AgentPermission";
 import { AgentPrompt } from "./AgentPrompt";
 import { agentTier } from "../../services/agent/agentBrand";
@@ -228,7 +227,6 @@ export function AgentView() {
       }}
     >
       <Header />
-      <AgentTabsBar tabs={state.tabs} current={state.conversationId} busy={transcript.busy} />
       <div className="agent-acceleration" role="status" data-testid="agent-acceleration-status">
         {state.overview.gpuReport
           ? t(`agent.gpu.mode.${state.overview.gpuReport.mode}`, {
