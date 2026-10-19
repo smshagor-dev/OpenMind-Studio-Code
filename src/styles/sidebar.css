@@ -253,12 +253,14 @@
   transition: background-color 0.1s ease-out 0.3s;
 }
 
+/* Inside the side bar: the card around it (frame.css `.workbench__side`) clips anything past its edge, which left only
+   2 px of a sash at -2px grabbable. */
 .sash--right {
-  right: -2px;
+  right: 0;
 }
 
 .sash--left {
-  left: -2px;
+  left: 0;
 }
 
 .sash:hover,
