@@ -938,12 +938,24 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   conversation's `Shell` keeps the working directory between commands (a `<<OPENMIND_CWD>>` last line, stripped; never outside
   the folder) and runs `run_in_background` commands (≤ 6, each its own Job Object, killed with the conversation/app) read with
   `command_output` (only new output) and stopped with `kill_command`; `multi_edit` (all-or-nothing edits of one file),
-  `move_file` (files only, never over an existing file, two `Change`s so Undo puts it back); `web_fetch` (`tools/web.rs`:
+  `move_file` (files and folders, missing parent folders created, never over anything that exists, never into itself; Undo puts it back); `web_fetch` (`tools/web.rs`:
   `openmind_network::http::agent` = https only + the user's proxy, http upgraded, loopback/private/link-local/`.local` hosts
   refused, same-host redirects followed and a cross-host one reported, HTML to text, 2 MB read / 20 000 characters shown,
-  marked as web data; asks like a command, not in plan mode); the app adds `get_diagnostics`
+  marked as web data; asks like a command, not in plan mode); `notebook_edit` (`tools/notebook.rs`: replace/insert/delete a
+  cell of an nbformat 4 notebook, source as Jupyter's list of lines, a changed code cell loses its outputs, key order and
+  indentation kept, an ordinary diffed/asked/undoable write); `git_status` / `git_diff` (look, no permission) and `git_commit`
+  (`tools/git.rs`: `git` as an argument list in the folder with the app's environment, no prompt/editor; commits only the
+  files named in `paths` — staged first — or what is already staged, never everything; asked like a command); `task`
+  (`session/subagent.rs`: a sub-agent with its own conversation in plan mode — look only —, the same model and folder, a short
+  report back, one "Agent" line in the transcript, no nested `task`); `view_image` (`vision.rs`: an image of the project to the
+  user's *local* vision engine with a question, offered only when one is configured; the description is marked untrusted); the
+  app adds `get_diagnostics`
   (`commands/agent/diagnostics.rs`: the language servers' latest diagnostics, cached from the LSP sink, errors first, only
-  analysed files)); a call is **prepared** first (exact new text + `diff`) and re-checked
+  analysed files)); tool calls a model writes as text (`<function=…>`, `<tool_call>…`; `text_calls.rs`) are run as calls when
+  the structured list is empty, and the panel hides that markup (`toolMarkup.ts`); an external/MCP call's target shows its
+  arguments plainly (`external::shown_arguments`); the **after-edit check** (`session/hooks.rs`, setting "After-edit check" =
+  one command line of the user's, never the project's) runs when a turn changed files, asked like any command, and a failure
+  goes back to the model until it passes (bounded per turn); a call is **prepared** first (exact new text + `diff`) and re-checked
   before writing (a file changed meanwhile is refused); a file with unsaved editor changes is never changed. `policy` (`Ask` default:
   every edit/delete/command asks; `AcceptEdits`; `Plan` = changing tools not even offered; "don't ask again" per conversation for
   edits, deletions or one exact command), `session` (the loop: at most `max_steps` model calls a turn — default 128, setting 8-512 —,
@@ -967,7 +979,7 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   too), SHA-256 pinned, **never on PATH**. Frontend: `src/services/agent/` (`agentIpc`, pure `agentModel` reducer, `AgentService`,
   `index.ts` wiring outside `container.ts`), `components/agent/` (Claude Code's layout and motion: ● tool lines with ⎿ results,
   red/green diffs, the ✻ spinner with a shimmering verb + elapsed + tokens + "esc to interrupt", the 1/2/3 permission card, todos,
-  `@file` and `/` menus, Shift+Tab modes), `styles/agent.css` (`--agent-*` tokens), activity bar item "OpenMindAI Agent" (always shown).
+  `@file` and `/` menus, Shift+Tab modes), `styles/agent.css` (`--agent-*` tokens), activity bar item "OpenMindAI Agent" (always shown). **Background commands**: the chat keeps its own reference to the conversation's `Shell` (readable while a turn holds the session; dropped on reset, which stops them); `agent_background_list|kill` feed the strip above the composer (`AgentBackground`, re-read after each tool, at the end of a turn and on the 15 s timer while any runs). **Conversation tabs** (`agentTabs.ts`, `AgentTabsBar`): a tab is a saved conversation (≤ 8, `agent.tabs.<scope>` in `editor_settings`, titled by its first message; an empty new chat is a tab only while current); switching resumes it like /resume — the backend keeps one conversation per window, so the session (and its background commands) is replaced — and is refused while a turn runs; closing the current tab moves to its neighbour or a new chat; the strip shows from two tabs on.
   Composer (Claude Code's VS Code panel): one input-styled box — a context row (the editor's front file as a chip, on by default,
   sent as `SendRequest.activeFile` and named in the system prompt only when it resolves to a file inside the folder; attachments),
   the message, and one row: mode ("Ask before edits" / "Edit automatically" / "Auto (no approvals)" / "Plan mode", Shift+Tab),
