@@ -29,18 +29,15 @@ function mount(registered: string[] = []) {
     openFolder: vi.fn().mockResolvedValue(undefined),
     unpinFolder: vi.fn().mockResolvedValue(undefined),
   };
-  harness.current = {
-    commands,
-    run,
-    workspace,
-    welcome: {
-      subscribe: () => () => undefined,
-      getState: () => WELCOME_STATE,
-      setShowOnStartup: vi.fn().mockResolvedValue(undefined),
-    },
+  const welcome = {
+    subscribe: () => () => undefined,
+    getState: () => WELCOME_STATE,
+    setShowOnStartup: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn(),
   };
+  harness.current = { commands, run, workspace, welcome };
   render(<WelcomeContent recents={RECENTS as never} />);
-  return { run, workspace };
+  return { run, workspace, welcome };
 }
 
 const WELCOME_STATE = { open: true, showOnStartup: true };
@@ -66,12 +63,14 @@ describe("Welcome page actions", () => {
   });
 
   it("recent folders, recent files and pinned folders open through the workspace", () => {
-    const { workspace } = mount();
+    const { workspace, welcome } = mount();
 
     fireEvent.click(screen.getByRole("button", { name: /^My Site$/ }));
     expect(workspace.openFolder).toHaveBeenCalledWith("C:/My Site");
     fireEvent.click(screen.getByRole("button", { name: /index\.php/ }));
     expect(workspace.openPath).toHaveBeenCalledWith("C:/My Site/index.php");
+    // Opening a recent file replaces the Welcome page, as in VS Code.
+    expect(welcome.close).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: /Pinned/ }));
     expect(workspace.openFolder).toHaveBeenCalledWith("C:/Pinned");
   });
