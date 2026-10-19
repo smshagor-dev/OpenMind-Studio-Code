@@ -439,17 +439,40 @@ pub struct BackgroundJob {
 
 /// The agent's background commands still running in this window's conversation.
 #[tauri::command]
-pub fn agent_background_list(window: tauri::Window, agent: State<'_, AgentRuntime>) -> Vec<BackgroundJob> {
-    let shell = agent.chat(window.label()).shell.lock().unwrap_or_else(PoisonError::into_inner).clone();
+pub fn agent_background_list(
+    window: tauri::Window,
+    agent: State<'_, AgentRuntime>,
+) -> Vec<BackgroundJob> {
+    let shell = agent
+        .chat(window.label())
+        .shell
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
     shell
-        .map(|shell| shell.running().into_iter().map(|(id, command)| BackgroundJob { id, command }).collect())
+        .map(|shell| {
+            shell
+                .running()
+                .into_iter()
+                .map(|(id, command)| BackgroundJob { id, command })
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 /// Stops one of the agent's background commands (and everything it started).
 #[tauri::command]
-pub fn agent_background_kill(id: String, window: tauri::Window, agent: State<'_, AgentRuntime>) -> Result<String, String> {
-    let shell = agent.chat(window.label()).shell.lock().unwrap_or_else(PoisonError::into_inner).clone();
+pub fn agent_background_kill(
+    id: String,
+    window: tauri::Window,
+    agent: State<'_, AgentRuntime>,
+) -> Result<String, String> {
+    let shell = agent
+        .chat(window.label())
+        .shell
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
     let shell = shell.ok_or("The agent runs no background command.")?;
     let outcome = shell.kill(id.trim());
     if outcome.ok {
