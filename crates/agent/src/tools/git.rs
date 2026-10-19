@@ -63,14 +63,14 @@ fn looked(
 }
 
 pub fn status(ctx: &ToolContext<'_>) -> Prepared {
-    let result = git(&["status", "--short", "--branch"], ctx).and_then(|(ok, status)| {
+    let result = git(&["status", "--short", "--branch"], ctx).map(|(ok, status)| {
         if !ok {
-            return Ok((false, status));
+            return (false, status);
         }
         let log = git(&["log", "--oneline", "-5"], ctx)
             .map(|(_, log)| log)
             .unwrap_or_default();
-        Ok((true, format!("{status}\n\nLast commits:\n{log}")))
+        (true, format!("{status}\n\nLast commits:\n{log}"))
     });
     looked("Git status", String::new(), result, "No changes.")
 }

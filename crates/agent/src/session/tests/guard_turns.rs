@@ -306,9 +306,10 @@ fn a_failing_after_edit_check_sends_the_model_back_until_it_passes() {
     // Edits are accepted by the mode; the check (a command) is allowed twice.
     let panel = Panel::new(vec![Decision::Allow, Decision::Allow]);
     let mut s = session(Mode::AcceptEdits);
-    let mut options = crate::SessionOptions::default();
-    options.after_edit_command = check.into();
-    s.set_options(options);
+    s.set_options(crate::SessionOptions {
+        after_edit_command: check.into(),
+        ..crate::SessionOptions::default()
+    });
     s.run_turn("Make a.txt", &model, &panel, &project.input());
     assert_eq!(panel.end(), "done");
     assert_eq!(model.requests.lock().expect("requests").len(), 4);
