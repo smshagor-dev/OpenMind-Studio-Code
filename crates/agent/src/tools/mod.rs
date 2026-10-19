@@ -5,6 +5,7 @@
 mod change;
 pub(crate) mod command;
 mod more;
+mod notebook;
 mod read;
 pub mod shell;
 mod web;
@@ -300,6 +301,17 @@ pub fn specs(read_only: bool) -> Value {
                 }, "required": ["url"]}),
             ),
             function(
+                "notebook_edit",
+                "Change a Jupyter notebook (.ipynb) cell by cell: replace a cell's source (mode replace), insert a new cell before position cell (mode insert), or delete a cell (mode delete). Cells count from 0. Read the notebook first. A code cell whose source changes loses its old outputs.",
+                json!({"type": "object", "properties": {
+                    "path": {"type": "string"},
+                    "cell": {"type": "integer", "description": "The cell's number, counting from 0"},
+                    "new_source": {"type": "string", "description": "The cell's new source (replace, insert)"},
+                    "cell_type": {"type": "string", "enum": ["code", "markdown", "raw"]},
+                    "mode": {"type": "string", "enum": ["replace", "insert", "delete"]}
+                }, "required": ["path", "cell"]}),
+            ),
+            function(
                 "move_file",
                 "Move or rename a file or a folder inside the project. Missing folders of the new place are created; nothing that already exists there is overwritten.",
                 json!({"type": "object", "properties": {
@@ -326,7 +338,7 @@ pub fn kind_of(name: &str) -> ToolKind {
         "delete_file" => ToolKind::Delete,
         // Fetching sends the address off the computer: it asks like a command.
         "run_command" | "web_fetch" => ToolKind::Command,
-        "multi_edit" | "move_file" => ToolKind::Edit,
+        "multi_edit" | "move_file" | "notebook_edit" => ToolKind::Edit,
         // Reading a background command's output or stopping it touches nothing the user owns.
         "command_output" | "kill_command" => ToolKind::Read,
         "todo_write" => ToolKind::Meta,
@@ -373,6 +385,7 @@ pub fn prepare(name: &str, arguments: &str, ctx: &ToolContext<'_>, read_only: bo
         "run_command" => command::prepare(&args, ctx),
         "multi_edit" => more::multi_edit(&args, ctx),
         "move_file" => more::move_file(&args, ctx),
+        "notebook_edit" => notebook::notebook_edit(&args, ctx),
         "web_fetch" => web::prepare(&args, ctx),
         "command_output" => more::background(&args, ctx, false),
         "kill_command" => more::background(&args, ctx, true),

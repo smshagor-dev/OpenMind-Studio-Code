@@ -14,7 +14,7 @@ openmind-network = { version = "1.0.4", path = "../network" }
 openmind-fs = { version = "1.0.4", path = "../fs" }
 openmind-search = { version = "1.0.4", path = "../search" }
 serde = { workspace = true, features = ["derive"] }
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
 tracing.workspace = true
 trash = "5.2.9"
