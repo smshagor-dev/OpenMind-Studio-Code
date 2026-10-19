@@ -20,6 +20,7 @@ import { SearchView } from "./SearchView";
 import { SourceControlView } from "./SourceControlView";
 import { ExtensionsView } from "./ExtensionsView";
 import { DependenciesView } from "./deps/DependenciesView";
+import { BookmarksView } from "./BookmarksView";
 import { CollaborationView } from "./collab/CollaborationView";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 import { t } from "../i18n";
@@ -41,6 +42,7 @@ const VIEW_TITLES: Record<BuiltInView, string> = {
   debug: "view.runAndDebug",
   extensions: "view.extensions",
   deps: "view.dependencies",
+  bookmarks: "view.bookmarks",
   collab: "view.collaboration",
   ai: "view.ai",
   agent: "view.agent",
@@ -143,6 +145,8 @@ function SideViewContent({
       return <ExtensionsView />;
     case "deps":
       return <DependenciesView hasFolder={hasFolder} />;
+    case "bookmarks":
+      return <BookmarksView />;
     case "collab":
       return <CollaborationView />;
     case "ai":

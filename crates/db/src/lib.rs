@@ -1,3 +1,4 @@
+pub mod bookmarks;
 pub mod breakpoints;
 pub mod collab;
 pub mod editor_settings;
@@ -20,6 +21,7 @@ use std::path::Path;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::SqlitePool;
 
+pub use bookmarks::{BookmarkRow, BookmarksRepository};
 pub use breakpoints::{BreakpointRow, BreakpointsRepository};
 pub use editor_settings::EditorSettingsRepository;
 pub use error::{DbError, FailureKind};

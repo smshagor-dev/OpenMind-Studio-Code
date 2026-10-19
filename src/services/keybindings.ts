@@ -99,6 +99,10 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "F11", command: "debug.stepInto", owner: "app" },
   { key: "Shift+F11", command: "debug.stepOut", owner: "app" },
   { key: "F9", command: "debug.toggleBreakpoint", owner: "app" },
+  // Bookmarks (the keys of VS Code's Bookmarks extension)
+  { key: "Ctrl+Alt+K", command: "bookmarks.toggle", owner: "app" },
+  { key: "Ctrl+Alt+L", command: "bookmarks.jumpToNext", owner: "app" },
+  { key: "Ctrl+Alt+J", command: "bookmarks.jumpToPrevious", owner: "app" },
   // Terminal
   { key: "Ctrl+Shift+`", command: "terminal.new", owner: "app" },
   { key: "Ctrl+Shift+5", command: "terminal.split", owner: "app" },

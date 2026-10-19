@@ -304,6 +304,14 @@ export function RuntimeIcon(props: IconProps) {
   );
 }
 
+export function BookmarkIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 1.5h8v13l-4-3-4 3z" />
+    </Svg>
+  );
+}
+
 export function ServerIcon(props: IconProps) {
   return (
     <Svg {...props}>

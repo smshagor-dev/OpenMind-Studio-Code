@@ -210,6 +210,8 @@ fn main() {
             commands::debug::debug_set_breakpoints,
             commands::debug::breakpoints_load,
             commands::debug::breakpoints_save,
+            commands::bookmarks::bookmarks_load,
+            commands::bookmarks::bookmarks_save,
             commands::debug::debug_configurations,
             commands::tasks::tasks_list,
             commands::tasks::tasks_plan,

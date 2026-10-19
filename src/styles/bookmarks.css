@@ -1,0 +1,114 @@
+/* Editor bookmarks: the mark beside the line numbers and the Bookmarks side bar view. */
+
+.monaco-editor .bookmark-mark {
+  margin-left: 2px;
+  border-left: 3px solid var(--bookmark-fg);
+}
+
+.bookmarks {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 13px;
+}
+
+.bookmarks__toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 2px 8px;
+}
+
+.bookmarks__action,
+.bookmarks__remove {
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--sidebar-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.bookmarks__action:hover:not(:disabled),
+.bookmarks__remove:hover {
+  background: var(--toolbar-hover-bg);
+}
+
+.bookmarks__action:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.bookmarks__empty {
+  margin: 8px 16px;
+  color: var(--fg-muted);
+}
+
+.bookmarks__files,
+.bookmarks__files ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookmarks__file {
+  padding: 4px 12px 2px;
+  overflow: hidden;
+  color: var(--sidebar-fg);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmarks__row {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.bookmarks__row:hover {
+  background: var(--toolbar-hover-bg);
+}
+
+.bookmarks__open {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 8px 2px 24px;
+  border: 0;
+  border-left: 3px solid var(--bookmark-fg);
+  background: transparent;
+  color: var(--sidebar-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bookmarks__line {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.bookmarks__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmarks__remove {
+  visibility: hidden;
+}
+
+.bookmarks__row:hover .bookmarks__remove,
+.bookmarks__remove:focus-visible {
+  visibility: visible;
+}
+
+.bookmarks__open:focus-visible,
+.bookmarks__action:focus-visible,
+.bookmarks__remove:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
