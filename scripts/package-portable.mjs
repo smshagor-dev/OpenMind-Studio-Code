@@ -41,7 +41,16 @@ const profile = option("--profile", "release");
 // Inside the project's git-ignored release folder; `release.mjs --portable <zip>` then copies it into
 // `release/v<version>/windows/` under its release name.
 const outDir = resolve(root, option("--out", join("release", "staging", "portable")));
-const targetDir = process.env.CARGO_TARGET_DIR ?? join(root, "target");
+// Cargo's real target folder: a machine-local .cargo/config.toml may move it (as build-info.mjs reads it too).
+const targetDir =
+  process.env.CARGO_TARGET_DIR ??
+  JSON.parse(
+    execFileSync("cargo", ["metadata", "--format-version", "1", "--no-deps"], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+  ).target_directory;
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 
 if (!flag("--no-build")) {
