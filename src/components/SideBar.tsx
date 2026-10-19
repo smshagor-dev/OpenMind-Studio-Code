@@ -79,7 +79,7 @@ export function SideBar(props: SideBarProps) {
   return (
     <aside
       className={layout.sidebarPosition === "right" ? "sidebar sidebar--right" : "sidebar"}
-      style={{ width: view === "agent" ? Math.max(layout.sidebarWidth, 480) : layout.sidebarWidth, maxWidth: view === "agent" ? "min(90vw, 1000px)" : undefined }}
+      style={{ width: layout.sidebarWidth }}
       aria-label={title}
     >
       <div className="sidebar__title">

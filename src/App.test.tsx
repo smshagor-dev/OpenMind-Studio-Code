@@ -72,6 +72,19 @@ Object.defineProperty(navigator, "clipboard", {
 vi.stubGlobal("ClipboardItem", FakeClipboardItem);
 
 describe("App", () => {
+  it("the side bar keeps the dragged width in every view, the agent's too", async () => {
+    render(<App />);
+    act(() => {
+      container.layout.previewSidebarWidth(300);
+    });
+    await act(() => container.layout.showView("agent"));
+    const sidebar = document.querySelector<HTMLElement>(".sidebar");
+    expect(sidebar?.style.width).toBe("300px");
+    expect(sidebar?.style.maxWidth).toBe("");
+    await act(() => container.layout.showView("explorer"));
+    expect(document.querySelector<HTMLElement>(".sidebar")?.style.width).toBe("300px");
+  });
+
   it("renders the VS Code-style workbench chrome immediately", () => {
     render(<App />);
 
