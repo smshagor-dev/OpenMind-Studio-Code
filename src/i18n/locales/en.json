@@ -2723,6 +2723,7 @@
   "agent.tool.Move": "Move",
   "agent.tool.Fetch": "Fetch",
   "agent.tool.Agent": "Agent",
+  "agent.tool.view_image": "Look at image",
   "agent.tool.get_diagnostics": "Check",
   "agent.tool.UpdateTodos": "Update Todos",
   "agent.tool.moreLines": "Show {count} more lines",

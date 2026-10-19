@@ -181,6 +181,25 @@ impl AgentHost for WindowHost<'_> {
                 None => openmind_agent::tools::Outcome::failed("Diagnostics are not available."),
             };
         }
+        if call.name == openmind_agent::vision::TOOL {
+            let root = self
+                .app
+                .state::<super::AgentRuntime>()
+                .chat(&self.label)
+                .root
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone();
+            return match self.options {
+                Some(options) => openmind_agent::vision::view_image(
+                    options,
+                    root.as_deref(),
+                    &call.arguments,
+                    cancel,
+                ),
+                None => openmind_agent::tools::Outcome::failed("No vision engine is configured."),
+            };
+        }
         if call.name.starts_with("mcp_") {
             return self
                 .app
