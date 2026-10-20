@@ -139,7 +139,7 @@ fn compiler_label(tool: &ResolvedExecutable) -> String {
 }
 
 /// The executable name a compiler writes: `hello.exe` on Windows.
-fn executable_name(stem: &str) -> String {
+pub(crate) fn executable_name(stem: &str) -> String {
     if cfg!(windows) {
         format!("{stem}.exe")
     } else {
@@ -243,7 +243,7 @@ fn pascal_first_word(text: &str) -> String {
 
 /// A Pascal unit or library, or a Fortran file of modules/procedures only, compiles but has no program to run:
 /// say so instead of building it and then failing to start (or link) an executable.
-fn refuse_library_file(kind: RunnableKind, file: &Path) -> Result<(), RunError> {
+pub(crate) fn refuse_library_file(kind: RunnableKind, file: &Path) -> Result<(), RunError> {
     let reason = match kind {
         RunnableKind::Pascal => {
             let text = std::fs::read_to_string(file).unwrap_or_default();

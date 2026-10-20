@@ -60,6 +60,7 @@ if "%AUTHENTICODE%"=="1" (
 )
 node scripts\prepare-lsp-bundle.mjs --check || goto fail
 node scripts\prepare-python-bundle.mjs --check || goto fail
+node scripts\prepare-pascalabc-bundle.mjs --check || goto fail
 
 if "%CHECKS%"=="1" goto checks
 echo == Checks skipped (--skip-checks)

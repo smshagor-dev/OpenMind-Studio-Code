@@ -34,6 +34,10 @@ pub struct RunRequest {
     /// from the page that asks for the run.
     #[serde(skip)]
     pub assembly: crate::assembly::AssemblyOptions,
+    /// The Pascal compiler to build with and what PascalABC.NET needs. Filled by the app from the settings and this
+    /// computer, never taken from the page.
+    #[serde(skip)]
+    pub pascal: crate::pascal::PascalOptions,
 }
 
 /// Everything needed to start a process, fully resolved and validated — and
@@ -132,6 +136,18 @@ fn plan_command(
                 system_path,
                 build_dir,
                 &request.assembly,
+            );
+        }
+        if kind == RunnableKind::Pascal
+            && request.pascal.compiler == crate::pascal::PascalCompiler::PascalAbcNet
+        {
+            return crate::pascal::plan_pascalabc(
+                &file,
+                cwd,
+                environment,
+                system_path,
+                build_dir,
+                &request.pascal,
             );
         }
         return plan_compiled(kind, &file, cwd, environment, system_path, build_dir);
@@ -449,6 +465,7 @@ mod tests {
             workspace,
             template: None,
             assembly: Default::default(),
+            pascal: Default::default(),
         }
     }
 
@@ -707,6 +724,7 @@ mod tests {
             template: Some(template.into()),
             arguments: None,
             assembly: Default::default(),
+            pascal: Default::default(),
         };
 
         let ok = make(&fx, &with("python -u \"${file}\" --flag")).expect("plan");
@@ -740,6 +758,7 @@ mod tests {
             workspace: None,
             template: Some("pypy \"${file}\"".into()),
             assembly: Default::default(),
+            pascal: Default::default(),
         };
 
         let error = make(&fx, &req).expect_err("must fail");

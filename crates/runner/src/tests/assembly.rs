@@ -44,6 +44,7 @@ impl Fixture {
             template: None,
             arguments: arguments.map(str::to_string),
             assembly: Default::default(),
+            pascal: Default::default(),
         };
         let env = RunEnvironment {
             path_prepend: vec![self.bin.clone()],

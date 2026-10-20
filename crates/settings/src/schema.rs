@@ -54,6 +54,7 @@ pub const CATEGORIES: &[&str] = &[
     "Terminal",
     "Runtime & Run Code",
     "Assembly",
+    "Pascal",
     "Git",
     "Language Servers",
     "Extensions",
@@ -313,6 +314,7 @@ fn tools_definitions() -> Vec<SettingDef> {
         def("lsp.enabled", "Language Servers", "Enable Language Servers", "Start language servers for files in the open folder. Turning it off stops the running ones.", SettingKind::Bool, json!(true), Both),
         def("lsp.verboseLogging", "Language Servers", "Verbose Logging", "Write every message exchanged with a language server to the LSP output channel.", SettingKind::Bool, json!(false), User),
         def("debug.stopOnEntry", "Debugger", "Stop on Entry", "Pause at the first line when a debug session starts.", SettingKind::Bool, json!(false), Both),
+        def("pascal.compiler", "Pascal", "Compiler", "Which compiler Run Code uses for Pascal files (.pas, .pp): Free Pascal (fpc64, native Windows programs) or PascalABC.NET (pabcnetcclear, .NET Framework programs; Windows only). Each is installed from the Runtime Manager; when the chosen one is missing, Run Code says so instead of using the other.", opts(&[("fpc", "Free Pascal"), ("pascalabc", "PascalABC.NET")]), json!("fpc"), Both),
         def("debug.openConsoleOnStart", "Debugger", "Open Debug Console on Start", "Show the Debug Console panel when a debug session starts (off: the panel opens only when you open it).", SettingKind::Bool, json!(false), Both),
     ]
 }

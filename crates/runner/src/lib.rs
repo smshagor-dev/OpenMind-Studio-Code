@@ -12,6 +12,7 @@ pub mod fortran;
 pub mod kind;
 pub mod netstat;
 pub mod oneshot;
+pub mod pascal;
 pub mod plan;
 pub mod runtime;
 pub mod server;
@@ -27,6 +28,7 @@ pub use error::RunError;
 pub use kind::{detect, Detection, RunnableKind};
 pub use netstat::{name_processes, parse_netstat, parse_tasklist, ListeningPort};
 pub use oneshot::{run_to_completion, Completed};
+pub use pascal::{PascalCompiler, PascalOptions, PASCALABC_RUNTIME};
 pub use plan::{plan, RunPlan, RunRequest};
 pub use runtime::{portable_version, RunEnvironment, RuntimeSource};
 pub use server::{

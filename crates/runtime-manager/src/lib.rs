@@ -1,5 +1,6 @@
 pub mod detect;
 pub mod download;
+pub mod entry_names;
 pub mod error;
 pub mod extract;
 pub mod fetch;

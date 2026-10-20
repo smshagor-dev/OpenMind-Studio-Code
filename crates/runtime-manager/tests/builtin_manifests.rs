@@ -231,6 +231,48 @@ fn fortran_and_pascal_are_portable_windows_compilers() {
 }
 
 #[test]
+fn pascalabc_is_its_own_runtime_beside_free_pascal() {
+    let registry = RuntimeRegistry::builtin();
+    let abc = registry.get("pascalabc").expect("pascalabc");
+    let fpc = registry.get("pascal").expect("pascal");
+    assert_eq!(abc.display_name, "PascalABC.NET");
+    assert_eq!(abc.default_version, "4.0.0.3883");
+    assert_eq!(fpc.default_version, "3.2.3", "Free Pascal is untouched");
+    let artifact = abc
+        .artifact(&abc.default_version, "windows-x64")
+        .expect("windows artifact");
+    // The official console ZIP, pinned by the SHA-256 of the file published on 2026-10-07.
+    assert_eq!(artifact.url, "https://pascalabc.net/downloads/PABCNETC.zip");
+    assert_eq!(
+        artifact.sha256,
+        "256eb56fa904e4ac99a1d4c867594a945dcfce8bcb7680e623c20477f3c5754f"
+    );
+    assert_eq!(artifact.size_bytes, Some(10_631_071));
+    assert_eq!(artifact.strip_components, 0);
+    assert_eq!(
+        artifact.name_encoding,
+        Some(openmind_runtime_manager::entry_names::NameEncoding::Cp866),
+        "Lib/Мозаика.pcu is stored in code page 866"
+    );
+    assert!(
+        abc.artifact(&abc.default_version, "linux-x64").is_none(),
+        "Windows only"
+    );
+    assert_eq!(abc.version_command.executable, "pabcnetcclear.exe");
+    assert_eq!(abc.version_command.args, ["/Version:"]);
+    assert_eq!(abc.bin_dirs, ["."]);
+    assert!(abc.shims.is_empty());
+    assert!(!abc.probe_system);
+    for file in ["pabcnetcclear.exe", "pabcnetc.exe", "Lib/PABCSystem.pcu"] {
+        assert!(abc.verify_files.iter().any(|f| f == file), "{file}");
+    }
+    assert!(
+        abc.requires.is_empty(),
+        "the .NET Framework is part of Windows, checked by the app"
+    );
+}
+
+#[test]
 fn mariadb_and_phpmyadmin_are_official_https_downloads_that_need_no_service_or_admin_rights() {
     let registry = RuntimeRegistry::builtin();
 

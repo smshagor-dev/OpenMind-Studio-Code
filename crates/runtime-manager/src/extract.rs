@@ -54,6 +54,8 @@ pub struct ExtractSelection<'a> {
     /// folder itself is dropped from their path) — e.g. a NuGet package's
     /// `tools/`, ignoring its metadata files.
     pub only_under: Option<&'a str>,
+    /// How ZIP entry names without the UTF-8 flag are decoded ([`crate::entry_names`]); `None` = the ZIP default.
+    pub name_encoding: Option<crate::entry_names::NameEncoding>,
 }
 
 /// The destination-relative path for an archive entry under `selection`, or
@@ -109,7 +111,9 @@ pub fn extract_zip(
                 entry.name()
             )));
         }
-        if let Some(relative) = select_entry(entry.name(), selection)? {
+        let name =
+            crate::entry_names::entry_name(selection.name_encoding, entry.name_raw(), entry.name());
+        if let Some(relative) = select_entry(&name, selection)? {
             let target = dest.join(&relative);
             debug_assert!(target.starts_with(dest));
             if entry.is_dir() {
@@ -278,6 +282,7 @@ pub(crate) mod tests {
         ExtractSelection {
             strip_components,
             only_under: None,
+            name_encoding: None,
         }
     }
 
@@ -505,6 +510,7 @@ pub(crate) mod tests {
         let selection = ExtractSelection {
             strip_components: 0,
             only_under: Some("tools"),
+            name_encoding: None,
         };
 
         extract_zip(&zip, &dest, selection, &mut |_, _| {}).expect("extract");
@@ -523,6 +529,7 @@ pub(crate) mod tests {
         let selection = ExtractSelection {
             strip_components: 0,
             only_under: Some("tools"),
+            name_encoding: None,
         };
 
         let result = extract_zip(&zip, &dir.path().join("out"), selection, &mut |_, _| {});

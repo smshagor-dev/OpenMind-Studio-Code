@@ -229,6 +229,7 @@ pub const COMPONENTS: &[Component] = &[
     rt("llvm-mingw", "C/C++ toolchain (LLVM-MinGW)", Sdk, Some("clang"), &[]),
     rt("fortran", "Fortran compiler (gfortran)", Sdk, Some("gfortran"), &[]),
     rt("pascal", "Free Pascal compiler", Sdk, Some("fpc"), &[]),
+    rt("pascalabc", "PascalABC.NET compiler (Windows, .NET Framework)", Sdk, Some("pabcnetc"), &[]),
     rt("assembly", "Assembly toolchain (NASM, MinGW-w64 linker, binutils, GDB)", Sdk, Some("nasm"), &[]),
     rt("kubectl", "kubectl", Tool, Some("kubectl"), &[]),
     rt("helm", "Helm", Tool, Some("helm"), &[]),
@@ -558,7 +559,7 @@ pub const WORKLOADS: &[Workload] = &[
     },
     Workload {
         id: "systems", name: "Systems development", summary: "Go, C/C++, Fortran, Pascal, Assembly (NASM), CMake, Ninja, clangd, fortls, asm-lsp and rust-analyzer. Rust itself installs with rustup.",
-        components: &["go", "gopls", "llvm-mingw", "lldb", "fortran", "pascal", "assembly", "lsp-asm-lsp", "cmake", "ninja", "lsp-clangd", "lsp-fortls", "lsp-rust-analyzer", "rustup", "cargo", "gdb", "msvc"],
+        components: &["go", "gopls", "llvm-mingw", "lldb", "fortran", "pascal", "pascalabc", "assembly", "lsp-asm-lsp", "cmake", "ninja", "lsp-clangd", "lsp-fortls", "lsp-rust-analyzer", "rustup", "cargo", "gdb", "msvc"],
         frameworks: &["cargo-project", "go-module", "cmake-project", "makefile-project"],
     },
     Workload {
@@ -578,7 +579,7 @@ pub const WORKLOADS: &[Workload] = &[
     },
     Workload {
         id: "full-offline", name: "Full offline toolkit", summary: "Every runtime and SDK OpenMind can install, the offline language servers, the debuggers and the offline cache. Several GB: deselect the heavy SDKs you don't need.",
-        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "assembly", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "livekit", "llamacpp", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
+        components: &["node", "python", "php", "composer", "git", "git-lfs", "mariadb", "phpmyadmin", "debugpy", "js-debug", "jdk", "maven", "gradle", "kotlin", "go", "cmake", "ninja", "llvm-mingw", "fortran", "pascal", "pascalabc", "assembly", "kubectl", "helm", "terraform", "dotnet", "dart", "flutter", "android-cmdline-tools", "android-platform-tools", "sqlite", "postgresql", "livekit", "llamacpp", "lsp-typescript", "lsp-html", "lsp-css", "lsp-json", "lsp-pyright", "lsp-yaml", "lsp-bash", "lsp-dockerfile", "lsp-rust-analyzer", "lsp-clangd", "offline-cache"],
         frameworks: &[],
     },
 ];

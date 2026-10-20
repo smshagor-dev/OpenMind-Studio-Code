@@ -574,6 +574,7 @@ fn install_files(
     let selection = ExtractSelection {
         strip_components: artifact.strip_components,
         only_under: artifact.extract_root.as_deref(),
+        name_encoding: artifact.name_encoding,
     };
     match artifact.archive {
         ArchiveKind::File => place_file(archive, staging, artifact.install_as.as_deref())?,

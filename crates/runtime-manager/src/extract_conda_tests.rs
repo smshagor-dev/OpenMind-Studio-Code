@@ -90,6 +90,7 @@ fn a_conda_package_extracts_only_its_files_folder() {
         ExtractSelection {
             strip_components: 0,
             only_under: Some("Library/bin"),
+            name_encoding: None,
         },
         &mut |_, _| {},
     )
@@ -109,6 +110,7 @@ fn a_conda_package_gets_the_same_safety_checks_as_any_archive() {
     let selection = ExtractSelection {
         strip_components: 0,
         only_under: None,
+        name_encoding: None,
     };
     let link = write_package(
         dir.path(),
@@ -141,6 +143,7 @@ fn a_package_without_exactly_one_payload_is_refused() {
     let selection = ExtractSelection {
         strip_components: 0,
         only_under: None,
+        name_encoding: None,
     };
     let none = write_package(dir.path(), &conda(&[]));
     assert!(matches!(

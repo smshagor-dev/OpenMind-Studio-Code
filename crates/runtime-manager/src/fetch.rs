@@ -111,6 +111,7 @@ mod tests {
             install_as: None,
             mirrors: vec![MIRROR.into()],
             install_bytes: None,
+            name_encoding: None,
         }
     }
 

@@ -392,3 +392,8 @@
   font-size: 12px;
   color: var(--fg-muted);
 }
+
+/* A requirement that is not met (PascalABC.NET without .NET Framework 4.7.2). */
+.modal--runtimes .runtime-card__setup-problem {
+  color: var(--warning-fg);
+}

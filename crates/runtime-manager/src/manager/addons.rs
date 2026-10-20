@@ -228,6 +228,7 @@ fn unpack_and_merge(
     let selection = ExtractSelection {
         strip_components: artifact.strip_components,
         only_under: artifact.extract_root.as_deref(),
+        name_encoding: artifact.name_encoding,
     };
     let mut extracted = |c, t| report(InstallPhase::Extract, c, t);
     if artifact.archive == ArchiveKind::File {

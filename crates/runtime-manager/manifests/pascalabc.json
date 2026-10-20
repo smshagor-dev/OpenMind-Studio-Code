@@ -1,0 +1,61 @@
+{
+  "id": "pascalabc",
+  "displayName": "PascalABC.NET",
+  "description": "PascalABC.NET's console compiler for Windows: modern Pascal with classes, lambdas and .NET, built on the .NET Framework that ships with Windows.",
+  "defaultVersion": "4.0.0.3883",
+  "versionCommand": {
+    "executable": "pabcnetcclear.exe",
+    "args": [
+      "/Version:"
+    ],
+    "outputPrefix": ""
+  },
+  "binDirs": [
+    "."
+  ],
+  "verifyFiles": [
+    "pabcnetcclear.exe",
+    "pabcnetc.exe",
+    "Compiler.dll",
+    "PascalABCParser.dll",
+    "Lib/PABCSystem.pcu"
+  ],
+  "features": [
+    {
+      "id": "compiler",
+      "label": "Compile Pascal (.pas) with pabcnetcclear",
+      "verifyFile": "pabcnetcclear.exe",
+      "missingNote": "The PascalABC.NET command-line compiler isn't in this install. Use Repair to reinstall it."
+    },
+    {
+      "id": "standard-units",
+      "label": "Use PascalABC.NET's standard units",
+      "verifyFile": "Lib/PABCSystem.pcu",
+      "missingNote": "PascalABC.NET's standard units (Lib) are missing. Use Repair to reinstall them."
+    }
+  ],
+  "license": {
+    "name": "GNU LGPL v3 with the authors' clarifications; Programming Taskbook units: free to distribute unmodified",
+    "url": "https://github.com/pascalabcnet/pascalabcnet/blob/master/doc/License_en.txt",
+    "acceptanceRequired": false
+  },
+  "probeSystem": false,
+  "notes": "The official PABCNETC.zip console compiler from pascalabc.net (PascalABC.NET 4.0.0.3883, built 2026-10-07), unchanged. OpenMind Studio for Windows ships this exact file and installs it from there, so no download is needed; the download address is the official one, which always serves the newest build: if pascalabc.net replaces the file, its checksum no longer matches and the download is refused until OpenMind is updated. It needs .NET Framework 4.7.2 or later, which Windows 10 (version 1803 and later) and Windows 11 already include; OpenMind checks for it and never installs Windows components. Programs it builds are .NET Framework .exe files that run on Windows only. Free Pascal stays a separate compiler (its own runtime, `fpc64`); choose which one Run Code uses in Settings > Pascal > Compiler. The pabcnetc and pabcnetcclear commands are on the PATH of OpenMind terminals. No language server: syntax colouring and compiler errors in Problems only. The archive also holds the interface units of M. Abramyan's Programming Taskbook (Lib/PT4*.pcu), which may be distributed only unmodified and free of charge; licence texts ship next to the bundled archive (pascalabc-bundle).",
+  "versions": [
+    {
+      "version": "4.0.0.3883",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "url": "https://pascalabc.net/downloads/PABCNETC.zip",
+          "sha256": "256eb56fa904e4ac99a1d4c867594a945dcfce8bcb7680e623c20477f3c5754f",
+          "sizeBytes": 10631071,
+          "installBytes": 44265809,
+          "archive": "zip",
+          "stripComponents": 0,
+          "nameEncoding": "cp866"
+        }
+      ]
+    }
+  ]
+}

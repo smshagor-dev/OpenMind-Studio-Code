@@ -71,6 +71,7 @@
     "resources": {
       "../lsp-bundle/": "lsp/",
       "../python-bundle/": "python-bundle/",
+      "../pascalabc-bundle/": "pascalabc-bundle/",
       "../licenses/THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt",
       "../licenses/legal/": "legal/",
       "cli/openmind.cmd": "bin/openmind.cmd",

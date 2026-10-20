@@ -157,6 +157,7 @@ fn fetch_piece(
         ExtractSelection {
             strip_components: piece.strip_components,
             only_under: piece.only_under.as_deref(),
+            name_encoding: None,
         },
         &mut |_, _| {},
     )

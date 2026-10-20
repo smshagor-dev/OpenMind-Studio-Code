@@ -49,6 +49,30 @@ describe("compiler lines", () => {
     });
   });
 
+  it("reads PascalABC.NET's errors, exactly as pabcnetcclear 4.0.0.3883 prints them", () => {
+    expect(parseBuildLine("[2,21] bad.pas: Incompatible types: 'string' and 'integer'")).toEqual({
+      file: "bad.pas",
+      problem: {
+        severity: "error",
+        message: "Incompatible types: 'string' and 'integer'",
+        source: "compiler",
+        line: 2,
+        column: 21,
+        endLine: 2,
+        endColumn: 22,
+      },
+    });
+    expect(parseBuildLine("[12,5] привет мир.pas: Неизвестное имя 'y'")).toMatchObject({
+      file: "привет мир.pas",
+      problem: { line: 12, column: 5, message: "Неизвестное имя 'y'" },
+    });
+    // Its other lines are not problems.
+    expect(parseBuildLine("Compile errors:")).toBeNull();
+    expect(parseBuildLine("OK")).toBeNull();
+    // Filed next to the built file, so a click opens the source the compiler named.
+    expect(problemPath("C:\\Work\\My Project\\bad.pas", "bad.pas")).toBe("C:\\Work\\My Project\\bad.pas");
+  });
+
   it("puts a linker's undefined reference on the built file and ignores plain lines", () => {
     expect(parseBuildLine(LD_UNDEFINED)).toMatchObject({
       file: null,
