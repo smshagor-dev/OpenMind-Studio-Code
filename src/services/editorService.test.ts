@@ -141,6 +141,51 @@ describe("EditorService", () => {
     expect(afterClear?.id).toBe("extension.hello.say");
   });
 
+  it("copySelection copies through the app's clipboard; Cut removes the text, an empty selection is its line", async () => {
+    const ipc = createFakeIpc();
+    const service = new EditorService(ipc);
+    const text = model("hello world\nsecond\n");
+    const fake = createFakeEditor(text);
+    const executeEdits = vi.fn((_source: string, edits: { range: monaco.IRange; text: string }[]) => {
+      text.pushEditOperations([], edits, () => null);
+      return true;
+    });
+    service.attach({ ...fake.asEditor, executeEdits });
+    expect(await service.copySelection(false)).toBe(true);
+    expect(ipc.clipboardWriteText).toHaveBeenLastCalledWith("hello");
+    expect(text.getValue()).toBe("hello world\nsecond\n");
+    await service.copySelection(true);
+    expect(text.getValue()).toBe(" world\nsecond\n");
+    fake.selections.splice(0, 1, new monaco.Selection(2, 3, 2, 3));
+    await service.copySelection(true);
+    expect(ipc.clipboardWriteText).toHaveBeenLastCalledWith("second\n");
+    expect(text.getValue()).toBe(" world\n");
+  });
+
+  it("knows a read-only editor", () => {
+    const service = new EditorService(createFakeIpc());
+    const fake = createFakeEditor(model("x"));
+    service.attach({ ...fake.asEditor, getRawOptions: () => ({ readOnly: true }) });
+    expect(service.isReadOnly()).toBe(true);
+  });
+
+  it("tells listeners about editors attached before and after, and cleans up after them", () => {
+    const service = new EditorService(createFakeIpc());
+    const first = createFakeEditor(model("a"));
+    const detachFirst = service.attach(first.asEditor);
+    const cleanup = vi.fn();
+    const seen: CodeEditorLike[] = [];
+    service.onEditorAttached((editor) => {
+      seen.push(editor);
+      return cleanup;
+    });
+    const second = createFakeEditor(model("b"));
+    service.attach(second.asEditor);
+    expect(seen).toEqual([first.asEditor, second.asEditor]);
+    detachFirst();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
   it("run is a no-op without an editor or without a model", () => {
     const service = new EditorService(createFakeIpc());
     expect(() => {

@@ -54,7 +54,7 @@ async fn allow_system(state: &AppState) -> bool {
 }
 
 /// The folder open in the window that called (each editor window has its own).
-async fn workspace_path(state: &AppState, label: &str) -> Result<PathBuf, String> {
+pub(crate) async fn workspace_path(state: &AppState, label: &str) -> Result<PathBuf, String> {
     let workspace = crate::windows::window_workspace(state, label)
         .await?
         .ok_or_else(|| "Open a folder to use Source Control.".to_string())?;
@@ -62,7 +62,7 @@ async fn workspace_path(state: &AppState, label: &str) -> Result<PathBuf, String
 }
 
 /// Portable Git first; the system's only if the user allowed it.
-async fn build_client(app: &AppHandle, state: &AppState) -> Result<GitClient, GitError> {
+pub(crate) async fn build_client(app: &AppHandle, state: &AppState) -> Result<GitClient, GitError> {
     let portable = environment(state).await.path_prepend;
     let exe = resolve(
         &portable,

@@ -205,6 +205,33 @@ pub async fn lsp_request(
         .map_err(|err| err.to_string())
 }
 
+/// What a server command produced: its result and the edits it asked the editor to apply.
+#[derive(Debug, serde::Serialize)]
+pub struct CommandOutcome {
+    result: Value,
+    edits: Vec<Value>,
+}
+
+/// Runs a command the file's server advertised (a code action's command, e.g. "extract to function"). The edits the
+/// server sends meanwhile come back to the editor, which applies them to its buffers (nothing is written to disk).
+#[tauri::command]
+pub async fn lsp_execute_command(
+    path: String,
+    command: String,
+    arguments: Value,
+    state: State<'_, AppState>,
+) -> Result<CommandOutcome, String> {
+    let def = server_for_path(&path).ok_or_else(|| LspError::Unsupported.to_string())?;
+    let manager = state.lsp.clone();
+    tokio::task::spawn_blocking(move || {
+        manager.execute_command(def.id, &command, &arguments, REQUEST_TIMEOUT)
+    })
+    .await
+    .map_err(|err| format!("The language server stopped unexpectedly: {err}"))?
+    .map(|(result, edits)| CommandOutcome { result, edits })
+    .map_err(|err| err.to_string())
+}
+
 #[tauri::command]
 pub async fn lsp_stop(server: String, state: State<'_, AppState>) -> Result<(), String> {
     let manager = state.lsp.clone();

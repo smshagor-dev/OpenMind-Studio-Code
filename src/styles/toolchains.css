@@ -1,8 +1,9 @@
 /* Runtime Manager and Language Tools: compact, consistent cards, chips and details. Colours are tokens only. */
 
 .modal.modal--runtimes {
-  width: min(880px, 96vw);
-  max-height: 84vh;
+  width: min(880px, 100%);
+  /* On a big screen the list scrolls inside a dialog of a comfortable height rather than one as tall as the window. */
+  max-height: min(960px, var(--modal-max-height));
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -232,10 +233,19 @@ ul.tc-banner {
   letter-spacing: 0;
 }
 
+/* Every card of a section the same size: each row as tall as the section's tallest card (the buttons sit at the
+   bottom of every card, so they line up). */
 .tc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-auto-rows: 1fr;
   gap: 10px;
+}
+
+/* The same height across sections too: a language server card (name, one line, Install) is as tall as a tool card
+   (name, summary, a two-line hint, Install / Verify / Details), so the whole tab is one size of card. */
+.modal--runtimes .tc-grid .tc-card {
+  min-height: 182px;
 }
 
 /* The Language Tools tab: language servers first, then the bundled tools. */
@@ -402,13 +412,10 @@ ul.tc-banner {
 
 .tc-details-overlay {
   z-index: 2100;
-  align-items: center;
-  padding-top: 0;
 }
 
 .modal.tc-details {
-  width: min(640px, 94vw);
-  max-height: 84vh;
+  width: min(640px, 100%);
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -517,11 +524,56 @@ ul.tc-banner {
 
 /* Runtime cards (the Runtimes tab) */
 
+/* Every runtime card the same size: each row as tall as the tallest card, every card filling its row, and one layout
+   inside — name and chips on one line, two lines of description, then the extras, then version + Install at the
+   bottom. Installed versions scroll inside their card past a few rows, so one runtime can't make every card tall. */
 .rm-runtimes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  grid-auto-rows: 1fr;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
+}
+
+.rm-runtimes .runtime-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.rm-runtimes .runtime-card__header {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.rm-runtimes .runtime-card__header h3,
+.rm-runtimes .runtime-card__active,
+.rm-runtimes .runtime-card__global {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rm-runtimes .runtime-card__header .runtime-badge,
+.rm-runtimes .runtime-card__header .rm-details-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.modal--runtimes .rm-runtimes .runtime-card__description {
+  line-height: 1.45;
+  min-height: 2.9em;
+}
+
+.rm-runtimes .runtime-card__versions {
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.rm-runtimes .runtime-card__install {
+  margin-top: auto;
+  padding-top: 8px;
 }
 
 .runtime-card {
@@ -562,17 +614,8 @@ ul.tc-banner {
   display: block;
 }
 
-/* Language Tools at any window size: the dialog never runs off the bottom of the window (the overlay puts it 18vh down,
-   so it starts higher and caps its height to what is left), the body scrolls between the fixed header and Close, and
-   cards and their buttons wrap instead of overflowing sideways. */
-.modal-overlay:has(> .modal--lsp-tools) {
-  padding: 4vh 12px;
-}
-
-.modal.modal--runtimes.modal--lsp-tools {
-  width: min(880px, 100%);
-  max-height: 92vh;
-}
+/* Language Tools at any window size: the body scrolls between the fixed header and Close (the overlay keeps the dialog
+   inside the window), and cards and their buttons wrap instead of overflowing sideways. */
 
 .modal--lsp-tools .lsp-tools__body {
   display: flex;
@@ -600,14 +643,6 @@ ul.tc-banner {
 }
 
 @media (max-height: 520px) {
-  .modal-overlay:has(> .modal--lsp-tools) {
-    padding: 8px 12px;
-  }
-
-  .modal.modal--runtimes.modal--lsp-tools {
-    max-height: calc(100vh - 16px);
-  }
-
   .modal--lsp-tools .rm-head {
     padding-top: 10px;
   }

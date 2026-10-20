@@ -3420,6 +3420,44 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   node.exe still OpenJS-signed, signed programs start, a second run changes nothing, a throwaway PFX signs without its password on any
   command line and is removed from the store. Azure Artifact Signing: individuals US/Canada only (see the guide). Pending: a trusted
   certificate, a signed rebuild of v1.0.4 from `29a58ae`, installer/upgrade tests in Sandbox/VM.
+- [x] **Editor context menu** (branch `feature/editor-context-menu`). Monaco's own menu is off (`contextmenu: false`; it can't
+  nest); `src/services/editorMenu/` draws the app's `MenuPopup` instead (`ContextMenuService`, `ContextMenuLayer`, Shift+F10).
+  - **Menu** (`editorMenuModel.ts`, pure, VS Code order): OpenMindAI (Add File to Chat, Open Inline Chat Ctrl+I, Explain, Review),
+    Go to / Peek, Rename, Change All Occurrences Ctrl+F2, Format, Refactor... Ctrl+Shift+R, Source Action..., Start Dictation
+    Ctrl+Alt+V, Open Changes / Open on Remote (Web) / File Annotations / File History / Share / Copy As submenus, Cut/Copy/Paste,
+    Add to OpenMindAI Chat, extension and AI-panel entries, Command Palette. Every entry is a registered command
+    (`editorMenuCommands.ts`, also in the palette); a disabled one says why. Explorer files and tabs (new tab menu: Close, Close
+    Others, Close All, Copy Path, Reveal) get the file-level Git/Copy As group, judged for *that* file (`reasonForFile`).
+  - **Git** (`crates/git/src/{filelog,fileops}.rs`, `commands/git_file.rs`): the file's own repository (nested repos, worktrees,
+    deleted files) found from its folder; must be inside the window's folder. File history with `--follow` (Git ignores `--skip`
+    with `--follow`: pages are cut in Rust), file text at a revision, refs, remotes (**read from `git config`**, not `git remote -v`:
+    the download gateway's `insteadOf` rewrites remotes to 127.0.0.1), remote branches containing a commit, commit details;
+    `BlameLine` gained `hash`/`originalLine`. Revisions are checked (`is_revision`).
+  - **Frontend Git**: `services/git/` — `remoteUrls.ts` (github.com / gitlab.com / bitbucket.org only; others are refused, never
+    guessed), `lineDiff.ts` (Myers, gives up past 4000 edits), `commitGraph.ts`, `FileGitService`, `FileGitRemote` (a link only for a
+    commit on that remote and a file in that revision), `GitViewsService` + `components/git/` (compare overlay with inline toggle,
+    history List/Graph/Timeline, commit details), `FileAnnotationsService` (blame text at line end — Monaco draws an empty range's
+    text only with `showIfCollapsed` —, heatmap on line numbers, change bars vs HEAD; settings `git.annotations.*`, off by default;
+    typing runs only the diff). `FileGitProbe` caches a file's Git standing 30 s for enabling entries.
+  - **LSP code actions** (`lspCodeActions.ts`; `textDocument/codeAction`, `codeAction/resolve`, `lsp_execute_command`): a server's
+    `workspace/applyEdit` is accepted only while a command the user chose runs (`Session::execute_command`), otherwise refused as
+    before; edits go to buffers (one undo step per file), a multi-file edit is confirmed first.
+  - **OpenMindAI**: `agent/editorAiActions.ts` (attachments via `AgentService.attachText`; Explain/Review run in plan mode),
+    `agent/inlineChat.ts` + `commands/agent/inline.rs` (`agent_inline_complete`: one completion on the agent's engine under its lease,
+    no tools; Accept = one undoable edit, refused if the code changed). Dictation = Windows voice typing (`dictation_toggle` sends
+    Win+H); non-Windows says it's unavailable.
+  - Menu Cut/Copy go through the clipboard bridge like Paste (`EditorService.copySelection`).
+  - Historical revision tabs (`git-revision:/<hash>/<path>`, `revisionMenu.ts`, attached through `revisionHook.ts` so the preview
+    doesn't import the container) use the same menu with read-only `revision.*` commands only (Copy, Find, Go to Line, compare with
+    working/previous, commit details, history, open working file, Copy SHA, open on remote).
+  - Fixes found by the live pass: typescript-language-server's `_typescript.rename` request after an extract refactor is acknowledged
+    (answering "method not found" dropped the edit); inline completion sends `thinking_budget_tokens: 0` (a refinement used to spend
+    its budget reasoning and return nothing) and `fitProposal` gives a proposal the selection's indentation and final line break;
+    dictation sends Win+H only once Windows reports this process's window in the foreground, otherwise it refuses.
+  - Verified in the debug app (CDP-driven input, test repo with a rename/branch/tag/remotes): the real TypeScript server (Organize
+    Imports, Remove Unused Imports, Extract to constant via command + `workspace/applyEdit`, Rename, a quick fix, one-step undo), the
+    real Nemotron 3 Nano 4B (inline propose/refine/accept/reject, Explain, Review), dictation (voice typing opened only over the app),
+    revision-tab menu. CI did not run (GitHub billing limit).
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).

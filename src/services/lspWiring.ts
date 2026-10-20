@@ -4,6 +4,7 @@ import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { ConfirmPrompt } from "./extensionPromptService";
 import type { IpcClient } from "./ipc";
+import { registerCodeActions } from "./lspCodeActions";
 import { registerLspProviders } from "./lspProviders";
 import { LspService } from "./lspService";
 import type { SettingsService } from "./settingsService";
@@ -53,6 +54,27 @@ export function wireLsp(deps: LspWiringDeps) {
   async function start(): Promise<void> {
     diagnostics.initialize();
     registerLspProviders({ ipc, documents, workspace, lsp });
+    registerCodeActions({
+      ipc,
+      documents,
+      workspace,
+      lsp,
+      report: (message) => {
+        events.emit("appError", { message });
+      },
+      // An edit across files names them first (Refactor / Source Action can change files that aren't open).
+      confirmFiles: async (paths) => {
+        const button = t("codeAction.applyButton");
+        const answer = await deps.confirm({
+          extension: t("codeAction.source"),
+          title: t("codeAction.confirmTitle", { count: paths.length }),
+          details: paths.map((path) => ({ label: "", value: path })),
+          notes: [t("codeAction.confirmNote")],
+          buttons: [button],
+        });
+        return answer === button;
+      },
+    });
     registerIndexSymbolProvider({
       textSymbols: (language, text) => ipc.searchSymbolsOfText(language, text),
       languageServerHandles: (uri) => {

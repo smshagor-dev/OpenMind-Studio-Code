@@ -175,6 +175,12 @@ export interface LspCapabilities {
   documentSymbol: boolean;
   /** `workspace/symbol` (Ctrl+T); absent from older status snapshots. */
   workspaceSymbol?: boolean;
+  /** `textDocument/codeAction` (quick fixes, Refactor..., Source Action...). */
+  codeAction?: boolean;
+  codeActionKinds?: string[];
+  codeActionResolve?: boolean;
+  /** The commands the server runs (`workspace/executeCommand`). */
+  executeCommands?: string[];
 }
 
 export type LspServerState = "stopped" | "installing" | "starting" | "running" | "error";
@@ -710,6 +716,12 @@ export interface IpcClient
   lspSaveDocument: (path: string) => Promise<void>;
   lspCloseDocument: (path: string) => Promise<void>;
   lspRequest: (path: string, method: string, params: unknown) => Promise<unknown>;
+  /** Runs a command the file's server advertised; returns its result and the edits it asked for meanwhile. */
+  lspExecuteCommand: (
+    path: string,
+    command: string,
+    args: unknown[],
+  ) => Promise<{ result: unknown; edits: unknown[] }>;
   lspStop: (server: string) => Promise<void>;
   lspStopAll: () => Promise<void>;
   lspSetVerbose: (verbose: boolean) => Promise<void>;
@@ -967,6 +979,10 @@ export interface GitCommitFile {
 
 export interface GitBlameLine {
   line: number;
+  /** The line's number in the commit that last changed it. */
+  originalLine: number;
+  /** Full commit id (all zeros when not committed). */
+  hash: string;
   shortHash: string;
   author: string;
   /** Seconds since the Unix epoch (0 when not committed). */
@@ -1333,6 +1349,8 @@ export const tauriIpcClient: IpcClient = {
   lspSaveDocument: (path) => invoke("lsp_save_document", { path }),
   lspCloseDocument: (path) => invoke("lsp_close_document", { path }),
   lspRequest: (path, method, params) => invoke("lsp_request", { path, method, params }),
+  lspExecuteCommand: (path, command, args) =>
+    invoke("lsp_execute_command", { path, command, arguments: args }),
   lspStop: (server) => invoke("lsp_stop", { server }),
   lspStopAll: () => invoke("lsp_stop_all"),
   lspSetVerbose: (verbose) => invoke("lsp_set_verbose", { verbose }),

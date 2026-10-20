@@ -445,11 +445,11 @@ pub(crate) fn read_worktree_file(root: &Path, relative: &str) -> Result<Vec<u8>,
     std::fs::read(&path).map_err(|err| GitError::Failed(format!("Couldn't read {relative}: {err}")))
 }
 
-fn looks_binary(bytes: &[u8]) -> bool {
+pub(crate) fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8000).any(|byte| *byte == 0)
 }
 
-fn text_of(bytes: &[u8]) -> String {
+pub(crate) fn text_of(bytes: &[u8]) -> String {
     let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
     String::from_utf8_lossy(bytes).into_owned()
 }

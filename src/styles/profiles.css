@@ -1,9 +1,7 @@
 /* The Profiles window. Tokens only. */
 
 .modal.modal--profiles {
-  width: min(680px, 94vw);
-  max-height: 80vh;
-  overflow-y: auto;
+  width: min(680px, 100%);
   text-align: left;
 }
 

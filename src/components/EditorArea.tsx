@@ -9,6 +9,8 @@ import { ExtensionEditor } from "./ExtensionEditor";
 import { ExternalCompareViewer } from "./ExternalCompareViewer";
 import { GitBlameViewer } from "./GitBlameViewer";
 import { GitDiffViewer } from "./GitDiffViewer";
+import { FileHistoryView } from "./git/FileHistoryView";
+import { GitCompareView } from "./git/GitCompareView";
 import { PreferencesPage } from "./PreferencesPage";
 import { WebviewPanels } from "./WebviewPanels";
 
@@ -30,6 +32,8 @@ export function EditorArea({ state, ...rest }: EditorAreaProps) {
     <div className="editor-area" ref={rowRef}>
       <GitDiffViewer themeKind={rest.themeKind} />
       <GitBlameViewer />
+      <FileHistoryView />
+      <GitCompareView themeKind={rest.themeKind} />
       <ExtensionEditor />
       <ExternalCompareViewer themeKind={rest.themeKind} />
       <DebugToolbar />

@@ -307,9 +307,7 @@
 /* The provider manager dialog */
 
 .modal--wide {
-  width: min(640px, 92vw);
-  max-height: 76vh;
-  overflow-y: auto;
+  width: min(640px, 100%);
 }
 
 .ai-intro {

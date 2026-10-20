@@ -85,3 +85,42 @@ describe("MenuBar shortcuts", () => {
     expect(screen.getByRole("menuitem", { name: /Git Bash/ })).not.toHaveTextContent("Ctrl+");
   });
 });
+
+describe("MenuBar in a narrow title bar", () => {
+  /** jsdom has no layout: the menu bar reports `content` px of menus in `room` px, and every observer fires at once. */
+  function narrow(content: number, room: number) {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(content);
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(room);
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly callback: () => void) {}
+        observe() {
+          this.callback();
+        }
+        disconnect() {}
+      },
+    );
+  }
+
+  it("folds the menus into one button whose menu lists them as submenus", () => {
+    narrow(360, 200);
+    const titlebar = document.createElement("div");
+    document.body.append(titlebar);
+    render(<MenuBar menus={MENUS} />, { container: titlebar });
+
+    expect(screen.queryByRole("menuitem", { name: "File" })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Application menu" }));
+    expect(screen.getByRole("menuitem", { name: "File" })).toHaveAttribute("aria-haspopup", "true");
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps the menus when they fit", () => {
+    narrow(300, 300);
+    render(<MenuBar menus={MENUS} />);
+    expect(screen.getByRole("menuitem", { name: "File" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+});

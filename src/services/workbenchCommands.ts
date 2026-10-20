@@ -123,13 +123,33 @@ function registerEditorCommands(deps: WorkbenchDeps): void {
   const { commands, editor, workspace } = deps;
   const hasEditor = () => editor.hasEditor();
   for (const [id, action] of Object.entries(EDITOR_ACTIONS)) {
-    if (id === "edit.paste") continue;
+    if (id === "edit.paste" || id === "edit.cut" || id === "edit.copy") continue;
     commands.register(
       id,
       () => {
         editor.run(action);
       },
       { enabled: hasEditor },
+    );
+  }
+  // Cut and Copy write the clipboard through the app too (a menu click isn't a clipboard event for the WebView).
+  for (const [id, cut] of [
+    ["edit.cut", true],
+    ["edit.copy", false],
+  ] as const) {
+    commands.register(
+      id,
+      async () => {
+        try {
+          await editor.copySelection(cut);
+        } catch (error) {
+          deps.events.emit("appError", { message: `Could not write the clipboard: ${String(error)}` });
+        }
+      },
+      {
+        enabled: () => hasEditor() && !(cut && editor.isReadOnly()),
+        disabledReason: () => (cut && editor.isReadOnly() ? "This editor is read-only." : undefined),
+      },
     );
   }
   // Paste reads the clipboard through the app (Monaco's own action makes the WebView ask for permission).
@@ -142,7 +162,10 @@ function registerEditorCommands(deps: WorkbenchDeps): void {
         deps.events.emit("appError", { message: `Could not read the clipboard: ${String(error)}` });
       }
     },
-    { enabled: hasEditor },
+    {
+      enabled: () => hasEditor() && !editor.isReadOnly(),
+      disabledReason: () => (editor.isReadOnly() ? "This editor is read-only." : undefined),
+    },
   );
   for (const [id, option] of Object.entries(EDITOR_TOGGLES)) {
     commands.register(id, () => editor.toggleOption(option), {

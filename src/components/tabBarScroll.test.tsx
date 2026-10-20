@@ -209,3 +209,32 @@ describe("editor header layout", () => {
     expect(css).toMatch(/\.tab-bar::-webkit-scrollbar \{\s*display: none;/);
   });
 });
+
+describe("one row of tabs", () => {
+  it("puts a leading tab (the Welcome page's) first in the same row as the file tabs", () => {
+    const { container } = bar({
+      tabs: tabs(2),
+      activeId: null,
+      leading: (
+        <div className="tab tab--welcome" role="tab" aria-selected>
+          Welcome
+        </div>
+      ),
+    });
+    expect(container.querySelectorAll(".tab-bar")).toHaveLength(1);
+    expect(container.querySelectorAll(".tab-bar__filler")).toHaveLength(1);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent.trim())).toEqual([
+      "Welcome",
+      "streams.f90",
+      "main program.f90",
+    ]);
+  });
+
+  it("is how the editor group shows the Welcome tab beside open files", () => {
+    const source = readFileSync(join(process.cwd(), "src/components/EditorGroupView.tsx"), "utf8");
+    expect(source).toContain("leading={welcomeTab ? <WelcomeTab active /> : null}");
+    expect(source).not.toMatch(/\{welcomeTab \? <WelcomeTab \/> : null\}/);
+    const welcome = readFileSync(join(process.cwd(), "src/components/WelcomeEditor.tsx"), "utf8");
+    expect(welcome).not.toContain('className="tab-bar"');
+  });
+});

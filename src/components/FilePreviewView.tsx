@@ -272,6 +272,7 @@ function Body({ doc, model }: { doc: FilePreviewDoc; model: PreviewModel }) {
           text={model.text}
           language={model.language}
           uri={model.collab ? doc.path : null}
+          documentUri={doc.path}
           live={model.collab?.state === "live"}
           readOnly={!(model.collab?.state === "live" && model.collab.editable === true)}
         />

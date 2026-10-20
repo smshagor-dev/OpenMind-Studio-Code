@@ -37,6 +37,8 @@ pub struct Workspace {
 }
 
 type Pending = Mutex<HashMap<i64, Sender<Result<Value, ResponseError>>>>;
+/// The edits a server sent with `workspace/applyEdit` while a command runs (`None`: no command runs, edits refused).
+type Collected = Mutex<Option<Vec<Value>>>;
 type SharedWriter = Arc<Mutex<Box<dyn Write + Send>>>;
 
 pub struct Session {
@@ -44,6 +46,9 @@ pub struct Session {
     pending: Arc<Pending>,
     next_id: AtomicI64,
     alive: Arc<AtomicBool>,
+    collected: Arc<Collected>,
+    /// One command at a time, so each gets exactly the edits its run produced.
+    command_gate: Mutex<()>,
 }
 
 impl Session {
@@ -64,11 +69,19 @@ impl Session {
             pending: Arc::new(Mutex::new(HashMap::new())),
             next_id: AtomicI64::new(1),
             alive: Arc::new(AtomicBool::new(true)),
+            collected: Arc::new(Mutex::new(None)),
+            command_gate: Mutex::new(()),
         });
         let pending = Arc::clone(&session.pending);
         let alive = Arc::clone(&session.alive);
+        let collected = Arc::clone(&session.collected);
         thread::spawn(move || {
-            read_loop(reader, &writer, &pending, &workspace, events.as_ref());
+            let shared = Shared {
+                writer: &writer,
+                pending: &pending,
+                collected: &collected,
+            };
+            read_loop(reader, &shared, &workspace, events.as_ref());
             alive.store(false, Ordering::SeqCst);
             // Dropping the senders wakes every waiting request with "closed".
             if let Ok(mut pending) = pending.lock() {
@@ -128,6 +141,28 @@ impl Session {
         }
     }
 
+    /// `workspace/executeCommand`, returning the command's result and the edits the server sent while it ran
+    /// (`workspace/applyEdit`). Those edits are answered as applied: the caller applies them right away. Outside a
+    /// command a server-initiated edit is refused, so nothing changes files the user didn't ask to change.
+    pub fn execute_command(
+        &self,
+        params: &Value,
+        timeout: Duration,
+    ) -> Result<(Value, Vec<Value>), LspError> {
+        let _gate = self.command_gate.lock().map_err(|_| LspError::Closed)?;
+        if let Ok(mut collected) = self.collected.lock() {
+            *collected = Some(Vec::new());
+        }
+        let result = self.request("workspace/executeCommand", params, timeout);
+        let edits = self
+            .collected
+            .lock()
+            .ok()
+            .and_then(|mut collected| collected.take())
+            .unwrap_or_default();
+        result.map(|value| (value, edits))
+    }
+
     fn forget(&self, id: i64) {
         if let Ok(mut pending) = self.pending.lock() {
             pending.remove(&id);
@@ -142,13 +177,31 @@ impl Session {
     }
 }
 
+struct Shared<'a> {
+    writer: &'a SharedWriter,
+    pending: &'a Pending,
+    collected: &'a Collected,
+}
+
+/// The server's `workspace/applyEdit` while a command runs: the edit is kept for the caller and reported applied.
+fn collect_edit(collected: &Collected, params: &Value) -> Option<Value> {
+    let mut slot = collected.lock().ok()?;
+    let edits = slot.as_mut()?;
+    edits.push(params.get("edit").cloned().unwrap_or(Value::Null));
+    Some(json!({ "applied": true }))
+}
+
 fn read_loop<R: Read>(
     reader: R,
-    writer: &SharedWriter,
-    pending: &Pending,
+    shared: &Shared<'_>,
     workspace: &Workspace,
     events: &dyn SessionEvents,
 ) {
+    let Shared {
+        writer,
+        pending,
+        collected,
+    } = *shared;
     let mut reader = BufReader::new(reader);
     loop {
         let message = match read_frame(&mut reader) {
@@ -167,14 +220,21 @@ fn read_loop<R: Read>(
                 }
             }
             Ok(Incoming::Request { id, method, params }) => {
-                let answer = match reply_to_server_request(
-                    &method,
-                    &params,
-                    &workspace.root_uri,
-                    &workspace.root_name,
-                ) {
-                    Ok(result) => response_message(&id, result),
-                    Err((code, text)) => error_response(&id, code, &text),
+                let collected_edit = (method == "workspace/applyEdit")
+                    .then(|| collect_edit(collected, &params))
+                    .flatten();
+                let answer = if let Some(result) = collected_edit {
+                    response_message(&id, result)
+                } else {
+                    match reply_to_server_request(
+                        &method,
+                        &params,
+                        &workspace.root_uri,
+                        &workspace.root_name,
+                    ) {
+                        Ok(result) => response_message(&id, result),
+                        Err((code, text)) => error_response(&id, code, &text),
+                    }
                 };
                 if let Ok(mut writer) = writer.lock() {
                     let _ = jsonrpc::write_message(&mut *writer, &answer);
@@ -366,5 +426,41 @@ mod tests {
             session.notify("x", &Value::Null),
             Err(LspError::Closed)
         ));
+    }
+
+    #[test]
+    fn edits_sent_while_a_command_runs_are_returned_and_others_are_refused() {
+        let (session, _) = rig(|mut reader, mut writer| {
+            let edit = json!({ "changes": { "file:///C:/My%20Site/a.ts": [] } });
+            // Before any command: a server-initiated edit.
+            let stray = request_message(900, "workspace/applyEdit", &json!({ "edit": edit }));
+            let _ = jsonrpc::write_message(&mut writer, &stray);
+            let mut stray_answer = None;
+            while let Some(message) = read_request(&mut reader) {
+                if message.get("id") == Some(&json!(900)) {
+                    stray_answer = Some(message["result"].clone());
+                    continue;
+                }
+                if message["method"] == "workspace/executeCommand" {
+                    let id = message["id"].clone();
+                    let ask = request_message(901, "workspace/applyEdit", &json!({ "edit": edit }));
+                    let _ = jsonrpc::write_message(&mut writer, &ask);
+                    let answer = read_request(&mut reader).expect("answer");
+                    assert_eq!(answer["result"]["applied"], true);
+                    let reply = response_message(&id, json!({ "stray": stray_answer.clone() }));
+                    let _ = jsonrpc::write_message(&mut writer, &reply);
+                }
+            }
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        let (result, edits) = session
+            .execute_command(&json!({ "command": "x" }), Duration::from_secs(5))
+            .expect("command");
+        assert_eq!(edits.len(), 1);
+        assert!(edits[0]["changes"].is_object());
+        assert_eq!(
+            result["stray"]["applied"], false,
+            "an edit outside a command is refused"
+        );
     }
 }

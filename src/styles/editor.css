@@ -826,8 +826,7 @@
 }
 
 .modal--run-config {
-  width: 520px;
-  max-width: 92vw;
+  width: min(520px, 100%);
 }
 
 .run-config__field {

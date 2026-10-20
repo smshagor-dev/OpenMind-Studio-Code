@@ -13,6 +13,10 @@ const UNCOMMITTED: &str = "0000000000000000000000000000000000000000";
 pub struct BlameLine {
     /// 1-based line number in the current file.
     pub line: u32,
+    /// 1-based line number of the same line in the commit that last changed it.
+    pub original_line: u32,
+    /// The full commit id (all zeros for lines that are not committed yet).
+    pub hash: String,
     pub short_hash: String,
     pub author: String,
     /// Author time, seconds since the Unix epoch (0 for uncommitted lines).
@@ -33,17 +37,19 @@ pub fn parse_blame(output: &[u8]) -> Vec<BlameLine> {
     let text = String::from_utf8_lossy(output);
     let mut commits: HashMap<String, CommitInfo> = HashMap::new();
     let mut lines = Vec::new();
-    let mut current: Option<(String, u32)> = None;
+    let mut current: Option<(String, u32, u32)> = None;
     for raw in text.split('\n') {
         if let Some(content) = raw.strip_prefix('\t') {
-            let Some((hash, line)) = current.take() else {
+            let Some((hash, original_line, line)) = current.take() else {
                 continue;
             };
             let info = commits.get(&hash).cloned().unwrap_or_default();
             let committed = hash != UNCOMMITTED;
             lines.push(BlameLine {
                 line,
+                original_line,
                 short_hash: hash.chars().take(7).collect(),
+                hash: hash.clone(),
                 author: if committed {
                     info.author
                 } else {
@@ -60,12 +66,14 @@ pub fn parse_blame(output: &[u8]) -> Vec<BlameLine> {
             });
             continue;
         }
-        if let Some((hash, line)) = header(raw) {
+        if let Some((hash, original, line)) = header(raw) {
             commits.entry(hash.clone()).or_default();
-            current = Some((hash, line));
+            current = Some((hash, original, line));
             continue;
         }
-        let Some((hash, _)) = &current else { continue };
+        let Some((hash, _, _)) = &current else {
+            continue;
+        };
         let entry = commits.entry(hash.clone()).or_default();
         if let Some(author) = raw.strip_prefix("author ") {
             entry.author = author.to_string();
@@ -79,15 +87,15 @@ pub fn parse_blame(output: &[u8]) -> Vec<BlameLine> {
 }
 
 /// `<40 hex> <orig line> <final line> [<group size>]`
-fn header(line: &str) -> Option<(String, u32)> {
+fn header(line: &str) -> Option<(String, u32, u32)> {
     let mut parts = line.split(' ');
     let hash = parts.next()?;
     if hash.len() != 40 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
-    parts.next()?.parse::<u32>().ok()?;
+    let original = parts.next()?.parse::<u32>().ok()?;
     let final_line = parts.next()?.parse::<u32>().ok()?;
-    Some((hash.to_string(), final_line))
+    Some((hash.to_string(), original, final_line))
 }
 
 #[cfg(test)]
@@ -112,6 +120,7 @@ mod tests {
         // The second line reuses the first commit's details (Git prints them once).
         assert_eq!(lines[1].author, "Ada Lovelace");
         assert_eq!(lines[1].line, 2);
+        assert_eq!(lines[1].original_line, 2);
         assert_eq!(lines[2].author, "Bob");
         assert_eq!(lines[2].time, 1_700_001_000);
         assert_eq!(lines[2].content, "line three");

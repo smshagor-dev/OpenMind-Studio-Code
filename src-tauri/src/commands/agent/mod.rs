@@ -12,6 +12,7 @@ use turn::run_turn;
 pub mod capabilities;
 pub mod history;
 mod host;
+pub mod inline;
 pub mod models;
 
 use std::collections::HashMap;

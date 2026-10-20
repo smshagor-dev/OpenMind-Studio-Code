@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Recents } from "../appHooks";
 import { MonacoHost } from "../editor/MonacoHost";
 import { container } from "../services/container";
+import { openTabMenu } from "../services/editorMenu";
 import type { EditorKind } from "../services/editorGroupService";
 import type { EditorGroupView as GroupView } from "../services/workspaceService";
 import { Breadcrumbs } from "./Breadcrumbs";
@@ -52,8 +53,8 @@ export function EditorGroupView(props: EditorGroupViewProps) {
       }}
     >
       <div className="editor-group__header">
-        {welcomeTab ? <WelcomeTab /> : null}
         <TabBar
+          leading={welcomeTab ? <WelcomeTab active /> : null}
           tabs={group.tabs}
           activeId={welcomeTab ? null : group.activeTabId}
           onSelect={(id) => {
@@ -65,6 +66,9 @@ export function EditorGroupView(props: EditorGroupViewProps) {
             container.workspace.pinTab(group.id, id);
           }}
           onDetach={(id, at) => void container.editorWindows.moveToNewWindow(group.id, id, at)}
+          onTabContextMenu={(id, x, y) => {
+            openTabMenu(group.id, id, x, y);
+          }}
         />
         <EditorHeaderActions
           groupId={group.id}

@@ -6,26 +6,36 @@ import { StartPage, type WelcomeCard } from "./StartPage";
 import { useWelcome } from "./useWelcome";
 import { t } from "../i18n";
 
-/** The Welcome page's tab (VS Code shows it italic, like a preview tab), closable with its ×. */
-export function WelcomeTab() {
+/**
+ * The Welcome page's tab (VS Code shows it italic, like a preview tab), closable with its ×. It is the first tab of
+ * the group's one tab row (`TabBar`'s `leading`), so the file tabs follow it instead of starting a second row.
+ */
+export function WelcomeTab({ active }: { active: boolean }) {
   return (
-    <div className="tab-bar" role="tablist" aria-label={t("editor.openEditors")}>
-      <div className="tab tab--active tab--preview tab--welcome" role="tab" aria-selected="true">
-        <img className="tab__app-icon" src={appIcon} alt="" width={16} height={16} />
-        <span className="tab__label">{t("welcome.title")}</span>
-        <button
-          type="button"
-          className="tab__close"
-          title={t("welcome.closeTitle")}
-          aria-label={t("welcome.close")}
-          onClick={() => {
-            container.welcome.close();
-          }}
-        >
-          <CloseIcon />
-        </button>
-      </div>
-      <div className="tab-bar__filler" />
+    <div
+      className={active ? "tab tab--active tab--preview tab--welcome" : "tab tab--preview tab--welcome"}
+      role="tab"
+      aria-selected={active}
+      onMouseDown={(event) => {
+        if (event.button === 0) container.welcome.open();
+      }}
+    >
+      <img className="tab__app-icon" src={appIcon} alt="" width={16} height={16} />
+      <span className="tab__label">{t("welcome.title")}</span>
+      <button
+        type="button"
+        className="tab__close"
+        title={t("welcome.closeTitle")}
+        aria-label={t("welcome.close")}
+        onMouseDown={(event) => {
+          event.stopPropagation();
+        }}
+        onClick={() => {
+          container.welcome.close();
+        }}
+      >
+        <CloseIcon />
+      </button>
     </div>
   );
 }

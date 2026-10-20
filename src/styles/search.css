@@ -2,6 +2,7 @@
 
 .search-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border);

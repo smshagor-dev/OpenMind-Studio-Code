@@ -1,0 +1,414 @@
+/* Per-file Git views (compare, history, commit details), editor annotations and inline chat. Colours are tokens. */
+
+/* --- Editor annotations --- */
+.git-blame-annotation {
+  color: var(--git-blame-fg);
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.git-change {
+  margin-left: 3px;
+  width: 3px !important;
+}
+
+.git-change--added {
+  background: var(--git-change-added);
+}
+
+.git-change--modified {
+  background: var(--git-change-modified);
+}
+
+/* A deletion is a small triangle at the top of the line below it. */
+.git-change--deleted {
+  height: 0 !important;
+  width: 0 !important;
+  border-left: 5px solid var(--git-change-deleted);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  background: none;
+}
+
+.git-heat {
+  box-shadow: inset 3px 0 0 var(--git-heat-cold);
+}
+
+.git-heat--0 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 100%, var(--git-heat-cold)); }
+.git-heat--1 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 89%, var(--git-heat-cold)); }
+.git-heat--2 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 78%, var(--git-heat-cold)); }
+.git-heat--3 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 67%, var(--git-heat-cold)); }
+.git-heat--4 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 56%, var(--git-heat-cold)); }
+.git-heat--5 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 44%, var(--git-heat-cold)); }
+.git-heat--6 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 33%, var(--git-heat-cold)); }
+.git-heat--7 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 22%, var(--git-heat-cold)); }
+.git-heat--8 { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--git-heat-hot) 11%, var(--git-heat-cold)); }
+.git-heat--9 { box-shadow: inset 3px 0 0 var(--git-heat-cold); }
+
+/* --- Overlays over the editor area (like the Source Control diff) --- */
+.file-git-view {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--editor-bg);
+  color: var(--fg);
+}
+
+.file-git-view__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 35px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--tabs-bg);
+}
+
+.file-git-view__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-git-view__sides {
+  display: flex;
+  gap: 8px;
+  padding: 4px 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-git-view__sides span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-git-view__button {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.file-git-view__button:hover:not(:disabled) {
+  background: var(--button-secondary-hover-bg);
+}
+
+.file-git-view__button[aria-pressed="true"] {
+  background: var(--list-active-selection-bg);
+  color: var(--list-active-selection-fg);
+}
+
+.file-git-view__button:focus-visible,
+.file-history__row:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: -1px;
+}
+
+.file-git-view__close {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.file-git-view__close:hover {
+  background: var(--close-hover-bg);
+}
+
+.file-git-view__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-git-view__message {
+  padding: 12px;
+  color: var(--fg-muted);
+}
+
+.file-git-view__message--error {
+  color: var(--error-fg);
+}
+
+/* --- History --- */
+.file-history {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-history__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 12px 0 4px;
+  cursor: pointer;
+}
+
+.file-history__row:hover {
+  background: var(--list-hover-bg);
+}
+
+.file-history__row[aria-selected="true"] {
+  background: var(--list-active-selection-bg);
+  color: var(--list-active-selection-fg);
+}
+
+.file-history__graph {
+  flex: none;
+}
+
+.file-history__hash {
+  flex: none;
+  font-family: Consolas, "Courier New", monospace;
+  color: var(--link-fg);
+}
+
+.file-history__subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history__meta {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.file-history__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.file-history__more {
+  margin: 8px 12px;
+}
+
+.git-timeline {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.git-timeline svg {
+  display: block;
+}
+
+.git-timeline__axis {
+  stroke: var(--border);
+}
+
+.git-timeline__label {
+  fill: var(--fg-muted);
+  font-size: 11px;
+}
+
+.git-timeline__dot {
+  fill: var(--git-change-modified);
+  fill-opacity: 0.75;
+  stroke: var(--editor-bg);
+  cursor: pointer;
+}
+
+.git-timeline__dot[aria-selected="true"] {
+  stroke: var(--focus-border);
+  stroke-width: 2;
+}
+
+.git-graph__line {
+  fill: none;
+  stroke-width: 2;
+}
+
+.git-graph__dot {
+  stroke: var(--editor-bg);
+  stroke-width: 1.5;
+}
+
+/* --- Commit details (a dialog) --- */
+.commit-details {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--scrim-bg);
+}
+
+.commit-details__card {
+  display: flex;
+  flex-direction: column;
+  width: min(640px, 100%);
+  max-height: calc(100vh - 32px);
+  border: 1px solid var(--menu-border);
+  border-radius: 8px;
+  background: var(--menu-bg);
+  color: var(--menu-fg);
+  box-shadow: 0 8px 24px var(--widget-shadow);
+}
+
+.commit-details__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 12px 8px 16px;
+}
+
+.commit-details__subject {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.commit-details__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0 16px 8px;
+  font-size: 12px;
+}
+
+.commit-details__facts dt {
+  color: var(--fg-muted);
+}
+
+.commit-details__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.commit-details__message {
+  margin: 0 16px 8px;
+  padding: 8px;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  border-radius: 4px;
+  background: var(--input-bg);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
+.commit-details__files {
+  margin: 0 16px 8px;
+  padding: 0;
+  max-height: 180px;
+  overflow: auto;
+  list-style: none;
+  font-size: 12px;
+}
+
+.commit-details__files li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.commit-details__status {
+  flex: none;
+  width: 16px;
+  font-weight: 600;
+}
+
+.commit-details__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--menu-separator);
+}
+
+/* --- Inline chat (a zone under the selection) --- */
+.inline-chat {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 2px 8px 6px 0;
+  padding: 8px;
+  border: 1px solid var(--focus-border);
+  border-radius: 6px;
+  background: var(--menu-bg);
+  color: var(--menu-fg);
+  box-shadow: 0 2px 8px var(--widget-shadow);
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+.inline-chat__row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.inline-chat__input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.inline-chat__input:focus {
+  outline: 1px solid var(--focus-border);
+}
+
+.inline-chat__status {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.inline-chat__error {
+  color: var(--error-fg);
+  font-size: 12px;
+}
+
+.inline-chat__diff {
+  height: 200px;
+  border: 1px solid var(--border);
+}
+
+.inline-chat__diff .git-diff__editor {
+  height: 100%;
+}
+
+/* The overlay widget that carries inline chat (placed by its view zone). */
+.inline-chat-host {
+  position: absolute;
+  z-index: 10;
+}

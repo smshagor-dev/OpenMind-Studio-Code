@@ -133,7 +133,5 @@
 }
 
 .modal.lang-dialog {
-  width: min(880px, 94vw);
-  max-height: 86vh;
-  overflow-y: auto;
+  width: min(880px, 100%);
 }

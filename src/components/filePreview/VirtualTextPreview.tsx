@@ -9,6 +9,7 @@ import {
 } from "../../editor/collabModels";
 import { MonacoHost } from "../../editor/MonacoHost";
 import { MONACO_THEME_MAP } from "../../editor/monacoThemes";
+import { attachRevisionEditor } from "../../services/editorMenu/revisionHook";
 
 /**
  * A custom-scheme document in an editor that is read-only unless it is a live collaborative document this member may
@@ -20,12 +21,15 @@ export function VirtualTextPreview({
   text,
   language,
   uri = null,
+  documentUri = null,
   readOnly = true,
   live = false,
 }: {
   text: string;
   language: string;
   uri?: string | null;
+  /** The tab's own address (`git-revision:/…` for a Git revision, which gets the app's read-only menu). */
+  documentUri?: string | null;
   /** False while this member may edit a live collaborative document. */
   readOnly?: boolean;
   /** The text is a live collaborative document: the model follows the CRDT, never the snapshot text. */
@@ -56,7 +60,10 @@ export function VirtualTextPreview({
         onEditorMounted={(editor) => {
           editorRef.current = editor;
           editor.updateOptions({ readOnly, domReadOnly: readOnly });
+          // A Git revision gets the app's context menu with its read-only actions.
+          const detachMenu = attachRevisionEditor(editor, documentUri);
           return () => {
+            detachMenu?.();
             editorRef.current = null;
           };
         }}

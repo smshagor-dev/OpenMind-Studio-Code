@@ -12,6 +12,10 @@ interface MonacoDiffHostProps {
   /** Only used to pick the syntax highlighting. */
   path: string;
   theme: string;
+  /** Changes inline (one column) instead of side by side. */
+  inline?: boolean;
+  /** A line of the right side to scroll to once the diff is computed. */
+  revealLine?: number | null;
 }
 
 /**
@@ -19,7 +23,14 @@ interface MonacoDiffHostProps {
  * `MonacoHost` it is UI only: it shows the two strings it is handed and owns
  * the temporary models it creates for them.
  */
-export function MonacoDiffHost({ original, modified, path, theme }: MonacoDiffHostProps) {
+export function MonacoDiffHost({
+  original,
+  modified,
+  path,
+  theme,
+  inline = false,
+  revealLine = null,
+}: MonacoDiffHostProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneDiffEditor | null>(null);
 
@@ -31,7 +42,7 @@ export function MonacoDiffHost({ original, modified, path, theme }: MonacoDiffHo
       theme,
       readOnly: true,
       originalEditable: false,
-      renderSideBySide: true,
+      renderSideBySide: !inline,
       fontFamily: "Consolas, 'Courier New', monospace",
       fontSize: 14,
     });
@@ -61,6 +72,25 @@ export function MonacoDiffHost({ original, modified, path, theme }: MonacoDiffHo
   useEffect(() => {
     monaco.editor.setTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ renderSideBySide: !inline });
+  }, [inline]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || revealLine === null) return;
+    const reveal = () => {
+      editor.getModifiedEditor().revealLineInCenter(revealLine);
+      editor.getModifiedEditor().setPosition({ lineNumber: revealLine, column: 1 });
+    };
+    reveal();
+    // The diff is computed after the models are set; scroll again once it is.
+    const done = editor.onDidUpdateDiff(reveal);
+    return () => {
+      done.dispose();
+    };
+  }, [revealLine, original, modified]);
 
   return <div className="git-diff__editor" ref={containerRef} />;
 }
