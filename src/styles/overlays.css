@@ -413,3 +413,29 @@
 .modal--runtimes .runtime-card__setup-problem {
   color: var(--warning-fg);
 }
+
+.runtime-card__update {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--focus-border);
+  border-radius: 3px;
+  color: var(--fg-strong);
+  font-size: 12px;
+}
+
+.rm-tab__badge {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background-color: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+}

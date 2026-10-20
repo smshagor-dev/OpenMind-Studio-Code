@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
 import type { AddonStatus, InstalledVersion, RuntimeStatus } from "../services/ipc";
-import { describeProgress, injectionStatus } from "../services/runtimeService";
+import { describeProgress, injectionStatus, updateFor } from "../services/runtimeService";
 import "../styles/toolchains.css";
 import { AssemblySetupLine } from "./AssemblySetupLine";
 import { PascalAbcSetupLine } from "./PascalAbcSetupLine";
@@ -29,6 +29,10 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
     container.workloads.takeRequestedTab();
   }, []);
   const [detailsFor, setDetailsFor] = useState<RuntimeStatus | null>(null);
+  const updates = useMemo(
+    () => state.runtimes.filter((runtime) => updateFor(runtime) !== null).length,
+    [state.runtimes],
+  );
   const filteredRuntimes = useMemo(
     () => filterRuntimes(state.runtimes, runtimeQuery),
     [state.runtimes, runtimeQuery],
@@ -80,6 +84,11 @@ export function RuntimeManagerDialog({ onClose }: { onClose: () => void }) {
                 }}
               >
                 {t(label)}
+                {id === "runtimes" && updates > 0 ? (
+                  <span className="rm-tab__badge" title={t("runtimes.update.count", { count: updates })}>
+                    {updates}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -282,6 +291,7 @@ function RuntimeCard({
       <p className="runtime-card__description" title={runtime.description}>
         {runtime.description}
       </p>
+      <UpdateLine runtime={runtime} />
       {runtime.id === "mariadb" ? <RuntimeDatabaseLine installed={installed} /> : null}
       {runtime.id === "assembly" ? <AssemblySetupLine runtime={runtime} /> : null}
       {runtime.id === "pascalabc" ? <PascalAbcSetupLine runtime={runtime} /> : null}
@@ -347,6 +357,40 @@ function RuntimeCard({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** "Update available": a newer version of this installed runtime, installed and made active with one click. */
+function UpdateLine({ runtime }: { runtime: RuntimeStatus }) {
+  const state = useSyncExternalStore(
+    (listener) => container.runtime.subscribe(listener),
+    () => container.runtime.getState(),
+  );
+  const update = updateFor(runtime);
+  if (update === null) return null;
+  const service = container.runtime;
+  const availability = service.installAvailability(runtime, update.version);
+  const updating = state.working[runtime.id] === "update";
+  return (
+    <div className="runtime-card__update" role="status">
+      <span>
+        {t("runtimes.update.available", { name: runtime.displayName, from: update.from, version: update.version })}
+      </span>
+      <button
+        type="button"
+        className="button button--primary"
+        disabled={!availability.enabled}
+        title={
+          availability.reason ??
+          t("runtimes.update.title", { name: runtime.displayName, from: update.from, version: update.version })
+        }
+        onClick={() => {
+          void service.applyUpdate(runtime.id, update);
+        }}
+      >
+        {updating ? t("runtimes.update.updating") : t("runtimes.update.button")}
+      </button>
+    </div>
   );
 }
 

@@ -222,6 +222,36 @@ describe("RuntimeManagerDialog", () => {
     expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.20.0", false);
   });
 
+  it("shows an available update on the card and the Runtimes tab, and Update installs and activates it", async () => {
+    await open([
+      runtime({
+        installed: [{ version: "24.20.0", path: "p", active: true, healthy: true, features: [] }],
+        activeVersion: "24.20.0",
+      }),
+    ]);
+
+    expect(screen.getByText("Update available: Node.js 24.20.0 → 24.21.0")).toBeInTheDocument();
+    expect(screen.getByTitle("1 runtime has an update")).toHaveTextContent("1");
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
+
+    expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.21.0", false);
+    await waitFor(() => {
+      expect(ipc.runtimeSetActive).toHaveBeenCalledWith("node", "24.21.0");
+    });
+  });
+
+  it("shows no update when the newest version is installed", async () => {
+    await open([
+      runtime({
+        installed: [{ version: "24.21.0", path: "p", active: true, healthy: true, features: [] }],
+        activeVersion: "24.21.0",
+      }),
+    ]);
+
+    expect(screen.queryByRole("button", { name: "Update" })).toBeNull();
+    expect(screen.queryByText(/Update available/)).toBeNull();
+  });
+
   it("disables Install for an installed version and explains why", async () => {
     await open([
       runtime({

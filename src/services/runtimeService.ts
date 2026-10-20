@@ -4,7 +4,7 @@ import type { AddonStatus, InstalledVersion, InstallProgress, IpcClient, Runtime
 import { t } from "../i18n";
 import type { CanonicalFeed } from "./state/canonicalStateService";
 
-export type RuntimeOperation = "install" | "repair" | "delete" | "activate";
+export type RuntimeOperation = "install" | "update" | "repair" | "delete" | "activate";
 
 export interface RuntimeState {
   loaded: boolean;
@@ -62,6 +62,52 @@ export function injectionStatus(entry: InstalledVersion): InjectionView {
     return { injected: false, label: t("runtimes.injection.notActive") };
   }
   return { injected: true, label: t("runtimes.injection.injected") };
+}
+
+export interface RuntimeUpdate {
+  /** The installed version the update replaces as the active one. */
+  from: string;
+  /** The newer version to install. */
+  version: string;
+}
+
+function versionNumbers(version: string): number[] {
+  return version.split(".").map((part) => Number.parseInt(part.replace(/^\D+/, ""), 10) || 0);
+}
+
+/** Orders dotted versions numerically (`1.10` after `1.9`); a leading non-digit (`b11429`) is ignored. */
+export function compareRuntimeVersions(a: string, b: string): number {
+  const left = versionNumbers(a);
+  const right = versionNumbers(b);
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const delta = (left[index] ?? 0) - (right[index] ?? 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
+}
+
+function releaseLine(version: string): string {
+  return version.split(".").slice(0, 2).join(".");
+}
+
+/**
+ * A newer version of an installed runtime the Runtime Manager can install: measured from the active version (else the
+ * newest installed one). The newest version of the same line (Python 3.14.x, PHP 8.4.x) comes first; otherwise the
+ * newest version offered. `null` when nothing newer is offered or nothing is installed.
+ */
+export function updateFor(runtime: RuntimeStatus): RuntimeUpdate | null {
+  const installed = runtime.installed.map((entry) => entry.version);
+  if (installed.length === 0) return null;
+  const from =
+    runtime.installed.find((entry) => entry.active)?.version ??
+    [...installed].sort(compareRuntimeVersions).at(-1);
+  if (from === undefined) return null;
+  const newer = runtime.availableVersions
+    .filter((version) => !installed.includes(version) && compareRuntimeVersions(version, from) > 0)
+    .sort(compareRuntimeVersions);
+  const sameLine = newer.filter((version) => releaseLine(version) === releaseLine(from));
+  const version = sameLine.at(-1) ?? newer.at(-1);
+  return version === undefined ? null : { from, version };
 }
 
 export interface Availability {
@@ -166,6 +212,22 @@ export class RuntimeService {
   /** `acceptLicense`: the user accepted the vendor licence the runtime requires (the backend refuses without it). */
   install(kind: string, version: string | null, acceptLicense = false): Promise<boolean> {
     return this.run(kind, "install", () => this.ipc.runtimeInstall(kind, version, acceptLicense));
+  }
+
+  /**
+   * Installs the newer `update.version` and makes it the active one. The old version stays installed (projects and
+   * virtual environments may still use it); the user deletes it when it's no longer needed.
+   */
+  applyUpdate(kind: string, update: RuntimeUpdate): Promise<boolean> {
+    return this.run(kind, "update", async () => {
+      await this.ipc.runtimeInstall(kind, update.version, false);
+      await this.ipc.runtimeSetActive(kind, update.version);
+    });
+  }
+
+  /** How many installed runtimes have a newer version offered (the Runtimes tab shows it). */
+  updateCount(): number {
+    return this.state.runtimes.filter((runtime) => updateFor(runtime) !== null).length;
   }
 
   /** Repairs `version`; resolves `true` if something was actually repaired. */

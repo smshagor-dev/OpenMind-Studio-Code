@@ -1133,6 +1133,16 @@
   "runtimes.versionToInstall": "Устанавливаемая версия {name}",
   "runtimes.installTitle": "Загрузить и установить {name} {version}",
   "runtimes.installing": "Установка…",
+  "runtimes.update.available": "Доступно обновление: {name} {from} → {version}",
+  "runtimes.update.button": "Обновить",
+  "runtimes.update.updating": "Обновление…",
+  "runtimes.update.title": "Установить {name} {version} и сделать её активной версией. {from} останется установленной; удалите её, когда она больше не нужна.",
+  "runtimes.update.count": {
+    "one": "Обновление есть у {count} среды выполнения",
+    "few": "Обновления есть у {count} сред выполнения",
+    "many": "Обновления есть у {count} сред выполнения",
+    "other": "Обновления есть у {count} среды выполнения"
+  },
   "runtimes.removing": "Удаление…",
   "runtimes.switching": "Переключение версии…",
   "runtimes.debuggerOnly": "Используется только отладчиком — не добавляется ни в какой PATH",

@@ -1119,6 +1119,14 @@
   "runtimes.versionToInstall": "{name} version to install",
   "runtimes.installTitle": "Download and install {name} {version}",
   "runtimes.installing": "Installing…",
+  "runtimes.update.available": "Update available: {name} {from} → {version}",
+  "runtimes.update.button": "Update",
+  "runtimes.update.updating": "Updating…",
+  "runtimes.update.title": "Install {name} {version} and make it the active version. {from} stays installed; delete it when you no longer need it.",
+  "runtimes.update.count": {
+    "one": "{count} runtime has an update",
+    "other": "{count} runtimes have updates"
+  },
   "runtimes.removing": "Removing…",
   "runtimes.switching": "Switching version…",
   "runtimes.debuggerOnly": "Used only by the debugger — not added to any PATH",

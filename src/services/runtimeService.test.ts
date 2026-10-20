@@ -7,7 +7,7 @@ import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { InstalledVersion, InstallProgress, RuntimeStatus } from "./ipc";
 import { registerRuntimeCommands } from "./runtimeCommands";
-import { describeProgress, injectionStatus, RuntimeService } from "./runtimeService";
+import { compareRuntimeVersions, describeProgress, injectionStatus, RuntimeService, updateFor } from "./runtimeService";
 
 function status(overrides: Partial<RuntimeStatus> = {}): RuntimeStatus {
   return {
@@ -71,6 +71,50 @@ describe("describeProgress", () => {
   });
 });
 
+describe("updateFor", () => {
+  const at = (version: string, active = true): InstalledVersion => ({
+    version,
+    path: `C:/rt/${version}`,
+    active,
+    healthy: true,
+    features: [],
+  });
+
+  it("orders versions numerically", () => {
+    expect(compareRuntimeVersions("3.10.1", "3.9.9")).toBeGreaterThan(0);
+    expect(compareRuntimeVersions("24.20.0", "24.21.0")).toBeLessThan(0);
+    expect(compareRuntimeVersions("b11430", "b11429")).toBeGreaterThan(0);
+    expect(compareRuntimeVersions("1.0", "1.0.0")).toBe(0);
+  });
+
+  it("offers nothing when nothing is installed or nothing newer is offered", () => {
+    expect(updateFor(status())).toBeNull();
+    expect(updateFor(INSTALLED)).toBeNull();
+    expect(updateFor(status({ installed: [at("24.21.0")], availableVersions: ["24.21.0"] }))).toBeNull();
+  });
+
+  it("offers the newest version of the active version's line first", () => {
+    const python = status({
+      installed: [at("3.13.1")],
+      availableVersions: ["3.14.7", "3.13.9", "3.13.5", "3.12.10"],
+    });
+    expect(updateFor(python)).toEqual({ from: "3.13.1", version: "3.13.9" });
+  });
+
+  it("offers the newest version when the line has nothing newer", () => {
+    const node = status({ installed: [at("22.1.0")], availableVersions: ["24.21.0", "24.20.0"] });
+    expect(updateFor(node)).toEqual({ from: "22.1.0", version: "24.21.0" });
+  });
+
+  it("measures from the newest installed version when none is active", () => {
+    const node = status({
+      installed: [at("24.10.0", false), at("24.20.0", false)],
+      availableVersions: ["24.21.0", "24.20.0", "24.10.0"],
+    });
+    expect(updateFor(node)).toEqual({ from: "24.20.0", version: "24.21.0" });
+  });
+});
+
 describe("injectionStatus", () => {
   const entry = (overrides: Partial<InstalledVersion>): InstalledVersion => ({
     version: "3.14.7",
@@ -121,6 +165,39 @@ describe("RuntimeService", () => {
 
   beforeEach(() => {
     events = new EventBus<AppEvents>();
+  });
+
+  it("updates by installing the newer version and making it active", async () => {
+    const service = make({
+      runtimeList: vi.fn().mockResolvedValue([
+        status({
+          installed: [{ version: "24.20.0", path: "p", active: true, healthy: true, features: [] }],
+          activeVersion: "24.20.0",
+        }),
+      ]),
+      runtimeInstall: vi.fn().mockResolvedValue({}),
+      runtimeSetActive: vi.fn().mockResolvedValue(undefined),
+    });
+    await service.refresh();
+    expect(service.updateCount()).toBe(1);
+
+    await expect(service.applyUpdate("node", { from: "24.20.0", version: "24.21.0" })).resolves.toBe(true);
+
+    expect(ipc.runtimeInstall).toHaveBeenCalledWith("node", "24.21.0", false);
+    expect(ipc.runtimeSetActive).toHaveBeenCalledWith("node", "24.21.0");
+    expect(ipc.runtimeDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not switch the active version when the update's install fails", async () => {
+    const service = make({
+      runtimeInstall: vi.fn().mockRejectedValue(new Error("network")),
+      runtimeSetActive: vi.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(service.applyUpdate("node", { from: "24.20.0", version: "24.21.0" })).resolves.toBe(false);
+
+    expect(ipc.runtimeSetActive).not.toHaveBeenCalled();
+    expect(service.getState().errors.node).toContain("network");
   });
 
   it("loads the runtime list and notifies subscribers", async () => {
