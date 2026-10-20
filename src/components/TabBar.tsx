@@ -20,6 +20,8 @@ interface TabBarProps {
   onDetach?: (id: string, at: { x: number; y: number }) => void;
   /** A tab shown first in the same row (the Welcome page's), so there is only ever one row of tabs. */
   leading?: ReactNode;
+  /** Right-click on a tab (at client coordinates). */
+  onTabContextMenu?: (id: string, x: number, y: number) => void;
 }
 
 /** The drag type of a tab, so other drop targets (the explorer) ignore it. */
@@ -42,7 +44,16 @@ function tabTitle(tab: EditorTabView): string {
  * Shift+wheel or a trackpad's sideways swipe — moves it without scrolling anything else, and the active tab is always
  * brought fully into view (selected, newly opened, restored, or after the window or the group was resized).
  */
-export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach, leading }: TabBarProps) {
+export function TabBar({
+  tabs,
+  activeId,
+  onSelect,
+  onClose,
+  onKeepOpen,
+  onDetach,
+  leading,
+  onTabContextMenu,
+}: TabBarProps) {
   const row = useRef<HTMLDivElement | null>(null);
   const tabElements = useRef(new Map<string, HTMLDivElement>());
   const hasTabs = tabs.length > 0 || (leading !== undefined && leading !== null);
@@ -153,6 +164,11 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach
                 event.preventDefault();
                 onClose(tab.id);
               }
+            }}
+            onContextMenu={(event) => {
+              if (!onTabContextMenu) return;
+              event.preventDefault();
+              onTabContextMenu(tab.id, event.clientX, event.clientY);
             }}
           >
             <FileTypeIcon name={tab.kind === "markdownPreview" ? "preview.md" : tab.title} />

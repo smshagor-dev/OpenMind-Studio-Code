@@ -127,6 +127,13 @@
   --agent-accent-soft: rgba(118, 146, 255, 0.14);
   --agent-diff-add-bg: rgba(78, 160, 98, 0.18);
   --agent-diff-add-fg: #8fd19e;
+  /* Git annotations: change bars, blame text, heatmap (hot = newest, cold = oldest). */
+  --git-change-added: #2ea043;
+  --git-change-modified: #1b81a8;
+  --git-change-deleted: #f85149;
+  --git-blame-fg: #7d8590;
+  --git-heat-hot: #f0883e;
+  --git-heat-cold: #1f6feb;
   --agent-diff-del-bg: rgba(218, 84, 84, 0.18);
   --agent-diff-del-fg: #f29b9b;
   --agent-user-bg: #232527;
@@ -269,6 +276,12 @@
   --agent-accent-soft: rgba(74, 104, 224, 0.12);
   --agent-diff-add-bg: rgba(46, 160, 67, 0.14);
   --agent-diff-add-fg: #1a7f37;
+  --git-change-added: #2da44e;
+  --git-change-modified: #2f7bbf;
+  --git-change-deleted: #cf222e;
+  --git-blame-fg: #6e7781;
+  --git-heat-hot: #e16f24;
+  --git-heat-cold: #0969da;
   --agent-diff-del-bg: rgba(207, 34, 46, 0.12);
   --agent-diff-del-fg: #cf222e;
   --agent-user-bg: #eef0f2;
@@ -387,6 +400,12 @@
   --agent-accent-soft: rgba(159, 178, 255, 0.25);
   --agent-diff-add-bg: rgba(0, 255, 0, 0.18);
   --agent-diff-add-fg: #7cff7c;
+  --git-change-added: #7cff7c;
+  --git-change-modified: #6fc3df;
+  --git-change-deleted: #ff7b72;
+  --git-blame-fg: #d0d0d0;
+  --git-heat-hot: #ffa657;
+  --git-heat-cold: #79c0ff;
   --agent-diff-del-bg: rgba(255, 0, 0, 0.22);
   --agent-diff-del-fg: #ff8c8c;
   --agent-user-bg: #000000;

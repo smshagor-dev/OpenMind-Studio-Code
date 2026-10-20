@@ -13,7 +13,8 @@ export type LspAction =
   | "references"
   | "rename"
   | "formatting"
-  | "documentSymbol";
+  | "documentSymbol"
+  | "codeAction";
 
 const ACTION_LABEL: Record<LspAction, string> = {
   hover: "hover",
@@ -27,6 +28,7 @@ const ACTION_LABEL: Record<LspAction, string> = {
   rename: "Rename Symbol",
   formatting: "Format Document",
   documentSymbol: "document symbols",
+  codeAction: "Refactor and Source Action",
 };
 
 /** The server capability behind each action. */
@@ -42,6 +44,7 @@ const CAPABILITY: Record<LspAction, keyof LspCapabilities> = {
   rename: "rename",
   formatting: "formatting",
   documentSymbol: "documentSymbol",
+  codeAction: "codeAction",
 };
 
 /** What is known about one file's language support. */

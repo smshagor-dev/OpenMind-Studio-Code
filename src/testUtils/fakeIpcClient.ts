@@ -355,6 +355,7 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
     lspSaveDocument: vi.fn().mockResolvedValue(undefined),
     lspCloseDocument: vi.fn().mockResolvedValue(undefined),
     lspRequest: vi.fn().mockResolvedValue(null),
+    lspExecuteCommand: vi.fn().mockResolvedValue({ result: null, edits: [] }),
     lspStop: vi.fn().mockResolvedValue(undefined),
     lspStopAll: vi.fn().mockResolvedValue(undefined),
     lspSetVerbose: vi.fn().mockResolvedValue(undefined),

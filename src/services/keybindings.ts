@@ -86,6 +86,12 @@ export const DEFAULT_KEYBINDINGS: Keybinding[] = [
   { key: "Shift+F12", command: "go.toReferences", owner: "app" },
   { key: "F2", command: "edit.renameSymbol", owner: "editor" },
   { key: "Shift+Alt+F", command: "edit.formatDocument", owner: "app" },
+  // Editor context menu
+  { key: "Ctrl+F2", command: "edit.changeAllOccurrences", owner: "editor" },
+  { key: "Ctrl+Shift+R", command: "edit.refactor", owner: "editor" },
+  { key: "Ctrl+I", command: "openmindAi.inlineChat", owner: "app" },
+  { key: "Ctrl+Alt+V", command: "edit.startDictation", owner: "app" },
+  { key: "Shift+F10", command: "editor.showContextMenu", owner: "app" },
   { key: "Ctrl+G", command: "go.toLine", owner: "editor" },
   { key: "Ctrl+Shift+\\", command: "go.toBracket", owner: "editor" },
   { key: "F8", command: "go.nextProblem", owner: "editor" },

@@ -2,6 +2,9 @@ import { container } from "../services/container";
 import { extensionOf, isPreviewableText } from "../services/filePreviewService";
 import type { ExplorerNode } from "../services/explorerService";
 import type { PopupItem } from "./MenuPopup";
+import { resolveContextEntries } from "./contextMenuItems";
+import { gitProbe, installEditorMenu } from "../services/editorMenu";
+import { fileGitEntries } from "../services/editorMenu/editorMenuModel";
 
 export interface ExplorerMenuActions {
   newFile: (node: ExplorerNode | null) => void;
@@ -53,6 +56,17 @@ function previewItems(node: ExplorerNode): PopupItem[] {
     );
   }
   return items.length > 0 ? [...items, SEPARATOR] : [];
+}
+
+/** The file's Git and Copy As group (Open Changes, Open on Remote, File History ...), judged for that file. */
+function gitItems(node: ExplorerNode): PopupItem[] {
+  if (node.isDir) return [];
+  gitProbe.get(node.path);
+  const items = resolveContextEntries(
+    fileGitEntries({ path: node.path, line: 1, endLine: 1 }),
+    installEditorMenu().reasonForFile,
+  );
+  return items.length === 0 ? [] : [SEPARATOR, ...items];
 }
 
 /** Commands extensions put in the Explorer's context menu; each gets the clicked path as its argument. */
@@ -138,6 +152,7 @@ export function explorerContextMenu(
     item("Copy Relative Path", () => {
       copyText(relativePath(node.path, rootPath));
     }),
+    ...gitItems(node),
     ...extensionItems(node),
     SEPARATOR,
     item(

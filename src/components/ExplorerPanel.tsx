@@ -4,6 +4,7 @@ import { container } from "../services/container";
 import type { ExplorerNode, ExplorerSnapshot } from "../services/explorerService";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { explorerContextMenu, type ExplorerMenuActions } from "./explorerContextMenu";
+import { gitProbe } from "../services/editorMenu";
 import { FileTree } from "./FileTree";
 import { CollapseAllIcon, NewFileIcon, NewFolderIcon, PinIcon, RefreshIcon } from "./icons";
 import { MenuPopup } from "./MenuPopup";
@@ -31,6 +32,11 @@ export function ExplorerPanel({
     () => container.explorer.getSnapshot(),
   );
   const ui = useExplorerInteractions(snapshot);
+  // A file's Git menu entries are enabled once its Git check answers: redraw the open menu then.
+  useSyncExternalStore(
+    (listener) => (ui.menu ? gitProbe.subscribe(listener) : () => undefined),
+    () => gitProbe.version(),
+  );
   const [focusToken, setFocusToken] = useState(0);
   const pinned = usePinnedState(snapshot.rootPath);
 

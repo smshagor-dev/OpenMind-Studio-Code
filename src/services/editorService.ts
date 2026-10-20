@@ -8,7 +8,11 @@ import type { IpcClient } from "./ipc";
 export type CodeEditorLike = Partial<
   Pick<
     monaco.editor.IStandaloneCodeEditor,
-    "addAction" | "setSelections" | "revealRangeInCenterIfOutsideViewport" | "executeEdits"
+    | "addAction"
+    | "setSelections"
+    | "revealRangeInCenterIfOutsideViewport"
+    | "executeEdits"
+    | "getRawOptions"
   >
 > &
   Pick<
@@ -132,6 +136,7 @@ export class EditorService {
   private status: EditorStatus | null = null;
   private options: EditorViewOptions = DEFAULT_VIEW_OPTIONS;
   private readonly listeners = new Set<() => void>();
+  private readonly attachListeners = new Set<(editor: CodeEditorLike) => (() => void) | undefined>();
 
   constructor(
     private readonly ipc: IpcClient,
@@ -194,6 +199,14 @@ export class EditorService {
     for (const editor of this.editors) this.applyActions(editor);
   }
 
+  /**
+   * The commands that asked to be in the editor's right-click menu (extensions, the AI panel), in order. Format
+   * Document / With... are not repeated: the menu lists them itself.
+   */
+  contextMenuActions(): ExtensionEditorAction[] {
+    return [...this.extensionActions, ...this.aiActions].filter((action) => action.inContextMenu);
+  }
+
   /** App commands that belong in the palette only (Network: ..., Shell Integration: ...), replacing `owner`'s earlier list. */
   setAppActions(actions: ExtensionEditorAction[], owner = "network"): void {
     this.appActions.set(owner, actions);
@@ -243,12 +256,36 @@ export class EditorService {
     this.actionDisposables.set(editor, disposables);
   }
 
+  /**
+   * Runs `listener` for every editor attached now and later (annotations, the context menu); what it returns runs
+   * when that editor goes away. Returns a function that stops listening.
+   */
+  onEditorAttached(listener: (editor: CodeEditorLike) => (() => void) | undefined): () => void {
+    this.attachListeners.add(listener);
+    for (const editor of this.editors) this.addCleanup(editor, listener(editor));
+    return () => {
+      this.attachListeners.delete(listener);
+    };
+  }
+
+  private readonly cleanups = new Map<CodeEditorLike, (() => void)[]>();
+
+  private addCleanup(editor: CodeEditorLike, cleanup: (() => void) | undefined): void {
+    if (cleanup) this.cleanups.set(editor, [...(this.cleanups.get(editor) ?? []), cleanup]);
+  }
+
+  /** The editor commands act on (the last focused one), or `null`. */
+  current(): CodeEditorLike | null {
+    return this.editor;
+  }
+
   /** Registers `editor` (and makes it current); returns the matching detach function. */
   attach(editor: CodeEditorLike): () => void {
     this.editors.add(editor);
     this.editor = editor;
     this.applyOptions();
     this.applyActions(editor);
+    for (const listener of this.attachListeners) this.addCleanup(editor, listener(editor));
     const refresh = () => {
       if (this.editor === editor) this.refreshStatus();
     };
@@ -273,6 +310,8 @@ export class EditorService {
       }
       this.editors.delete(editor);
       this.disposeActions(editor);
+      for (const cleanup of this.cleanups.get(editor) ?? []) cleanup();
+      this.cleanups.delete(editor);
       if (this.editor === editor) {
         this.editor = [...this.editors].pop() ?? null;
         this.refreshStatus();
@@ -417,6 +456,50 @@ export class EditorService {
     editor.focus();
     editor.trigger("menu", "paste", { text });
     return true;
+  }
+
+  /**
+   * Edit > Cut / Copy from a menu: the selected text goes to the clipboard through the app's bridge (Monaco's own
+   * actions need the WebView's clipboard permission). Like Ctrl+C, an empty selection copies its whole line, and
+   * several selections are joined by line breaks. Cut removes them as one undoable edit and is refused in a
+   * read-only editor. Returns false when there is nothing to copy.
+   */
+  async copySelection(cut: boolean): Promise<boolean> {
+    const editor = this.editor;
+    const model = editor?.getModel();
+    const selections = editor?.getSelections();
+    if (!editor || !model || !selections || selections.length === 0) return false;
+    const eol = model.getEOL();
+    const ranges = selections.map((selection) =>
+      selection.isEmpty()
+        ? {
+            startLineNumber: selection.startLineNumber,
+            startColumn: 1,
+            endLineNumber: Math.min(selection.startLineNumber + 1, model.getLineCount()),
+            endColumn:
+              selection.startLineNumber < model.getLineCount()
+                ? 1
+                : model.getLineMaxColumn(selection.startLineNumber),
+          }
+        : selection,
+    );
+    const pieces = selections.map((selection, index) => {
+      const text = model.getValueInRange(ranges[index] ?? selection);
+      return selection.isEmpty() && !text.endsWith(eol) ? text + eol : text;
+    });
+    await this.ipc.clipboardWriteText(pieces.join(selections.length > 1 ? eol : ""));
+    if (cut && editor.executeEdits) {
+      editor.focus();
+      editor.executeEdits("cut", ranges.map((range) => ({ range, text: "" })));
+    } else {
+      editor.focus();
+    }
+    return true;
+  }
+
+  /** The editor in front doesn't take edits (a historical revision, a read-only document). */
+  isReadOnly(): boolean {
+    return this.editor?.getRawOptions?.().readOnly === true;
   }
 
   hasEditor(): boolean {

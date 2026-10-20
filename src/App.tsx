@@ -42,6 +42,10 @@ import { TitleBar } from "./components/TitleBar";
 import { container } from "./services/container";
 import { agent } from "./services/agent";
 import { AgentSetupDialog } from "./components/agent/AgentSetupDialog";
+import { InlineChatLayer } from "./components/agent/InlineChatLayer";
+import { ContextMenuLayer } from "./components/ContextMenuLayer";
+import { CommitDetailsDialog } from "./components/git/CommitDetailsDialog";
+import { installEditorMenu } from "./services/editorMenu";
 import { buildMenuBar, projectMenuCommands } from "./services/menus";
 
 // Dialogs that only open on a click are loaded then (a separate chunk each), not at start-up.
@@ -64,6 +68,8 @@ const RuntimeManagerDialog = lazy(() =>
 export function App() {
   useT();
   const { workspaceState, activeWorkspace, themeKind, layout } = useWorkbenchState();
+  // The editor's context menu, its commands and the Git annotations (once, before any editor mounts).
+  useState(installEditorMenu);
   const ready = useAppStartup();
   useEffect(() => {
     if (ready) void agent.start();
@@ -192,6 +198,9 @@ export function App() {
         />
       ) : null}
       <ErrorToast toasts={toasts} onDismiss={dismissToast} />
+      <ContextMenuLayer />
+      <CommitDetailsDialog />
+      <InlineChatLayer themeKind={themeKind} />
       <QuickOpen />
       <AiProviderManager />
       <AiConfirmDialog />

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { editorMenuCommandIds } from "./editorMenu/editorMenuModel";
 import { DEFAULT_KEYBINDINGS } from "./keybindings";
 import {
   buildMenuBar,
@@ -68,8 +69,9 @@ describe("buildMenuBar", () => {
   });
 
   it("only binds keys to commands that appear in the menus", () => {
-    const ids = new Set(collectCommandIds(buildMenuBar(EMPTY)));
-    const menuless = new Set(["search.findInFiles", "search.replaceInFiles"]);
+    // The menu bar and the editor's context menu; Shift+F10 is the key that opens the context menu itself.
+    const ids = new Set([...collectCommandIds(buildMenuBar(EMPTY)), ...editorMenuCommandIds()]);
+    const menuless = new Set(["search.findInFiles", "search.replaceInFiles", "editor.showContextMenu"]);
 
     for (const binding of DEFAULT_KEYBINDINGS) {
       if (menuless.has(binding.command)) continue;

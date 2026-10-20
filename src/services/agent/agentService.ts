@@ -211,6 +211,18 @@ export class AgentService {
       this.attaching = false;
     }
   }
+  /**
+   * Adds text from the editor (a file or a selection) to the composer's attachments. One with the same name is
+   * replaced, not duplicated; the composer's limits (six attachments, 100 KB each) apply.
+   */
+  attachText(name: string, text: string): void {
+    if (new TextEncoder().encode(text).length > 100000)
+      throw new Error(this.host.text("agent.attach.tooLarge"));
+    const others = (this.state.attachments ?? []).filter((item) => item.name !== name);
+    if (others.length >= 6) throw new Error(this.host.text("agent.attach.tooMany"));
+    this.set({ attachments: [...others, { id: crypto.randomUUID(), name, text }] });
+  }
+
   removeAttachment(id: string): void {
     this.set({
       attachments:
@@ -817,6 +829,8 @@ export class AgentService {
     first = false,
     savedAttachments?: AgentAttachment[],
     expectedGoalRevision?: number,
+    /** A task's own mode (the editor's Explain / Review run read-only in plan mode). */
+    modeOverride?: AgentMode,
   ): Promise<boolean> {
     if (text.trim().startsWith("/") && !savedAttachments)
       return this.runCommand(text);
@@ -851,7 +865,7 @@ export class AgentService {
         attachments,
         text: message || "Read the attached files and describe their contents.",
         modelId,
-        mode: this.state.mode,
+        mode: modeOverride ?? this.state.mode,
         workspace: this.host.workspacePath?.() ?? null,
         options: { ...this.options() },
         status: "pending",
