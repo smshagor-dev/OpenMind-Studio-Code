@@ -244,6 +244,12 @@ async fn make_plan(
     ) {
         request.assembly = crate::commands::assembly::options(state);
     }
+    if matches!(
+        detect(&request.file),
+        Detection::Runnable(RunnableKind::Pascal)
+    ) {
+        request.pascal = pascal_options(state, request.workspace.as_deref());
+    }
     plan(
         &request,
         &environment,
@@ -253,9 +259,36 @@ async fn make_plan(
     )
 }
 
-/// The Runtime Manager item that provides what `file` needs to run (none for Rust: rustup manages it).
-fn installable_runtime(file: &Path) -> Option<String> {
-    match detect(file) {
+/// Pascal's build options for a file of the folder `workspace`: the chosen compiler (`pascal.compiler`, the folder's
+/// own choice first), this computer's .NET Framework and the folders a PascalABC.NET setup installs into.
+pub(crate) fn pascal_options(
+    state: &AppState,
+    workspace: Option<&Path>,
+) -> openmind_runner::PascalOptions {
+    let chosen = crate::commands::preferences::folder_string(state, workspace, "pascal.compiler");
+    let installed_dirs = ["ProgramFiles(x86)", "ProgramFiles"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(|root| PathBuf::from(root).join("PascalABC.NET"))
+        .filter(|dir| dir.is_dir())
+        .collect();
+    openmind_runner::PascalOptions {
+        compiler: openmind_runner::PascalCompiler::parse(&chosen),
+        dotnet_framework: openmind_core::dotnet_framework::installed_release(),
+        installed_dirs,
+    }
+}
+
+/// The Runtime Manager item that provides what `file` needs to run (none for Rust: rustup manages it); for Pascal the
+/// chosen compiler's.
+fn installable_runtime(state: &AppState, request: &RunRequest) -> Option<String> {
+    match detect(&request.file) {
+        Detection::Runnable(RunnableKind::Pascal) => Some(
+            pascal_options(state, request.workspace.as_deref())
+                .compiler
+                .runtime_id()
+                .to_string(),
+        ),
         Detection::Runnable(RunnableKind::Rust) => None,
         Detection::Runnable(kind) => Some(kind.runtime_id().to_string()),
         Detection::NotRunnable { .. } => None,
@@ -302,7 +335,7 @@ pub async fn run_resolve(
                 );
                 let mut availability = RunAvailability::refused(err.to_string(), false, missing);
                 if missing {
-                    availability.install_runtime = installable_runtime(&request.file);
+                    availability.install_runtime = installable_runtime(&state, &request);
                     // No Node.js: a plain script still runs as a page in the built-in browser.
                     availability.browser = browser_kind(&request.file) == Some(BrowserKind::Script);
                 }

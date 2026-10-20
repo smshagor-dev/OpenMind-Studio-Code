@@ -58,3 +58,5 @@ pnpm-debug.log*
 /python-bundle/*
 !/python-bundle/README.txt
 /.python-bundle-cache/
+/pascalabc-bundle/*
+!/pascalabc-bundle/README.txt

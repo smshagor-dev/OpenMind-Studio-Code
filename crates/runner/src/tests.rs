@@ -13,6 +13,7 @@ use crate::*;
 mod assembly;
 mod compiled;
 mod fortran_pascal;
+mod pascalabc;
 
 fn plan_for(file: &str, argv: &[&str]) -> RunPlan {
     RunPlan {

@@ -417,6 +417,11 @@ export function checkInstallerConfig(tauri, licenseText) {
       'bundle.resources must copy "../python-bundle/" to "python-bundle/" (the offline Python packages).',
     );
   }
+  if (bundle.resources?.["../pascalabc-bundle/"] !== "pascalabc-bundle/") {
+    problems.push(
+      'bundle.resources must copy "../pascalabc-bundle/" to "pascalabc-bundle/" (the official PascalABC.NET compiler archive).',
+    );
+  }
   if (bundle.resources?.["../lsp-bundle/"] !== "lsp/") {
     problems.push(
       'bundle.resources must copy "../lsp-bundle/" to "lsp/" (the offline language servers).',

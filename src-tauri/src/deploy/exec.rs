@@ -389,6 +389,7 @@ fn unpack_and_place(
         openmind_runtime_manager::extract::ExtractSelection {
             strip_components: 0,
             only_under: None,
+            name_encoding: None,
         },
         &mut |_, _| {},
     )

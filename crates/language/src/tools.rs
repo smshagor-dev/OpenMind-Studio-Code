@@ -113,6 +113,7 @@ pub const TOOLS: &[ToolDef] = &[
     exe("gcc", "GCC", &["gcc"], "Install the C/C++ toolchain (LLVM-MinGW, a gcc-compatible clang) from Runtime Manager > Workloads."),
     exe("gfortran", "GNU Fortran", &["gfortran"], "Install Fortran from the Runtime Manager."),
     exe("fpc", "Free Pascal Compiler", &["fpc64", "fpc"], "Install Pascal from the Runtime Manager."),
+    exe("pabcnetc", "PascalABC.NET Compiler", &["pabcnetcclear", "pabcnetc"], "Install PascalABC.NET from the Runtime Manager (Windows; it needs .NET Framework 4.7.2 or later)."),
     exe("clang", "Clang", &["clang"], "Install the C/C++ toolchain (LLVM-MinGW) from Runtime Manager > Workloads."),
     exe("clang-format", "clang-format", &["clang-format"], "It ships in OpenMind's offline bundle (release builds); otherwise it comes with the C/C++ toolchain (LLVM-MinGW) in Runtime Manager > Workloads."),
     exe("git", "Git", &["git"], "Install Git from the Runtime Manager."),

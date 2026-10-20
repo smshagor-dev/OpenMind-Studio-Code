@@ -17,6 +17,8 @@ export interface BuildProblemFile {
 const GCC = /^(.*?):(\d+):(?:(\d+):)?\s*(fatal error|error|warning|note):\s*(.*)$/i;
 const FPC = /^(.*?)\((\d+)(?:,(\d+))?\)\s+(Fatal|Error|Warning|Note|Hint):\s*(.*)$/i;
 const FPC_SUMMARY = /^There were \d+ errors? compiling module, stopping$/;
+/** PascalABC.NET's `pabcnetcclear`: `[line,col] file.pas: text` (it lists errors only). */
+const PASCALABC = /^\[(\d+),(\d+)\]\s+(.+?\.(?:pas|pp|inc|pcu)):\s*(.*)$/i;
 /** A linker error has no line: it is shown on the first line of the file that was built. */
 const UNDEFINED = /undefined reference to [`'](.+?)'/;
 
@@ -43,9 +45,17 @@ function at(severity: Problem["severity"], message: string, line: number, column
 
 /**
  * A line of gcc/clang/gfortran (`file:line:col: error: text`, gfortran with `-fdiagnostics-plain-output`) or Free
- * Pascal (`file(line,col) Error: text`) output, or a linker's "undefined reference".
+ * Pascal (`file(line,col) Error: text`) or PascalABC.NET (`[line,col] file.pas: text`) output, or a linker's
+ * "undefined reference".
  */
 export function parseBuildLine(line: string): BuildLineProblem | null {
+  const abc = PASCALABC.exec(line.trim());
+  if (abc) {
+    return {
+      file: (abc[3] ?? "").trim() || null,
+      problem: at("error", abc[4] ?? line, Number(abc[1]), Number(abc[2])),
+    };
+  }
   const match = GCC.exec(line) ?? FPC.exec(line);
   // Free Pascal's closing summary repeats the errors already listed.
   if (match && FPC_SUMMARY.test(match[5] ?? "")) return null;

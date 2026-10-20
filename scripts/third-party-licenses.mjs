@@ -249,6 +249,18 @@ if (isMain) {
     });
     appendix.push({ title: "Tcl/Tk", text: TCLTK });
   }
+  if (existsSync(join(root, "pascalabc-bundle", "bundle.json"))) {
+    appendix.push({
+      title: "PascalABC.NET console compiler (pascalabc-bundle/, Windows builds)",
+      text:
+        "The official PABCNETC.zip from https://pascalabc.net/downloads/PABCNETC.zip, shipped unchanged and installed by the\n" +
+        "Runtime Manager. PascalABC.NET: Copyright (C) 2005-2026 Ivan Bondarev, Stanislav Mikhalkovich, GNU LGPL v3 with the\n" +
+        "authors' clarifications; source: https://github.com/pascalabcnet/pascalabcnet. The archive also holds the interface\n" +
+        "units of M. Abramyan's Programming Taskbook (Lib/PT4*.pcu), freely distributable only unmodified and free of charge.\n" +
+        "The full texts ship in pascalabc-bundle/: License_en.txt, copyright.txt, LGPL-3.0.txt, GPL-3.0.txt,\n" +
+        "PT4-license-en.txt and NOTICE.txt.",
+    });
+  }
   const lspNotices = join(root, "lsp-bundle", "THIRD-PARTY-NOTICES.txt");
   if (existsSync(lspNotices)) {
     appendix.push({

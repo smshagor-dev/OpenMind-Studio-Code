@@ -5,6 +5,7 @@
     "resources": {
       "../lsp-bundle/": null,
       "../python-bundle/": null,
+      "../pascalabc-bundle/": null,
       "cli/openmind.cmd": null
     },
     "macOS": {

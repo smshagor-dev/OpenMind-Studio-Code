@@ -1,4 +1,5 @@
 pub mod data_scope;
+pub mod dotnet_framework;
 pub mod error;
 pub mod install;
 pub mod jsonc;

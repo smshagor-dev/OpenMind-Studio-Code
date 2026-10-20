@@ -26,7 +26,8 @@ The v1.0.4 packages are not Authenticode-signed. Physical multi-computer univers
 
 - Explorer, Monaco editor with tabs and split editors, Markdown and file previews (images, PDF, DOCX, XLSX, CSV).
 - Integrated terminal (PowerShell, cmd, Git Bash, WSL), Run Code for Python, JavaScript/TypeScript, PHP, C, C++, Java,
-  Rust and assembly, and a built-in browser for HTML.
+  Rust, Fortran, Pascal and assembly, and a built-in browser for HTML. Pascal builds with Free Pascal (default) or, in
+  the source after v1.0.4 (unreleased), PascalABC.NET on Windows — see [docs/pascal.md](docs/pascal.md).
 - Git client: changes, staging, commits, diffs, branches, clone, history, blame, stash.
 - Language servers (LSP) and a Problems panel; an offline bundle of language servers and formatters ships with the
   Windows packages.

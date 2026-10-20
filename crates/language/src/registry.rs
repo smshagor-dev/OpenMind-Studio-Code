@@ -603,7 +603,7 @@ pub const LANGUAGES: &[LanguageDef] = &[
         [],
         [],
         [],
-        ["fpc"],
+        ["fpc", "pabcnetc"],
         [Hl, Run, Build]
     ),
     // Shell / scripting

@@ -128,6 +128,7 @@ fn main() {
             commands::deploy::deploy_launch,
             commands::deploy::deploy_trust,
             commands::python_packages::python_packages_status,
+            commands::pascalabc::pascal_status,
             commands::python_packages::python_packages_install,
             commands::document::document_open,
             commands::document::document_save,
@@ -603,6 +604,8 @@ fn main() {
             state::fill(app.handle());
             // Deployment on the local network: offer this installation only when the user turned it on.
             commands::deploy::apply_offering_at_start(app.handle());
+            // The PascalABC.NET this copy ships, installed once after start-up (files only; nothing runs).
+            commands::pascalabc::install_bundled_at_start(app.handle());
             // The proxy for OpenMind's own requests, from the settings (local reads; no request is made).
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

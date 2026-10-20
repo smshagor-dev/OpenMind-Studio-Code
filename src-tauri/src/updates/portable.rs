@@ -7,7 +7,7 @@
 //!    feed announced (the feed itself isn't signed). Anything else is deleted and never unpacked.
 //! 3. **Stage**: unpack it (safe names, size limits) into `<copy>/.update-staged/<version>/`.
 //! 4. **Swap at a controlled restart** ([`apply`]): only the program's own items are replaced — `OpenMindStudio.exe`
-//!    and the shipped bundles (`lsp/`, `python-bundle/`, `bin/`, `README.txt`) — never `data/`, `settings/`,
+//!    and the shipped bundles (`lsp/`, `python-bundle/`, `pascalabc-bundle/`, `bin/`, `README.txt`) — never `data/`, `settings/`,
 //!    `runtimes/`, `tools/`, `extensions/` or anything else of the user's. Each item is first renamed aside
 //!    (`<name>.old-<pid>`; Windows allows renaming a running program) and the staged one renamed in; if any step fails,
 //!    everything done so far is renamed back and the copy is left as it was. The next start removes the set-aside items
@@ -29,6 +29,7 @@ pub const REPLACEABLE: &[&str] = &[
     "OpenMindStudio.exe",
     "lsp",
     "python-bundle",
+    "pascalabc-bundle",
     "bin",
     "README.txt",
     "LICENSE.txt",
@@ -254,6 +255,7 @@ pub fn download_and_stage(
         openmind_runtime_manager::extract::ExtractSelection {
             strip_components: 0,
             only_under: None,
+            name_encoding: None,
         },
         &mut |_, _| {},
     )

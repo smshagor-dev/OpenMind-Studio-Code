@@ -147,6 +147,20 @@ if (existsSync(join(pythonBundle, "bundle.json"))) {
   console.log("No python-bundle/ found (run pnpm python:bundle): the package carries no bundled Python packages.");
 }
 
+// The official PascalABC.NET console compiler archive, unchanged (pnpm pascalabc:bundle): installed offline by the
+// Runtime Manager. Checked against the manifest's SHA-256 before it is copied.
+const pascalabcBundle = join(root, "pascalabc-bundle");
+if (existsSync(join(pascalabcBundle, "bundle.json"))) {
+  execFileSync(process.execPath, [join(root, "scripts", "prepare-pascalabc-bundle.mjs"), "--check"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  cpSync(pascalabcBundle, join(staging, "pascalabc-bundle"), { recursive: true });
+  console.log("Copied pascalabc-bundle/ into the package.");
+} else {
+  console.log("No pascalabc-bundle/ found (run pnpm pascalabc:bundle): PascalABC.NET then downloads from pascalabc.net.");
+}
+
 const zip = join(outDir, zipName(version));
 rmSync(zip, { force: true });
 // Windows' own tar.exe (bsdtar; `-a` picks ZIP from the extension). Not PowerShell's Compress-Archive: it wrote entry

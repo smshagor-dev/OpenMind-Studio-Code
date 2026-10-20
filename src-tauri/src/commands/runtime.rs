@@ -37,6 +37,11 @@ pub async fn runtime_install(
     if let Some(reason) = network_unsupported(state.runtime.paths(), &kind) {
         return Err(reason.into());
     }
+    // PascalABC.NET installs from the copy OpenMind ships (offline; the SHA-256 is still checked).
+    if kind == crate::commands::pascalabc::KIND {
+        crate::commands::pascalabc::before_install(&state);
+        crate::commands::pascalabc::after_user_install(&state).await;
+    }
     let result = state
         .runtime
         .install(&kind, version.as_deref(), progress_sink(app.clone()))
@@ -137,6 +142,9 @@ pub async fn runtime_repair(
     if let Some(reason) = php_in_use_reason(&state, &kind, &version) {
         return Err(reason);
     }
+    if kind == crate::commands::pascalabc::KIND {
+        crate::commands::pascalabc::before_install(&state);
+    }
     let result = state
         .runtime
         .repair(&kind, &version, progress_sink(app.clone()))
@@ -177,6 +185,10 @@ pub async fn runtime_delete(
         .delete(&kind, &version)
         .await
         .map_err(|err| err.user_message());
+    // A removed bundled PascalABC.NET stays removed: it isn't installed again at the next start.
+    if result.is_ok() && kind == crate::commands::pascalabc::KIND {
+        crate::commands::pascalabc::after_user_delete(&state, &version).await;
+    }
     notify_changed(&app).await;
     result
 }

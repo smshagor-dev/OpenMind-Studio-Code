@@ -5,6 +5,7 @@ import { container } from "../services/container";
 import type { DocumentSnapshot } from "../services/documentService";
 import type { LineEnding, TextEncoding } from "../services/ipc";
 import { AssemblyStatusItem } from "./AssemblyStatusItem";
+import { PascalStatusItem } from "./PascalStatusItem";
 import { DebugStatusItem } from "./DebugStatusItem";
 import { IndexStatusItem } from "./IndexStatusItem";
 import { FormatterStatusItem } from "./formatting/FormatterStatusItem";
@@ -134,6 +135,7 @@ export function StatusBar({ activeDocument, hasWorkspace }: StatusBarProps) {
               {languageName(status.languageId)}
             </span>
             <AssemblyStatusItem languageId={status.languageId} />
+            <PascalStatusItem languageId={status.languageId} />
           </>
         ) : null}
       </div>

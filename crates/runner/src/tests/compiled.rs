@@ -53,6 +53,7 @@ impl Setup {
             template: None,
             arguments: None,
             assembly: Default::default(),
+            pascal: Default::default(),
         };
         let root = self.workspace.parent().expect("parent");
         match plan(
@@ -267,6 +268,7 @@ fn a_missing_compiler_is_a_clear_reason_and_a_custom_command_is_refused() {
         template: template.map(Into::into),
         arguments: None,
         assembly: Default::default(),
+        pascal: Default::default(),
     };
     let empty = RunEnvironment::default();
     let error = plan(

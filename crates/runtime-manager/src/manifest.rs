@@ -5,13 +5,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::RuntimeError;
 
-const BUILTIN: [&str; 33] = [
+const BUILTIN: [&str; 34] = [
     include_str!("../manifests/node.json"),
     include_str!("../manifests/python.json"),
     include_str!("../manifests/git.json"),
     include_str!("../manifests/php.json"),
     include_str!("../manifests/fortran.json"),
     include_str!("../manifests/pascal.json"),
+    include_str!("../manifests/pascalabc.json"),
     include_str!("../manifests/assembly.json"),
     include_str!("../manifests/composer.json"),
     include_str!("../manifests/mariadb.json"),
@@ -101,6 +102,9 @@ pub struct Artifact {
     /// Bytes on disk after extraction (measured from the archive), for size estimates before anything downloads.
     #[serde(default)]
     pub install_bytes: Option<u64>,
+    /// The code page of entry names stored without the ZIP UTF-8 flag (`"cp866"`); ASCII and UTF-8 names are kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_encoding: Option<crate::entry_names::NameEncoding>,
 }
 
 impl Artifact {

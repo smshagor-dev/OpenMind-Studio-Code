@@ -34,6 +34,7 @@ pub mod network_offline;
 pub mod network_readiness;
 pub mod notebook;
 pub mod panel;
+pub mod pascalabc;
 pub mod php;
 pub mod php_project;
 pub mod pma_config;
