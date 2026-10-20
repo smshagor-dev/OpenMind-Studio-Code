@@ -52,8 +52,8 @@ export function EditorGroupView(props: EditorGroupViewProps) {
       }}
     >
       <div className="editor-group__header">
-        {welcomeTab ? <WelcomeTab /> : null}
         <TabBar
+          leading={welcomeTab ? <WelcomeTab active /> : null}
           tabs={group.tabs}
           activeId={welcomeTab ? null : group.activeTabId}
           onSelect={(id) => {

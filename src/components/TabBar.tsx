@@ -1,6 +1,6 @@
 import { CollabDots } from "./collab/CollabDots";
 import { shownPath } from "./remoteTabPath";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 
 import { droppedOutside } from "../services/editorWindowService";
 import type { EditorTabView } from "../services/workspaceService";
@@ -18,6 +18,8 @@ interface TabBarProps {
   onKeepOpen: (id: string) => void;
   /** A tab dragged out of the window (VS Code opens it in a new window); `at` = drop point on screen. */
   onDetach?: (id: string, at: { x: number; y: number }) => void;
+  /** A tab shown first in the same row (the Welcome page's), so there is only ever one row of tabs. */
+  leading?: ReactNode;
 }
 
 /** The drag type of a tab, so other drop targets (the explorer) ignore it. */
@@ -40,10 +42,10 @@ function tabTitle(tab: EditorTabView): string {
  * Shift+wheel or a trackpad's sideways swipe — moves it without scrolling anything else, and the active tab is always
  * brought fully into view (selected, newly opened, restored, or after the window or the group was resized).
  */
-export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach }: TabBarProps) {
+export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach, leading }: TabBarProps) {
   const row = useRef<HTMLDivElement | null>(null);
   const tabElements = useRef(new Map<string, HTMLDivElement>());
-  const hasTabs = tabs.length > 0;
+  const hasTabs = tabs.length > 0 || (leading !== undefined && leading !== null);
 
   /** Scrolls the row just enough to show the active tab whole (no-op when it is already visible). */
   const revealActive = useCallback(() => {
@@ -100,7 +102,8 @@ export function TabBar({ tabs, activeId, onSelect, onClose, onKeepOpen, onDetach
   }
 
   return (
-    <div className="tab-bar" role="tablist" ref={row}>
+    <div className="tab-bar" role="tablist" aria-label={t("editor.openEditors")} ref={row}>
+      {leading}
       {tabs.map((tab) => {
         const active = tab.id === activeId;
         const className = [
