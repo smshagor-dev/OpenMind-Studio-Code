@@ -3447,9 +3447,17 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
     no tools; Accept = one undoable edit, refused if the code changed). Dictation = Windows voice typing (`dictation_toggle` sends
     Win+H); non-Windows says it's unavailable.
   - Menu Cut/Copy go through the clipboard bridge like Paste (`EditorService.copySelection`).
-  - Verified in the debug app (CDP-driven input, test repo with a rename/branch/tag/remotes). Not exercised by hand: Refactor /
-    Source Action with a running server (no server in the test copy; unit-tested), dictation (Win+H would type into whatever window
-    has focus), inline chat with a real model (no model in the test copy). Historical revision tabs keep Monaco's read-only menu.
+  - Historical revision tabs (`git-revision:/<hash>/<path>`, `revisionMenu.ts`, attached through `revisionHook.ts` so the preview
+    doesn't import the container) use the same menu with read-only `revision.*` commands only (Copy, Find, Go to Line, compare with
+    working/previous, commit details, history, open working file, Copy SHA, open on remote).
+  - Fixes found by the live pass: typescript-language-server's `_typescript.rename` request after an extract refactor is acknowledged
+    (answering "method not found" dropped the edit); inline completion sends `thinking_budget_tokens: 0` (a refinement used to spend
+    its budget reasoning and return nothing) and `fitProposal` gives a proposal the selection's indentation and final line break;
+    dictation sends Win+H only once Windows reports this process's window in the foreground, otherwise it refuses.
+  - Verified in the debug app (CDP-driven input, test repo with a rename/branch/tag/remotes): the real TypeScript server (Organize
+    Imports, Remove Unused Imports, Extract to constant via command + `workspace/applyEdit`, Rename, a quick fix, one-step undo), the
+    real Nemotron 3 Nano 4B (inline propose/refine/accept/reject, Explain, Review), dictation (voice typing opened only over the app),
+    revision-tab menu. CI did not run (GitHub billing limit).
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).
