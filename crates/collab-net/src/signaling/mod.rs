@@ -2,6 +2,7 @@
 //! bounded queue and arrive as [`SignalingEvent`]s; a dropped link ends with `Closed`, which the session layer
 //! answers with a reconnect (it never touches established peer connections).
 
+pub mod mqtt;
 pub mod multi;
 pub mod route;
 

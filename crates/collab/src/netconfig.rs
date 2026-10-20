@@ -1,6 +1,6 @@
 //! Collaboration network settings: the signaling relay, STUN servers and TURN relays (with TURN over TLS and port
-//! 443 for networks that only allow web traffic). Nothing is built in: no relay, STUN or TURN provider is
-//! hardcoded, and an empty value means "not configured". The TURN password never lives here — the app stores it
+//! 443 for networks that only allow web traffic). An empty value means "not configured" here; the network layer then
+//! uses its built-in public MQTT brokers for signaling and public STUN servers (`openmind_collab_net`), never a TURN. The TURN password never lives here — the app stores it
 //! encrypted and the TURN client asks for it when an allocation starts (`openmind_collab_net::turn::
 //! TurnCredentialSource`); a short-lived credential service is another source, without touching the transport.
 

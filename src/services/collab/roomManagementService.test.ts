@@ -106,8 +106,8 @@ describe("RoomManagementService", () => {
           };
         }),
     );
-    const joining = service.joinRoom(" CODE ", " 192.168.1.20:47732 ");
-    expect(net.join).toHaveBeenCalledWith("CODE", null, "192.168.1.20:47732");
+    const joining = service.joinRoom(" CODE ");
+    expect(net.join).toHaveBeenCalledWith("CODE", null);
     stage("pending");
     expect(service.joinProgress()).toMatchObject({ busy: true, stage: "pending" });
     finish("fail");
@@ -116,8 +116,8 @@ describe("RoomManagementService", () => {
       message: "The room refused the connection: Locked",
     });
     expect(service.joinProgress()).toMatchObject({ busy: false, stage: "failed" });
-    expect(await service.joinRoom("CODE", "")).toBeNull();
-    expect(net.join).toHaveBeenLastCalledWith("CODE", null, null);
+    expect(await service.joinRoom("CODE")).toBeNull();
+    expect(net.join).toHaveBeenLastCalledWith("CODE", null);
   });
 
   it("leaves a room and forgets its code", async () => {

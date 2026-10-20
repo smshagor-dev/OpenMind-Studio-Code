@@ -308,14 +308,33 @@ impl NetSetup {
     }
 }
 
+impl NetSetup {
+    /// The Internet signaling routes: the configured relay, else every built-in public MQTT broker (both computers
+    /// only connect out, so nothing on either asks Windows Firewall for permission).
+    pub fn internet_routes(&self) -> Vec<Route> {
+        match &self.signaling_url {
+            Some(url) => vec![Route {
+                route: ConnectionRoute::InternetRelay,
+                connector: Arc::new(WsSignaling::new(url)),
+                lookup: None,
+            }],
+            None => openmind_collab_net::signaling::mqtt::public_broker_routes(),
+        }
+    }
+
+    /// [`Self::internet_routes`] as one connector.
+    pub fn internet(&self) -> Arc<dyn openmind_collab_net::transport::SignalingConnector> {
+        Arc::new(MultiSignaling::new(self.internet_routes()))
+    }
+}
+
 pub async fn setup(state: &AppState) -> Result<NetSetup, String> {
     let config: NetConfig = super::read_config(state);
     let signaling_url = config.signaling_url.clone();
+    // The local rendezvous listens for other computers, which makes Windows ask for Firewall permission (an
+    // administrator's password on managed PCs); it is an opt-in for networks without Internet.
     let lan = crate::commands::preferences::user_bool(state, "collaboration.localNetwork");
-    if signaling_url.is_none() && !lan {
-        return Err("Turn on Settings > Collaboration > Local Network, or set a signaling server for rooms across networks.".into());
-    }
-    let mut ice = IceSetup::from_config(&config);
+    let mut ice = IceSetup::from_config(&config).with_default_stun();
     ice.bind_ip = debug_bind_ip();
     ice.policy = debug_ice_policy();
     let relay = super::turn_login::relay(state, &ice);
@@ -374,19 +393,7 @@ pub async fn host(app: &AppHandle, state: &AppState, room: &str) -> Result<(), S
             Err(err) => tracing::warn!(%err, "the room can't be offered on the local network"),
         }
     }
-    if let Some(url) = &setup.signaling_url {
-        routes.push(Route {
-            route: ConnectionRoute::InternetRelay,
-            connector: Arc::new(WsSignaling::new(url)),
-            lookup: None,
-        });
-    }
-    if routes.is_empty() {
-        return Err(
-            "The room couldn't be offered on the local network, and no signaling server is set."
-                .into(),
-        );
-    }
+    routes.extend(setup.internet_routes());
     let options = OwnerOptions {
         ice: setup.ice.clone(),
         gatherer: setup.gatherer(),

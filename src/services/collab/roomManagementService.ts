@@ -169,12 +169,12 @@ export class RoomManagementService {
     }
   }
 
-  /** Joins with a Room Code (and, as a fallback, the Owner's local address). `null` on success. */
-  async joinRoom(code: string, lanAddress: string): Promise<JoinError | null> {
+  /** Joins with a Room Code. `null` on success. */
+  async joinRoom(code: string): Promise<JoinError | null> {
     this.join = { busy: true, stage: "connecting", error: null, room: null };
     this.changed();
     try {
-      await this.net.join(code.trim(), null, lanAddress.trim() || null);
+      await this.net.join(code.trim(), null);
       this.join = { busy: false, stage: "connected", error: null, room: null };
       await this.host.refreshRooms();
       return null;

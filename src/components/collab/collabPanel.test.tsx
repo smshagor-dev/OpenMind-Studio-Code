@@ -337,7 +337,7 @@ describe("joining and diagnostics", () => {
     }
   });
 
-  it("validates the optional Owner address and explains a failure by its category", () => {
+  it("asks only for the Room Code and explains a failure by its category", () => {
     const manage = manageStub({
       joinProgress: vi.fn(() => ({
         busy: false,
@@ -351,17 +351,9 @@ describe("joining and diagnostics", () => {
     fireEvent.click(screen.getByText("Details"));
     expect(screen.getByText("raw")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Room Code"), { target: { value: "CODE" } });
-    fireEvent.click(screen.getByText("Owner's local address (optional)"));
-    fireEvent.change(screen.getByLabelText(/Owner's local address/, { selector: "input" }), {
-      target: { value: "server:1" },
-    });
-    expect(screen.getByText("Enter an address such as 192.168.1.20:47732.")).toBeTruthy();
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Join" }).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Owner's local address/, { selector: "input" }), {
-      target: { value: "192.168.1.20:47732" },
-    });
+    expect(screen.queryByText(/local address/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Join" }));
-    expect(manage.joinRoom).toHaveBeenCalledWith("CODE", "192.168.1.20:47732");
+    expect(manage.joinRoom).toHaveBeenCalledWith("CODE");
   });
 
   it("shows firewall guidance without secrets", async () => {

@@ -229,15 +229,3 @@ export function baseName(path: string): string {
   const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] ?? path;
 }
-
-/** An Owner's local-network address typed in by hand: `ip:port` (IPv4) or `[ipv6]:port`. Empty is fine. */
-export function lanAddressProblem(text: string): "format" | "port" | null {
-  const value = text.trim();
-  if (value === "") return null;
-  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})$/.exec(value);
-  const v6 = /^\[([0-9a-fA-F:.]+)\]:(\d{1,5})$/.exec(value);
-  const port = v4 ? Number(v4[5]) : v6 ? Number(v6[2]) : null;
-  if (port === null) return "format";
-  if (v4 && v4.slice(1, 5).some((part) => Number(part) > 255)) return "format";
-  return port >= 1 && port <= 65535 ? null : "port";
-}

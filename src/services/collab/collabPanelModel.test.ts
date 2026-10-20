@@ -7,7 +7,6 @@ import {
   approveCommands,
   assignableRoles,
   baseName,
-  lanAddressProblem,
   memberActions,
   panelRooms,
   type PanelInputs,
@@ -242,15 +241,7 @@ describe("the Collaboration panel model", () => {
     expect(approvalRoles({ ...room, you: { ...room.you, permissions: new Set() } })).toEqual([]);
   });
 
-  it("checks a typed Owner address and names files", () => {
-    expect(lanAddressProblem("")).toBeNull();
-    expect(lanAddressProblem("192.168.1.20:47732")).toBeNull();
-    expect(lanAddressProblem("[fe80::1]:47732")).toBeNull();
-    expect(lanAddressProblem("192.168.1.300:47732")).toBe("format");
-    expect(lanAddressProblem("server:47732")).toBe("format");
-    expect(lanAddressProblem("10.0.0.1:0")).toBe("port");
-    expect(lanAddressProblem("10.0.0.1:70000")).toBe("port");
-    expect(lanAddressProblem("10.0.0.1")).toBe("format");
+  it("names files", () => {
     expect(baseName("C:\\work\\src\\a.ts")).toBe("a.ts");
     expect(panelRooms(inputs({}))).toEqual([]);
   });

@@ -135,6 +135,10 @@ async fn pump(
                 RelayMessage::PeerArrived { slot } => {
                     shared.slots.insert(slot.clone(), index);
                 }
+                // A participant on several routes: its signals go to the Owner on the route that answered first.
+                RelayMessage::Joined { host, .. } => {
+                    shared.slots.entry(host.clone()).or_insert(index);
+                }
                 _ => {}
             }
         }

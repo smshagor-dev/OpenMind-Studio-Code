@@ -2,7 +2,6 @@ import { useState, useSyncExternalStore } from "react";
 
 import { t } from "../../i18n";
 import { container } from "../../services/container";
-import { lanAddressProblem } from "../../services/collab/collabPanelModel";
 import type { JoinError, JoinStage } from "../../services/collab/roomIpc";
 import { joinErrorText } from "./collabLabels";
 
@@ -71,7 +70,7 @@ export function CreateRoomForm({ folder, onDone }: { folder: string | null; onDo
   );
 }
 
-/** Join Room: the Room Code; the Owner's local address only as an advanced fallback. */
+/** Join Room: the Room Code is all it takes (the local network is tried first when turned on, then the Internet). */
 export function JoinRoomForm({ onDone }: { onDone: () => void }) {
   const manage = container.collab.manage;
   useSyncExternalStore(
@@ -79,11 +78,9 @@ export function JoinRoomForm({ onDone }: { onDone: () => void }) {
     () => manage.getVersion(),
   );
   const [code, setCode] = useState("");
-  const [address, setAddress] = useState("");
   const progress = manage.joinProgress();
-  const problem = lanAddressProblem(address);
   const submit = async () => {
-    const error = await manage.joinRoom(code, address);
+    const error = await manage.joinRoom(code);
     if (error === null) {
       manage.resetJoin();
       onDone();
@@ -111,13 +108,12 @@ export function JoinRoomForm({ onDone }: { onDone: () => void }) {
           }}
         />
       </label>
-      <LanAddressField value={address} problem={problem} onChange={setAddress} />
       <JoinStatus stage={progress.stage} error={progress.error} />
       <div className="collab-form__actions">
         <button
           type="submit"
           className="collab-button--primary"
-          disabled={progress.busy || code.trim() === "" || problem !== null}
+          disabled={progress.busy || code.trim() === ""}
         >
           {t("collab.join.submit")}
         </button>
@@ -133,49 +129,6 @@ export function JoinRoomForm({ onDone }: { onDone: () => void }) {
         </button>
       </div>
     </form>
-  );
-}
-
-/** The Owner's local address: hidden behind "advanced", only for networks where the room isn't found by itself. */
-function LanAddressField({
-  value,
-  problem,
-  onChange,
-}: {
-  value: string;
-  problem: "format" | "port" | null;
-  onChange: (value: string) => void;
-}) {
-  const [open, setOpen] = useState(value !== "");
-  return (
-    <>
-      <button
-        type="button"
-        className="collab-link"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen(!open);
-        }}
-      >
-        {t("collab.join.advanced")}
-      </button>
-      {open ? (
-        <label className="collab-form__label">
-          {t("collab.join.lanAddress")}
-          <input
-            value={value}
-            placeholder="192.168.1.20:47732"
-            aria-invalid={problem !== null}
-            onChange={(event) => {
-              onChange(event.target.value);
-            }}
-          />
-          <span className="collab-form__note">
-            {problem ? t(`collab.join.address.${problem}`) : t("collab.join.lanHint")}
-          </span>
-        </label>
-      ) : null}
-    </>
   );
 }
 

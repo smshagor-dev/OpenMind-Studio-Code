@@ -8,7 +8,8 @@ describe("local-network status text", () => {
     expect(routeLabel("internetRelay")).toBe("Connected through the signaling server");
     expect(failureMessage("blocked")).toContain("Windows Firewall");
     expect(failureMessage("blocked")).toContain("client isolation");
-    expect(failureMessage("notFound")).toContain("local address");
+    expect(failureMessage("notFound")).toContain("Check the code");
+    expect(failureMessage("notFound")).not.toContain("address");
     expect(failureMessage("refused")).toBe("The room refused the connection.");
   });
 

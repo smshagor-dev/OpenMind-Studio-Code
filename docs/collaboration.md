@@ -29,7 +29,8 @@ Owner's computer                                    Member's computer
   ├─ shared folder (never leaves except files asked)  │   — all over one authenticated connection to the Owner
   ├─ CRDT documents: stored before acknowledged       └─ WebView: editor (y-monaco), voice (WebRTC)
   └─ voice authority; optional classroom media server
-        ▲ local network (mDNS/broadcast discovery, direct)  ▲ or the Internet (signaling relay, STUN/TURN)
+        ▲ Internet signaling (public MQTT brokers by default, or a configured relay), STUN/TURN; data direct on a LAN
+        ▲ opt-in: local network (mDNS/broadcast discovery, the Owner's own rendezvous — asks Windows Firewall)
 ```
 
 - **Rooms, identity and security**: `collaboration-management.md` (roles, permissions, moderation, audit) and the

@@ -248,7 +248,7 @@ fn explain(failure: RouteFailure, errors: &[NetError]) -> NetError {
         }
         RouteFailure::NotFound => {
             "No room with this code was found on the local network. Check the code and that the Owner is hosting it on \
-             the same network; if discovery is blocked there, enter the Owner's local address."
+             the same network."
         }
     };
     let last = errors
@@ -338,6 +338,14 @@ pub async fn connect_with_report(
                 endpoint: None,
             });
         report.route = result.as_ref().ok().map(|r| r.route);
+        if let Err(err) = &result {
+            // The Owner answered through signaling but no connection came up: say so, not "not found".
+            report.failure = match AttemptOutcome::of(err) {
+                AttemptOutcome::NoDirectPath => Some(RouteFailure::Blocked),
+                AttemptOutcome::Refused => Some(RouteFailure::Refused),
+                _ => report.failure,
+            };
+        }
         return (result, report);
     }
     let failure = report.classify();

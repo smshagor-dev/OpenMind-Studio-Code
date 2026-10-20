@@ -11,7 +11,6 @@ use openmind_collab::{PublicKey, RoomCode, RoomUid, SessionId};
 use openmind_collab_net::lan::parse_endpoint;
 use openmind_collab_net::participant::{JoinMode, Participant, ParticipantConfig};
 use openmind_collab_net::route::{self, LanOptions, RouteOptions};
-use openmind_collab_net::signaling::WsSignaling;
 use openmind_collab_net::ConnectionRoute;
 use openmind_db::collab::{self as repo, rooms, sessions, NewRoom, RoomSettings, SessionRow};
 use openmind_db::Db;
@@ -74,8 +73,8 @@ async fn stored_rejoin(state: &AppState, room_uid: &str) -> Result<(RoomCode, Jo
     Ok((code, JoinMode::Reconnect { room, owner_key }))
 }
 
-/// How to reach the room: the local network first (a typed-in Owner address, the one that worked last time, then
-/// discovery), then the signaling server when one is set.
+/// How to reach the room: the local network first when it is turned on (the address that worked last time, then
+/// discovery), then the Internet: the configured signaling server, else the built-in public brokers.
 fn route_options(
     state: &AppState,
     setup: &super::net::NetSetup,
@@ -97,11 +96,10 @@ fn route_options(
         known: room.and_then(|room| state.collab.net.known_lan(room)),
         ..LanOptions::default()
     });
-    let internet = setup.signaling_url.as_deref().map(|url| {
-        Arc::new(WsSignaling::new(url))
-            as Arc<dyn openmind_collab_net::transport::SignalingConnector>
-    });
-    Ok(RouteOptions { lan, internet })
+    Ok(RouteOptions {
+        lan,
+        internet: Some(setup.internet()),
+    })
 }
 
 /// The code to look for and how to introduce ourselves: a typed code (first join) or a stored room (key-based rejoin).

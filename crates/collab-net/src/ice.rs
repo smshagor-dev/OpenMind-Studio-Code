@@ -1,6 +1,6 @@
 //! ICE server configuration from the Phase 1 settings (`openmind_collab::netconfig`, already validated there). No
 //! password lives here: the TURN login is asked for when an allocation starts ([`crate::turn::TurnCredentialSource`]).
-//! Nothing is built in.
+//! Only the public STUN servers in [`DEFAULT_STUN`] are built in (used when none is set).
 
 use std::net::IpAddr;
 
@@ -81,7 +81,26 @@ fn host_port(rest: &str, default_port: u16) -> Option<(String, u16)> {
     }
 }
 
+/// Public STUN servers used when none is set: they only tell a computer its public address (one UDP request from the
+/// connection's own socket), so two computers behind different routers can find a direct path. Nothing else is sent.
+pub const DEFAULT_STUN: &[(&str, u16)] =
+    &[("stun.l.google.com", 19302), ("stun.cloudflare.com", 3478)];
+
 impl IceSetup {
+    /// [`DEFAULT_STUN`] when no STUN server is configured.
+    pub fn with_default_stun(mut self) -> Self {
+        if self.stun.is_empty() {
+            self.stun = DEFAULT_STUN
+                .iter()
+                .map(|(host, port)| StunServer {
+                    host: (*host).to_string(),
+                    port: *port,
+                })
+                .collect();
+        }
+        self
+    }
+
     /// Builds the setup from validated settings. URLs the settings layer already refused never get here.
     pub fn from_config(config: &NetConfig) -> Self {
         let stun = config

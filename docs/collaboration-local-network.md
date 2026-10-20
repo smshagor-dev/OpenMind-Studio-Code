@@ -5,8 +5,24 @@ no TURN. Nothing about a room changes — same room record, Room Code, authority
 sharing and file transfer. Only how the two sides find each other and exchange WebRTC offers differs. A route is not a
 kind of room: the same room is reachable over the LAN and through the Internet relay at once.
 
-Setting: **Settings > Collaboration > Local Network** (`collaboration.localNetwork`, on by default). With it on, a
-signaling server is optional.
+Setting: **Settings > Collaboration > Local Network** (`collaboration.localNetwork`, **off by default** since the
+Room Code-only change). Hosting with it on listens for other computers (TCP 47732, UDP 47731, mDNS), which makes Windows
+Firewall ask for permission — an administrator's password on managed PCs, and Cancel creates Block rules. Turn it on
+only for networks with no Internet. With it off, rooms meet through the Internet signaling route (below) and the WebRTC
+connection is still direct when both computers are on the same network (ICE host candidates).
+
+## Room Code only: the built-in public brokers
+
+With no **Signaling Server** set, both sides use the public MQTT brokers in
+`openmind_collab_net::signaling::mqtt::PUBLIC_BROKERS` (EMQX, HiveMQ, Mosquitto — MQTT over `wss://`, ports 8084/8884/8081):
+the Owner registers on all of them at once and a participant takes the first Owner that answers (no answer for 12 s on a
+broker: `NoHost` → "room not found"). Both computers only connect out — nothing listens, so Windows Firewall has nothing to
+ask about for signaling. The MQTT topic is a one-way hash of the signaling topic and every envelope is sealed with
+ChaCha20-Poly1305 under a key derived from it (`signaling/mqtt/room.rs`): the broker sees neither the Room Code nor SDP or
+addresses. Authentication is unchanged (Owner proof bound to DTLS). STUN defaults to Google and Cloudflare when none is
+set (`ice::DEFAULT_STUN`). The join form asks only for the Room Code. Limits: free public services with no uptime promise;
+networks that allow only port 443 need a configured `wss://` signaling server; two computers behind strict NATs need a
+TURN server. Real-broker tests: `cargo test -p openmind-collab-net --test mqtt -- --ignored`.
 
 ## Order of routes (participant)
 

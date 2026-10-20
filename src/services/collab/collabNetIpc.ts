@@ -192,8 +192,9 @@ export interface CollabNetIpc {
   hostStart: (roomUid: string) => Promise<void>;
   hostStop: (roomUid: string) => Promise<void>;
   /**
-   * Joins with a Room Code. The local network is tried first; `lanAddress` (the Owner's `ip:port`) is for networks
-   * that block discovery — the Room Code is still what authenticates.
+   * Joins with a Room Code: the local network first when Settings > Collaboration > Local Network is on, then the
+   * Internet (the configured signaling server, else the built-in public brokers). The app never asks for an address;
+   * `lanAddress` stays for scripted diagnostics only.
    */
   join: (
     code: string,
