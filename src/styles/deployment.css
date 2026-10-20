@@ -1,9 +1,7 @@
 /* Help > Network Deployment. Colours are theme tokens. */
 
 .deploy-dialog {
-  width: min(820px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
-  overflow: auto;
+  width: min(820px, 100%);
   font-size: 13px;
   line-height: 1.5;
 }

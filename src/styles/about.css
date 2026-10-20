@@ -1,7 +1,7 @@
 /* Help > About: two cards (the app, the author), a compact system list and actions. Tokens only. */
 
 .modal.modal--about.about {
-  width: min(720px, 94vw);
+  width: min(720px, 100%);
   padding: 22px 24px 18px;
   text-align: left;
 }
@@ -215,7 +215,8 @@
   outline-offset: 1px;
 }
 
-@media (max-width: 620px) {
+/* One column once the dialog can no longer hold both cards (it is 720px wide at most, less the window margins). */
+@media (max-width: 760px) {
   .about__cols,
   .about__rows {
     grid-template-columns: 1fr;

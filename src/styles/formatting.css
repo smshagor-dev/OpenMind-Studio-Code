@@ -1,9 +1,7 @@
 /* Format Document With... / Configure Default Formatter / Formatter Status. Tokens only. */
 
 .modal.modal--formatter {
-  width: min(560px, 94vw);
-  max-height: 76vh;
-  overflow-y: auto;
+  width: min(560px, 100%);
   text-align: left;
 }
 

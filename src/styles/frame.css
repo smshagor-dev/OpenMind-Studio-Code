@@ -224,8 +224,22 @@
   flex: 0 0 auto;
 }
 
+/* The page scales its margins with the room it has and stacks its two columns when it is narrow (a small window, or
+   the side bars open beside it). */
 .welcome {
-  padding: 100px 48px 32px;
+  container-type: inline-size;
+  padding: clamp(24px, 12vh, 100px) clamp(16px, 6%, 48px) 32px;
+}
+
+@container (max-width: 640px) {
+  .welcome__columns {
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .welcome__column {
+    max-width: none;
+  }
 }
 
 .welcome__inner {
@@ -513,6 +527,14 @@
   padding: 4px 16px 8px;
   overflow: auto;
   user-select: text;
+}
+
+/* A narrow window: Back/Forward give way so the menus keep their room (this file loads after titlebar.css, whose own
+   rule this one replaces — the `.titlebar__nav` rule above would otherwise win). */
+@media (max-width: 760px) {
+  .titlebar__nav {
+    display: none;
+  }
 }
 
 /* View > Appearance > Zen Mode: only the editor. */

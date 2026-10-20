@@ -589,3 +589,26 @@
   align-items: center;
   margin: 2px 0;
 }
+
+/* A narrow side bar: the icon gives its room to the name first, then the download/rating figures go (they are on the
+   extension's page). Measured on the list itself, so dragging the side bar narrower works the same as a small window. */
+.ext-items {
+  container-type: inline-size;
+}
+
+@container (max-width: 300px) {
+  .ext-item__open {
+    gap: 0;
+    padding-left: 12px;
+  }
+
+  .ext-item__open .ext-icon {
+    display: none;
+  }
+}
+
+@container (max-width: 240px) {
+  .ext-item__stats {
+    display: none;
+  }
+}

@@ -1,8 +1,9 @@
 /* Runtime Manager and Language Tools: compact, consistent cards, chips and details. Colours are tokens only. */
 
 .modal.modal--runtimes {
-  width: min(880px, 96vw);
-  max-height: 84vh;
+  width: min(880px, 100%);
+  /* On a big screen the list scrolls inside a dialog of a comfortable height rather than one as tall as the window. */
+  max-height: min(960px, var(--modal-max-height));
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -402,13 +403,10 @@ ul.tc-banner {
 
 .tc-details-overlay {
   z-index: 2100;
-  align-items: center;
-  padding-top: 0;
 }
 
 .modal.tc-details {
-  width: min(640px, 94vw);
-  max-height: 84vh;
+  width: min(640px, 100%);
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -562,17 +560,8 @@ ul.tc-banner {
   display: block;
 }
 
-/* Language Tools at any window size: the dialog never runs off the bottom of the window (the overlay puts it 18vh down,
-   so it starts higher and caps its height to what is left), the body scrolls between the fixed header and Close, and
-   cards and their buttons wrap instead of overflowing sideways. */
-.modal-overlay:has(> .modal--lsp-tools) {
-  padding: 4vh 12px;
-}
-
-.modal.modal--runtimes.modal--lsp-tools {
-  width: min(880px, 100%);
-  max-height: 92vh;
-}
+/* Language Tools at any window size: the body scrolls between the fixed header and Close (the overlay keeps the dialog
+   inside the window), and cards and their buttons wrap instead of overflowing sideways. */
 
 .modal--lsp-tools .lsp-tools__body {
   display: flex;
@@ -600,14 +589,6 @@ ul.tc-banner {
 }
 
 @media (max-height: 520px) {
-  .modal-overlay:has(> .modal--lsp-tools) {
-    padding: 8px 12px;
-  }
-
-  .modal.modal--runtimes.modal--lsp-tools {
-    max-height: calc(100vh - 16px);
-  }
-
   .modal--lsp-tools .rm-head {
     padding-top: 10px;
   }

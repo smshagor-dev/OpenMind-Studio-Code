@@ -1,13 +1,12 @@
 /* Runtime Manager > Workloads and the first-run page. Tokens only. */
 
-/* Taller than the usual dialog: it starts near the top (the overlay puts dialogs 18vh down) and fits the window. */
+/* Taller than the usual dialog: as tall as the window allows, up to 900px. */
 .modal.modal--workloads {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  width: min(1180px, 96vw);
-  height: min(92vh, 900px);
-  margin-top: -14vh;
+  width: min(1180px, 100%);
+  height: min(900px, var(--modal-max-height));
   text-align: left;
 }
 

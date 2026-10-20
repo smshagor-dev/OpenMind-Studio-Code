@@ -145,7 +145,7 @@ describe("Language Tools dialog", () => {
     expect(body.querySelector(".lsp-footer")).not.toBeNull();
     expect(body.contains(screen.getByRole("button", { name: "Close" }))).toBe(false);
     const css = readFileSync(join(process.cwd(), "src/styles/toolchains.css"), "utf8");
-    expect(css).toMatch(/\.modal-overlay:has\(> \.modal--lsp-tools\)/);
+    // The window fit itself is the shared dialog rule (src/styles/dialogLayout.test.ts); this dialog adds wrapping.
     expect(css).toMatch(/\.modal--lsp-tools \.runtime-card__install \{\s*flex-wrap: wrap;/);
     expect(css).toMatch(/@media \(max-height: 520px\)/);
     // The dialog loads the stylesheet itself (it is a lazy chunk that may open before the Runtime Manager).

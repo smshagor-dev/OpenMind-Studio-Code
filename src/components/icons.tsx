@@ -78,6 +78,15 @@ export function EllipsisIcon(props: IconProps) {
   );
 }
 
+/** Three lines: the application menu when the title bar is too narrow for File, Edit, ... */
+export function MenuIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
+    </Svg>
+  );
+}
+
 export function NewFileIcon(props: IconProps) {
   return (
     <Svg {...props}>

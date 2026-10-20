@@ -1,14 +1,27 @@
 /* --- Modal dialogs --- */
 
+/* Every dialog is centred in the window with a 16px margin and is never taller or wider than what is left: content that
+   doesn't fit scrolls inside the dialog. `safe` keeps an oversized dialog's top edge on screen instead of centring it
+   off both edges. Dialogs size themselves with `--modal-max-height` and `width: min(<ideal>, 100%)`. */
 .modal-overlay {
+  --modal-margin: 16px;
+  --modal-max-height: calc(100vh - 2 * var(--modal-margin));
   position: fixed;
   inset: 0;
   z-index: 2000;
+  box-sizing: border-box;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 18vh;
+  align-items: safe center;
+  justify-content: safe center;
+  padding: var(--modal-margin);
+  overflow: auto;
   background-color: var(--scrim-bg);
+}
+
+@media (max-width: 520px), (max-height: 520px) {
+  .modal-overlay {
+    --modal-margin: 8px;
+  }
 }
 
 /* Confirmations, pickers and input boxes answer something just clicked, often inside another dialog (Remove in the
@@ -18,7 +31,10 @@
 }
 
 .modal {
-  width: min(460px, 90vw);
+  box-sizing: border-box;
+  width: min(460px, 100%);
+  max-height: var(--modal-max-height);
+  overflow-y: auto;
   padding: 20px;
   background-color: var(--menu-bg);
   color: var(--menu-fg);

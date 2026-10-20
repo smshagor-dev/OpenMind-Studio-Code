@@ -1,9 +1,7 @@
 /* The Network window, the network-failure card and the terminal's network label. Tokens only. */
 
 .modal.modal--network {
-  width: min(720px, 94vw);
-  max-height: 84vh;
-  overflow-y: auto;
+  width: min(720px, 100%);
   text-align: left;
 }
 

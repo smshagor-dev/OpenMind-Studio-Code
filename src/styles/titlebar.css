@@ -144,11 +144,14 @@
 }
 
 @media (max-width: 760px) {
-  .titlebar__nav {
-    display: none;
-  }
-
   .menubar__item {
     padding-inline: 6px;
   }
+}
+
+/* The application menu folded into one button (MenuBar's compact mode, when File, Edit, ... don't fit). */
+.menubar__compact {
+  justify-content: center;
+  min-width: 30px;
+  padding-inline: 6px;
 }
