@@ -9,7 +9,14 @@ import {
   type EditorAiHost,
   type EditorSnapshot,
 } from "./editorAiActions";
-import { InlineChatService, cleanAnswer, inlineMessages, type InlineEditor, type InlineHost } from "./inlineChat";
+import {
+  InlineChatService,
+  cleanAnswer,
+  fitProposal,
+  inlineMessages,
+  type InlineEditor,
+  type InlineHost,
+} from "./inlineChat";
 
 function snapshot(overrides: Partial<EditorSnapshot> = {}): EditorSnapshot {
   const text = Array.from({ length: 100 }, (_, i) => `line ${String(i + 1)}`).join("\n");
@@ -97,6 +104,18 @@ describe("inline chat helpers", () => {
   it("takes the code out of a fenced answer and trims blank edges", () => {
     expect(cleanAnswer("Here you go:\n```ts\nconst a = 1;\n```\nDone.")).toBe("const a = 1;");
     expect(cleanAnswer("\n\n  return x;\n\n")).toBe("  return x;");
+  });
+
+  it("gives the proposal the selection's indentation and final line break (seen with a real model)", () => {
+    const original = "  let sum = 0;\n  for (const v of values) {\n    sum += v;\n  }\n";
+    expect(fitProposal(original, "let sum = values.reduce((a, v) => a + v, 0);")).toBe(
+      "  let sum = values.reduce((a, v) => a + v, 0);\n",
+    );
+    expect(fitProposal(original, "if (x) {\n  y();\n}")).toBe("  if (x) {\n    y();\n  }\n");
+    // Already indented, a CRLF file, and an insertion at the cursor are left as they are.
+    expect(fitProposal("  a;\n", "  b;\n")).toBe("  b;\n");
+    expect(fitProposal("  a;\r\n", "b;")).toBe("  b;\r\n");
+    expect(fitProposal("", "x")).toBe("x");
   });
 
   it("builds the conversation with the code around the selection and earlier turns", () => {

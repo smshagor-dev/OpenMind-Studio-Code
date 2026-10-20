@@ -79,6 +79,36 @@ export function cleanAnswer(answer: string): string {
   return body.replace(/^\s*\n/, "").replace(/\s+$/, "");
 }
 
+function indentOf(line: string): string {
+  return /^[ \t]*/.exec(line)?.[0] ?? "";
+}
+
+/** The smallest indentation of the non-blank lines. */
+function commonIndent(lines: string[]): string {
+  const indents = lines.filter((line) => line.trim().length > 0).map(indentOf);
+  if (indents.length === 0) return "";
+  return indents.reduce((shortest, indent) => (indent.length < shortest.length ? indent : shortest));
+}
+
+/**
+ * The proposal shaped like the selection it replaces: models drop the selection's indentation and its final line
+ * break, which would misindent the code and join the next line onto the last proposed one.
+ */
+export function fitProposal(original: string, proposal: string): string {
+  if (original.length === 0) return proposal;
+  const eol = original.includes("\r\n") ? "\r\n" : "\n";
+  const wanted = commonIndent(original.split(/\r?\n/));
+  let lines = proposal.split(/\r?\n/);
+  const have = commonIndent(lines);
+  if (wanted.length > have.length && wanted.startsWith(have)) {
+    const extra = wanted.slice(have.length);
+    lines = lines.map((line) => (line.trim().length > 0 ? extra + line : line));
+  }
+  let fitted = lines.join(eol);
+  if (/\n$/.test(original) && !/\n$/.test(fitted)) fitted += eol;
+  return fitted;
+}
+
 /** The conversation sent to the model for an instruction (with earlier turns for Refine). */
 export function inlineMessages(
   file: { name: string; language: string },
@@ -215,7 +245,7 @@ export class InlineChatService {
         messages: inlineMessages(this.host.describe(model), before, state.original, after, turns, text),
       });
       if (this.state?.requestId !== requestId) return;
-      const proposal = cleanAnswer(answer);
+      const proposal = fitProposal(state.original, cleanAnswer(answer));
       if (proposal.length === 0) throw new Error(this.host.t("inlineChat.empty"));
       this.patch({ status: "proposed", proposal, requestId: null, turns: [...turns, { instruction: text, proposal }] });
     } catch (error) {

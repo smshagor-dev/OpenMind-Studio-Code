@@ -73,6 +73,9 @@ fn body(request: &InlineRequest) -> Value {
             .collect::<Vec<_>>(),
         "stream": true,
         "max_tokens": MAX_ANSWER_TOKENS,
+        // No hidden reasoning: Nemotron otherwise spent the answer budget thinking and returned no code (seen on a
+        // refinement with the real model).
+        "thinking_budget_tokens": 0,
         "temperature": 0.2,
     })
 }
@@ -196,6 +199,7 @@ mod tests {
         let value = body(&request(vec![("system", "s".into()), ("user", "u".into())]));
         assert_eq!(value["stream"], true);
         assert!(value.get("tools").is_none());
+        assert_eq!(value["thinking_budget_tokens"], 0);
         assert_eq!(value["messages"][1]["content"], "u");
     }
 }

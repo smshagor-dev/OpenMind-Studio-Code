@@ -329,6 +329,10 @@ pub fn reply_to_server_request(
             "remote schemas are not downloaded (OpenMind Studio's language servers work offline)"
                 .to_string(),
         )),
+        // typescript-language-server asks the editor to start renaming what a refactor created (an extracted
+        // constant or function). Acknowledged without starting one (the user renames with F2); answering "not found"
+        // made the server fail the refactor and drop its edit.
+        "_typescript.rename" => Ok(Value::Null),
         "workspace/applyEdit" => Ok(json!({
             "applied": false,
             "failureReason": "OpenMind Studio doesn't apply server-initiated edits."
@@ -516,6 +520,11 @@ mod tests {
         assert!(is_allowed_request("textDocument/rename"));
         assert!(!is_allowed_request("workspace/executeCommand"));
         assert!(is_allowed_request("textDocument/codeAction"));
+        assert_eq!(
+            reply_to_server_request("_typescript.rename", &Value::Null, "file:///r", "r"),
+            Ok(Value::Null),
+            "a TypeScript refactor's rename request must not fail the refactor"
+        );
         assert!(!is_allowed_request("shutdown"));
         assert!(!is_allowed_request("exit"));
     }
