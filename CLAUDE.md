@@ -3308,6 +3308,25 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
   Unicode path/17 PASS + 3 NOT TESTED/untrust → BLOCKED/source killed mid-download → no partial install. Still not run:
   the real silent setup and the v1.0.2 → v1.0.3 installer upgrade (owner's installation), IPv6, the link-swap test
   (no symlink privilege here), physical multi-PC. The university test builds predate the audit.
+- [x] **PascalABC.NET integration** (branch `feature/pascalabc-runtime-integration`; unreleased, after v1.0.4). See
+  `docs/pascal.md`. A second, independent Pascal compiler beside Free Pascal (unchanged, still the default).
+  - Runtime Manager item `pascalabc` (`manifests/pascalabc.json`): the official `PABCNETC.zip` (PascalABC.NET 4.0.0.3883,
+    .NET Framework 4.7.2, Windows x64), pinned by SHA-256 from the file the user downloaded (pascalabc.net and its mirror
+    refuse connections from the dev PC; GitHub Actions doesn't start on the private repo — billing).
+  - Artifact field `nameEncoding: "cp866"` (`runtime-manager/src/entry_names.rs`, `ExtractSelection.name_encoding`): the
+    archive stores `Lib/Мозаика.pcu` in code page 866 without the UTF-8 flag.
+  - Shipped unchanged in `pascalabc-bundle/` (resource on Windows, `null` on Linux/macOS, portable ZIP, portable-update
+    `REPLACEABLE`; `pnpm pascalabc:bundle -- --zip <file>` / `--check`, run by every release build). The licence allows
+    it only byte for byte and free of charge (PT4 units); licence texts in `licenses/pascalabc/`.
+  - `commands::pascalabc`: copies the bundle into the download cache before Install/Repair; installs it once ~20 s after
+    start-up unless the user removed that version (`editor_settings` `pascalabc.bundled.removed`); `pascal_status`.
+  - `openmind_core::dotnet_framework` (read-only NDP v4 `Release`); `openmind_runner::pascal` (`PascalCompiler`,
+    `PascalOptions` filled by `commands::run::pascal_options`; `pabcnetcclear "/Output:<build dir>\x.exe" file.pas`;
+    never falls back to the other compiler; .NET too old / not Windows = `NotRunnable`, no install offer).
+  - Setting `pascal.compiler` (category Pascal, scope both, default `fpc`); status item `PascalStatusItem`; card line
+    `PascalAbcSetupLine`; `[line,col] file.pas: msg` in `buildProblems.ts`.
+  - Verified with the real compiler (env-gated tests, see the doc). Not done: language server, debugger, the .NET 10
+    console build, x86. Found: the pinned Free Pascal snapshot was replaced upstream on 2026-10-13 (its checksum fails).
 - [ ] **Milestone 24** — Local-First Collaborative Workspace / Room Code P2P Editor. Code is in master (`c5c6d4d`:
   crates `openmind-collab`, `openmind-collab-net`, `openmind-collab-signal`, migrations 0004/0005; see
   `docs/collaboration.md`); its physical, cross-network and classroom gates are still pending, so it is a preview.
