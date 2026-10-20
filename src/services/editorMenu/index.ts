@@ -29,6 +29,8 @@ import {
 } from "./editorMenuModel";
 import type { MenuEntry } from "../menus";
 import { FileGitProbe } from "./fileGitProbe";
+import { setRevisionAttach } from "./revisionHook";
+import { RevisionMenu, type MenuHostEditor } from "./revisionMenu";
 
 type MonacoEditor = monaco.editor.IStandaloneCodeEditor;
 
@@ -80,8 +82,9 @@ const host: FileGitHost = {
   copy: (text) => container.ipc.clipboardWriteText(text),
   openUrl: (url) => container.ipc.openExternalUrl(url),
   openRevision: (path, revision, relative, text) => {
+    if (revisionMenu === null) return;
     container.workspace.openVirtualDocument({
-      uri: `git-revision:/${revision.slice(0, 7)}/${relative}`,
+      uri: revisionMenu.remember({ path, hash: revision, relative }),
       text,
       language: language(path),
       extension: `Git ${revision.slice(0, 7)}`,
@@ -330,6 +333,14 @@ function registerPaletteEntries(): void {
   );
 }
 
+/** Read-only revision tabs' context menu (created with the commands, at install). */
+let revisionMenu: RevisionMenu | null = null;
+
+/** A read-only preview editor: a Git revision tab gets the shared menu (read-only actions only). */
+function attachRevisionEditor(editor: MenuHostEditor, uri: string | null): (() => void) | undefined {
+  return revisionMenu?.isRevision(uri) ? revisionMenu.attach(editor, uri) : undefined;
+}
+
 let installed: { reasonForFile: (command: string, path: string) => string | null } | null = null;
 
 /** Wires the menu, its commands and the annotations into the app (once per window). */
@@ -376,6 +387,20 @@ export function installEditorMenu(): { reasonForFile: (command: string, path: st
   });
   installed = result;
   registerTabCommands();
+  revisionMenu = new RevisionMenu({
+    commands: container.commands,
+    menu: contextMenu,
+    git: fileGit,
+    remote: fileGitRemote,
+    views: gitViews,
+    copy: (text) => container.ipc.clipboardWriteText(text),
+    notice,
+    openWorkingFile: async (path, line) => {
+      await container.workspace.openPathAt(path, { line, column: 1, length: 0 });
+    },
+    t,
+  });
+  setRevisionAttach(attachRevisionEditor);
   registerPaletteEntries();
   // The palette's names follow the UI language.
   i18n.subscribe(registerPaletteEntries);

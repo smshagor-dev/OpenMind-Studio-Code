@@ -3074,5 +3074,17 @@
   "inlineChat.reject": "Отклонить",
   "inlineChat.send": "Отправить",
   "inlineChat.stop": "Остановить",
-  "inlineChat.working": "OpenMindAI пишет…"
+  "inlineChat.working": "OpenMindAI пишет…",
+  "command.revision.copy": "Копировать",
+  "command.revision.find": "Найти",
+  "command.revision.goToLine": "Перейти к строке/столбцу...",
+  "command.revision.compareWithWorking": "Сравнить с рабочим файлом",
+  "command.revision.compareWithPrevious": "Сравнить с предыдущей ревизией",
+  "command.revision.showCommit": "Подробности коммита",
+  "command.revision.openFileHistory": "Открыть историю файла",
+  "command.revision.openWorkingFile": "Открыть рабочий файл",
+  "command.revision.copySha": "Копировать SHA",
+  "command.revision.openOnRemote": "Открыть файл этой ревизии на удалённом сервере",
+  "command.revision.commandPalette": "Палитра команд...",
+  "gitFile.revisionGone": "Эта вкладка ревизии больше не известна. Откройте её снова из истории файла."
 }

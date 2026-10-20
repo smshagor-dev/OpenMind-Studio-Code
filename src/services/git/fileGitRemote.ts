@@ -166,11 +166,22 @@ export class FileGitRemote {
   async linkAtRevision(target: GitTarget): Promise<void> {
     const commit = await this.git.pickCommit(target.path, this.t("gitFile.pickRevision"));
     if (commit === null) return;
-    const info = await this.host.ipc.remotes(target.path);
-    const chosen = await this.chooseRemote(info);
-    await this.requirePublished(target.path, commit.hash, chosen.remote);
     const relative = commit.path ?? (await this.git.context(target.path)).relative;
-    await this.deliver(fileUrl(chosen.parsed, commit.hash, relative, null), "copy");
+    await this.revisionOnRemote(target.path, commit.hash, relative, null, "copy");
+  }
+
+  /** The file as it was in commit `hash` (named `relative` there) on the remote, with lines when given. */
+  async revisionOnRemote(
+    path: string,
+    hash: string,
+    relative: string,
+    lines: LineSpan | null,
+    how: Delivery,
+  ): Promise<void> {
+    const info = await this.host.ipc.remotes(path);
+    const chosen = await this.chooseRemote(info);
+    await this.requirePublished(path, hash, chosen.remote);
+    await this.deliver(fileUrl(chosen.parsed, hash, relative, lines), how);
   }
 
   /** Copy As > Copy Relative Path (relative to the open folder, in the path's own separator style). */

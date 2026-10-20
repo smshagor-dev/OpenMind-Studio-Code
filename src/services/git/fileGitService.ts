@@ -80,6 +80,10 @@ export class FileGitService {
     return this.host.ipc.context(path);
   }
 
+  commitDetails(path: string, hash: string) {
+    return this.host.ipc.commit(path, hash);
+  }
+
   /** The file's blame (saved file), cached briefly. */
   blame(path: string): Promise<GitBlameLine[]> {
     const cached = this.blames.get(path);

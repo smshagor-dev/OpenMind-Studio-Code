@@ -3044,5 +3044,17 @@
   "inlineChat.reject": "Reject",
   "inlineChat.send": "Send",
   "inlineChat.stop": "Stop",
-  "inlineChat.working": "OpenMindAI is writing…"
+  "inlineChat.working": "OpenMindAI is writing…",
+  "command.revision.copy": "Copy",
+  "command.revision.find": "Find",
+  "command.revision.goToLine": "Go to Line/Column...",
+  "command.revision.compareWithWorking": "Compare with Working File",
+  "command.revision.compareWithPrevious": "Compare with Previous Revision",
+  "command.revision.showCommit": "Show Commit Details",
+  "command.revision.openFileHistory": "Open File History",
+  "command.revision.openWorkingFile": "Open Working File",
+  "command.revision.copySha": "Copy SHA",
+  "command.revision.openOnRemote": "Open File at Revision on Remote",
+  "command.revision.commandPalette": "Command Palette...",
+  "gitFile.revisionGone": "This revision tab is no longer known. Open it again from the file's history."
 }
