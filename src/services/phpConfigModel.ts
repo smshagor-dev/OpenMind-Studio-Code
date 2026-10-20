@@ -81,6 +81,20 @@ export function envBlock(port: number, password: string): string {
 }
 
 /**
+ * What a program needs to reach OpenMind's MySQL, one setting per line (Python, PHP, Node.js ... all take these five).
+ * Built only when the user clicks Copy. A password OpenMind can't read (`null`) is left empty for the user to fill in.
+ */
+export function connectionSettings(port: number, password: string | null, database: string | null): string {
+  return [
+    `host=${LOCAL_HOST}`,
+    `port=${String(port)}`,
+    `user=${DB_USER}`,
+    `password=${password ?? ""}`,
+    ...(database === null ? [] : [`database=${database}`]),
+  ].join("\n");
+}
+
+/**
  * The Admin (open phpMyAdmin) button: it needs phpMyAdmin installed, MariaDB running, phpMyAdmin running and an
  * address. Every "no" says what to do next.
  */

@@ -73,6 +73,12 @@ export function CredentialsBlock() {
           }}
         />
       </div>
+      {state.server !== null && state.server.port !== 3306 ? (
+        // Another MySQL holds 3306: code that sets no port reaches that server, not this one.
+        <p className="pcfg-warning" role="note">
+          {t("php.portNotUsual", { port: state.server.port })}
+        </p>
+      ) : null}
       <p className="pcfg-muted">
         {db.passwordStatusLabel()}. {t("php.noPasswordInString")}
       </p>

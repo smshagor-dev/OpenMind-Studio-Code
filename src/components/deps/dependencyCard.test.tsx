@@ -162,3 +162,60 @@ describe("DependencyCard", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Нет поддержки графики Python (Tkinter / Tcl/Tk).");
   });
 });
+
+describe("DependencyCard: database connections", () => {
+  function setupDatabase(state: "running" | "stopped", port: number | null) {
+    const database = {
+      status: () => ({ state, port }),
+      subscribe: () => () => undefined,
+      start: vi.fn().mockResolvedValue(true),
+      openAdmin: vi.fn().mockResolvedValue(true),
+      openPanel: vi.fn(),
+      copySettings: vi.fn().mockResolvedValue(undefined),
+    };
+    const host = {
+      ipc: { depsProjectInfo: vi.fn().mockResolvedValue(INFO) },
+      events: new EventBus<AppEvents>(),
+      confirm: vi.fn().mockResolvedValue(null),
+      actions: { perform: vi.fn().mockResolvedValue({ status: "cancelled" }) },
+      openFile: vi.fn(),
+      openRuntimeManager: vi.fn(),
+      runActiveInTerminal: vi.fn(),
+      database,
+    };
+    const deps = new DependencyService(host);
+    const networkState = { failure: null };
+    harness.current = { deps, network: { subscribe: () => () => undefined, getState: () => networkState } };
+    return { deps, host, database };
+  }
+
+  it("says OpenMind's MySQL is on another port, and copies the settings", async () => {
+    const r = setupDatabase("running", 3307);
+    render(<DependencyCard />);
+    await show(r, "mysql.connector.errors.ProgrammingError: 1049 (42000): Unknown database 'school'", true);
+
+    expect(screen.getByRole("alert").textContent).toContain('The database "school" wasn\'t found.');
+    expect(screen.getByRole("alert").textContent).toContain(
+      "If your code sets no port, it reached another MySQL server that already uses 3306 on this computer: add port 3307.",
+    );
+    expect(buttons()).toEqual(["Copy Connection Settings", "Open phpMyAdmin", "Open PHP Server Window", "×"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy Connection Settings" }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(r.database.copySettings).toHaveBeenCalledWith("school");
+    expect(screen.getByRole("alert").textContent).toContain("Connection settings copied");
+    fireEvent.click(screen.getByRole("button", { name: "Open PHP Server Window" }));
+    expect(r.database.openPanel).toHaveBeenCalled();
+  });
+
+  it("offers to start a stopped MySQL", async () => {
+    const r = setupDatabase("stopped", null);
+    render(<DependencyCard />);
+    await show(r, "Error: connect ECONNREFUSED 127.0.0.1:3306", true);
+
+    expect(screen.getByRole("alert").textContent).toContain("OpenMind's MySQL isn't running.");
+    fireEvent.click(screen.getByRole("button", { name: "Start MySQL" }));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(r.database.start).toHaveBeenCalled();
+  });
+});

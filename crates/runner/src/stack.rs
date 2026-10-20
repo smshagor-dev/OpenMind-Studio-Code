@@ -7,6 +7,7 @@
 //! built (the system PATH and the Registry are never touched).
 
 use std::ffi::OsString;
+use std::net::{Ipv6Addr, SocketAddrV6, TcpListener};
 use std::path::{Path, PathBuf};
 
 use crate::display::command_line;
@@ -25,8 +26,11 @@ pub const MARIADB_DEFAULT_PORTS: [u16; 2] = [3306, 3307];
 pub const PHPMYADMIN_DEFAULT_PORT: u16 = 8081;
 /// phpMyAdmin's ports to try when the user chose none.
 pub const PHPMYADMIN_DEFAULT_PORTS: [u16; 5] = [8081, 8082, 8083, 8084, 8085];
-/// MariaDB is only ever reached on this address.
+/// MariaDB is only ever reached on loopback: this address, and IPv6's `::1` too when the computer has it.
 pub const LOOPBACK: &str = "127.0.0.1";
+/// IPv6's loopback. Clients that resolve `localhost` to `::1` first and don't fall back to 127.0.0.1 (Node.js before
+/// 20, some JDBC/.NET set-ups) were refused while the server listened on 127.0.0.1 alone.
+pub const LOOPBACK_V6: &str = "::1";
 
 /// The user MariaDB is initialized with (the only account OpenMind creates).
 pub const MARIADB_USER: &str = "root";
@@ -99,26 +103,46 @@ fn plain_path_text(path: &Path) -> Result<String, RunError> {
     Ok(text.replace('\\', "/"))
 }
 
+/// Whether this computer can listen on `::1`. Some lab PCs have IPv6 turned off; MariaDB must not be told to bind it
+/// there, because a bind address it can't use stops it from starting.
+pub fn ipv6_loopback_usable() -> bool {
+    TcpListener::bind(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 0, 0, 0)).is_ok()
+}
+
+/// Whether `port` is free on every loopback address MariaDB will listen on (`::1` too when it is usable).
+pub fn mariadb_port_is_free(port: u16) -> bool {
+    crate::server::port_is_free(port)
+        && (!ipv6_loopback_usable()
+            || TcpListener::bind(SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0)).is_ok())
+}
+
 /// The `my.ini` OpenMind starts MariaDB with. Paths are quoted (they may
 /// contain spaces) and use forward slashes; server output goes to the console,
-/// which OpenMind captures into `logs/mariadb`. It binds 127.0.0.1 only and
-/// disables the Windows named pipe so it can't collide with
-/// (or be reached through) another MySQL on the machine.
+/// which OpenMind captures into `logs/mariadb`. It binds loopback only
+/// (127.0.0.1, plus ::1 when `listen_ipv6`) and disables the Windows named pipe
+/// so it can't collide with (or be reached through) another MySQL on the machine.
 pub fn render_mariadb_config(
     paths: &MariaDbPaths,
     install_dir: &Path,
     port: u16,
+    listen_ipv6: bool,
 ) -> Result<String, RunError> {
     let port = validate_service_port(port)?;
     let basedir = plain_path_text(install_dir)?;
     let datadir = plain_path_text(&paths.data_dir)?;
+    // MariaDB takes a comma-separated list of addresses (10.11+).
+    let bind = if listen_ipv6 {
+        format!("{LOOPBACK},{LOOPBACK_V6}")
+    } else {
+        LOOPBACK.to_string()
+    };
     Ok(format!(
         "; Written by OpenMind Studio each time MariaDB starts. Edit the port in the PHP Server window.\r\n\
 [mysqld]\r\n\
 basedir=\"{basedir}\"\r\n\
 datadir=\"{datadir}\"\r\n\
 port={port}\r\n\
-bind-address={LOOPBACK}\r\n\
+bind-address={bind}\r\n\
 skip-name-resolve\r\n\
 enable-named-pipe=OFF\r\n\
 character-set-server=utf8mb4\r\n\
@@ -533,11 +557,12 @@ mod tests {
             &paths,
             Path::new("C:\\Open Mind\\Studio\\runtimes\\mariadb\\versions\\11.8.9"),
             3307,
+            false,
         )
         .expect("config");
 
         assert!(text.contains("port=3307"), "{text}");
-        assert!(text.contains("bind-address=127.0.0.1"), "{text}");
+        assert!(text.contains("bind-address=127.0.0.1\r\n"), "{text}");
         assert!(
             text.contains("datadir=\"C:/Open Mind/Studio/data/mariadb\""),
             "{text}"
@@ -553,10 +578,34 @@ mod tests {
     }
 
     #[test]
+    fn with_ipv6_the_config_listens_on_both_loopback_addresses_and_nothing_else() {
+        let paths = MariaDbPaths::new(Path::new("C:/ok"));
+
+        let text = render_mariadb_config(&paths, Path::new("C:/m"), 3307, true).expect("config");
+
+        assert!(text.contains("bind-address=127.0.0.1,::1\r\n"), "{text}");
+        assert!(!text.contains("0.0.0.0"), "no wildcard address: {text}");
+    }
+
+    #[test]
+    fn a_port_held_on_either_loopback_address_is_not_free_for_mariadb() {
+        let v4 = std::net::TcpListener::bind("127.0.0.1:0").expect("bind v4");
+        let port = v4.local_addr().expect("addr").port();
+        assert!(!mariadb_port_is_free(port));
+        drop(v4);
+        if ipv6_loopback_usable() {
+            let v6 = std::net::TcpListener::bind(SocketAddrV6::new(Ipv6Addr::LOCALHOST, 0, 0, 0))
+                .expect("bind v6");
+            let port = v6.local_addr().expect("addr").port();
+            assert!(!mariadb_port_is_free(port), "only ::1 holds {port}");
+        }
+    }
+
+    #[test]
     fn a_path_that_could_break_out_of_the_config_is_refused() {
         let paths = MariaDbPaths::new(Path::new("C:/ok"));
         for bad in ["C:/a\"b", "C:/a'b", "C:/a\nb"] {
-            let result = render_mariadb_config(&paths, Path::new(bad), 3307);
+            let result = render_mariadb_config(&paths, Path::new(bad), 3307, true);
             assert!(result.is_err(), "{bad}");
         }
     }
@@ -569,7 +618,7 @@ mod tests {
         assert!(validate_service_port(MARIADB_DEFAULT_PORT).is_ok());
         assert!(validate_service_port(PHPMYADMIN_DEFAULT_PORT).is_ok());
         let paths = MariaDbPaths::new(Path::new("C:/ok"));
-        assert!(render_mariadb_config(&paths, Path::new("C:/m"), 80).is_err());
+        assert!(render_mariadb_config(&paths, Path::new("C:/m"), 80, false).is_err());
     }
 
     #[test]

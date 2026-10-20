@@ -6,7 +6,7 @@ import { terminalPlainText } from "../network/networkWiring";
 import type { OutputService } from "../outputService";
 import type { TerminalService } from "../terminalService";
 import { DependencyActions } from "./dependencyActions";
-import { DependencyService, type PythonGuiHost } from "./dependencyService";
+import { DependencyService, type DatabaseHost, type PythonGuiHost } from "./dependencyService";
 import { tauriDepsIpc, type DepsIpc } from "./depsIpc";
 
 /** Run Code's Output channels: a program's own errors land there. */
@@ -25,6 +25,8 @@ export interface DepsWiringDeps {
   ipc?: DepsIpc;
   /** Tcl/Tk for OpenMind's portable Python (see `PythonGuiHost`). */
   pythonGui?: PythonGuiHost;
+  /** OpenMind's MySQL, for the database-connection card. */
+  database?: DatabaseHost;
 }
 
 export interface DepsWiring {
@@ -71,6 +73,7 @@ export function wireDeps(deps: DepsWiringDeps): DepsWiring {
       deps.run("run.codeInTerminal");
     },
     pythonGui: deps.pythonGui,
+    database: deps.database,
   });
 
   deps.output.onAppend((channel, line) => {

@@ -12,11 +12,11 @@ use std::time::Duration;
 
 use openmind_db::EditorSettingsRepository;
 use openmind_runner::{
-    composer_plan, mariadb_admin_plan, mariadb_init_plan, mariadb_start_plan, php_server_plan,
-    port_is_free, portable_version, render_mariadb_config, render_phpmyadmin_config,
-    run_to_completion, server_url, AdminAction, ComposerAction, EventSink, MariaDbPaths,
-    PhpServerRequest, PmaLogin, RunError, RunEvent, RunEventKind, RunInfo, RunRegistry,
-    MARIADB_DEFAULT_PASSWORD, MARIADB_USER,
+    composer_plan, ipv6_loopback_usable, mariadb_admin_plan, mariadb_init_plan,
+    mariadb_port_is_free, mariadb_start_plan, php_server_plan, port_is_free, portable_version,
+    render_mariadb_config, render_phpmyadmin_config, run_to_completion, server_url, AdminAction,
+    ComposerAction, EventSink, MariaDbPaths, PhpServerRequest, PmaLogin, RunError, RunEvent,
+    RunEventKind, RunInfo, RunRegistry, MARIADB_DEFAULT_PASSWORD, MARIADB_USER,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -342,7 +342,8 @@ async fn write_mariadb_config(
         }
         .to_string()
     })?;
-    let text = render_mariadb_config(paths, &install, port).map_err(|err| err.to_string())?;
+    let text = render_mariadb_config(paths, &install, port, ipv6_loopback_usable())
+        .map_err(|err| err.to_string())?;
     std::fs::create_dir_all(&paths.config_dir).map_err(|err| err.to_string())?;
     std::fs::create_dir_all(&paths.log_dir).map_err(|err| err.to_string())?;
     std::fs::write(&paths.config_file, text).map_err(|err| err.to_string())
@@ -361,7 +362,7 @@ pub(crate) async fn spawn_mariadb(
     let environment = environment(state).await;
     let plan = mariadb_start_plan(&environment, &paths, std::env::var_os("PATH"))
         .map_err(|err| err.to_string())?;
-    if !port_is_free(port) {
+    if !mariadb_port_is_free(port) {
         return Err(RunError::PortInUse(port).to_string());
     }
     write_mariadb_config(state, &paths, port).await?;

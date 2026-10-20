@@ -13,8 +13,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use openmind_runner::{
-    mariadb_admin_plan, port_is_free, run_to_completion, AdminAction, MariaDbPaths,
-    MARIADB_DEFAULT_PORTS, PHPMYADMIN_DEFAULT_PORTS,
+    mariadb_admin_plan, mariadb_port_is_free, port_is_free, run_to_completion, AdminAction,
+    MariaDbPaths, MARIADB_DEFAULT_PORTS, PHPMYADMIN_DEFAULT_PORTS,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -439,7 +439,7 @@ async fn start_stack(app: &AppHandle, state: &AppState) -> Result<(), String> {
                 saved_port(state, "mariadb.config").await,
                 &preferred,
                 &[],
-                port_is_free,
+                mariadb_port_is_free,
                 "MariaDB",
             )?;
             spawn_mariadb(app, state, port).await?.port
@@ -558,7 +558,7 @@ async fn initialize_and_verify(app: &AppHandle, state: &AppState) -> Result<(), 
         saved_port(state, "mariadb.config").await,
         &preferred,
         &[],
-        port_is_free,
+        mariadb_port_is_free,
         "MariaDB",
     )?;
     let password = root_password(state).await?;

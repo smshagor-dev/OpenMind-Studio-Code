@@ -33,7 +33,23 @@ export interface DependencyHost {
   runActiveInTerminal: () => void;
   /** Tcl/Tk GUI support for OpenMind's portable Python (a Runtime Manager add-on), when it can be added now. */
   pythonGui?: PythonGuiHost;
+  /** OpenMind's own MySQL, for the database-connection card. */
+  database?: DatabaseHost;
   now?: () => number;
+}
+
+/** OpenMind's MySQL as the database-connection card sees it. */
+export interface DatabaseHost {
+  /** Its state right now; `port` is MariaDB's while it runs. */
+  status: () => { state: "notInstalled" | "stopped" | "busy" | "running"; port: number | null };
+  /** Fires when that state changes (the card redraws). */
+  subscribe: (listener: () => void) => () => void;
+  start: () => Promise<boolean>;
+  openAdmin: () => Promise<boolean>;
+  /** The PHP Server window (MySQL's controls and Config). */
+  openPanel: () => void;
+  /** Copies host, port, user and password (read only on this click) to the clipboard. */
+  copySettings: (database: string | null) => Promise<void>;
 }
 
 export interface PythonGuiHost {
@@ -54,6 +70,8 @@ function issueKey(issue: DependencyIssue): string {
       return `tool:${issue.tool}`;
     case "headerMissing":
       return `header:${issue.header}`;
+    case "databaseConnection":
+      return `database:${issue.problem}:${issue.database ?? ""}`;
     default:
       return `${issue.kind}:${issue.module}`;
   }
@@ -240,6 +258,31 @@ export class DependencyService {
 
   openRuntimeManager(): void {
     this.host.openRuntimeManager();
+  }
+
+  /** OpenMind's MySQL for the database card, or `null` when this window has no access to it. */
+  database(): DatabaseHost | null {
+    return this.host.database ?? null;
+  }
+
+  /** Runs one of the database card's actions; a failure is shown on the card. */
+  async databaseAction(action: "start" | "admin" | "copy"): Promise<void> {
+    const host = this.host.database;
+    if (host === undefined) return;
+    this.set({ busy: true, error: null, notice: null });
+    try {
+      if (action === "copy") {
+        const issue = this.state.issue;
+        await host.copySettings(issue?.kind === "databaseConnection" ? issue.database : null);
+        this.set({ notice: t("deps.db.copied") });
+      } else if (!(await (action === "start" ? host.start() : host.openAdmin()))) {
+        this.set({ error: t("deps.db.actionFailed") });
+      }
+    } catch (error) {
+      this.set({ error: String(error) });
+    } finally {
+      this.set({ busy: false });
+    }
   }
 
   runInTerminal(): void {

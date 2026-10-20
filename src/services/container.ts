@@ -74,6 +74,7 @@ import { wireNetwork } from "./network/networkWiring";
 import { wireWorkloads } from "./workloads/workloadsWiring";
 import { wireLanguageTools } from "./languageTools/languageToolsWiring";
 import { DependenciesService } from "./deps/dependenciesService";
+import { databaseHost } from "./deps/databaseHost";
 import { wireDeps } from "./deps/depsWiring";
 import { wireCollab } from "./collab/collabWiring";
 import { pythonGuiHost } from "./deps/pythonGuiHost";
@@ -430,12 +431,11 @@ const depsWiring = wireDeps({
   terminal,
   confirm: (request) => extensions.prompts.confirm(request),
   openFile: (path) => void workspace.openPath(path),
-  run: (id) => {
-    run(id);
-  },
+  run,
   activeFilePath: () => runCode.activeEditor()?.path ?? null,
   workspaceRoot: () => workspace.getActiveWorkspace()?.path ?? null,
   pythonGui: pythonGuiHost(runtime),
+  database: databaseHost(phpStack.mySql, tauriIpcClient, run),
 });
 const deps = depsWiring.helper;
 // The Dependencies view (Milestone 22.6): same runner as the missing-package card.

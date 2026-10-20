@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { diagnoseDependency, isMissingInputError, needsInteractiveInput, npmPackageOf } from "./dependencyModel";
+import {
+  diagnoseDatabase,
+  diagnoseDependency,
+  isMissingInputError,
+  needsInteractiveInput,
+  npmPackageOf,
+} from "./dependencyModel";
 
 describe("diagnoseDependency: Python", () => {
   it("a missing third-party package gets the pip name", () => {
@@ -178,5 +184,87 @@ describe("interactive input", () => {
       isMissingInputError("At line 6 of file E:/w\\input.f90 (unit = 5, file = 'stdin')"),
     ).toBe(true);
     expect(isMissingInputError("At line 6 of file E:/w\\read.f90 (unit = 10, file = 'data.txt')")).toBe(false);
+  });
+});
+
+describe("diagnoseDependency: Python MySQL drivers", () => {
+  it("`import mysql.connector` installs mysql-connector-python, not the old `mysql` shim", () => {
+    expect(diagnoseDependency("ModuleNotFoundError: No module named 'mysql'")).toMatchObject({
+      package: "mysql-connector-python",
+      guessed: false,
+    });
+    expect(diagnoseDependency("ModuleNotFoundError: No module named 'mysql.connector'")).toMatchObject({
+      package: "mysql-connector-python",
+    });
+    expect(diagnoseDependency("ModuleNotFoundError: No module named 'MySQLdb'")).toMatchObject({ package: "mysqlclient" });
+    expect(diagnoseDependency("ModuleNotFoundError: No module named 'pymysql'")).toMatchObject({ guessed: false });
+    expect(diagnoseDependency("ModuleNotFoundError: No module named 'mariadb'")).toMatchObject({ guessed: false });
+  });
+});
+
+describe("diagnoseDatabase", () => {
+  // The messages below are the real ones of each driver against MariaDB 11.8 and MySQL 8.0 on Windows.
+  const db = (problem: string, database: string | null = null, port: number | null = null) => ({
+    kind: "databaseConnection",
+    problem,
+    database,
+    port,
+  });
+
+  it("an unknown database, from every driver", () => {
+    for (const line of [
+      `pymysql.err.OperationalError: (1049, "Unknown database 'school'")`,
+      "mysql.connector.errors.ProgrammingError: 1049 (42000): Unknown database 'school'",
+      "mariadb.ProgrammingError: Unknown database 'school'",
+      "PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown database 'school' in C:/w/db.php:3",
+      "PDOException: SQLSTATE[HY000] [1049] Unknown database 'school'",
+      "Error: Unknown database 'school' { code: 'ER_BAD_DB_ERROR', errno: 1049 }",
+    ]) {
+      expect(diagnoseDatabase(line), line).toEqual(db("unknownDatabase", "school"));
+    }
+  });
+
+  it("a refused password, including MariaDB's switch to Windows login that clients report instead", () => {
+    for (const line of [
+      `MySQLdb.OperationalError: (1045, "Access denied for user 'root'@'::1' (using password: YES)")`,
+      "mysql.connector.errors.ProgrammingError: 1045 (28000): Access denied for user 'root'@'localhost' (using password: YES)",
+      `pymysql.err.OperationalError: (2059, "Authentication plugin 'b'auth_gssapi_client'' not configured")`,
+      "mysqli_sql_exception: The server requested authentication method unknown to the client [auth_gssapi_client]",
+      "PDOException: SQLSTATE[HY000] [2054] The server requested authentication method unknown to the client [auth_gssapi_client]",
+      "AUTH_SWITCH_PLUGIN_ERROR Server requests authentication using unknown plugin auth_gssapi_client.",
+    ]) {
+      expect(diagnoseDatabase(line), line).toEqual(db("accessDenied"));
+    }
+  });
+
+  it("nothing listening, with the port when the message names one", () => {
+    expect(diagnoseDatabase("2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (10061)")).toEqual(
+      db("refused", null, 3306),
+    );
+    expect(diagnoseDatabase(`(2003, "Can't connect to MySQL server on 'localhost' ([WinError 10061] ...)")`)).toEqual(
+      db("refused"),
+    );
+    expect(diagnoseDatabase("mariadb.OperationalError: Can't connect to server on 'localhost' (10061)")).toEqual(db("refused"));
+    expect(diagnoseDatabase("Error: connect ECONNREFUSED 127.0.0.1:3306")).toEqual(db("refused", null, 3306));
+    expect(diagnoseDatabase("Error: connect ECONNREFUSED ::1:3307")).toEqual(db("refused", null, 3307));
+    expect(
+      diagnoseDatabase("PDOException: SQLSTATE[HY000] [2002] No connection could be made because the target machine actively refused it"),
+    ).toEqual(db("refused"));
+    expect(diagnoseDatabase("mysqli_sql_exception: No connection could be made because the target machine actively refused it")).toEqual(
+      db("refused"),
+    );
+    expect(diagnoseDatabase("com.mysql.cj.jdbc.exceptions.CommunicationsException: Communications link failure")).toEqual(db("refused"));
+    expect(diagnoseDatabase("Unable to connect to any of the specified MySQL hosts.")).toEqual(db("refused"));
+  });
+
+  it("other servers' refusals are not database problems", () => {
+    expect(diagnoseDatabase("Error: connect ECONNREFUSED 127.0.0.1:8080")).toBeNull();
+    expect(diagnoseDatabase("Error: connect ECONNREFUSED 127.0.0.1:33060")).toBeNull();
+    expect(diagnoseDatabase("No connection could be made because the target machine actively refused it")).toBeNull();
+    expect(diagnoseDatabase("curl: (7) Failed to connect to localhost port 80: Connection refused")).toBeNull();
+  });
+
+  it("is part of diagnoseDependency", () => {
+    expect(diagnoseDependency("Unknown database 'shop'")).toEqual(db("unknownDatabase", "shop"));
   });
 });

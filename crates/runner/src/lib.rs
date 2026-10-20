@@ -40,11 +40,11 @@ pub use session::{
     BUILD_ROOT,
 };
 pub use stack::{
-    composer_plan, mariadb_admin_plan, mariadb_init_plan, mariadb_start_plan,
-    render_mariadb_config, render_phpmyadmin_config, resolve_portable, validate_service_port,
-    AdminAction, ComposerAction, MariaDbPaths, PmaLogin, MARIADB_DEFAULT_PASSWORD,
-    MARIADB_DEFAULT_PORT, MARIADB_DEFAULT_PORTS, MARIADB_USER, PHPMYADMIN_DEFAULT_PORT,
-    PHPMYADMIN_DEFAULT_PORTS,
+    composer_plan, ipv6_loopback_usable, mariadb_admin_plan, mariadb_init_plan,
+    mariadb_port_is_free, mariadb_start_plan, render_mariadb_config, render_phpmyadmin_config,
+    resolve_portable, validate_service_port, AdminAction, ComposerAction, MariaDbPaths, PmaLogin,
+    MARIADB_DEFAULT_PASSWORD, MARIADB_DEFAULT_PORT, MARIADB_DEFAULT_PORTS, MARIADB_USER,
+    PHPMYADMIN_DEFAULT_PORT, PHPMYADMIN_DEFAULT_PORTS,
 };
 pub use webroot::{ensure_web_root, WEB_ROOT_DIR};
 

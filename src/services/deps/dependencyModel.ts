@@ -14,7 +14,16 @@ export type DependencyIssue =
   /** A command isn't installed: `runtime` is the Runtime Manager item that provides it (`null`: installed outside OpenMind). */
   | { kind: "toolMissing"; tool: string; runtime: string | null; label: string }
   /** A C/C++ header: reported only — OpenMind never downloads libraries by itself. */
-  | { kind: "headerMissing"; header: string };
+  | { kind: "headerMissing"; header: string }
+  /**
+   * A MySQL/MariaDB driver couldn't connect or log in. `port` is the port the program used when the error names it;
+   * `database` the database it asked for. The card compares them with OpenMind's own MySQL (often on 3307, because
+   * another MySQL — a Windows service, XAMPP — already holds 3306, and code that sets no port connects there).
+   */
+  | { kind: "databaseConnection"; problem: DatabaseProblem; database: string | null; port: number | null };
+
+/** Why a database connection failed: no such database, user/password refused, or nothing answered on the port. */
+export type DatabaseProblem = "unknownDatabase" | "accessDenied" | "refused";
 
 /** Modules that ship with Python (the backend's `PYTHON_STDLIB` has the full list). */
 const PYTHON_STDLIB = new Set([
@@ -32,6 +41,10 @@ const TK_MODULES = new Set(["tkinter", "_tkinter", "turtle", "turtledemo", "idle
 
 /** Import names whose pip package is called something else. */
 const IMPORT_TO_PACKAGE: Record<string, string> = {
+  // `import mysql.connector`: the PyPI package "mysql" is an old shim that builds mysqlclient from source.
+  mysql: "mysql-connector-python",
+  mysqlx: "mysql-connector-python",
+  MySQLdb: "mysqlclient",
   cv2: "opencv-python",
   PIL: "Pillow",
   sklearn: "scikit-learn",
@@ -60,6 +73,7 @@ const KNOWN_SAME_NAME = new Set([
   "fastapi", "uvicorn", "pydantic", "httpx", "aiohttp", "rich", "click", "jinja2", "openpyxl", "xlrd", "lxml",
   "selenium", "pygame", "tqdm", "torch", "torchvision", "transformers", "tensorflow", "keras", "sympy",
   "networkx", "plotly", "streamlit", "psutil", "paramiko", "boto3", "redis", "pymongo", "psycopg2", "pymysql",
+  "mariadb",
 ]);
 
 const NODE_BUILTINS = new Set([
@@ -138,6 +152,8 @@ export function diagnoseDependency(output: string): DependencyIssue | null {
     const pkg = npmPackageOf(node[1]);
     if (pkg !== null) return { kind: "nodePackage", module: node[1], package: pkg };
   }
+  const database = diagnoseDatabase(output);
+  if (database !== null) return database;
   const header = /fatal error: ['"]?([\w./\\-]+\.(?:h|hpp|hh|hxx))['"]?(?::)? (?:No such file or directory|file not found)/.exec(output);
   if (header?.[1] !== undefined) return { kind: "headerMissing", header: header[1] };
   // PowerShell: "The term 'javac' is not recognized"; cmd: "'javac' is not recognized as an internal or external command";
@@ -150,6 +166,39 @@ export function diagnoseDependency(output: string): DependencyIssue | null {
   if (name !== undefined) {
     const known = TOOLS[name];
     if (known !== undefined) return { kind: "toolMissing", tool: name, runtime: known.runtime, label: known.label };
+  }
+  return null;
+}
+
+/** The port in "server on 'localhost:3307'" or "ECONNREFUSED 127.0.0.1:3307", if the message names one. */
+function portIn(text: string | undefined): number | null {
+  const port = /:(\d{2,5})$/.exec(text ?? "")?.[1];
+  return port === undefined ? null : Number(port);
+}
+
+/**
+ * A MySQL/MariaDB connection failure in a program's output (the messages of PyMySQL, mysql-connector, mysqlclient,
+ * mariadb, PHP mysqli/PDO, Node mysql/mysql2, JDBC and Connector/NET), or `null`. Only database-specific wording is
+ * read: a plain "connection refused" could be any server.
+ */
+export function diagnoseDatabase(output: string): DependencyIssue | null {
+  const issue = (problem: DatabaseProblem, database: string | null = null, port: number | null = null) =>
+    ({ kind: "databaseConnection", problem, database, port }) as const;
+  const unknown = /Unknown database '([^']{1,64})'/.exec(output);
+  if (unknown?.[1] !== undefined) return issue("unknownDatabase", unknown[1]);
+  // MariaDB on Windows offers its Windows-login method after a wrong password, so clients without it report that
+  // method ("auth_gssapi_client") instead of "Access denied": both mean the user name or password was refused.
+  if (/Access denied for user '[^']*'@'[^']*'|auth_gssapi_client/.test(output)) return issue("accessDenied");
+  const server = /Can't connect to (?:MySQL |MariaDB )?server on '([^']+)'/.exec(output);
+  if (server !== null) return issue("refused", null, portIn(server[1]));
+  const node = /ECONNREFUSED (?:127\.0\.0\.1|::1|localhost):(33\d\d)(?!\d)/.exec(output);
+  if (node?.[1] !== undefined) return issue("refused", null, Number(node[1]));
+  if (
+    /SQLSTATE\[HY000\] \[2002\]|mysqli_sql_exception: No connection could be made|Communications link failure|Unable to connect to any of the specified MySQL hosts/.test(
+      output,
+    )
+  ) {
+    return issue("refused");
   }
   return null;
 }
