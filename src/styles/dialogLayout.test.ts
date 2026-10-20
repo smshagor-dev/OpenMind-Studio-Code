@@ -57,6 +57,17 @@ describe("dialog layout", () => {
     expect(narrow).toBeGreaterThan(base);
   });
 
+  it("makes every Runtime Manager card the same size", () => {
+    const css = read("toolchains.css");
+    const runtimes = rule(css, ".rm-runtimes");
+    expect(runtimes).toContain("grid-auto-rows: 1fr;");
+    expect(runtimes).toContain("align-items: stretch;");
+    expect(rule(css, ".rm-runtimes .runtime-card__install")).toContain("margin-top: auto;");
+    expect(rule(css, ".rm-runtimes .runtime-card__versions")).toContain("overflow-y: auto;");
+    expect(rule(css, ".tc-grid")).toContain("grid-auto-rows: 1fr;");
+    expect(rule(css, ".modal--runtimes .tc-grid .tc-card")).toContain("min-height: 182px;");
+  });
+
   it("reflows the Settings page, the Welcome page and extension rows to the room they have", () => {
     expect(read("preferences.css")).toMatch(/\.prefs \{\n {2}container-type: inline-size;/);
     expect(read("frame.css")).toMatch(/@container \(max-width: 640px\) \{\n {2}\.welcome__columns \{\n {4}flex-direction: column;/);

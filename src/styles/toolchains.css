@@ -233,10 +233,19 @@ ul.tc-banner {
   letter-spacing: 0;
 }
 
+/* Every card of a section the same size: each row as tall as the section's tallest card (the buttons sit at the
+   bottom of every card, so they line up). */
 .tc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-auto-rows: 1fr;
   gap: 10px;
+}
+
+/* The same height across sections too: a language server card (name, one line, Install) is as tall as a tool card
+   (name, summary, a two-line hint, Install / Verify / Details), so the whole tab is one size of card. */
+.modal--runtimes .tc-grid .tc-card {
+  min-height: 182px;
 }
 
 /* The Language Tools tab: language servers first, then the bundled tools. */
@@ -515,11 +524,56 @@ ul.tc-banner {
 
 /* Runtime cards (the Runtimes tab) */
 
+/* Every runtime card the same size: each row as tall as the tallest card, every card filling its row, and one layout
+   inside — name and chips on one line, two lines of description, then the extras, then version + Install at the
+   bottom. Installed versions scroll inside their card past a few rows, so one runtime can't make every card tall. */
 .rm-runtimes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  grid-auto-rows: 1fr;
   gap: 12px;
-  align-items: start;
+  align-items: stretch;
+}
+
+.rm-runtimes .runtime-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.rm-runtimes .runtime-card__header {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.rm-runtimes .runtime-card__header h3,
+.rm-runtimes .runtime-card__active,
+.rm-runtimes .runtime-card__global {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rm-runtimes .runtime-card__header .runtime-badge,
+.rm-runtimes .runtime-card__header .rm-details-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.modal--runtimes .rm-runtimes .runtime-card__description {
+  line-height: 1.45;
+  min-height: 2.9em;
+}
+
+.rm-runtimes .runtime-card__versions {
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.rm-runtimes .runtime-card__install {
+  margin-top: auto;
+  padding-top: 8px;
 }
 
 .runtime-card {
