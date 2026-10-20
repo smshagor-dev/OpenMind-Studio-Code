@@ -455,6 +455,31 @@ impl LspManager {
         running.session.request(method, &params, timeout)
     }
 
+    /// Runs a command the server advertised (`executeCommandProvider`) and returns its result with the edits it
+    /// asked for meanwhile. A command the server didn't list is refused.
+    pub fn execute_command(
+        &self,
+        server_id: &str,
+        command: &str,
+        arguments: &Value,
+        timeout: Duration,
+    ) -> Result<(Value, Vec<Value>), LspError> {
+        let running = self.running_of(server_id).ok_or(LspError::NotRunning)?;
+        if !running
+            .capabilities
+            .execute_commands
+            .iter()
+            .any(|known| known == command)
+        {
+            return Err(LspError::Refused(command.to_string()));
+        }
+        let mut params = serde_json::json!({ "command": command });
+        if arguments.is_array() {
+            params["arguments"] = arguments.clone();
+        }
+        running.session.execute_command(&params, timeout)
+    }
+
     /// Stops one server: `shutdown`/`exit`, then its process tree is killed.
     pub fn stop(&self, server_id: &str) {
         let Some(gate) = self.inner.gates.get(server_id) else {

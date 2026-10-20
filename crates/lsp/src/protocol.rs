@@ -26,6 +26,8 @@ pub const ALLOWED_REQUESTS: &[&str] = &[
     "textDocument/rangeFormatting",
     "textDocument/documentSymbol",
     "workspace/symbol",
+    "textDocument/codeAction",
+    "codeAction/resolve",
 ];
 
 pub fn is_allowed_request(method: &str) -> bool {
@@ -60,7 +62,15 @@ pub fn initialize_params(
 pub fn client_capabilities() -> Value {
     json!({
         "general": { "positionEncodings": ["utf-16"] },
-        "workspace": { "workspaceFolders": true, "configuration": true, "symbol": { "dynamicRegistration": false } },
+        "workspace": {
+            "workspaceFolders": true,
+            "configuration": true,
+            "symbol": { "dynamicRegistration": false },
+            // Server edits are applied only while a command the user chose runs (`LspManager::execute_command`).
+            "applyEdit": true,
+            "workspaceEdit": { "documentChanges": false },
+            "executeCommand": { "dynamicRegistration": false }
+        },
         "textDocument": {
             "synchronization": { "didSave": true, "dynamicRegistration": false },
             "publishDiagnostics": { "relatedInformation": false, "tagSupport": { "valueSet": [1, 2] } },
@@ -85,7 +95,21 @@ pub fn client_capabilities() -> Value {
             "rename": { "prepareSupport": true },
             "formatting": {},
             "rangeFormatting": {},
-            "documentSymbol": { "hierarchicalDocumentSymbolSupport": true }
+            "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
+            "codeAction": {
+                "codeActionLiteralSupport": {
+                    "codeActionKind": {
+                        "valueSet": [
+                            "", "quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite",
+                            "refactor.move", "source", "source.organizeImports", "source.fixAll"
+                        ]
+                    }
+                },
+                "isPreferredSupport": true,
+                "disabledSupport": true,
+                "dataSupport": true,
+                "resolveSupport": { "properties": ["edit"] }
+            }
         }
     })
 }
@@ -113,6 +137,13 @@ pub struct Capabilities {
     pub document_symbol: bool,
     /// `workspace/symbol`: symbols of the whole folder by name (Ctrl+T).
     pub workspace_symbol: bool,
+    /// `textDocument/codeAction` (quick fixes, Refactor..., Source Action...).
+    pub code_action: bool,
+    /// The kinds of code actions the server named (empty: it didn't say).
+    pub code_action_kinds: Vec<String>,
+    pub code_action_resolve: bool,
+    /// The commands the server runs with `workspace/executeCommand`; nothing else is ever sent.
+    pub execute_commands: Vec<String>,
     /// The server asked for incremental `didChange` (sync kind 2): every change must carry a range. asm-lsp rejects a
     /// change without one and exits.
     #[serde(skip)]
@@ -169,6 +200,13 @@ pub fn parse_capabilities(initialize_result: &Value) -> Capabilities {
         range_formatting: supported(caps.get("documentRangeFormattingProvider")),
         document_symbol: supported(caps.get("documentSymbolProvider")),
         workspace_symbol: supported(caps.get("workspaceSymbolProvider")),
+        code_action: supported(caps.get("codeActionProvider")),
+        code_action_kinds: strings(caps.pointer("/codeActionProvider/codeActionKinds")),
+        code_action_resolve: caps
+            .pointer("/codeActionProvider/resolveProvider")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        execute_commands: strings(caps.pointer("/executeCommandProvider/commands")),
         incremental_sync: sync_kind(caps.get("textDocumentSync")) == Some(2),
     }
 }
@@ -394,6 +432,23 @@ mod tests {
     }
 
     #[test]
+    fn code_action_kinds_resolve_and_commands_are_read() {
+        let caps = parse_capabilities(&json!({
+            "capabilities": {
+                "codeActionProvider": { "codeActionKinds": ["quickfix", "refactor.extract"], "resolveProvider": true },
+                "executeCommandProvider": { "commands": ["_typescript.applyRefactoring"] }
+            }
+        }));
+        assert!(caps.code_action && caps.code_action_resolve);
+        assert_eq!(caps.code_action_kinds, vec!["quickfix", "refactor.extract"]);
+        assert_eq!(caps.execute_commands, vec!["_typescript.applyRefactoring"]);
+        let plain = parse_capabilities(&json!({ "capabilities": { "codeActionProvider": true } }));
+        assert!(
+            plain.code_action && plain.code_action_kinds.is_empty() && !plain.code_action_resolve
+        );
+    }
+
+    #[test]
     fn no_capabilities_means_nothing_is_supported() {
         assert_eq!(parse_capabilities(&json!({})), Capabilities::default());
     }
@@ -460,6 +515,7 @@ mod tests {
         assert!(is_allowed_request("textDocument/hover"));
         assert!(is_allowed_request("textDocument/rename"));
         assert!(!is_allowed_request("workspace/executeCommand"));
+        assert!(is_allowed_request("textDocument/codeAction"));
         assert!(!is_allowed_request("shutdown"));
         assert!(!is_allowed_request("exit"));
     }
