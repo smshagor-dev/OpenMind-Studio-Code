@@ -64,6 +64,13 @@ function setup(
   const settings = new Map<string, string>();
   const ipc: AgentIpc = {
     overview: vi.fn(() => Promise.resolve(overview(models, engineInstalled))),
+    cloudStatus: vi.fn(() =>
+      Promise.resolve({ baseUrl: "", isDefaultBaseUrl: true, hasKey: false, models: [] }),
+    ),
+    cloudSetBaseUrl: vi.fn((baseUrl: string) => Promise.resolve(baseUrl)),
+    cloudSetKey: vi.fn(() => Promise.resolve()),
+    cloudClearKey: vi.fn(() => Promise.resolve()),
+    cloudTest: vi.fn(() => Promise.resolve([])),
     download: vi.fn(() => Promise.resolve()),
     cancelDownload: vi.fn(() => Promise.resolve()),
     deleteModel: vi.fn(() => Promise.resolve()),

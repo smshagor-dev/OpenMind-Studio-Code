@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { container } from "../../services/container";
-import type { AgentOverview, ModelView } from "../../services/agent/agentIpc";
+import type { AgentOverview, CloudStatus, ModelView } from "../../services/agent/agentIpc";
 import type { DownloadState } from "../../services/agent/agentService";
 import { formatBytes } from "../../services/agent/agentModel";
 import { agentTier } from "../../services/agent/agentBrand";
@@ -77,8 +77,53 @@ function Edition({ model, selected, download, recommended }: {
   );
 }
 
-export function AgentSetup({ overview, downloads, modelId, installing }: {
+/** OpenMindAI Cloud's three published models: a real model picker row, never the local hardware-fit/download
+ * controls that belong only to a GGUF model (it has no file to download, no VRAM to fit). */
+function CloudSection({ cloud, modelId }: { cloud: CloudStatus | null | undefined; modelId: string | null }) {
+  const t = useT();
+  const switching = agent.getState().engineState === "loading" || agent.getState().transcript.busy;
+  if (!cloud) return null;
+  return (
+    <section className="agent-setup__step">
+      <div className="agent-setup__step-title">3. {t("agent.cloud.setup.title")}</div>
+      {!cloud.hasKey ? (
+        <p className="agent-model__progress-text">{t("agent.cloud.setup.needsKey")}</p>
+      ) : null}
+      <div className="agent-setup__models">
+        {cloud.models.map((model) => {
+          const selected = model.id === modelId;
+          return (
+            <div key={model.id} className={selected ? "agent-model agent-model--selected" : "agent-model"}>
+              <div className="agent-model__head">
+                <span className="agent-model__name">{model.name}</span>
+                {!model.available ? (
+                  <span className="agent-model__badge agent-model__badge--muted">
+                    {t("agent.cloud.setup.notConfirmed")}
+                  </span>
+                ) : null}
+              </div>
+              <p className="agent-model__progress-text">{t("agent.cloud.setup.description")}</p>
+              <div className="agent-model__actions">
+                <button
+                  type="button"
+                  className="button button--primary"
+                  disabled={selected || switching || !cloud.hasKey}
+                  onClick={() => { void agent.selectModel(model.id); }}
+                >
+                  {selected ? t("agent.model.inUse") : t("agent.model.use")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+export function AgentSetup({ overview, downloads, modelId, installing, cloud }: {
   overview: AgentOverview; downloads: Record<string, DownloadState>; modelId: string | null; installing: boolean;
+  cloud?: CloudStatus | null;
 }) {
   const t = useT();
   return (
@@ -105,6 +150,7 @@ export function AgentSetup({ overview, downloads, modelId, installing }: {
           ))}
         </div>
       </section>
+      <CloudSection cloud={cloud} modelId={modelId} />
       <p className="agent-setup__privacy">{t("agent.ui.privacy")}</p>
     </div>
   );

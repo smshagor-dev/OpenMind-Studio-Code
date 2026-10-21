@@ -44,6 +44,48 @@ fn turn_end(reason: &str, message: Option<String>) -> AgentEvent {
     }
 }
 
+/// OpenMindAI Cloud: the same execution loop, tools, permission policy and conversation management as the
+/// local engine, with no local engine involved at all — no lease, no install check, no model load. The
+/// connection (address + key) was already resolved and decrypted by the caller for this one turn.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn run_turn_cloud(
+    chat: &Chat,
+    host: &WindowHost<'_>,
+    model_id: &str,
+    root: &std::path::Path,
+    request: &SendRequest,
+    text: &str,
+    env: &CommandEnv,
+    cancel: &AtomicBool,
+    base_url: String,
+    key: String,
+) -> AgentEvent {
+    let end = |message: String| {
+        turn_end(
+            if cancel.load(Ordering::Relaxed) {
+                "cancelled"
+            } else {
+                "error"
+            },
+            Some(message),
+        )
+    };
+    let ws = match Workspace::new(root) {
+        Ok(ws) => ws,
+        Err(message) => return end(message),
+    };
+    let connection = engine::Connection {
+        base_url,
+        key,
+        context_tokens: openmind_agent::DEFAULT_CLOUD_CONTEXT_TOKENS,
+    };
+    let abandoned = AtomicBool::new(false);
+    let attempted = AtomicBool::new(false);
+    execute_turn(
+        chat, host, model_id, &ws, request, text, env, cancel, connection, &abandoned, &attempted,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_turn(
     agent: &AgentRuntime,
@@ -94,7 +136,7 @@ pub(super) fn run_turn(
     let abandoned = AtomicBool::new(false);
     let attempted = AtomicBool::new(false);
     let terminal = execute_turn(
-        chat, host, model, &ws, request, text, env, cancel, connection, &abandoned, &attempted,
+        chat, host, &model.id, &ws, request, text, env, cancel, connection, &abandoned, &attempted,
     );
     // Cancellation releases the caller promptly, but the network transport
     // owns a blocking reader thread. A lone --parallel 1 slot can remain busy.
@@ -116,7 +158,7 @@ pub(super) fn run_turn(
 fn execute_turn(
     chat: &Chat,
     host: &WindowHost<'_>,
-    model: &openmind_llm::ModelEntry,
+    model_id: &str,
     ws: &Workspace,
     request: &SendRequest,
     text: &str,
@@ -145,11 +187,11 @@ fn execute_turn(
         .unwrap_or_else(PoisonError::into_inner);
     let same = *conversation == request.conversation_id
         && root_slot.as_deref() == Some(ws.root())
-        && slot.as_ref().is_some_and(|s| s.model == model.id);
+        && slot.as_ref().is_some_and(|s| s.model == model_id);
     if !same {
         *slot = Some(Session::new(
             system.clone(),
-            model.id.clone(),
+            model_id.to_string(),
             connection.context_tokens,
             request.mode,
         ));

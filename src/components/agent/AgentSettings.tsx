@@ -1,9 +1,182 @@
 import { AgentCapabilities } from "./AgentCapabilities";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { agent } from "../../services/agent";
-import type { AgentMode } from "../../services/agent/agentIpc";
+import type { AgentMode, CloudStatus } from "../../services/agent/agentIpc";
 import type { AgentOptions } from "../../services/agent/agentOptions";
 import { useT } from "../../i18n";
+
+/** OpenMindAI Cloud's own, agent-scoped configuration (address, API key, connection test). No request runs
+ * until Test Connection, or Send with a cloud model chosen; reading the stored status here is a local
+ * settings read, same as the rest of this page. */
+function CloudSettingsSection() {
+  const t = useT();
+  const [status, setStatus] = useState<CloudStatus | null>(agent.getState().cloud ?? null);
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [baseUrlDraft, setBaseUrlDraft] = useState(status?.baseUrl ?? "");
+  const [keyDraft, setKeyDraft] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void agent.loadCloudStatus().then(() => {
+      if (!active) return;
+      const next = agent.getState().cloud ?? null;
+      setStatus(next);
+      setBaseUrlDraft(next?.baseUrl ?? "");
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const sync = () => {
+    setStatus(agent.getState().cloud ?? null);
+  };
+
+  return (
+    <fieldset className="agent-cloud-settings">
+      <legend>{t("agent.cloud.settings.title")}</legend>
+      <p>{t("agent.cloud.settings.description")}</p>
+      <label>
+        {t("agent.cloud.settings.baseUrl")}
+        <input
+          type="text"
+          value={baseUrlDraft}
+          spellCheck={false}
+          onChange={(event) => {
+            setBaseUrlDraft(event.target.value);
+          }}
+        />
+      </label>
+      <button
+        type="button"
+        className="button button--secondary"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setError(null);
+          void agent
+            .setCloudBaseUrl(baseUrlDraft)
+            .then(() => {
+              sync();
+            })
+            .catch((err: unknown) => {
+              setError(String(err));
+            })
+            .finally(() => {
+              setBusy(false);
+            });
+        }}
+      >
+        {t("agent.cloud.settings.saveBaseUrl")}
+      </button>
+      <label>
+        {t("agent.cloud.settings.apiKey")}
+        <input
+          type={showKey ? "text" : "password"}
+          value={keyDraft}
+          placeholder={status?.hasKey ? t("agent.cloud.settings.keyStored") : ""}
+          autoComplete="off"
+          onChange={(event) => {
+            setKeyDraft(event.target.value);
+          }}
+        />
+        <button
+          type="button"
+          className="agent-icon-button"
+          onClick={() => {
+            setShowKey(!showKey);
+          }}
+        >
+          {showKey ? t("agent.cloud.settings.hide") : t("agent.cloud.settings.show")}
+        </button>
+      </label>
+      <div className="agent-cloud-settings__actions">
+        <button
+          type="button"
+          className="button button--primary"
+          disabled={!keyDraft.trim() || busy}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            void agent
+              .setCloudKey(keyDraft)
+              .then(() => {
+                setKeyDraft("");
+                sync();
+              })
+              .catch((err: unknown) => {
+                setError(String(err));
+              })
+              .finally(() => {
+                setBusy(false);
+              });
+          }}
+        >
+          {t("agent.cloud.settings.saveKey")}
+        </button>
+        {status?.hasKey ? (
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void agent
+                .clearCloudKey()
+                .then(() => {
+                  sync();
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
+            }}
+          >
+            {t("agent.cloud.settings.disconnect")}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={!status?.hasKey || testing}
+          onClick={() => {
+            setTesting(true);
+            setError(null);
+            void agent.testCloudConnection().then((models) => {
+              setTesting(false);
+              if (models === null) {
+                setError(agent.getState().cloudError ?? t("agent.ui.operationFailed"));
+                return;
+              }
+              sync();
+            });
+          }}
+        >
+          {testing ? t("agent.cloud.settings.testing") : t("agent.cloud.settings.test")}
+        </button>
+      </div>
+      {error ? (
+        <p className="agent-notice agent-notice--error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {status ? (
+        <ul className="agent-cloud-settings__models">
+          {status.models.map((model) => (
+            <li key={model.id}>
+              {model.name} —{" "}
+              {model.available
+                ? t("agent.cloud.settings.available")
+                : t("agent.cloud.settings.unavailable")}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </fieldset>
+  );
+}
 
 const NUMBERS: {
   key: keyof AgentOptions;
@@ -53,6 +226,7 @@ export function AgentSettings() {
     >
       <h3>{t("agent.settings.title")}</h3>
       <p>{t("agent.settings.scope")}</p>
+      <CloudSettingsSection />
       <label>
         {t("agent.settings.permissions")}
         <select

@@ -182,9 +182,31 @@ export interface SendRequest {
   activeFile?: string | null;
 }
 
+/** `commands::agent::cloud::CloudModelStatus`. */
+export interface CloudModelStatus {
+  id: string;
+  name: string;
+  /** Reported enabled by OpenMindAI Cloud the last time the connection was tested. */
+  available: boolean;
+}
+
+/** `commands::agent::cloud::CloudStatus`. OpenMindAI Cloud's own, agent-scoped config — never the generic
+ * multi-provider AI chat list. */
+export interface CloudStatus {
+  baseUrl: string;
+  isDefaultBaseUrl: boolean;
+  hasKey: boolean;
+  models: CloudModelStatus[];
+}
+
 export interface AgentIpc {
   control?: (action: string, argument?: string) => Promise<unknown>;
   overview: () => Promise<AgentOverview>;
+  cloudStatus: () => Promise<CloudStatus>;
+  cloudSetBaseUrl: (baseUrl: string) => Promise<string>;
+  cloudSetKey: (key: string) => Promise<void>;
+  cloudClearKey: () => Promise<void>;
+  cloudTest: () => Promise<CloudModelStatus[]>;
   download: (id: string) => Promise<void>;
   cancelDownload: (id: string) => Promise<void>;
   deleteModel: (id: string) => Promise<void>;
@@ -211,6 +233,12 @@ export const tauriAgentIpc: AgentIpc = {
   control: (action, argument) =>
     invoke("agent_control", { action, argument: argument ?? "" }),
   overview: () => invoke<AgentOverview>("agent_overview"),
+  cloudStatus: () => invoke<CloudStatus>("agent_cloud_status"),
+  cloudSetBaseUrl: (baseUrl) =>
+    invoke<string>("agent_cloud_set_base_url", { baseUrl }),
+  cloudSetKey: (key) => invoke("agent_cloud_set_key", { key }),
+  cloudClearKey: () => invoke("agent_cloud_clear_key"),
+  cloudTest: () => invoke<CloudModelStatus[]>("agent_cloud_test"),
   download: (id) => invoke("agent_model_download", { id }),
   cancelDownload: (id) => invoke("agent_model_cancel", { id }),
   deleteModel: (id) => invoke("agent_model_delete", { id }),

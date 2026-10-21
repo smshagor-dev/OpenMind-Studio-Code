@@ -31,9 +31,16 @@ vi.mock("../../services/agent", () => ({
       mode: "ask",
       modelId: "local",
       overview: { models: [{ id: "local", contextTokens: 32768 }] },
+      cloud: null,
+      cloudError: null,
     }),
     updateOptions: harness.updateOptions,
     setMode: harness.setMode,
+    loadCloudStatus: () => Promise.resolve(),
+    setCloudBaseUrl: () => Promise.resolve(""),
+    setCloudKey: () => Promise.resolve(),
+    clearCloudKey: () => Promise.resolve(),
+    testCloudConnection: () => Promise.resolve([]),
   },
 }));
 

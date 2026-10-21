@@ -66,7 +66,7 @@ export function AgentSetupDialog() {
             </div>
             {state.setupError ? <p className="agent-notice agent-notice--error" role="alert">{state.setupError}</p> : null}
             {state.overview && state.overviewError ? <p className="agent-notice agent-notice--error" role="alert">{state.overviewError}</p> : null}
-            {state.showSettings ? <AgentSettings /> : state.overview ? <AgentSetup overview={state.overview} downloads={state.downloads} modelId={state.modelId} installing={state.installingEngine} /> : (
+            {state.showSettings ? <AgentSettings /> : state.overview ? <AgentSetup overview={state.overview} downloads={state.downloads} modelId={state.modelId} installing={state.installingEngine} cloud={state.cloud} /> : (
               <div className="agent-view__loading">
                 {state.overviewError ? t("agent.ui.operationFailed") : t("agent.loading")}
                 <button type="button" className="button button--secondary" onClick={() => void agent.refresh()}>{t("agent.ui.retry")}</button>
