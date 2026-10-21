@@ -30,7 +30,11 @@ vi.mock("../../services/agent", () => ({
     getState: () => ({
       mode: "ask",
       modelId: "local",
-      overview: { models: [{ id: "local", contextTokens: 32768 }] },
+      overview: {
+        models: [
+          { id: "local", contextTokens: 32768, local: { state: "ready", bytesOnDisk: 1 } },
+        ],
+      },
       cloud: null,
       cloudError: null,
     }),

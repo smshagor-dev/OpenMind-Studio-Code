@@ -17,7 +17,7 @@ function InferenceModeToggle() {
   const [mode, setMode] = useState<"local" | "cloud">(agent.inferenceMode());
   const overview = agent.getState().overview;
   const cloud = agent.getState().cloud;
-  const localAvailable = overview?.models.some((m) => m.local?.state === "ready") ?? false;
+  const localAvailable = overview?.models.some((m) => m.local.state === "ready") ?? false;
   const cloudAvailable = cloud?.models.some((m) => m.available) ?? false;
   const choose = (next: "local" | "cloud") => {
     void agent.toggleInference(next).then(() => {
@@ -27,30 +27,32 @@ function InferenceModeToggle() {
   return (
     <fieldset className="agent-inference-toggle">
       <legend>{t("agent.inference.title")}</legend>
-      <label>
-        <input
-          type="radio"
-          name="agent-inference-mode"
-          checked={mode === "local"}
-          disabled={!localAvailable}
-          onChange={() => {
-            choose("local");
-          }}
-        />
-        {t("agent.inference.local")}
-      </label>
-      <label>
-        <input
-          type="radio"
-          name="agent-inference-mode"
-          checked={mode === "cloud"}
-          disabled={!cloudAvailable}
-          onChange={() => {
-            choose("cloud");
-          }}
-        />
-        {t("agent.inference.cloud")}
-      </label>
+      <div className="agent-inference-toggle__options">
+        <label className="agent-inference-toggle__option">
+          <input
+            type="radio"
+            name="agent-inference-mode"
+            checked={mode === "local"}
+            disabled={!localAvailable}
+            onChange={() => {
+              choose("local");
+            }}
+          />
+          <span>{t("agent.inference.local")}</span>
+        </label>
+        <label className="agent-inference-toggle__option">
+          <input
+            type="radio"
+            name="agent-inference-mode"
+            checked={mode === "cloud"}
+            disabled={!cloudAvailable}
+            onChange={() => {
+              choose("cloud");
+            }}
+          />
+          <span>{t("agent.inference.cloud")}</span>
+        </label>
+      </div>
       {!localAvailable ? <p className="agent-model__progress-text">{t("agent.inference.localDisabledHint")}</p> : null}
       {!cloudAvailable ? <p className="agent-model__progress-text">{t("agent.inference.cloudDisabledHint")}</p> : null}
     </fieldset>
@@ -66,7 +68,6 @@ function CloudSettingsSection() {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [baseUrlDraft, setBaseUrlDraft] = useState(status?.baseUrl ?? "");
   const [keyDraft, setKeyDraft] = useState("");
   const [showKey, setShowKey] = useState(false);
 
@@ -74,9 +75,7 @@ function CloudSettingsSection() {
     let active = true;
     void agent.loadCloudStatus().then(() => {
       if (!active) return;
-      const next = agent.getState().cloud ?? null;
-      setStatus(next);
-      setBaseUrlDraft(next?.baseUrl ?? "");
+      setStatus(agent.getState().cloud ?? null);
     });
     return () => {
       active = false;
@@ -90,41 +89,8 @@ function CloudSettingsSection() {
   return (
     <fieldset className="agent-cloud-settings">
       <legend>{t("agent.cloud.settings.title")}</legend>
-      <p>{t("agent.cloud.settings.description")}</p>
-      <label>
-        {t("agent.cloud.settings.baseUrl")}
-        <input
-          type="text"
-          value={baseUrlDraft}
-          spellCheck={false}
-          onChange={(event) => {
-            setBaseUrlDraft(event.target.value);
-          }}
-        />
-      </label>
-      <button
-        type="button"
-        className="button button--secondary"
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          setError(null);
-          void agent
-            .setCloudBaseUrl(baseUrlDraft)
-            .then(() => {
-              sync();
-            })
-            .catch((err: unknown) => {
-              setError(String(err));
-            })
-            .finally(() => {
-              setBusy(false);
-            });
-        }}
-      >
-        {t("agent.cloud.settings.saveBaseUrl")}
-      </button>
-      <p>
+      <p className="agent-cloud-settings__description">{t("agent.cloud.settings.description")}</p>
+      <p className="agent-cloud-settings__hint">
         {t("agent.cloud.settings.getKeyHint")}{" "}
         <button
           type="button"
@@ -134,26 +100,28 @@ function CloudSettingsSection() {
           {CLOUD_KEY_SIGNUP_URL}
         </button>
       </p>
-      <label>
-        {t("agent.cloud.settings.apiKey")}
-        <input
-          type={showKey ? "text" : "password"}
-          value={keyDraft}
-          placeholder={status?.hasKey ? t("agent.cloud.settings.keyStored") : ""}
-          autoComplete="off"
-          onChange={(event) => {
-            setKeyDraft(event.target.value);
-          }}
-        />
-        <button
-          type="button"
-          className="agent-icon-button"
-          onClick={() => {
-            setShowKey(!showKey);
-          }}
-        >
-          {showKey ? t("agent.cloud.settings.hide") : t("agent.cloud.settings.show")}
-        </button>
+      <label className="agent-cloud-settings__key-row">
+        <span>{t("agent.cloud.settings.apiKey")}</span>
+        <span className="agent-cloud-settings__key-input">
+          <input
+            type={showKey ? "text" : "password"}
+            value={keyDraft}
+            placeholder={status?.hasKey ? t("agent.cloud.settings.keyStored") : ""}
+            autoComplete="off"
+            onChange={(event) => {
+              setKeyDraft(event.target.value);
+            }}
+          />
+          <button
+            type="button"
+            className="agent-icon-button"
+            onClick={() => {
+              setShowKey(!showKey);
+            }}
+          >
+            {showKey ? t("agent.cloud.settings.hide") : t("agent.cloud.settings.show")}
+          </button>
+        </span>
       </label>
       <div className="agent-cloud-settings__actions">
         <button
@@ -227,11 +195,19 @@ function CloudSettingsSection() {
       {status ? (
         <ul className="agent-cloud-settings__models">
           {status.models.map((model) => (
-            <li key={model.id}>
-              {model.name} —{" "}
-              {model.available
-                ? t("agent.cloud.settings.available")
-                : t("agent.cloud.settings.unavailable")}
+            <li key={model.id} className="agent-cloud-settings__model">
+              <span className="agent-cloud-settings__model-name">{model.name}</span>
+              <span
+                className={
+                  model.available
+                    ? "agent-model__badge"
+                    : "agent-model__badge agent-model__badge--muted"
+                }
+              >
+                {model.available
+                  ? t("agent.cloud.settings.available")
+                  : t("agent.cloud.settings.unavailable")}
+              </span>
             </li>
           ))}
         </ul>
