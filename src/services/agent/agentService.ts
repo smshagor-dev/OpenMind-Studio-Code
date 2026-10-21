@@ -14,6 +14,8 @@ import type {
   AgentIpc,
   AgentMode,
   AgentOverview,
+  CloudModelStatus,
+  CloudStatus,
   Decision,
   DownloadEvent,
   DownloadProgress,
@@ -106,6 +108,12 @@ export interface AgentState {
   includeActiveFile?: boolean;
   /** The agent's background commands still running (the strip above the composer). */
   background?: { id: string; command: string }[];
+  /** OpenMindAI Cloud's own, agent-scoped configuration (address, whether a key is stored, which of the
+   * three published models the last successful test reported enabled). `null` until Agent Settings asks. */
+  cloud?: CloudStatus | null;
+  cloudLoading?: boolean;
+  cloudTesting?: boolean;
+  cloudError?: string | null;
 }
 
 const MODEL_KEY = "agent.model";
@@ -153,6 +161,10 @@ export class AgentService {
   private streamQueue: AgentEvent[] = [];
   private streamTimer: ReturnType<typeof setTimeout> | null = null;
   private streamBytes = 0;
+  /** This session's last pick of each kind, so the Local/Cloud toggle is lossless when switching back and
+   * forth (not persisted across a restart; `modelId` itself already is, via MODEL_KEY). */
+  private lastLocalModelId: string | null = null;
+  private lastCloudModelId: string | null = null;
 
   constructor(
     private readonly ipc: AgentIpc,
@@ -554,6 +566,9 @@ export class AgentService {
         .catch(() => null);
       if (active && this.history && this.host.hasFolder())
         await this.restoreHistory(active, true);
+      // Before the local-catalog fallback below runs, so a restored OpenMindAI Cloud selection is
+      // recognized as a cloud model and never silently swapped back to a local one.
+      await this.loadCloudStatus();
       await this.refresh();
       await this.activate();
     } catch {
@@ -562,11 +577,22 @@ export class AgentService {
     }
   }
 
+  /** Whether `id` names one of OpenMindAI Cloud's three published models (not a local GGUF one). Known
+   * only once `loadCloudStatus()` has resolved at least once. */
+  private isCloudModel(id: string | null | undefined): boolean {
+    return !!id && (this.state.cloud?.models.some((m) => m.id === id) ?? false);
+  }
+
   /** Preloads the configured agent without downloading or starting a conversation. */
   activate(): Promise<void> {
     if (this.warming) return this.warming;
     if (!this.ready() || !this.state.modelId) return Promise.resolve();
     const id = this.state.modelId;
+    if (this.isCloudModel(id)) {
+      // Nothing local to warm: a cloud turn connects directly when the user sends a message.
+      this.set({ engineState: "ready" });
+      return Promise.resolve();
+    }
     this.set({ engineState: "loading" });
     this.warming = (async () => {
       try {
@@ -605,7 +631,8 @@ export class AgentService {
       const overview = await this.ipc.overview();
       const ready = overview.models.filter((m) => m.local.state === "ready");
       let modelId = this.state.modelId;
-      if (!modelId || !ready.some((m) => m.id === modelId)) {
+      const cloudSelected = this.isCloudModel(modelId);
+      if (!cloudSelected && (!modelId || !ready.some((m) => m.id === modelId))) {
         modelId =
           ready.find((m) => m.id === overview.recommended)?.id ??
           ready[0]?.id ??
@@ -615,8 +642,11 @@ export class AgentService {
         overview,
         modelId,
         loadingOverview: false,
-        engineState:
-          overview.runningModel === modelId && modelId !== null
+        // A cloud model is never reported by the local overview; leave its engineState exactly as
+        // activate()/testCloudConnection() set it instead of letting the local-engine logic below demote it.
+        engineState: cloudSelected
+          ? this.state.engineState
+          : overview.runningModel === modelId && modelId !== null
             ? "ready"
             : this.state.engineState === "ready"
               ? "idle"
@@ -630,9 +660,11 @@ export class AgentService {
     }
   }
 
-  /** Whether the conversation can be used: engine installed and the chosen model downloaded. */
+  /** Whether the conversation can be used: a cloud model with a stored key, or an installed engine with the
+   * chosen local model downloaded. */
   ready(): boolean {
-    const { overview, modelId } = this.state;
+    const { overview, modelId, cloud } = this.state;
+    if (this.isCloudModel(modelId)) return !!cloud?.hasKey;
     if (!overview?.engineInstalled || !modelId) return false;
     return overview.models.some(
       (m) => m.id === modelId && m.local.state === "ready",
@@ -655,14 +687,117 @@ export class AgentService {
 
   async selectModel(id: string): Promise<void> {
     if (this.warming || this.state.transcript.busy) return;
+    if (this.isCloudModel(id)) this.lastCloudModelId = id;
+    else this.lastLocalModelId = id;
     this.set({ modelId: id });
     await this.host.settingSet(MODEL_KEY, id).catch(() => undefined);
     await this.activate();
   }
 
+  /** `"local"` or `"cloud"`, whichever the current selection actually is. */
+  inferenceMode(): "local" | "cloud" {
+    return this.isCloudModel(this.state.modelId) ? "cloud" : "local";
+  }
+
+  /** Switches between the local engine and OpenMindAI Cloud, remembering each side's last model so going
+   * back and forth within a session loses nothing. A no-op when the target side has nothing to select yet
+   * (no downloaded local model, or no cloud model the last test reported available) — the UI disables that
+   * option in that case rather than silently doing nothing. */
+  async toggleInference(mode: "local" | "cloud"): Promise<void> {
+    if (mode === this.inferenceMode()) return;
+    if (mode === "cloud") {
+      // Prefer a model the last connection test reported available; fall back to any published
+      // cloud model (even with no key yet) so the switch always takes effect -- ready()/sendBlocker()
+      // already explain separately why Send itself may still be unavailable (no key, not tested).
+      const id =
+        this.lastCloudModelId ??
+        this.state.cloud?.models.find((m) => m.available)?.id ??
+        this.state.cloud?.models[0]?.id ??
+        null;
+      if (id) await this.selectModel(id);
+      return;
+    }
+    const models = this.state.overview?.models ?? [];
+    const downloaded = models.filter((m) => m.local.state === "ready");
+    // Prefer a downloaded model; fall back to any catalog entry (not yet downloaded) so the switch
+    // always takes effect instead of silently doing nothing -- the Setup page's own download flow,
+    // not this toggle, is where "nothing downloaded yet" gets resolved.
+    const id =
+      this.lastLocalModelId ??
+      downloaded.find((m) => m.id === this.state.overview?.recommended)?.id ??
+      downloaded[0]?.id ??
+      models.find((m) => m.id === this.state.overview?.recommended)?.id ??
+      models[0]?.id ??
+      null;
+    if (id) await this.selectModel(id);
+  }
+
   async setMode(mode: AgentMode): Promise<void> {
     this.set({ mode });
     await this.host.settingSet(MODE_KEY, mode).catch(() => undefined);
+  }
+
+  /** Reads OpenMindAI Cloud's own (non-secret) configuration. A local settings read only — no network
+   * request — so Agent Settings can show it without the user pressing anything first. */
+  async loadCloudStatus(): Promise<void> {
+    this.set({ cloudLoading: true, cloudError: null });
+    try {
+      const cloud = await this.ipc.cloudStatus();
+      this.set({ cloud, cloudLoading: false });
+    } catch (error) {
+      this.set({ cloudLoading: false, cloudError: String(error) });
+    }
+  }
+
+  /** Sets (or, with an empty address, resets to the default) the OpenMindAI Cloud address. */
+  async setCloudBaseUrl(baseUrl: string): Promise<void> {
+    this.set({ cloudError: null });
+    try {
+      await this.ipc.cloudSetBaseUrl(baseUrl);
+      await this.loadCloudStatus();
+    } catch (error) {
+      this.set({ cloudError: String(error) });
+    }
+  }
+
+  /** Stores the OpenMindAI Cloud API key, encrypted on the backend. It is handed over once; this service
+   * never keeps a copy and the UI never learns it back. */
+  async setCloudKey(key: string): Promise<void> {
+    this.set({ cloudError: null });
+    try {
+      await this.ipc.cloudSetKey(key);
+      await this.loadCloudStatus();
+    } catch (error) {
+      this.set({ cloudError: String(error) });
+    }
+  }
+
+  async clearCloudKey(): Promise<void> {
+    this.set({ cloudError: null });
+    try {
+      await this.ipc.cloudClearKey();
+      await this.loadCloudStatus();
+    } catch (error) {
+      this.set({ cloudError: String(error) });
+    }
+  }
+
+  /** Connection test: asks OpenMindAI Cloud which of the three published models it currently reports as
+   * enabled. The server's answer is the only source of truth for `available` — nothing is assumed from the
+   * hard-coded ids alone. */
+  async testCloudConnection(): Promise<CloudModelStatus[] | null> {
+    this.set({ cloudTesting: true, cloudError: null });
+    try {
+      const models = await this.ipc.cloudTest();
+      const cloud = this.state.cloud
+        ? { ...this.state.cloud, hasKey: true, models }
+        : null;
+      this.set({ cloud, cloudTesting: false });
+      return models;
+    } catch (error) {
+      this.set({ cloudTesting: false, cloudError: String(error) });
+      return null;
+    }
   }
 
   cycleMode(): Promise<void> {

@@ -132,6 +132,12 @@
   height: 24px;
 }
 
+.activity-bar__agent-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
 .activity-bar__item--active::before {
   display: none;
 }

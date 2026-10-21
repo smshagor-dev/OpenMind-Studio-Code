@@ -3,12 +3,13 @@
 //! permission questions with `agent_answer` and can stop it at any time. An existing setup is preloaded at editor
 //! startup; a conversation starts only after the user sends a message. The engine stops with the app.
 
+pub mod cloud;
 pub mod control;
 pub mod diagnostics;
 mod engine;
 mod mcp;
 mod turn;
-use turn::run_turn;
+use turn::{run_turn, run_turn_cloud};
 pub mod capabilities;
 pub mod history;
 mod host;
@@ -205,6 +206,20 @@ pub struct SendRequest {
     active_file: Option<String>,
 }
 
+/// Which inference path a turn uses, resolved once before the turn starts (never mid-turn).
+enum Target {
+    Local {
+        program: PathBuf,
+        // Boxed: `ModelEntry` is much larger than the `Cloud` variant's two strings, and clippy flags the
+        // resulting size gap (`large_enum_variant`).
+        model: Box<openmind_llm::ModelEntry>,
+    },
+    Cloud {
+        base_url: String,
+        key: String,
+    },
+}
+
 async fn command_env(state: &AppState) -> CommandEnv {
     let environment = crate::commands::run::environment(state).await;
     let mut vars = environment.vars;
@@ -263,17 +278,28 @@ pub async fn agent_send(
             "The open project changed. Reopen the task's original project before resuming.".into(),
         );
     }
-    let model = agent
-        .catalog
-        .get(&request.model_id)
-        .map_err(|e| e.to_string())?
-        .clone();
-    let program = state
-        .runtime
-        .installed_dir("llamacpp")
-        .await
-        .map(engine::program_in)
-        .ok_or("The local AI engine (llama.cpp) is not installed yet. Install it from the panel first.")?;
+    // Cloud and local models are two different inference paths, chosen entirely by which model id the
+    // user picked — a cloud selection never touches the local catalog, installs or starts llama.cpp.
+    let target = if openmind_agent::is_cloud_model(&request.model_id) {
+        let (base_url, key) = cloud::cloud_connection(&state, &request.model_id).await?;
+        Target::Cloud { base_url, key }
+    } else {
+        let model = agent
+            .catalog
+            .get(&request.model_id)
+            .map_err(|e| e.to_string())?
+            .clone();
+        let program = state
+            .runtime
+            .installed_dir("llamacpp")
+            .await
+            .map(engine::program_in)
+            .ok_or("The local AI engine (llama.cpp) is not installed yet. Install it from the panel first.")?;
+        Target::Local {
+            program,
+            model: Box::new(model),
+        }
+    };
     let env = command_env(&state).await;
     let chat = agent.chat(&label);
     if chat.busy.swap(true, Ordering::SeqCst) {
@@ -311,10 +337,22 @@ pub async fn agent_send(
         };
         complete_turn(
             &chat,
-            || {
-                run_turn(
-                    &agent, &chat, &host, &program, &model, &root, &request, &text, &env, &cancel,
-                )
+            || match &target {
+                Target::Local { program, model } => run_turn(
+                    &agent, &chat, &host, program, model, &root, &request, &text, &env, &cancel,
+                ),
+                Target::Cloud { base_url, key } => run_turn_cloud(
+                    &chat,
+                    &host,
+                    &request.model_id,
+                    &root,
+                    &request,
+                    &text,
+                    &env,
+                    &cancel,
+                    base_url.clone(),
+                    key.clone(),
+                ),
             },
             |terminal| host.send(&terminal),
         );

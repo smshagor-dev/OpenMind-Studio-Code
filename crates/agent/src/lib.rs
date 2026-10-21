@@ -12,6 +12,7 @@ mod context;
 pub mod options;
 pub use options::SessionOptions;
 pub mod client;
+pub mod cloud;
 pub mod diff;
 pub mod events;
 pub mod external;
@@ -26,6 +27,11 @@ pub mod vision;
 pub mod wire;
 
 pub use client::{HttpModel, ModelClient};
+pub use cloud::{
+    cloud_model, is_cloud_model, list_cloud_models, provider_config as cloud_provider_config,
+    CloudModel, CLOUD_MODELS, DEFAULT_BASE_URL as CLOUD_DEFAULT_BASE_URL,
+    DEFAULT_CLOUD_CONTEXT_TOKENS,
+};
 pub use events::{AgentEvent, Decision, PermissionRequest};
 pub use paths::Workspace;
 pub use policy::Mode;

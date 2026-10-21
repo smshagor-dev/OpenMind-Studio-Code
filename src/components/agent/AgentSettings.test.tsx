@@ -30,14 +30,30 @@ vi.mock("../../services/agent", () => ({
     getState: () => ({
       mode: "ask",
       modelId: "local",
-      overview: { models: [{ id: "local", contextTokens: 32768 }] },
+      overview: {
+        models: [
+          { id: "local", contextTokens: 32768, local: { state: "ready", bytesOnDisk: 1 } },
+        ],
+      },
+      cloud: null,
+      cloudError: null,
     }),
     updateOptions: harness.updateOptions,
     setMode: harness.setMode,
+    loadCloudStatus: () => Promise.resolve(),
+    setCloudBaseUrl: () => Promise.resolve(""),
+    setCloudKey: () => Promise.resolve(),
+    clearCloudKey: () => Promise.resolve(),
+    testCloudConnection: () => Promise.resolve([]),
+    inferenceMode: () => "local" as const,
+    toggleInference: () => Promise.resolve(),
   },
 }));
 
 vi.mock("../../i18n", () => ({ useT: () => (key: string) => key }));
+vi.mock("../../services/container", () => ({
+  container: { ipc: { openExternalUrl: vi.fn(() => Promise.resolve()) } },
+}));
 vi.mock("./AgentCapabilities", () => ({ AgentCapabilities: () => null }));
 
 describe("context window settings", () => {

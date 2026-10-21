@@ -64,6 +64,13 @@ function setup(
   const settings = new Map<string, string>();
   const ipc: AgentIpc = {
     overview: vi.fn(() => Promise.resolve(overview(models, engineInstalled))),
+    cloudStatus: vi.fn(() =>
+      Promise.resolve({ baseUrl: "", isDefaultBaseUrl: true, hasKey: false, models: [] }),
+    ),
+    cloudSetBaseUrl: vi.fn((baseUrl: string) => Promise.resolve(baseUrl)),
+    cloudSetKey: vi.fn(() => Promise.resolve()),
+    cloudClearKey: vi.fn(() => Promise.resolve()),
+    cloudTest: vi.fn(() => Promise.resolve([])),
     download: vi.fn(() => Promise.resolve()),
     cancelDownload: vi.fn(() => Promise.resolve()),
     deleteModel: vi.fn(() => Promise.resolve()),
@@ -310,6 +317,67 @@ describe("AgentService", () => {
     await again.service.start();
     expect(again.service.getState().modelId).toBe("b");
     expect(again.service.getState().mode).toBe("plan");
+  });
+
+  it("toggles between local and cloud, remembering each side's own last model", async () => {
+    const { service, ipc } = setup([model("a", "ready"), model("b", "ready")]);
+    vi.mocked(ipc.cloudStatus).mockResolvedValue({
+      baseUrl: "https://cloud.openmindai.org/api/v1/openmindai",
+      isDefaultBaseUrl: true,
+      hasKey: true,
+      models: [
+        { id: "openmindai-super", name: "OpenMindAI Super", available: true },
+        { id: "openmindai-ultra", name: "OpenMindAI Ultra", available: false },
+        { id: "openmindai-lite", name: "OpenMindAI Lite", available: false },
+      ],
+    });
+    await service.start();
+    await service.selectModel("a");
+    expect(service.inferenceMode()).toBe("local");
+    await service.toggleInference("cloud");
+    expect(service.inferenceMode()).toBe("cloud");
+    // Only the model the last connection test actually reported available is offered.
+    expect(service.getState().modelId).toBe("openmindai-super");
+    await service.toggleInference("local");
+    expect(service.inferenceMode()).toBe("local");
+    // "a" was remembered, not re-picked as "the first ready local model".
+    expect(service.getState().modelId).toBe("a");
+    await service.toggleInference("cloud");
+    expect(service.getState().modelId).toBe("openmindai-super");
+    // A refresh() cycle (the local-overview fallback logic) must never pull a cloud selection back to
+    // a local model, since a cloud model never appears in the local overview.
+    await service.refresh();
+    expect(service.inferenceMode()).toBe("cloud");
+    expect(service.getState().modelId).toBe("openmindai-super");
+  });
+
+  it("always switches sides even with nothing downloaded or no key yet -- never a dead click", async () => {
+    // The radios are never disabled in the UI; the toggle must take effect regardless (it is
+    // ready()/sendBlocker() that separately explains, afterwards, why Send may still be unavailable).
+    const { service, ipc } = setup([model("a", "notDownloaded")]);
+    vi.mocked(ipc.cloudStatus).mockResolvedValue({
+      baseUrl: "https://cloud.openmindai.org/api/v1/openmindai",
+      isDefaultBaseUrl: true,
+      hasKey: false,
+      models: [
+        { id: "openmindai-super", name: "OpenMindAI Super", available: false },
+        { id: "openmindai-ultra", name: "OpenMindAI Ultra", available: false },
+        { id: "openmindai-lite", name: "OpenMindAI Lite", available: false },
+      ],
+    });
+    await service.start();
+    expect(service.inferenceMode()).toBe("local");
+    expect(service.ready()).toBe(false);
+
+    await service.toggleInference("cloud");
+    expect(service.inferenceMode()).toBe("cloud");
+    expect(service.getState().modelId).toBe("openmindai-super");
+    expect(service.ready()).toBe(false); // no key yet -- Send stays blocked, but the switch itself worked
+
+    await service.toggleInference("local");
+    expect(service.inferenceMode()).toBe("local");
+    expect(service.getState().modelId).toBe("a"); // not downloaded, but the switch itself worked
+    expect(service.ready()).toBe(false);
   });
 
   it("asks for the licence before a download and follows its progress", async () => {

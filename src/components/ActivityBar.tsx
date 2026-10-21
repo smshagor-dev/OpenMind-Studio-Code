@@ -5,8 +5,8 @@ import "../styles/extensionViews.css";
 import { container } from "../services/container";
 import type { SideView } from "../services/layoutService";
 import { MANAGE_MENU } from "../services/menus";
+import agentActivityIcon from "../assets/openmindai-agent.png";
 import {
-  AgentIcon,
   AiIcon,
   DebugIcon,
   ExtensionsIcon,
@@ -56,7 +56,11 @@ const VIEW_ITEMS: readonly ViewItem[] = [
     icon: <PackageIcon />,
   },
   { view: "collab", label: "view.collaboration", icon: <RemoteIcon /> },
-  { view: "agent", label: "view.agent", icon: <AgentIcon /> },
+  {
+    view: "agent",
+    label: "view.agent",
+    icon: <img src={agentActivityIcon} alt="" className="activity-bar__agent-icon" />,
+  },
 ];
 
 const AI_ITEM: ViewItem = {

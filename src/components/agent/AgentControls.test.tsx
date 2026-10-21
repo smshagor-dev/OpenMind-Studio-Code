@@ -5,9 +5,18 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { DEFAULT_AGENT_OPTIONS } from "../../services/agent/agentOptions";
 
 const controlsState = vi.hoisted(
-  (): { mode: string; overview: null; activeFile?: string | null; includeActiveFile?: boolean } => ({
+  (): {
+    mode: string;
+    overview: null;
+    activeFile?: string | null;
+    includeActiveFile?: boolean;
+    cloud: null;
+    cloudError: null;
+  } => ({
     mode: "ask",
     overview: null,
+    cloud: null,
+    cloudError: null,
   }),
 );
 
@@ -34,9 +43,19 @@ vi.mock("../../services/agent", () => ({
     getState: () => controlsState,
     updateOptions: vi.fn(() => Promise.resolve()),
     setMode: vi.fn(() => Promise.resolve()),
+    loadCloudStatus: vi.fn(() => Promise.resolve()),
+    setCloudBaseUrl: vi.fn(() => Promise.resolve("")),
+    setCloudKey: vi.fn(() => Promise.resolve()),
+    clearCloudKey: vi.fn(() => Promise.resolve()),
+    testCloudConnection: vi.fn(() => Promise.resolve([])),
+    inferenceMode: vi.fn(() => "local" as const),
+    toggleInference: vi.fn(() => Promise.resolve()),
   },
 }));
 vi.mock("../../i18n", () => ({ useT: () => (key: string) => key }));
+vi.mock("../../services/container", () => ({
+  container: { ipc: { openExternalUrl: vi.fn(() => Promise.resolve()) } },
+}));
 import { agent } from "../../services/agent";
 import { AgentPrompt } from "./AgentPrompt";
 import { AgentQueue } from "./AgentQueue";
