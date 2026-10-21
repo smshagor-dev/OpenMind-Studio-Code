@@ -33,7 +33,6 @@ function InferenceModeToggle() {
             type="radio"
             name="agent-inference-mode"
             checked={mode === "local"}
-            disabled={!localAvailable}
             onChange={() => {
               choose("local");
             }}
@@ -45,7 +44,6 @@ function InferenceModeToggle() {
             type="radio"
             name="agent-inference-mode"
             checked={mode === "cloud"}
-            disabled={!cloudAvailable}
             onChange={() => {
               choose("cloud");
             }}

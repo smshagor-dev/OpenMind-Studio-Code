@@ -351,6 +351,28 @@ describe("AgentService", () => {
     expect(service.getState().modelId).toBe("openmindai-super");
   });
 
+  it("switching to a side with nothing selectable yet is a safe no-op, never a crash", async () => {
+    const { service, ipc } = setup([model("a", "notDownloaded")]);
+    vi.mocked(ipc.cloudStatus).mockResolvedValue({
+      baseUrl: "https://cloud.openmindai.org/api/v1/openmindai",
+      isDefaultBaseUrl: true,
+      hasKey: false,
+      models: [
+        { id: "openmindai-super", name: "OpenMindAI Super", available: false },
+        { id: "openmindai-ultra", name: "OpenMindAI Ultra", available: false },
+        { id: "openmindai-lite", name: "OpenMindAI Lite", available: false },
+      ],
+    });
+    await service.start();
+    const before = service.getState().modelId;
+    // The toggle is never disabled in the UI; clicking either side must still be harmless when that
+    // side has no model ready yet (no downloaded local model, no cloud model reported available).
+    await expect(service.toggleInference("cloud")).resolves.toBeUndefined();
+    expect(service.getState().modelId).toBe(before);
+    await expect(service.toggleInference("local")).resolves.toBeUndefined();
+    expect(service.getState().modelId).toBe(before);
+  });
+
   it("asks for the licence before a download and follows its progress", async () => {
     const { service, ipc, host, download } = setup([
       model("a", "notDownloaded"),
