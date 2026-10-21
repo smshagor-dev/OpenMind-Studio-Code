@@ -7,7 +7,7 @@ import type { AgentOptions } from "../../services/agent/agentOptions";
 import { useT } from "../../i18n";
 
 /** Where a user gets their own OpenMindAI Cloud API key (a user-facing account site — separate from the
- * `cloud.openmindai.org` API host the app actually talks to). */
+ * `api.openmindai.org` API host the app actually talks to). */
 const CLOUD_KEY_SIGNUP_URL = "https://chat.openmindai.org";
 
 /** The explicit Local (offline) / Cloud (online) switch: which engine the agent's next message uses. Each

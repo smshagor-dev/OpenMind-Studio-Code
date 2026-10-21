@@ -216,7 +216,7 @@ mod tests {
     fn the_default_base_url_is_the_documented_openmindai_cloud_address() {
         assert_eq!(
             CLOUD_DEFAULT_BASE_URL,
-            "https://cloud.openmindai.org/api/v1/openmindai"
+            "https://api.openmindai.org/api/v1/openmindai"
         );
     }
 }

@@ -10,9 +10,10 @@
 
 use openmind_ai::{AiError, ProviderConfig, ProviderKind};
 
-/// The documented OpenMindAI Cloud API base (`docs: cloud.openmindai.org`). Overridable per installation
-/// (a staging address, for instance) — never hard-coded as the only option.
-pub const DEFAULT_BASE_URL: &str = "https://cloud.openmindai.org/api/v1/openmindai";
+/// The documented OpenMindAI Cloud API base (`docs: api.openmindai.org`). Overridable per installation
+/// (a staging address, for instance, or the earlier cloud.openmindai.org host) — never hard-coded as the
+/// only option; the Cloud settings page's address field writes over it.
+pub const DEFAULT_BASE_URL: &str = "https://api.openmindai.org/api/v1/openmindai";
 
 /// A model OpenMindAI Cloud is documented to offer. Kept separate from the local GGUF catalog: a cloud
 /// model has no file to download, no hardware fit and no GPU placement to report.
@@ -129,14 +130,21 @@ mod tests {
         assert_eq!(cfg.kind, ProviderKind::OpenAiCompatible);
         assert_eq!(cfg.base_url, DEFAULT_BASE_URL);
         assert!(provider_config("not a url").is_err());
-        assert!(provider_config("http://cloud.openmindai.org/api").is_err());
-        assert!(provider_config("https://user:pw@cloud.openmindai.org").is_err());
+        assert!(provider_config("http://api.openmindai.org/api").is_err());
+        assert!(provider_config("https://user:pw@api.openmindai.org").is_err());
     }
 
     #[test]
     fn a_trailing_slash_in_the_configured_base_url_is_tolerated() {
-        let cfg =
-            provider_config("https://cloud.openmindai.org/api/v1/openmindai/").expect("valid");
+        let cfg = provider_config("https://api.openmindai.org/api/v1/openmindai/").expect("valid");
+        assert_eq!(cfg.base_url, "https://api.openmindai.org/api/v1/openmindai");
+    }
+
+    #[test]
+    fn an_earlier_deployment_address_still_works_as_an_override() {
+        // api.openmindai.org is the default, but a user who typed the old cloud.openmindai.org
+        // address into the now-visible Cloud address field must not be refused.
+        let cfg = provider_config("https://cloud.openmindai.org/api/v1/openmindai").expect("valid");
         assert_eq!(
             cfg.base_url,
             "https://cloud.openmindai.org/api/v1/openmindai"
