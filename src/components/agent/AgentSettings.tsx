@@ -66,6 +66,7 @@ function CloudSettingsSection() {
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [baseUrlDraft, setBaseUrlDraft] = useState(status?.baseUrl ?? "");
   const [keyDraft, setKeyDraft] = useState("");
   const [showKey, setShowKey] = useState(false);
 
@@ -73,7 +74,9 @@ function CloudSettingsSection() {
     let active = true;
     void agent.loadCloudStatus().then(() => {
       if (!active) return;
-      setStatus(agent.getState().cloud ?? null);
+      const next = agent.getState().cloud ?? null;
+      setStatus(next);
+      setBaseUrlDraft(next?.baseUrl ?? "");
     });
     return () => {
       active = false;
@@ -88,6 +91,41 @@ function CloudSettingsSection() {
     <fieldset className="agent-cloud-settings">
       <legend>{t("agent.cloud.settings.title")}</legend>
       <p className="agent-cloud-settings__description">{t("agent.cloud.settings.description")}</p>
+      <label className="agent-cloud-settings__key-row">
+        <span>{t("agent.cloud.settings.baseUrl")}</span>
+        <span className="agent-cloud-settings__key-input">
+          <input
+            type="text"
+            value={baseUrlDraft}
+            spellCheck={false}
+            onChange={(event) => {
+              setBaseUrlDraft(event.target.value);
+            }}
+          />
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void agent
+                .setCloudBaseUrl(baseUrlDraft)
+                .then(() => {
+                  sync();
+                })
+                .catch((err: unknown) => {
+                  setError(String(err));
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
+            }}
+          >
+            {t("agent.cloud.settings.saveBaseUrl")}
+          </button>
+        </span>
+      </label>
       <p className="agent-cloud-settings__hint">
         {t("agent.cloud.settings.getKeyHint")}{" "}
         <button
