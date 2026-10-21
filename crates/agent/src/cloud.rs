@@ -146,12 +146,25 @@ mod tests {
     /// A minimal OpenAI-compatible `/models` server on loopback (always reached directly, no proxy
     /// involved) — the same mocking technique `openmind_ai::transport`'s own tests use.
     fn serve_models_once(body: &'static str, status_line: &'static str) -> String {
+        serve_models_once_capturing(body, status_line).0
+    }
+
+    /// As `serve_models_once`, but also hands back the raw request bytes so a test can check exactly what
+    /// headers `GET /models` carried (the connection test's proof that the developer API key was sent).
+    fn serve_models_once_capturing(
+        body: &'static str,
+        status_line: &'static str,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Option<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("addr");
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let captured_writer = std::sync::Arc::clone(&captured);
         std::thread::spawn(move || {
             let (mut socket, _) = listener.accept().expect("accept");
             let mut buf = [0u8; 4096];
-            let _ = socket.read(&mut buf);
+            let read = socket.read(&mut buf).unwrap_or(0);
+            *captured_writer.lock().expect("lock") =
+                Some(String::from_utf8_lossy(&buf[..read]).into_owned());
             let response = format!(
                 "{status_line}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
@@ -160,7 +173,30 @@ mod tests {
                 .write_all(response.as_bytes())
                 .expect("write response");
         });
-        format!("http://{addr}")
+        (format!("http://{addr}"), captured)
+    }
+
+    #[test]
+    fn get_models_sends_the_developer_api_key_as_a_bearer_token() {
+        let (base, captured) = serve_models_once_capturing(
+            r#"{"data":[{"id":"openmindai-super"}]}"#,
+            "HTTP/1.1 200 OK",
+        );
+        let cancel = AtomicBool::new(false);
+        list_cloud_models(&base, "my-developer-key", &cancel).expect("list");
+        let request = captured
+            .lock()
+            .expect("lock")
+            .take()
+            .expect("a request arrived");
+        assert!(request.starts_with("GET /models"));
+        // ureq writes header names in lowercase on the wire; the value itself is what matters.
+        assert!(
+            request
+                .to_lowercase()
+                .contains("authorization: bearer my-developer-key\r\n"),
+            "expected a Bearer header, got:\n{request}"
+        );
     }
 
     #[test]
