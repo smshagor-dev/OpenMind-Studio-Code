@@ -48,9 +48,14 @@ vi.mock("../../services/agent", () => ({
     setCloudKey: vi.fn(() => Promise.resolve()),
     clearCloudKey: vi.fn(() => Promise.resolve()),
     testCloudConnection: vi.fn(() => Promise.resolve([])),
+    inferenceMode: vi.fn(() => "local" as const),
+    toggleInference: vi.fn(() => Promise.resolve()),
   },
 }));
 vi.mock("../../i18n", () => ({ useT: () => (key: string) => key }));
+vi.mock("../../services/container", () => ({
+  container: { ipc: { openExternalUrl: vi.fn(() => Promise.resolve()) } },
+}));
 import { agent } from "../../services/agent";
 import { AgentPrompt } from "./AgentPrompt";
 import { AgentQueue } from "./AgentQueue";

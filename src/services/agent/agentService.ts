@@ -161,6 +161,10 @@ export class AgentService {
   private streamQueue: AgentEvent[] = [];
   private streamTimer: ReturnType<typeof setTimeout> | null = null;
   private streamBytes = 0;
+  /** This session's last pick of each kind, so the Local/Cloud toggle is lossless when switching back and
+   * forth (not persisted across a restart; `modelId` itself already is, via MODEL_KEY). */
+  private lastLocalModelId: string | null = null;
+  private lastCloudModelId: string | null = null;
 
   constructor(
     private readonly ipc: AgentIpc,
@@ -683,9 +687,39 @@ export class AgentService {
 
   async selectModel(id: string): Promise<void> {
     if (this.warming || this.state.transcript.busy) return;
+    if (this.isCloudModel(id)) this.lastCloudModelId = id;
+    else this.lastLocalModelId = id;
     this.set({ modelId: id });
     await this.host.settingSet(MODEL_KEY, id).catch(() => undefined);
     await this.activate();
+  }
+
+  /** `"local"` or `"cloud"`, whichever the current selection actually is. */
+  inferenceMode(): "local" | "cloud" {
+    return this.isCloudModel(this.state.modelId) ? "cloud" : "local";
+  }
+
+  /** Switches between the local engine and OpenMindAI Cloud, remembering each side's last model so going
+   * back and forth within a session loses nothing. A no-op when the target side has nothing to select yet
+   * (no downloaded local model, or no cloud model the last test reported available) — the UI disables that
+   * option in that case rather than silently doing nothing. */
+  async toggleInference(mode: "local" | "cloud"): Promise<void> {
+    if (mode === this.inferenceMode()) return;
+    if (mode === "cloud") {
+      const id =
+        this.lastCloudModelId ??
+        this.state.cloud?.models.find((m) => m.available)?.id ??
+        null;
+      if (id) await this.selectModel(id);
+      return;
+    }
+    const ready = this.state.overview?.models.filter((m) => m.local.state === "ready") ?? [];
+    const id =
+      this.lastLocalModelId ??
+      ready.find((m) => m.id === this.state.overview?.recommended)?.id ??
+      ready[0]?.id ??
+      null;
+    if (id) await this.selectModel(id);
   }
 
   async setMode(mode: AgentMode): Promise<void> {

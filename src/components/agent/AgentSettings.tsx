@@ -1,9 +1,61 @@
 import { AgentCapabilities } from "./AgentCapabilities";
 import { useEffect, useState } from "react";
 import { agent } from "../../services/agent";
+import { container } from "../../services/container";
 import type { AgentMode, CloudStatus } from "../../services/agent/agentIpc";
 import type { AgentOptions } from "../../services/agent/agentOptions";
 import { useT } from "../../i18n";
+
+/** Where a user gets their own OpenMindAI Cloud API key (a user-facing account site — separate from the
+ * `cloud.openmindai.org` API host the app actually talks to). */
+const CLOUD_KEY_SIGNUP_URL = "https://chat.openmindai.org";
+
+/** The explicit Local (offline) / Cloud (online) switch: which engine the agent's next message uses. Each
+ * side remembers its own last model, so switching back and forth within this session loses nothing. */
+function InferenceModeToggle() {
+  const t = useT();
+  const [mode, setMode] = useState<"local" | "cloud">(agent.inferenceMode());
+  const overview = agent.getState().overview;
+  const cloud = agent.getState().cloud;
+  const localAvailable = overview?.models.some((m) => m.local?.state === "ready") ?? false;
+  const cloudAvailable = cloud?.models.some((m) => m.available) ?? false;
+  const choose = (next: "local" | "cloud") => {
+    void agent.toggleInference(next).then(() => {
+      setMode(agent.inferenceMode());
+    });
+  };
+  return (
+    <fieldset className="agent-inference-toggle">
+      <legend>{t("agent.inference.title")}</legend>
+      <label>
+        <input
+          type="radio"
+          name="agent-inference-mode"
+          checked={mode === "local"}
+          disabled={!localAvailable}
+          onChange={() => {
+            choose("local");
+          }}
+        />
+        {t("agent.inference.local")}
+      </label>
+      <label>
+        <input
+          type="radio"
+          name="agent-inference-mode"
+          checked={mode === "cloud"}
+          disabled={!cloudAvailable}
+          onChange={() => {
+            choose("cloud");
+          }}
+        />
+        {t("agent.inference.cloud")}
+      </label>
+      {!localAvailable ? <p className="agent-model__progress-text">{t("agent.inference.localDisabledHint")}</p> : null}
+      {!cloudAvailable ? <p className="agent-model__progress-text">{t("agent.inference.cloudDisabledHint")}</p> : null}
+    </fieldset>
+  );
+}
 
 /** OpenMindAI Cloud's own, agent-scoped configuration (address, API key, connection test). No request runs
  * until Test Connection, or Send with a cloud model chosen; reading the stored status here is a local
@@ -72,6 +124,16 @@ function CloudSettingsSection() {
       >
         {t("agent.cloud.settings.saveBaseUrl")}
       </button>
+      <p>
+        {t("agent.cloud.settings.getKeyHint")}{" "}
+        <button
+          type="button"
+          className="agent-link-button"
+          onClick={() => void container.ipc.openExternalUrl(CLOUD_KEY_SIGNUP_URL)}
+        >
+          {CLOUD_KEY_SIGNUP_URL}
+        </button>
+      </p>
       <label>
         {t("agent.cloud.settings.apiKey")}
         <input
@@ -226,6 +288,7 @@ export function AgentSettings() {
     >
       <h3>{t("agent.settings.title")}</h3>
       <p>{t("agent.settings.scope")}</p>
+      <InferenceModeToggle />
       <CloudSettingsSection />
       <label>
         {t("agent.settings.permissions")}
