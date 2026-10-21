@@ -706,18 +706,28 @@ export class AgentService {
   async toggleInference(mode: "local" | "cloud"): Promise<void> {
     if (mode === this.inferenceMode()) return;
     if (mode === "cloud") {
+      // Prefer a model the last connection test reported available; fall back to any published
+      // cloud model (even with no key yet) so the switch always takes effect -- ready()/sendBlocker()
+      // already explain separately why Send itself may still be unavailable (no key, not tested).
       const id =
         this.lastCloudModelId ??
         this.state.cloud?.models.find((m) => m.available)?.id ??
+        this.state.cloud?.models[0]?.id ??
         null;
       if (id) await this.selectModel(id);
       return;
     }
-    const ready = this.state.overview?.models.filter((m) => m.local.state === "ready") ?? [];
+    const models = this.state.overview?.models ?? [];
+    const downloaded = models.filter((m) => m.local.state === "ready");
+    // Prefer a downloaded model; fall back to any catalog entry (not yet downloaded) so the switch
+    // always takes effect instead of silently doing nothing -- the Setup page's own download flow,
+    // not this toggle, is where "nothing downloaded yet" gets resolved.
     const id =
       this.lastLocalModelId ??
-      ready.find((m) => m.id === this.state.overview?.recommended)?.id ??
-      ready[0]?.id ??
+      downloaded.find((m) => m.id === this.state.overview?.recommended)?.id ??
+      downloaded[0]?.id ??
+      models.find((m) => m.id === this.state.overview?.recommended)?.id ??
+      models[0]?.id ??
       null;
     if (id) await this.selectModel(id);
   }

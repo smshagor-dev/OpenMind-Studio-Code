@@ -351,7 +351,9 @@ describe("AgentService", () => {
     expect(service.getState().modelId).toBe("openmindai-super");
   });
 
-  it("switching to a side with nothing selectable yet is a safe no-op, never a crash", async () => {
+  it("always switches sides even with nothing downloaded or no key yet -- never a dead click", async () => {
+    // The radios are never disabled in the UI; the toggle must take effect regardless (it is
+    // ready()/sendBlocker() that separately explains, afterwards, why Send may still be unavailable).
     const { service, ipc } = setup([model("a", "notDownloaded")]);
     vi.mocked(ipc.cloudStatus).mockResolvedValue({
       baseUrl: "https://cloud.openmindai.org/api/v1/openmindai",
@@ -364,13 +366,18 @@ describe("AgentService", () => {
       ],
     });
     await service.start();
-    const before = service.getState().modelId;
-    // The toggle is never disabled in the UI; clicking either side must still be harmless when that
-    // side has no model ready yet (no downloaded local model, no cloud model reported available).
-    await expect(service.toggleInference("cloud")).resolves.toBeUndefined();
-    expect(service.getState().modelId).toBe(before);
-    await expect(service.toggleInference("local")).resolves.toBeUndefined();
-    expect(service.getState().modelId).toBe(before);
+    expect(service.inferenceMode()).toBe("local");
+    expect(service.ready()).toBe(false);
+
+    await service.toggleInference("cloud");
+    expect(service.inferenceMode()).toBe("cloud");
+    expect(service.getState().modelId).toBe("openmindai-super");
+    expect(service.ready()).toBe(false); // no key yet -- Send stays blocked, but the switch itself worked
+
+    await service.toggleInference("local");
+    expect(service.inferenceMode()).toBe("local");
+    expect(service.getState().modelId).toBe("a"); // not downloaded, but the switch itself worked
+    expect(service.ready()).toBe(false);
   });
 
   it("asks for the licence before a download and follows its progress", async () => {
