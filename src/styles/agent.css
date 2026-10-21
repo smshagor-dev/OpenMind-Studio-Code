@@ -838,6 +838,42 @@
   font-weight: 600;
 }
 
+/* The Online/Offline tabs in both the Setup (model chip) and Settings (gear) dialogs. */
+.agent-setup-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 12px 0;
+  border-bottom: 1px solid var(--menu-border);
+}
+
+.agent-setup-tab {
+  padding: 7px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-setup-tab:hover { color: var(--fg); }
+
+.agent-setup-tab[aria-selected="true"] {
+  color: var(--fg-strong);
+  border-bottom-color: var(--agent-accent);
+}
+
+.agent-setup-tab:focus-visible {
+  outline: 2px solid var(--focus-border);
+  outline-offset: 1px;
+}
+
+.agent-inference-tabs { margin: 0; }
+.agent-inference-tabs .agent-setup-tabs { margin-top: 0; }
+.agent-inference-tabs .agent-inference-toggle { margin-top: 10px; }
+.agent-inference-tabs .agent-cloud-settings { margin-top: 10px; }
+
 .agent-setup__engine {
   display: flex;
   flex-wrap: wrap;
@@ -1107,34 +1143,7 @@
   font-weight: 600;
 }
 
-.agent-inference-toggle__options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.agent-inference-toggle__option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 150ms, background 150ms;
-}
-
-.agent-inference-toggle__option:has(input:checked) {
-  border-color: var(--agent-accent);
-  background: var(--agent-accent-soft);
-}
-
-.agent-inference-toggle__option:has(input:disabled) {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.agent-inference-toggle__option input { margin: 0; accent-color: var(--agent-accent); }
+.agent-inference-toggle button { align-self: flex-start; }
 
 .agent-cloud-settings__description {
   margin: 0;

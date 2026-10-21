@@ -43,6 +43,7 @@ vi.mock("../../services/agent", () => ({
     refreshBackground: vi.fn(() => Promise.resolve()),
     killBackground: vi.fn(() => Promise.resolve()),
     activate: vi.fn(() => Promise.resolve()),
+    inferenceMode: () => "local" as const,
   },
   starredChats: {
     subscribe: () => () => undefined,

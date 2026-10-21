@@ -82,6 +82,13 @@ mod tests {
             *captured.lock().expect("lock") =
                 Some(String::from_utf8_lossy(&buf[..read]).into_owned());
             let _ = socket.write_all(response.as_bytes());
+            // A graceful close, not an abrupt drop: signal "no more data from us" (FIN) and then wait for
+            // the client's own EOF before the socket goes away. Dropping the TcpStream right after the
+            // write raced the client's read on Windows -- an unacknowledged send buffer at drop time can
+            // turn into an RST ("connection forcibly closed", os error 10054) instead of a clean close.
+            let _ = socket.shutdown(std::net::Shutdown::Write);
+            let _ = socket.set_read_timeout(Some(Duration::from_secs(2)));
+            while socket.read(&mut buf).unwrap_or(0) > 0 {}
         });
         addr
     }

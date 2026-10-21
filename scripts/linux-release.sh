@@ -91,7 +91,9 @@ install -m 644 "$root"/licenses/legal/* "$stage/OpenMind Studio/legal/"
 install -m 755 "$root/scripts/launchers/linux/openmind-studio.sh" "$stage/OpenMind Studio/openmind-studio.sh"
 label=$([ "$arch" = x64 ] && echo "x86_64" || echo "x86, 32-bit")
 build_system="$(. /etc/os-release && echo "$PRETTY_NAME")"
-glibc="glibc $(ldd --version | head -1 | grep -oE '[0-9]+\.[0-9]+$')"
+ldd_full="$(ldd --version)"
+ldd_version_line="${ldd_full%%$'\n'*}"
+glibc="glibc $(grep -oE '[0-9]+\.[0-9]+$' <<<"$ldd_version_line")"
 cat > "$stage/OpenMind Studio/README.txt" <<README
 OpenMind Studio $version - portable (Linux $label)
 

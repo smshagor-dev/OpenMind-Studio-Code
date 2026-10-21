@@ -5,10 +5,38 @@ import { AgentSettings } from "./AgentSettings";
 const harness = vi.hoisted(() => ({
   updateOptions: vi.fn(() => Promise.resolve()),
   setMode: vi.fn(() => Promise.resolve()),
+  // A single stable reference, like the real service's getState(): useSyncExternalStore compares
+  // snapshots by identity, and a fresh object literal on every call reads as a change every render.
+  state: {
+    mode: "ask",
+    modelId: "local",
+    overview: {
+      hardware: { totalRamBytes: 16e9, availableRamBytes: 8e9, gpus: [], cpuThreads: 8, avx2: true },
+      engineInstalled: true,
+      runningModel: "local",
+      modelsDir: "/private/models",
+      freeDiskBytes: 50e9,
+      recommended: "local",
+      models: [
+        {
+          id: "local", name: "Lite", repo: "", path: "", sizeBytes: 1, contextTokens: 32768,
+          totalParamsB: 4, license: { name: "", url: "" }, downloading: false,
+          fit: { level: "gpu", neededBytes: 1, tokensPerSecond: 10 },
+          local: { state: "ready", bytesOnDisk: 1 },
+        },
+      ],
+    },
+    downloads: {},
+    installingEngine: false,
+    cloud: null,
+    cloudError: null,
+    transcript: { busy: false },
+  },
 }));
 
 vi.mock("../../services/agent", () => ({
   agent: {
+    subscribe: () => () => undefined,
     options: () => ({
       effort: "medium",
       useGpu: true,
@@ -27,17 +55,7 @@ vi.mock("../../services/agent", () => ({
       showReasoning: true,
       autoScroll: true,
     }),
-    getState: () => ({
-      mode: "ask",
-      modelId: "local",
-      overview: {
-        models: [
-          { id: "local", contextTokens: 32768, local: { state: "ready", bytesOnDisk: 1 } },
-        ],
-      },
-      cloud: null,
-      cloudError: null,
-    }),
+    getState: () => harness.state,
     updateOptions: harness.updateOptions,
     setMode: harness.setMode,
     loadCloudStatus: () => Promise.resolve(),

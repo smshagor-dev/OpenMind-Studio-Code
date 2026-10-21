@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { container } from "../../services/container";
 import type { AgentOverview, CloudStatus, ModelView } from "../../services/agent/agentIpc";
 import type { DownloadState } from "../../services/agent/agentService";
@@ -77,59 +77,16 @@ function Edition({ model, selected, download, recommended }: {
   );
 }
 
-/** OpenMindAI Cloud's three published models: a real model picker row, never the local hardware-fit/download
- * controls that belong only to a GGUF model (it has no file to download, no VRAM to fit). */
-function CloudSection({ cloud, modelId }: { cloud: CloudStatus | null | undefined; modelId: string | null }) {
-  const t = useT();
-  const switching = agent.getState().engineState === "loading" || agent.getState().transcript.busy;
-  if (!cloud) return null;
-  return (
-    <section className="agent-setup__step">
-      <div className="agent-setup__step-title">3. {t("agent.cloud.setup.title")}</div>
-      {!cloud.hasKey ? (
-        <p className="agent-model__progress-text">{t("agent.cloud.setup.needsKey")}</p>
-      ) : null}
-      <div className="agent-setup__models">
-        {cloud.models.map((model) => {
-          const selected = model.id === modelId;
-          return (
-            <div key={model.id} className={selected ? "agent-model agent-model--selected" : "agent-model"}>
-              <div className="agent-model__head">
-                <span className="agent-model__name">{model.name}</span>
-                {!model.available ? (
-                  <span className="agent-model__badge agent-model__badge--muted">
-                    {t("agent.cloud.setup.notConfirmed")}
-                  </span>
-                ) : null}
-              </div>
-              <p className="agent-model__progress-text">{t("agent.cloud.setup.description")}</p>
-              <div className="agent-model__actions">
-                <button
-                  type="button"
-                  className="button button--primary"
-                  disabled={selected || switching || !cloud.hasKey}
-                  onClick={() => { void agent.selectModel(model.id); }}
-                >
-                  {selected ? t("agent.model.inUse") : t("agent.model.use")}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-export function AgentSetup({ overview, downloads, modelId, installing, cloud }: {
+/** The Offline tab's content: runtime install + the downloadable editions. Exported so Agent Settings (the
+ * gear icon) shows the exact same thing as Agent Setup (the model chip / "Configure now") instead of its
+ * own, inconsistent summary — the two were different dialogs for the same two tabs, which is the bug this
+ * component existing twice was actually about. */
+export function LocalSection({ overview, downloads, modelId, installing }: {
   overview: AgentOverview; downloads: Record<string, DownloadState>; modelId: string | null; installing: boolean;
-  cloud?: CloudStatus | null;
 }) {
   const t = useT();
   return (
-    <div className="agent-setup">
-      <p className="agent-model__progress-text">{t("agent.setup.hardware", { ram: formatBytes(overview.hardware.totalRamBytes), threads: overview.hardware.cpuThreads, disk: overview.freeDiskBytes === null ? "—" : formatBytes(overview.freeDiskBytes) })}</p>
-      <p className="agent-setup__subtitle">{t("agent.ui.setupSubtitle")}</p>
+    <>
       <section className="agent-setup__step">
         <div className="agent-setup__step-title">1. {t("agent.ui.runtime")}</div>
         {overview.engineInstalled ? <div className="agent-setup__done">✓ {t("agent.ui.runtimeReady")}</div> : (
@@ -150,7 +107,175 @@ export function AgentSetup({ overview, downloads, modelId, installing, cloud }: 
           ))}
         </div>
       </section>
-      <CloudSection cloud={cloud} modelId={modelId} />
+    </>
+  );
+}
+
+/** Where a user gets their own OpenMindAI Cloud API key (a user-facing account site — separate from the
+ * `api.openmindai.org` API host the app actually talks to). */
+const CLOUD_KEY_SIGNUP_URL = "https://chat.openmindai.org";
+
+/** The whole Online tab, in both the Setup dialog (model chip / "Configure now") and the Settings dialog
+ * (gear icon) — one real page, not fragments: the connection (address/key/test) and the model choice
+ * together, since one key is what unlocks all three published models. Earlier this showed three
+ * near-identical cards (same description, same "Runs on OpenMindAI Cloud" text) with their own "Use"
+ * button each, as if they were three separate downloads like the local editions — they are not: a single
+ * key enables all of them server-side, so the model is one dropdown, not three cards. */
+export function CloudSetup({ cloud, modelId }: { cloud: CloudStatus | null | undefined; modelId: string | null }) {
+  const t = useT();
+  const switching = agent.getState().engineState === "loading" || agent.getState().transcript.busy;
+  const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [baseUrlDraft, setBaseUrlDraft] = useState(cloud?.baseUrl ?? "");
+  const [keyDraft, setKeyDraft] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  // null = nothing picked by hand yet -- the dropdown shows a derived default instead (below), so the
+  // default follows a changing `cloud`/`modelId` live without a setState-in-an-effect anti-pattern; once
+  // the user picks something by hand it sticks for the rest of this session.
+  const [pickedModelId, setPickedModelId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void agent.loadCloudStatus().then(() => {
+      if (!active) return;
+      const next = agent.getState().cloud;
+      if (next) setBaseUrlDraft((prev) => prev || next.baseUrl);
+    });
+    return () => { active = false; };
+  }, []);
+
+  if (!cloud) return <p className="agent-model__progress-text">{t("agent.loading")}</p>;
+
+  // The currently active cloud model if there is one, else the one the last connection test reported
+  // available, else the first -- same fallback order as toggleInference()'s own cloud branch.
+  const defaultModelId = cloud.models.find((m) => m.id === modelId)?.id
+    ?? cloud.models.find((m) => m.available)?.id
+    ?? cloud.models[0]?.id
+    ?? "";
+  const selectedModelId = pickedModelId ?? defaultModelId;
+  const selectedModel = cloud.models.find((m) => m.id === selectedModelId) ?? null;
+  const inUse = selectedModelId !== "" && selectedModelId === modelId;
+
+  return (
+    <fieldset className="agent-cloud-settings">
+      <legend>{t("agent.cloud.settings.title")}</legend>
+      <p className="agent-cloud-settings__description">{t("agent.cloud.settings.description")}</p>
+      <label className="agent-cloud-settings__key-row">
+        <span>{t("agent.cloud.settings.baseUrl")}</span>
+        <span className="agent-cloud-settings__key-input">
+          <input type="text" value={baseUrlDraft} spellCheck={false}
+            onChange={(event) => { setBaseUrlDraft(event.target.value); }} />
+          <button type="button" className="button button--secondary" disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              setError(null);
+              void agent.setCloudBaseUrl(baseUrlDraft).catch((err: unknown) => { setError(String(err)); })
+                .finally(() => { setBusy(false); });
+            }}>
+            {t("agent.cloud.settings.saveBaseUrl")}
+          </button>
+        </span>
+      </label>
+      <p className="agent-cloud-settings__hint">
+        {t("agent.cloud.settings.getKeyHint")}{" "}
+        <button type="button" className="agent-link-button" onClick={() => void container.ipc.openExternalUrl(CLOUD_KEY_SIGNUP_URL)}>
+          {CLOUD_KEY_SIGNUP_URL}
+        </button>
+      </p>
+      <label className="agent-cloud-settings__key-row">
+        <span>{t("agent.cloud.settings.apiKey")}</span>
+        <span className="agent-cloud-settings__key-input">
+          <input type={showKey ? "text" : "password"} value={keyDraft}
+            placeholder={cloud.hasKey ? t("agent.cloud.settings.keyStored") : ""} autoComplete="off"
+            onChange={(event) => { setKeyDraft(event.target.value); }} />
+          <button type="button" className="agent-icon-button" onClick={() => { setShowKey(!showKey); }}>
+            {showKey ? t("agent.cloud.settings.hide") : t("agent.cloud.settings.show")}
+          </button>
+        </span>
+      </label>
+      <div className="agent-cloud-settings__actions">
+        <button type="button" className="button button--primary" disabled={!keyDraft.trim() || busy}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            void agent.setCloudKey(keyDraft).then(() => { setKeyDraft(""); })
+              .catch((err: unknown) => { setError(String(err)); }).finally(() => { setBusy(false); });
+          }}>
+          {t("agent.cloud.settings.saveKey")}
+        </button>
+        {cloud.hasKey ? (
+          <button type="button" className="button button--secondary" disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              void agent.clearCloudKey().finally(() => { setBusy(false); });
+            }}>
+            {t("agent.cloud.settings.disconnect")}
+          </button>
+        ) : null}
+        <button type="button" className="button button--secondary" disabled={!cloud.hasKey || testing}
+          onClick={() => {
+            setTesting(true);
+            setError(null);
+            void agent.testCloudConnection().then((models) => {
+              setTesting(false);
+              if (models === null) setError(agent.getState().cloudError ?? t("agent.ui.operationFailed"));
+            });
+          }}>
+          {testing ? t("agent.cloud.settings.testing") : t("agent.cloud.settings.test")}
+        </button>
+      </div>
+      {error ? <p className="agent-notice agent-notice--error" role="alert">{error}</p> : null}
+      <label className="agent-cloud-settings__key-row">
+        <span>{t("agent.cloud.setup.modelLabel")}</span>
+        <select value={selectedModelId} onChange={(event) => { setPickedModelId(event.target.value); }}>
+          {cloud.models.map((model) => (
+            <option key={model.id} value={model.id}>{model.name}</option>
+          ))}
+        </select>
+      </label>
+      {selectedModel && !selectedModel.available ? (
+        <p className="agent-model__progress-text">{t("agent.cloud.setup.notConfirmed")}</p>
+      ) : null}
+      <div className="agent-model__actions">
+        <button type="button" className="button button--primary" disabled={!selectedModelId || inUse || switching || !cloud.hasKey}
+          onClick={() => { if (selectedModelId) void agent.selectModel(selectedModelId); }}>
+          {inUse ? t("agent.model.inUse") : t("agent.model.use")}
+        </button>
+      </div>
+    </fieldset>
+  );
+}
+
+export function AgentSetup({ overview, downloads, modelId, installing, cloud }: {
+  overview: AgentOverview; downloads: Record<string, DownloadState>; modelId: string | null; installing: boolean;
+  cloud?: CloudStatus | null;
+}) {
+  const t = useT();
+  const [tab, setTab] = useState<"offline" | "online">(agent.inferenceMode() === "cloud" ? "online" : "offline");
+  return (
+    <div className="agent-setup">
+      <p className="agent-model__progress-text">{t("agent.setup.hardware", { ram: formatBytes(overview.hardware.totalRamBytes), threads: overview.hardware.cpuThreads, disk: overview.freeDiskBytes === null ? "—" : formatBytes(overview.freeDiskBytes) })}</p>
+      <p className="agent-setup__subtitle">{t("agent.ui.setupSubtitle")}</p>
+      <div className="agent-setup-tabs" role="tablist" aria-label={t("agent.inference.title")}>
+        <button type="button" role="tab" className="agent-setup-tab" aria-selected={tab === "offline"}
+          onClick={() => { setTab("offline"); }}>
+          {t("agent.inference.tabOffline")}
+        </button>
+        <button type="button" role="tab" className="agent-setup-tab" aria-selected={tab === "online"}
+          onClick={() => { setTab("online"); }}>
+          {t("agent.inference.tabOnline")}
+        </button>
+      </div>
+      {tab === "offline" ? (
+        <div role="tabpanel">
+          <LocalSection overview={overview} downloads={downloads} modelId={modelId} installing={installing} />
+        </div>
+      ) : (
+        <div role="tabpanel">
+          <CloudSetup cloud={cloud} modelId={modelId} />
+        </div>
+      )}
       <p className="agent-setup__privacy">{t("agent.ui.privacy")}</p>
     </div>
   );
