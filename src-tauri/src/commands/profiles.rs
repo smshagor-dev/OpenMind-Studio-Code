@@ -217,8 +217,6 @@ pub fn profile_import_vscode(
                 parsed.push(KeybindingEntry {
                     key: key.to_string(),
                     command: command.to_string(),
-                    when: row.get("when").and_then(Value::as_str).map(str::to_string),
-                    args: row.get("args").cloned(),
                 });
             }
             parsed
