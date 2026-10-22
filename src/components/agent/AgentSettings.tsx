@@ -99,6 +99,8 @@ export function AgentSettings() {
     )?.contextTokens ?? 131_072;
   const [mode, setMode] = useState<AgentMode>(agent.getState().mode);
   const [saving, setSaving] = useState(false);
+  const currentState = useSyncExternalStore((listener) => agent.subscribe(listener), () => agent.getState());
+  const cloudActive = currentState.modelId === "openmindai-lite" || currentState.modelId === "openmindai-super" || currentState.modelId === "openmindai-ultra";
   return (
     <form
       className="agent-settings"
@@ -116,6 +118,7 @@ export function AgentSettings() {
       <h3>{t("agent.settings.title")}</h3>
       <p>{t("agent.settings.scope")}</p>
       <InferenceTabs />
+      {cloudActive ? <>
       <label>
         {t("agent.settings.permissions")}
         <select
@@ -233,6 +236,7 @@ export function AgentSettings() {
       >
         {t("agent.settings.apply")}
       </button>
+      </> : <p className="agent-model__progress-text">Local AI uses automatic settings. No configuration is required.</p>}
     </form>
   );
 }
