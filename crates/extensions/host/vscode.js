@@ -290,16 +290,42 @@ class CompletionList {
 }
 
 class SnippetString {
-  constructor(value = '') { this.value = value; this._tabstop = 1; }
-  appendTabstop(number = this._tabstop++) {
+  constructor(value = '') { this.value = String(value); this._tabstop = 1; }
+  static escape(value, special = [92, 36, 125]) {
+    return [...String(value)].map((char) =>
+      special.includes(char.charCodeAt(0)) ? String.fromCharCode(92) + char : char
+    ).join('');
+  }
+  static index(number) {
     if (!Number.isInteger(number) || number < 0) throw new TypeError('Invalid snippet tabstop');
-    this.value += String.fromCharCode(36) + number;
+    return number;
+  }
+  appendText(value) {
+    this.value += SnippetString.escape(value);
+    return this;
+  }
+  appendTabstop(number = this._tabstop++) {
+    this.value += String.fromCharCode(36) + SnippetString.index(number);
     return this;
   }
   appendPlaceholder(value, number = this._tabstop++) {
-    if (!Number.isInteger(number) || number < 0) throw new TypeError('Invalid snippet tabstop');
-    const text = typeof value === 'function' ? value(new SnippetString()).value : String(value);
-    this.value += String.fromCharCode(36, 123) + number + ':' + text + '}';
+    const text = typeof value === 'function' ? value(new SnippetString()).value : SnippetString.escape(value);
+    this.value += String.fromCharCode(36, 123) + SnippetString.index(number) + ':' + text + '}';
+    return this;
+  }
+  appendChoice(values, number = this._tabstop++) {
+    if (!Array.isArray(values) || values.length === 0) throw new TypeError('Snippet choices required');
+    const choices = values.map((value) => SnippetString.escape(value, [92, 124, 44, 125]));
+    this.value += String.fromCharCode(36, 123) + SnippetString.index(number) + '|' + choices.join(',') + '|}';
+    return this;
+  }
+  appendVariable(name, defaultValue) {
+    if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new TypeError('Invalid snippet variable');
+    }
+    this.value += defaultValue === undefined
+      ? String.fromCharCode(36) + name
+      : String.fromCharCode(36, 123) + name + ':' + SnippetString.escape(defaultValue) + '}';
     return this;
   }
 }
