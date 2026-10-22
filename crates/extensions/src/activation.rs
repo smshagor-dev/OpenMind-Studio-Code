@@ -251,6 +251,24 @@ mod tests {
     }
 
     #[test]
+    fn incompatible_engine_is_not_activated() {
+        let new_api = extension(
+            r#"{"name":"newer","publisher":"acme","version":"1.0.0","main":"./main.js","engines":{"vscode":"^1.100.0"}}"#,
+            true,
+        );
+        assert!(activation_order(&[new_api], &["acme.newer".into()])
+            .unwrap_err().contains("requires VS Code engine"));
+        let supported = extension(
+            r#"{"name":"supported","publisher":"acme","version":"1.0.0","main":"./main.js","engines":{"vscode":"^1.85.0"}}"#,
+            true,
+        );
+        assert_eq!(
+            activation_order(&[supported], &["acme.supported".into()]).unwrap(),
+            ["acme.supported"]
+        );
+    }
+
+    #[test]
     fn repeated_dependencies_activate_once() {
         let a = extension(
             r#"{"name":"a","publisher":"acme","version":"1.0.0","main":"./a.js","extensionDependencies":["acme.base"]}"#,
