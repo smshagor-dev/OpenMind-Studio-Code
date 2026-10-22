@@ -164,6 +164,9 @@ function activate(context) {
       listed: vscode.extensions.all.some((entry) => entry.id === extension.id),
     };
   });
+  let extensionChanges = 0;
+  context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
+  reg('sampleV2.extensionChangeCount', () => extensionChanges);
   reg('sampleV2.extensionState', () => {
     const extension = vscode.extensions.getExtension('openmind-samples.sample-api-v2');
     return {
