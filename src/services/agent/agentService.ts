@@ -354,10 +354,39 @@ export class AgentService {
   }
 
   options(): AgentOptions {
-    return this.state.options ?? { ...DEFAULT_AGENT_OPTIONS };
+    // Local AI configures itself from the detected machine. Rust independently
+    // sizes the llama.cpp KV cache using available RAM, model size and VRAM.
+    if (this.inferenceMode() === "local") {
+      const hardware = this.state.overview?.hardware;
+      const gib = 1024 ** 3;
+      const ram = hardware?.totalRamBytes ?? 0;
+      const lowMemory = ram > 0 && ram <= 9 * gib;
+      const mediumMemory = ram > 0 && ram <= 17 * gib;
+      return {
+        ...DEFAULT_AGENT_OPTIONS,
+        contextTokens: 0,
+        maxOutputTokens: lowMemory ? 1024 : mediumMemory ? 2048 : 4096,
+        reasoningBudgetTokens: lowMemory ? 0 : mediumMemory ? 256 : 1024,
+        maxSteps: lowMemory ? 48 : mediumMemory ? 96 : 128,
+        maxContinuations: lowMemory ? 2 : mediumMemory ? 4 : 8,
+      };
+    }
+    // Cloud context is negotiated by the hosted model, not constrained by PC RAM.
+    // Keep endpoint integrations and UI preferences, but never reuse legacy manual
+    // token limits after switching from a local installation.
+    return {
+      ...DEFAULT_AGENT_OPTIONS,
+      searchEndpoint: this.state.options?.searchEndpoint ?? "",
+      visionEndpoint: this.state.options?.visionEndpoint ?? "",
+      imageEndpoint: this.state.options?.imageEndpoint ?? "",
+      showReasoning: this.state.options?.showReasoning ?? true,
+      autoScroll: this.state.options?.autoScroll ?? true,
+      contextTokens: 0,
+    };
   }
 
   async updateOptions(change: Partial<AgentOptions>): Promise<void> {
+    if (this.inferenceMode() === "local") return;
     const previousContext = this.options().contextTokens;
     const options = agentOptions({ ...this.options(), ...change });
     this.set({ options });
@@ -561,14 +590,22 @@ export class AgentService {
       )
         this.set({ mode });
       if (model) this.set({ modelId: model });
-      const active = await this.host
-        .settingGet(`agent.active.${this.host.taskScope ?? "main"}`)
-        .catch(() => null);
-      if (active && this.history && this.host.hasFolder())
-        await this.restoreHistory(active, true);
+      // Always open a fresh conversation on editor startup. Previous chats
+      // remain in History and can be opened explicitly by the user.
+      this.savedActiveId = null;
+      void this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, "").catch(() => undefined);
       // Before the local-catalog fallback below runs, so a restored OpenMindAI Cloud selection is
       // recognized as a cloud model and never silently swapped back to a local one.
-      await this.loadCloudStatus();
+      // A downloaded local model must never wait for Cloud settings during startup.
+      // Preserve an explicitly selected Cloud model, but load Cloud status only
+      // when that path is actually selected. Users can switch later.
+      const savedCloudSelection =
+        model === "openmindai-lite" ||
+        model === "openmindai-super" ||
+        model === "openmindai-ultra";
+      if (savedCloudSelection) {
+        await this.loadCloudStatus();
+      }
       await this.refresh();
       await this.activate();
     } catch {
@@ -580,7 +617,10 @@ export class AgentService {
   /** Whether `id` names one of OpenMindAI Cloud's three published models (not a local GGUF one). Known
    * only once `loadCloudStatus()` has resolved at least once. */
   private isCloudModel(id: string | null | undefined): boolean {
-    return !!id && (this.state.cloud?.models.some((m) => m.id === id) ?? false);
+    return !!id && (
+      id === "openmindai-lite" || id === "openmindai-super" || id === "openmindai-ultra" ||
+      (this.state.cloud?.models.some((m) => m.id === id) ?? false)
+    );
   }
 
   /** Preloads the configured agent without downloading or starting a conversation. */
@@ -608,8 +648,8 @@ export class AgentService {
               ? "ready"
               : "idle",
         });
-      } catch {
-        this.set({ engineState: "failed" });
+      } catch (error) {
+        this.set({ engineState: "failed", overviewError: String(error) });
       }
     })().finally(() => {
       this.warming = null;

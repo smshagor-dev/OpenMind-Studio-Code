@@ -69,28 +69,9 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
 /// The last editor window on screen is closing: hide to the tray while a PHP
 /// stack server runs (if the user wants that), otherwise quit.
 pub async fn close_last_editor_window(app: AppHandle, window: WebviewWindow) {
-    let hide_wanted =
-        crate::commands::preferences::user_bool(&app.state::<AppState>(), "php.tray.hideOnClose");
-    if hide_wanted && crate::tray::servers_running(&app) {
-        match crate::tray::ensure(&app) {
-            Ok(()) => {
-                tracing::info!("servers are running: hiding to the tray instead of quitting");
-                // An extra window goes for good; the tray brings back the main one.
-                let result = if window.label() == MAIN_WINDOW_LABEL {
-                    window.hide()
-                } else {
-                    window.destroy()
-                };
-                if let Err(err) = result {
-                    tracing::error!(?err, "failed to close the window for the tray");
-                }
-                return;
-            }
-            Err(err) => {
-                tracing::error!(?err, "no tray icon; quitting and stopping the servers");
-            }
-        }
-    }
+    // Closing the final editor window means exiting the application, even if
+    // PHP servers are running. Never leave local AI, cloud requests, terminals
+    // or other managed sessions active in the system tray.
     shutdown(app).await;
 }
 

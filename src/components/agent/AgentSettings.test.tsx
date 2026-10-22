@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { AgentSettings } from "./AgentSettings";
 
 const harness = vi.hoisted(() => ({
@@ -74,54 +74,19 @@ vi.mock("../../services/container", () => ({
 }));
 vi.mock("./AgentCapabilities", () => ({ AgentCapabilities: () => null }));
 
-describe("context window settings", () => {
-  it("saves a separate reasoning budget, including zero", async () => {
-    harness.updateOptions.mockClear();
+describe("automatic inference settings", () => {
+  it("does not expose technical tuning controls for Local AI", () => {
+    harness.state.modelId = "local";
     render(<AgentSettings />);
-    const reasoning = screen.getByRole("spinbutton", {
-      name: "agent.settings.reasoningBudgetTokens",
-    });
-    expect(reasoning).toHaveValue(1024);
-    fireEvent.change(reasoning, { target: { value: "0" } });
-    fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-    await waitFor(() => { expect(harness.updateOptions).toHaveBeenCalledWith(
-        expect.objectContaining({
-          reasoningBudgetTokens: 0,
-          maxOutputTokens: 4096,
-        }),
-      ); },
-    );
+    expect(screen.getByRole("tablist", { name: "agent.inference.title" })).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "agent.settings.apply" })).not.toBeInTheDocument();
   });
 
-  it("defaults to automatic and hides manual token allocation", () => {
+  it("does not expose manual context or token settings for Cloud AI", () => {
+    harness.state.modelId = "openmindai-lite";
     render(<AgentSettings />);
-    expect(screen.getByRole("combobox", { name: "agent.settings.contextMode" }))
-      .toHaveValue("auto");
-    expect(screen.queryByRole("spinbutton", { name: "agent.settings.contextTokens" }))
-      .not.toBeInTheDocument();
-  });
-
-  it("can switch to manual context and back to automatic", async () => {
-    render(<AgentSettings />);
-    const selector = screen.getByRole("combobox", {
-      name: "agent.settings.contextMode",
-    });
-    fireEvent.change(selector, { target: { value: "manual" } });
-    const manual = screen.getByRole("spinbutton", {
-      name: "agent.settings.contextTokens",
-    });
-    expect(manual).toHaveValue(16384);
-    fireEvent.change(manual, { target: { value: "8192" } });
-    fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-    await waitFor(() => { expect(harness.updateOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ contextTokens: 8192 }),
-      ); },
-    );
-    fireEvent.change(selector, { target: { value: "auto" } });
-    fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-    await waitFor(() => { expect(harness.updateOptions).toHaveBeenCalledWith(
-        expect.objectContaining({ contextTokens: 0 }),
-      ); },
-    );
+    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "agent.settings.contextMode" })).not.toBeInTheDocument();
   });
 });
