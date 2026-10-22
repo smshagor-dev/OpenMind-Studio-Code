@@ -290,8 +290,17 @@ class CompletionList {
 }
 
 class SnippetString {
-  constructor(value = '') {
-    this.value = value;
+  constructor(value = '') { this.value = value; this._tabstop = 1; }
+  appendTabstop(number = this._tabstop++) {
+    if (!Number.isInteger(number) || number < 0) throw new TypeError('Invalid snippet tabstop');
+    this.value += String.fromCharCode(36) + number;
+    return this;
+  }
+  appendPlaceholder(value, number = this._tabstop++) {
+    if (!Number.isInteger(number) || number < 0) throw new TypeError('Invalid snippet tabstop');
+    const text = typeof value === 'function' ? value(new SnippetString()).value : String(value);
+    this.value += String.fromCharCode(36, 123) + number + ':' + text + '}';
+    return this;
   }
 }
 
