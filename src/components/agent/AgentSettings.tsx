@@ -236,7 +236,7 @@ export function AgentSettings() {
       >
         {t("agent.settings.apply")}
       </button>
-      </> : <p className="agent-model__progress-text">Local AI uses automatic settings. No configuration is required.</p>}
+      </> : <p className="agent-model__progress-text">Local AI automatically adjusts to this PC. No configuration is required.</p>}
     </form>
   );
 }
