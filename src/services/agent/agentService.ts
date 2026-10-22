@@ -568,7 +568,16 @@ export class AgentService {
         await this.restoreHistory(active, true);
       // Before the local-catalog fallback below runs, so a restored OpenMindAI Cloud selection is
       // recognized as a cloud model and never silently swapped back to a local one.
-      await this.loadCloudStatus();
+      // A downloaded local model must never wait for Cloud settings during startup.
+      // Preserve an explicitly selected Cloud model, but load Cloud status only
+      // when that path is actually selected. Users can switch later.
+      const savedCloudSelection =
+        model === "openmindai-lite" ||
+        model === "openmindai-super" ||
+        model === "openmindai-ultra";
+      if (savedCloudSelection) {
+        await this.loadCloudStatus();
+      }
       await this.refresh();
       await this.activate();
     } catch {
