@@ -351,7 +351,7 @@ class Hover {
 const CompletionItemKind = {
   Text: 0, Method: 1, Function: 2, Constructor: 3, Field: 4, Variable: 5, Class: 6, Interface: 7, Module: 8, Property: 9,
   Unit: 10, Value: 11, Enum: 12, Keyword: 13, Snippet: 14, Color: 15, File: 16, Reference: 17, Folder: 18, EnumMember: 19,
-  Constant: 20, Struct: 21, Event: 22, Operator: 23, TypeParameter: 24,
+  Constant: 20, Struct: 21, Event: 22, Operator: 23, TypeParameter: 24, User: 25, Issue: 26,
 };
 
 class CompletionItem {
@@ -515,7 +515,7 @@ class FoldingRange {
     this.kind = kind;
   }
 }
-const FoldingRangeKind = { Comment: 'comment', Imports: 'imports', Region: 'region' };
+const FoldingRangeKind = { Comment: 1, Imports: 2, Region: 3 };
 
 class ParameterInformation {
   constructor(label, documentation) {
@@ -562,7 +562,7 @@ const CancellationToken = Object.freeze({
 });
 
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
-const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 };
+const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3, Four: 4, Five: 5, Six: 6, Seven: 7, Eight: 8, Nine: 9 };
 
 // ---- the API for one extension ----------------------------------------------------------------------------------
 
@@ -602,8 +602,12 @@ function createApi(host, ext) {
 
   // -- commands
   const commands = namespace('commands', {
-    registerCommand(command, callback) {
+    registerCommand(command, callback, thisArg) {
       need('commands');
+      if (typeof command !== 'string' || !command || typeof callback !== 'function') {
+        throw new TypeError('A command needs a non-empty identifier and a callback.');
+      }
+      const invoke = (...args) => callback.apply(thisArg, args);
       const existing = state.commands.get(command);
       if (existing) {
         throw new Error(
@@ -612,17 +616,17 @@ function createApi(host, ext) {
             : `Command '${command}' is already registered by ${existing.id}; an extension can't replace another extension's command.`,
         );
       }
-      state.commands.set(command, { id: ext.id, callback });
+      state.commands.set(command, { id: ext.id, callback: invoke });
       notify('commands/registered', { command, extension: ext.id });
       return track(new Disposable(() => {
-        if (state.commands.get(command) && state.commands.get(command).callback === callback) {
+        if (state.commands.get(command) && state.commands.get(command).callback === invoke) {
           state.commands.delete(command);
           notify('commands/unregistered', { command });
         }
       }));
     },
     /** Runs with the active text editor and an edit builder; the edits are one undoable change. */
-    registerTextEditorCommand(command, callback) {
+    registerTextEditorCommand(command, callback, thisArg) {
       return commands.registerCommand(command, async (...args) => {
         const active = editors.activeEditor();
         if (!active) {
@@ -631,7 +635,7 @@ function createApi(host, ext) {
         }
         let result;
         await active.edit((builder) => {
-          result = callback(active, builder, ...args);
+          result = callback.call(thisArg, active, builder, ...args);
         });
         return result;
       });
@@ -639,7 +643,9 @@ function createApi(host, ext) {
     async executeCommand(command, ...args) {
       need('commands');
       const local = state.commands.get(command);
-      if (local) return local.callback(...args);
+      if (local) return host.als
+        ? host.als.run(local.id, () => local.callback(...args))
+        : local.callback(...args);
       return request('commands/execute', { command, args });
     },
     async getCommands(filterInternal) {
@@ -968,3 +974,4 @@ function disposeApi(api) {
 }
 
 module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, unsupported };
+

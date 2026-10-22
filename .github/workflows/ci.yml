@@ -46,6 +46,9 @@ jobs:
       - name: Rust ${{ env.RUSTUP_TOOLCHAIN }}
         run: rustup toolchain install ${{ env.RUSTUP_TOOLCHAIN }} --profile minimal --component clippy,rustfmt
 
+      - name: Extension host contract and security tests
+        run: node --test crates/extensions/tests/node/*.test.cjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -106,6 +109,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
+      - name: Extension host contract and security tests
+        run: node --test crates/extensions/tests/node/*.test.cjs
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -123,3 +129,4 @@ jobs:
 
       - name: Agent tests (Unix process groups and safe file replacement)
         run: cargo test -p openmind-agent --locked
+

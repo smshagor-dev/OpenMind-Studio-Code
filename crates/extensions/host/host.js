@@ -105,13 +105,24 @@ setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
 host.activateExtension = async (id) => {
-  await activate({ id });
+  const caller = who();
+  await activate({ id }, activations.has(caller) ? [caller] : []);
   return state.running.get(id)?.exports;
 };
 
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
 const originalLoad = Module._load;
 const guards = new Map();
+const activations = new Map();
+const activationWaits = new Map();
+const deactivations = new Map();
+
+function waitsFor(start, target, seen = new Set()) {
+  if (start === target) return true;
+  if (seen.has(start)) return false;
+  seen.add(start);
+  return [...(activationWaits.get(start) || [])].some((id) => waitsFor(id, target, seen));
+}
 function guardOf(id) {
   if (!guards.has(id)) guards.set(id, createGuard(state.extensions.get(id), () => state.workspaceFolders));
   return guards.get(id);
@@ -270,7 +281,39 @@ const handlers = {
   },
 };
 
-async function activate(params, chain = []) {
+function activate(params, chain = []) {
+  const id = params.id;
+  if (chain.includes(id)) {
+    return Promise.reject(new Error(`Circular extension dependency: ${[...chain, id].join(' -> ')}`));
+  }
+  const parent = chain[chain.length - 1];
+  if (parent) {
+    if (waitsFor(id, parent)) {
+      return Promise.reject(new Error(`Circular extension dependency: ${parent} -> ${id}`));
+    }
+    if (!activationWaits.has(parent)) activationWaits.set(parent, new Set());
+    activationWaits.get(parent).add(id);
+  }
+  let pendingActivation = activations.get(id);
+  if (!pendingActivation) {
+    const previousDeactivation = deactivations.get(id);
+    // Publish before entering extension code or visiting dependencies. All callers
+    // observe the same result, including activation failures.
+    pendingActivation = Promise.resolve().then(async () => {
+      if (previousDeactivation) await previousDeactivation;
+      return als.run(id, () => activateOnce(params, chain));
+    }).finally(() => {
+      activations.delete(id);
+      activationWaits.delete(id);
+    });
+    activations.set(id, pendingActivation);
+  }
+  return pendingActivation.finally(() => {
+    if (parent) activationWaits.get(parent)?.delete(id);
+  });
+}
+
+async function activateOnce(params, chain) {
   {
     const descriptor = state.extensions.get(params.id);
     if (!descriptor) throw new Error(`Extension '${params.id}' is not known to the extension host.`);
@@ -330,6 +373,8 @@ async function activate(params, chain = []) {
     } catch (error) {
       cleanup(run);
       state.running.delete(descriptor.id);
+      try { purgeExtensionModules(descriptor); }
+      catch (cacheError) { log(descriptor.id, 'error', `Couldn't clear failed extension module cache: ${cacheError}`); }
       const message = error && error.message ? error.message : String(error);
       log(descriptor.id, 'error', `Activation failed: ${error && error.stack ? error.stack : message}`);
       throw new Error(`Activating ${descriptor.id} failed: ${message}`);
@@ -398,7 +443,19 @@ function cleanup(run) {
   }
 }
 
-async function deactivate(id) {
+function deactivate(id) {
+  if (deactivations.has(id)) return deactivations.get(id);
+  // Capture the current activation; later requests wait for this teardown.
+  const activation = activations.get(id);
+  const operation = Promise.resolve().then(async () => {
+    if (activation) await activation.catch(() => {});
+    return deactivateOnce(id);
+  }).finally(() => deactivations.delete(id));
+  deactivations.set(id, operation);
+  return operation;
+}
+
+async function deactivateOnce(id) {
   const run = state.running.get(id);
   if (!run) return { deactivated: false };
   try {
@@ -534,3 +591,4 @@ process.stdin.on('data', (chunk) => {
 });
 process.stdin.on('end', () => realExit(0));
 notify('host/ready', { node: process.version, pid: process.pid });
+

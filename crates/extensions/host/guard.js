@@ -11,6 +11,7 @@
 // The message is always: Permission '<permission>' is required for this extension API.
 
 const path = require('path');
+const fs = require('fs');
 const { fileURLToPath } = require('url');
 
 function permissionError(permission) {
@@ -37,7 +38,30 @@ function modulePermission(request) {
 
 function within(root, target) {
   const relative = path.relative(path.resolve(root), path.resolve(target));
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+  return relative === '' || (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative));
+}
+
+// New files do not have a realpath yet. Resolve the nearest existing ancestor
+// so a writable-looking workspace path cannot traverse an external symlink.
+function resolvedPath(target) {
+  let current = path.resolve(target);
+  const suffix = [];
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(current), ...suffix);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      // A dangling symlink must not be treated as a future regular directory.
+      let entry;
+      try { entry = fs.lstatSync(current); }
+      catch (entryError) { if (entryError.code !== 'ENOENT') throw entryError; }
+      if (entry?.isSymbolicLink()) throw error;
+      const parent = path.dirname(current);
+      if (parent === current) throw error;
+      suffix.unshift(path.basename(current));
+      current = parent;
+    }
+  }
 }
 
 function asPath(value) {
@@ -77,12 +101,16 @@ function createGuard(descriptor, folders) {
   const ownStorage = [descriptor.globalStorage, descriptor.workspaceStorage, descriptor.logPath].filter(Boolean);
 
   /** Throws unless this extension may read (or change) `target`. */
-  function checkPath(target, write) {
-    if (ownStorage.some((root) => within(root, target))) return;
-    const workspace = folders().some((folder) => within(folder.path, target));
+  function checkResolvedPath(target, write) {
+    if (ownStorage.some((root) => within(resolvedPath(root), target))) return;
+    const workspace = folders().some((folder) => within(resolvedPath(folder.path), target));
     if (workspace) return need(write ? 'workspaceWrite' : 'workspaceRead');
-    if (!write && descriptor.path && within(descriptor.path, target)) return; // its own files, read-only
+    if (!write && descriptor.path && within(resolvedPath(descriptor.path), target)) return; // its own files, read-only
     return need('filesystemOutsideWorkspace');
+  }
+
+  function checkPath(target, write) {
+    checkResolvedPath(resolvedPath(target), write);
   }
 
   function wrapFunction(name, fn, target, promise) {
@@ -141,4 +169,5 @@ function createGuard(descriptor, folders) {
   return { has, need, checkPath, moduleFor, permissions: [...granted] };
 }
 
-module.exports = { createGuard, permissionError, modulePermission, within };
+module.exports = { createGuard, permissionError, modulePermission, within, resolvedPath };
+

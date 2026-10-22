@@ -1,0 +1,396 @@
+# VS Code extension compatibility inventory
+
+Reference: [VS Code 1.85.2 declarations](https://github.com/microsoft/vscode/blob/1.85.2/src/vscode-dts/vscode.d.ts).
+The host currently exposes vscode.version = 1.85.0. This is a declaration comparison baseline, **not a claim of complete 1.85 compatibility**. No complete stable API version has been verified. Do not use the version or successful installation alone to classify an extension as compatible.
+
+This inventory enumerates runtime namespace exports and top-level value exports against that baseline. Interfaces and type aliases are compile-time declarations, not runtime exports. Presence is detected with Object.hasOwn, so the unsupported-API proxy cannot masquerade as an implemented member. Overloads and individual class methods are not measured by this listing. Present means partial or unverified unless the behavioral evidence below says otherwise. It does not mean end-to-end workbench support.
+
+## Verified behavior in the local Node tests
+
+Run: node --test crates/extensions/tests/node/*.test.cjs
+
+- Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
+- File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
+- Permission regression cases: outside destinations, existing symlink targets, future paths under symlinks and dangling symlinks. These are regression checks, not proof of a sandbox.
+- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 19 exported numeric enum objects against the official declaration values.
+
+## Infrastructure still required
+
+| Area | Observed implementation and remaining work |
+| --- | --- |
+| Debug | No debug namespace; extension adapter execution and workbench integration unsupported. Built-in debugging is a separate facility. |
+| Testing | No tests namespace; extension test controllers, runs and Test Explorer integration unsupported. |
+| Notebooks | No notebooks namespace; extension serializers/controllers and notebook WorkspaceEdit operations unsupported. |
+| SCM | No scm namespace; extension providers unsupported. Built-in Git does not establish SCM API compatibility. |
+| Languages | Completion, hover, definition, document/range formatting and diagnostics have host implementations. Additional provider families, resolution, cancellation and full selector fidelity remain incomplete. No Monaco UI tests were run here. |
+| Tasks/terminals | Existing shell/process task and terminal bridges need live workbench validation. CustomExecution and problem matchers remain unsupported. |
+| Webviews/trees | Existing host modules and UI bridge need actual rendering, restore, messaging, CSP and resource-policy validation. |
+| Lifecycle | Local tests cover the cases above. Recovery after an OS-level host crash, activation timeouts, ESM loading and orphan-process cleanup still need validation or implementation. |
+| Activation events | Rust Trigger currently covers startup, command, language, view and workspace contains. URI/filesystem/debug/task/test/notebook triggers are not implemented by this dispatch enum. |
+| Filesystems | Same-scheme file rename and file copy plus custom-provider delegation implemented. Cross-scheme transfers and local directory copy explicitly reject. Local rename overwrite=false has a check/rename race and needs an atomic platform implementation for a strict no-clobber guarantee. Provider file-change events still require integration work. |
+| Profiles/install/marketplace | Existing implementation has not been fully audited or executed here. VSIX install, dependencies, imports, updates, native modules and legal distribution sources require separate end-to-end evidence. |
+| Permissions/isolation | Node require guards are not a security sandbox. Native code, process.binding, alternative loaders, shared module state, file descriptors and filesystem races remain limitations. Do not run hostile extensions as though isolated by these guards. Workspace Trust is not a verified enforcement boundary. |
+| Platforms | Node tests ran on Linux with Node 24.19.0. Rust/Cargo is unavailable; Rust, TypeScript, Tauri and Windows builds were not run. No real marketplace extension compatibility or Windows result is claimed. |
+
+## Namespace member inventory
+
+| Official member | Current host status |
+| --- | --- |
+| `tasks.executeTask` | Present; partial or unverified |
+| `tasks.fetchTasks` | Present; partial or unverified |
+| `tasks.onDidEndTask` | Present; partial or unverified |
+| `tasks.onDidEndTaskProcess` | Present; partial or unverified |
+| `tasks.onDidStartTask` | Present; partial or unverified |
+| `tasks.onDidStartTaskProcess` | Present; partial or unverified |
+| `tasks.registerTaskProvider` | Present; partial or unverified |
+| `tasks.taskExecutions` | Present; partial or unverified |
+| `env.appHost` | Present; partial or unverified |
+| `env.appName` | Present; partial or unverified |
+| `env.appRoot` | Unsupported |
+| `env.asExternalUri` | Unsupported |
+| `env.clipboard` | Unsupported |
+| `env.createTelemetryLogger` | Unsupported |
+| `env.isNewAppInstall` | Unsupported |
+| `env.isTelemetryEnabled` | Unsupported |
+| `env.language` | Present; partial or unverified |
+| `env.logLevel` | Unsupported |
+| `env.machineId` | Present; partial or unverified |
+| `env.onDidChangeLogLevel` | Unsupported |
+| `env.onDidChangeShell` | Unsupported |
+| `env.onDidChangeTelemetryEnabled` | Unsupported |
+| `env.openExternal` | Present; partial or unverified |
+| `env.remoteName` | Unsupported |
+| `env.sessionId` | Present; partial or unverified |
+| `env.shell` | Present; partial or unverified |
+| `env.uiKind` | Unsupported |
+| `env.uriScheme` | Present; partial or unverified |
+| `commands.executeCommand` | Present; partial or unverified |
+| `commands.getCommands` | Present; partial or unverified |
+| `commands.registerCommand` | Present; partial or unverified |
+| `commands.registerTextEditorCommand` | Present; partial or unverified |
+| `window.activeColorTheme` | Unsupported |
+| `window.activeNotebookEditor` | Unsupported |
+| `window.activeTerminal` | Present; partial or unverified |
+| `window.activeTextEditor` | Present; partial or unverified |
+| `window.createInputBox` | Unsupported |
+| `window.createOutputChannel` | Present; partial or unverified |
+| `window.createQuickPick` | Unsupported |
+| `window.createStatusBarItem` | Present; partial or unverified |
+| `window.createTerminal` | Present; partial or unverified |
+| `window.createTextEditorDecorationType` | Unsupported |
+| `window.createTreeView` | Present; partial or unverified |
+| `window.createWebviewPanel` | Present; partial or unverified |
+| `window.onDidChangeActiveColorTheme` | Unsupported |
+| `window.onDidChangeActiveNotebookEditor` | Unsupported |
+| `window.onDidChangeActiveTerminal` | Unsupported |
+| `window.onDidChangeActiveTextEditor` | Present; partial or unverified |
+| `window.onDidChangeNotebookEditorSelection` | Unsupported |
+| `window.onDidChangeNotebookEditorVisibleRanges` | Unsupported |
+| `window.onDidChangeTerminalState` | Unsupported |
+| `window.onDidChangeTextEditorOptions` | Unsupported |
+| `window.onDidChangeTextEditorSelection` | Present; partial or unverified |
+| `window.onDidChangeTextEditorViewColumn` | Unsupported |
+| `window.onDidChangeTextEditorVisibleRanges` | Unsupported |
+| `window.onDidChangeVisibleNotebookEditors` | Unsupported |
+| `window.onDidChangeVisibleTextEditors` | Unsupported |
+| `window.onDidChangeWindowState` | Unsupported |
+| `window.onDidCloseTerminal` | Present; partial or unverified |
+| `window.onDidOpenTerminal` | Present; partial or unverified |
+| `window.registerCustomEditorProvider` | Unsupported |
+| `window.registerFileDecorationProvider` | Unsupported |
+| `window.registerTerminalLinkProvider` | Unsupported |
+| `window.registerTerminalProfileProvider` | Unsupported |
+| `window.registerTreeDataProvider` | Present; partial or unverified |
+| `window.registerUriHandler` | Unsupported |
+| `window.registerWebviewPanelSerializer` | Unsupported |
+| `window.registerWebviewViewProvider` | Present; partial or unverified |
+| `window.setStatusBarMessage` | Unsupported |
+| `window.showErrorMessage` | Present; partial or unverified |
+| `window.showInformationMessage` | Present; partial or unverified |
+| `window.showInputBox` | Present; partial or unverified |
+| `window.showNotebookDocument` | Unsupported |
+| `window.showOpenDialog` | Unsupported |
+| `window.showQuickPick` | Present; partial or unverified |
+| `window.showSaveDialog` | Unsupported |
+| `window.showTextDocument` | Present; partial or unverified |
+| `window.showWarningMessage` | Present; partial or unverified |
+| `window.showWorkspaceFolderPick` | Unsupported |
+| `window.state` | Unsupported |
+| `window.tabGroups` | Unsupported |
+| `window.terminals` | Present; partial or unverified |
+| `window.visibleNotebookEditors` | Unsupported |
+| `window.visibleTextEditors` | Present; partial or unverified |
+| `window.withProgress` | Unsupported |
+| `window.withScmProgress` | Unsupported |
+| `workspace.applyEdit` | Present; partial or unverified |
+| `workspace.asRelativePath` | Present; partial or unverified |
+| `workspace.createFileSystemWatcher` | Present; partial or unverified |
+| `workspace.findFiles` | Present; partial or unverified |
+| `workspace.fs` | Present; partial or unverified |
+| `workspace.getConfiguration` | Present; partial or unverified |
+| `workspace.getWorkspaceFolder` | Present; partial or unverified |
+| `workspace.isTrusted` | Unsupported |
+| `workspace.name` | Present; partial or unverified |
+| `workspace.notebookDocuments` | Unsupported |
+| `workspace.onDidChangeConfiguration` | Present; partial or unverified |
+| `workspace.onDidChangeNotebookDocument` | Unsupported |
+| `workspace.onDidChangeTextDocument` | Present; partial or unverified |
+| `workspace.onDidChangeWorkspaceFolders` | Present; partial or unverified |
+| `workspace.onDidCloseNotebookDocument` | Unsupported |
+| `workspace.onDidCloseTextDocument` | Present; partial or unverified |
+| `workspace.onDidCreateFiles` | Unsupported |
+| `workspace.onDidDeleteFiles` | Unsupported |
+| `workspace.onDidGrantWorkspaceTrust` | Unsupported |
+| `workspace.onDidOpenNotebookDocument` | Unsupported |
+| `workspace.onDidOpenTextDocument` | Present; partial or unverified |
+| `workspace.onDidRenameFiles` | Unsupported |
+| `workspace.onDidSaveNotebookDocument` | Unsupported |
+| `workspace.onDidSaveTextDocument` | Present; partial or unverified |
+| `workspace.onWillCreateFiles` | Unsupported |
+| `workspace.onWillDeleteFiles` | Unsupported |
+| `workspace.onWillRenameFiles` | Unsupported |
+| `workspace.onWillSaveNotebookDocument` | Unsupported |
+| `workspace.onWillSaveTextDocument` | Unsupported |
+| `workspace.openNotebookDocument` | Unsupported |
+| `workspace.openTextDocument` | Present; partial or unverified |
+| `workspace.registerFileSystemProvider` | Present; partial or unverified |
+| `workspace.registerNotebookSerializer` | Unsupported |
+| `workspace.registerTaskProvider` | Unsupported |
+| `workspace.registerTextDocumentContentProvider` | Unsupported |
+| `workspace.rootPath` | Present; partial or unverified |
+| `workspace.saveAll` | Present; partial or unverified |
+| `workspace.textDocuments` | Present; partial or unverified |
+| `workspace.updateWorkspaceFolders` | Unsupported |
+| `workspace.workspaceFile` | Unsupported |
+| `workspace.workspaceFolders` | Present; partial or unverified |
+| `languages.createDiagnosticCollection` | Present; partial or unverified |
+| `languages.createLanguageStatusItem` | Unsupported |
+| `languages.getDiagnostics` | Unsupported |
+| `languages.getLanguages` | Present; partial or unverified |
+| `languages.match` | Present; partial or unverified |
+| `languages.onDidChangeDiagnostics` | Unsupported |
+| `languages.registerCallHierarchyProvider` | Unsupported |
+| `languages.registerCodeActionsProvider` | Unsupported |
+| `languages.registerCodeLensProvider` | Unsupported |
+| `languages.registerColorProvider` | Unsupported |
+| `languages.registerCompletionItemProvider` | Present; partial or unverified |
+| `languages.registerDeclarationProvider` | Unsupported |
+| `languages.registerDefinitionProvider` | Present; partial or unverified |
+| `languages.registerDocumentDropEditProvider` | Unsupported |
+| `languages.registerDocumentFormattingEditProvider` | Present; partial or unverified |
+| `languages.registerDocumentHighlightProvider` | Unsupported |
+| `languages.registerDocumentLinkProvider` | Unsupported |
+| `languages.registerDocumentRangeFormattingEditProvider` | Present; partial or unverified |
+| `languages.registerDocumentRangeSemanticTokensProvider` | Unsupported |
+| `languages.registerDocumentSemanticTokensProvider` | Unsupported |
+| `languages.registerDocumentSymbolProvider` | Unsupported |
+| `languages.registerEvaluatableExpressionProvider` | Unsupported |
+| `languages.registerFoldingRangeProvider` | Unsupported |
+| `languages.registerHoverProvider` | Present; partial or unverified |
+| `languages.registerImplementationProvider` | Unsupported |
+| `languages.registerInlayHintsProvider` | Unsupported |
+| `languages.registerInlineCompletionItemProvider` | Unsupported |
+| `languages.registerInlineValuesProvider` | Unsupported |
+| `languages.registerLinkedEditingRangeProvider` | Unsupported |
+| `languages.registerOnTypeFormattingEditProvider` | Unsupported |
+| `languages.registerReferenceProvider` | Unsupported |
+| `languages.registerRenameProvider` | Unsupported |
+| `languages.registerSelectionRangeProvider` | Unsupported |
+| `languages.registerSignatureHelpProvider` | Unsupported |
+| `languages.registerTypeDefinitionProvider` | Unsupported |
+| `languages.registerTypeHierarchyProvider` | Unsupported |
+| `languages.registerWorkspaceSymbolProvider` | Unsupported |
+| `languages.setLanguageConfiguration` | Unsupported |
+| `languages.setTextDocumentLanguage` | Unsupported |
+| `notebooks.createNotebookController` | Unsupported |
+| `notebooks.createRendererMessaging` | Unsupported |
+| `notebooks.registerNotebookCellStatusBarItemProvider` | Unsupported |
+| `scm.createSourceControl` | Unsupported |
+| `scm.inputBox` | Unsupported |
+| `debug.activeDebugConsole` | Unsupported |
+| `debug.activeDebugSession` | Unsupported |
+| `debug.addBreakpoints` | Unsupported |
+| `debug.asDebugSourceUri` | Unsupported |
+| `debug.breakpoints` | Unsupported |
+| `debug.onDidChangeActiveDebugSession` | Unsupported |
+| `debug.onDidChangeBreakpoints` | Unsupported |
+| `debug.onDidReceiveDebugSessionCustomEvent` | Unsupported |
+| `debug.onDidStartDebugSession` | Unsupported |
+| `debug.onDidTerminateDebugSession` | Unsupported |
+| `debug.registerDebugAdapterDescriptorFactory` | Unsupported |
+| `debug.registerDebugAdapterTrackerFactory` | Unsupported |
+| `debug.registerDebugConfigurationProvider` | Unsupported |
+| `debug.removeBreakpoints` | Unsupported |
+| `debug.startDebugging` | Unsupported |
+| `debug.stopDebugging` | Unsupported |
+| `extensions.all` | Present; partial or unverified |
+| `extensions.getExtension` | Present; partial or unverified |
+| `extensions.onDidChange` | Present; partial or unverified |
+| `authentication.getSession` | Unsupported |
+| `authentication.onDidChangeSessions` | Unsupported |
+| `authentication.registerAuthenticationProvider` | Unsupported |
+| `l10n.bundle` | Present; partial or unverified |
+| `l10n.t` | Present; partial or unverified |
+| `l10n.uri` | Present; partial or unverified |
+| `tests.createTestController` | Unsupported |
+
+## Top-level runtime value inventory
+
+| Official value | Current host status |
+| --- | --- |
+| `Breakpoint` | Unsupported |
+| `CallHierarchyIncomingCall` | Unsupported |
+| `CallHierarchyItem` | Unsupported |
+| `CallHierarchyOutgoingCall` | Unsupported |
+| `CancellationError` | Present; behavior needs per-member verification |
+| `CancellationTokenSource` | Present; behavior needs per-member verification |
+| `CodeAction` | Present; behavior needs per-member verification |
+| `CodeActionKind` | Present; behavior needs per-member verification |
+| `CodeActionTriggerKind` | Present; behavior needs per-member verification |
+| `CodeLens` | Present; behavior needs per-member verification |
+| `Color` | Unsupported |
+| `ColorInformation` | Unsupported |
+| `ColorPresentation` | Unsupported |
+| `ColorThemeKind` | Unsupported |
+| `CommentMode` | Unsupported |
+| `CommentThreadCollapsibleState` | Unsupported |
+| `CommentThreadState` | Unsupported |
+| `CompletionItem` | Present; behavior needs per-member verification |
+| `CompletionItemKind` | Present; behavior needs per-member verification |
+| `CompletionItemTag` | Unsupported |
+| `CompletionList` | Present; behavior needs per-member verification |
+| `CompletionTriggerKind` | Present; behavior needs per-member verification |
+| `ConfigurationTarget` | Present; behavior needs per-member verification |
+| `CustomExecution` | Present; behavior needs per-member verification |
+| `DataTransfer` | Unsupported |
+| `DataTransferItem` | Unsupported |
+| `DebugAdapterExecutable` | Unsupported |
+| `DebugAdapterInlineImplementation` | Unsupported |
+| `DebugAdapterNamedPipeServer` | Unsupported |
+| `DebugAdapterServer` | Unsupported |
+| `DebugConfigurationProviderTriggerKind` | Unsupported |
+| `DebugConsoleMode` | Unsupported |
+| `DecorationRangeBehavior` | Unsupported |
+| `Diagnostic` | Present; behavior needs per-member verification |
+| `DiagnosticRelatedInformation` | Present; behavior needs per-member verification |
+| `DiagnosticSeverity` | Present; behavior needs per-member verification |
+| `DiagnosticTag` | Present; behavior needs per-member verification |
+| `Disposable` | Present; behavior needs per-member verification |
+| `DocumentDropEdit` | Unsupported |
+| `DocumentHighlight` | Unsupported |
+| `DocumentHighlightKind` | Unsupported |
+| `DocumentLink` | Present; behavior needs per-member verification |
+| `DocumentSymbol` | Present; behavior needs per-member verification |
+| `EndOfLine` | Present; behavior needs per-member verification |
+| `EnvironmentVariableMutatorType` | Unsupported |
+| `EvaluatableExpression` | Unsupported |
+| `EventEmitter` | Present; behavior needs per-member verification |
+| `ExtensionKind` | Unsupported |
+| `ExtensionMode` | Unsupported |
+| `FileChangeType` | Unsupported |
+| `FileDecoration` | Unsupported |
+| `FilePermission` | Unsupported |
+| `FileSystemError` | Present; behavior needs per-member verification |
+| `FileType` | Present; behavior needs per-member verification |
+| `FoldingRange` | Present; behavior needs per-member verification |
+| `FoldingRangeKind` | Present; behavior needs per-member verification |
+| `FunctionBreakpoint` | Unsupported |
+| `Hover` | Present; behavior needs per-member verification |
+| `IndentAction` | Unsupported |
+| `InlayHint` | Unsupported |
+| `InlayHintKind` | Unsupported |
+| `InlayHintLabelPart` | Unsupported |
+| `InlineCompletionItem` | Unsupported |
+| `InlineCompletionList` | Unsupported |
+| `InlineCompletionTriggerKind` | Unsupported |
+| `InlineValueEvaluatableExpression` | Unsupported |
+| `InlineValueText` | Unsupported |
+| `InlineValueVariableLookup` | Unsupported |
+| `InputBoxValidationSeverity` | Unsupported |
+| `LanguageStatusSeverity` | Unsupported |
+| `LinkedEditingRanges` | Unsupported |
+| `Location` | Present; behavior needs per-member verification |
+| `LogLevel` | Unsupported |
+| `MarkdownString` | Present; behavior needs per-member verification |
+| `NotebookCellData` | Unsupported |
+| `NotebookCellKind` | Unsupported |
+| `NotebookCellOutput` | Unsupported |
+| `NotebookCellOutputItem` | Unsupported |
+| `NotebookCellStatusBarAlignment` | Unsupported |
+| `NotebookCellStatusBarItem` | Unsupported |
+| `NotebookControllerAffinity` | Unsupported |
+| `NotebookData` | Unsupported |
+| `NotebookEdit` | Unsupported |
+| `NotebookEditorRevealType` | Unsupported |
+| `NotebookRange` | Unsupported |
+| `OverviewRulerLane` | Unsupported |
+| `ParameterInformation` | Present; behavior needs per-member verification |
+| `Position` | Present; behavior needs per-member verification |
+| `ProcessExecution` | Present; behavior needs per-member verification |
+| `ProgressLocation` | Unsupported |
+| `QuickInputButtons` | Unsupported |
+| `QuickPickItemKind` | Unsupported |
+| `Range` | Present; behavior needs per-member verification |
+| `RelativePattern` | Present; behavior needs per-member verification |
+| `Selection` | Present; behavior needs per-member verification |
+| `SelectionRange` | Unsupported |
+| `SemanticTokens` | Unsupported |
+| `SemanticTokensBuilder` | Unsupported |
+| `SemanticTokensEdit` | Unsupported |
+| `SemanticTokensEdits` | Unsupported |
+| `SemanticTokensLegend` | Unsupported |
+| `ShellExecution` | Present; behavior needs per-member verification |
+| `ShellQuoting` | Unsupported |
+| `SignatureHelp` | Present; behavior needs per-member verification |
+| `SignatureHelpTriggerKind` | Unsupported |
+| `SignatureInformation` | Present; behavior needs per-member verification |
+| `SnippetString` | Present; behavior needs per-member verification |
+| `SnippetTextEdit` | Unsupported |
+| `SourceBreakpoint` | Unsupported |
+| `StatusBarAlignment` | Present; behavior needs per-member verification |
+| `SymbolInformation` | Present; behavior needs per-member verification |
+| `SymbolKind` | Present; behavior needs per-member verification |
+| `SymbolTag` | Present; behavior needs per-member verification |
+| `SyntaxTokenType` | Unsupported |
+| `TabInputCustom` | Unsupported |
+| `TabInputNotebook` | Unsupported |
+| `TabInputNotebookDiff` | Unsupported |
+| `TabInputTerminal` | Unsupported |
+| `TabInputText` | Unsupported |
+| `TabInputTextDiff` | Unsupported |
+| `TabInputWebview` | Unsupported |
+| `Task` | Present; behavior needs per-member verification |
+| `TaskGroup` | Present; behavior needs per-member verification |
+| `TaskPanelKind` | Present; behavior needs per-member verification |
+| `TaskRevealKind` | Present; behavior needs per-member verification |
+| `TaskScope` | Present; behavior needs per-member verification |
+| `TelemetryTrustedValue` | Unsupported |
+| `TerminalExitReason` | Unsupported |
+| `TerminalLink` | Unsupported |
+| `TerminalLocation` | Unsupported |
+| `TerminalProfile` | Unsupported |
+| `TestMessage` | Unsupported |
+| `TestRunProfileKind` | Unsupported |
+| `TestRunRequest` | Unsupported |
+| `TestTag` | Unsupported |
+| `TextDocumentChangeReason` | Unsupported |
+| `TextDocumentSaveReason` | Unsupported |
+| `TextEdit` | Present; behavior needs per-member verification |
+| `TextEditorCursorStyle` | Unsupported |
+| `TextEditorLineNumbersStyle` | Unsupported |
+| `TextEditorRevealType` | Present; behavior needs per-member verification |
+| `TextEditorSelectionChangeKind` | Present; behavior needs per-member verification |
+| `ThemeColor` | Present; behavior needs per-member verification |
+| `ThemeIcon` | Present; behavior needs per-member verification |
+| `TreeItem` | Present; behavior needs per-member verification |
+| `TreeItemCheckboxState` | Unsupported |
+| `TreeItemCollapsibleState` | Present; behavior needs per-member verification |
+| `TypeHierarchyItem` | Unsupported |
+| `UIKind` | Unsupported |
+| `Uri` | Present; behavior needs per-member verification |
+| `ViewColumn` | Present; behavior needs per-member verification |
+| `WorkspaceEdit` | Present; behavior needs per-member verification |
+| `version` | Present; behavior needs per-member verification |
+
+Regenerate this document with the inventory.cjs command above. Behavioral evidence must be updated separately when integration tests run. Keep PR #32 in draft until required validation and integration work are complete.
+
