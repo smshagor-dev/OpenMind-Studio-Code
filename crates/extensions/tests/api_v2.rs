@@ -514,3 +514,14 @@ fn workspace_files_watchers_editor_commands_and_formatters() {
     assert_eq!(edits[0]["edits"][0]["text"], "HELLO");
     fixture.host.stop();
 }
+
+#[test]
+fn extension_api_exposes_activation_exports_only_after_activation_finishes() {
+    let Some(fixture) = setup() else { return; };
+    let state = run(&fixture, "sampleV2.extensionState", json!([]));
+    assert_eq!(state["found"], true);
+    assert_eq!(state["active"], true);
+    assert_eq!(state["exportsReady"], true);
+    assert_eq!(state["uri"], "file");
+    fixture.host.stop();
+}
