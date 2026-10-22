@@ -117,7 +117,9 @@ pub fn vscode_import_apply(
         match keybindings::write_file(shortcuts_file, &preview.keybindings) {
             Ok(entries) => shortcuts_imported = entries.len(),
             Err(error) => {
-                let restored = restore(settings_file, &settings_backup)
+                let restored = if import_settings && settings_imported > 0 {
+                    restore(settings_file, &settings_backup)
+                } else { Ok(()) }
                     .and_then(|()| restore(shortcuts_file, &shortcuts_backup));
                 return Err(match restored {
                     Ok(()) => format!("Shortcut import failed; existing settings restored: {error}"),
