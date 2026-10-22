@@ -402,8 +402,20 @@ pub async fn ext_import_vscode(
         }).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?
     };
     // Disabled on import; do not implicitly run untrusted migrated code.
-    let extension = state.extensions.store.set_enabled(&import.id, false)
-        .map_err(|e| e.to_string())?;
+    let extension = match state.extensions.store.set_enabled(&import.id, false) {
+        Ok(extension) => extension,
+        Err(error) => {
+            // Never leave imported third-party code enabled when the safe
+            // disabled-state transition failed.
+            let rollback = state.extensions.store.uninstall(&import.id);
+            return Err(match rollback {
+                Ok(()) => format!("Couldn't disable the imported extension: {error}. Installation was rolled back."),
+                Err(restore) => format!(
+                    "Couldn't disable imported extension: {error}; cleanup failed: {restore}. Disable it manually before using Extensions."
+                ),
+            });
+        }
+    };
     crate::state::refresh_soon(&app, &[crate::state::Domain::Extensions]);
     crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
     Ok(extension)
