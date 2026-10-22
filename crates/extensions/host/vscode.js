@@ -206,9 +206,18 @@ class Position {
     return this.isBefore(other) ? -1 : this.isAfter(other) ? 1 : 0;
   }
   translate(lineDelta = 0, characterDelta = 0) {
+    if (typeof lineDelta === 'object' && lineDelta !== null) {
+      characterDelta = lineDelta.characterDelta ?? 0;
+      lineDelta = lineDelta.lineDelta ?? 0;
+    }
     return new Position(this.line + lineDelta, this.character + characterDelta);
   }
   with(line = this.line, character = this.character) {
+    if (typeof line === 'object' && line !== null) {
+      character = line.character ?? this.character;
+      line = line.line ?? this.line;
+    }
+    if (line === this.line && character === this.character) return this;
     return new Position(line, character);
   }
 }
@@ -249,6 +258,11 @@ class Range {
     return new Range(this.start.isBefore(other.start) ? this.start : other.start, this.end.isAfter(other.end) ? this.end : other.end);
   }
   with(start = this.start, end = this.end) {
+    if (start && !(start instanceof Position) && typeof start === 'object') {
+      end = start.end ?? this.end;
+      start = start.start ?? this.start;
+    }
+    if (start === this.start && end === this.end) return this;
     return new Range(start, end);
   }
 }
