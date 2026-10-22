@@ -679,3 +679,19 @@ fn vscode_position_and_range_option_overloads_preserve_originals() {
     assert_eq!(result["sameRange"], true);
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_diagnostic_tags_and_trigger_constants_reach_extension_host() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.diagnosticTags", json!([]));
+    assert_eq!(result["first"], 1);
+    assert_eq!(result["second"], 2);
+    assert_eq!(result["related"], "declared here");
+    assert_eq!(result["trigger"], 0);
+    assert_eq!(result["actionTrigger"], 2);
+    let notifications = fixture.app.notifications_named("diagnostics/set");
+    assert!(notifications.iter().any(|notice|
+        notice["diagnostics"][0]["tags"] == json!([1, 2])
+    ));
+    fixture.host.stop();
+}
