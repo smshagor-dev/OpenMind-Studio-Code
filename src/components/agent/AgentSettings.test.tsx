@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgentSettings } from "./AgentSettings";
 
@@ -75,6 +75,14 @@ vi.mock("../../services/container", () => ({
 vi.mock("./AgentCapabilities", () => ({ AgentCapabilities: () => null }));
 
 describe("context window settings", () => {
+  beforeEach(() => { harness.state.modelId = "openmindai-lite"; });
+
+  it("keeps local mode automatic without exposing advanced settings", () => {
+    harness.state.modelId = "local";
+    render(<AgentSettings />);
+    expect(screen.getByText("Local AI uses automatic settings. No configuration is required.")).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: "agent.settings.reasoningBudgetTokens" })).not.toBeInTheDocument();
+  });
   it("saves a separate reasoning budget, including zero", async () => {
     harness.updateOptions.mockClear();
     render(<AgentSettings />);
