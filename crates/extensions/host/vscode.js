@@ -128,6 +128,9 @@ class Uri {
   get fsPath() {
     let value = this.path;
     if (/^\/[a-zA-Z]:/.test(value)) value = value.slice(1);
+    if (this.scheme === 'file' && this.authority) {
+      value = '//' + this.authority + (this.path.startsWith('/') ? this.path : '/' + this.path);
+    }
     return process.platform === 'win32' ? value.replace(/\//g, '\\') : value;
   }
   with(change) {
