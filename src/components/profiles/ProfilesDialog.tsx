@@ -99,7 +99,7 @@ function Row({ profile, busy }: { profile: ProfileSummary; busy: boolean }) {
 
 /** Profiles: switch, create, rename, duplicate, delete (not Default), export and import. */
 export function ProfilesDialog() {
-  const { list, busy, open, vscodeProfiles } = useSyncExternalStore(
+  const { list, busy, open, vscodeProfiles, vscodeExtensions } = useSyncExternalStore(
     container.profiles.subscribe,
     container.profiles.getState,
   );
@@ -201,6 +201,26 @@ export function ProfilesDialog() {
         ) : (
           <p className="profile__meta">No installed VS Code profiles detected. Manual import is available below.</p>
         )}
+        {vscodeExtensions.length > 0 ? (
+          <section aria-label="Installed VS Code extensions">
+            <p className="profile__meta">
+              Installed VS Code extensions — import individually. Imported extensions
+              remain disabled until you review and enable them in Extensions.
+            </p>
+            <ul className="profile__list">
+              {vscodeExtensions.map((source) => (
+                <li className="profile__row" key={source.id}>
+                  <span className="profile__name">{source.label}</span>
+                  <button type="button" disabled={busy} onClick={() => {
+                    void container.profiles.importVsCodeExtension(source.id);
+                  }}>
+                    Import extension
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <p className="profile__meta">
           Import VS Code: first select settings.json, then optionally select keybindings.json
           (cancel the second dialog to skip shortcuts). A new profile is created without changing your current setup.
