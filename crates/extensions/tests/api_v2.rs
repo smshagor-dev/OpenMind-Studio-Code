@@ -571,3 +571,11 @@ fn language_tooling_value_types_are_available_to_extensions() {
     assert_eq!(values["signatureParameters"], 1);
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_snippet_builders_append_tabstops_and_placeholders() {
+    let Some(fixture) = setup() else { return; };
+    let snippet = run(&fixture, "sampleV2.snippetBuilders", json!([]));
+    assert_eq!(snippet, json!("start $1${2:name}"));
+    fixture.host.stop();
+}
