@@ -964,6 +964,12 @@ export class AgentService {
     }
   }
 
+  /** Small conversational requests do not need a full coding-agent output budget. */
+  private isQuickConversation(message: string, attachments: AgentAttachment[], mode: AgentMode): boolean {
+    if (attachments.length || mode !== "ask" || message.length > 100) return false;
+    return /^(?:hi|hello|hey|hey there|hello there|good morning|good afternoon|good evening|thanks|thank you|how are you|হাই|হ্যালো|ধন্যবাদ|কেমন আছো|привет|здравствуй|спасибо|hola|bonjour|ciao)[!?.।\s]*$/iu.test(message.trim());
+  }
+
   async send(
     text: string,
     first = false,
@@ -999,15 +1005,23 @@ export class AgentService {
     }
     const modelId = this.state.modelId;
     if (!modelId) return Promise.resolve(false);
+    const taskMode = modeOverride ?? this.state.mode;
+    const options = { ...this.options() };
+    if (this.isQuickConversation(message, attachments, taskMode)) {
+      options.maxOutputTokens = Math.min(options.maxOutputTokens, 128);
+      options.reasoningBudgetTokens = 0;
+      options.maxSteps = 1;
+      options.maxContinuations = 0;
+    }
     const accepted = this.tasks.enqueue(
       {
         id: crypto.randomUUID(),
         attachments,
         text: message || "Read the attached files and describe their contents.",
         modelId,
-        mode: modeOverride ?? this.state.mode,
+        mode: taskMode,
         workspace: this.host.workspacePath?.() ?? null,
-        options: { ...this.options() },
+        options,
         status: "pending",
         reason: null,
         createdAt: this.now(),
