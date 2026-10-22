@@ -168,6 +168,7 @@ function createLanguagesApi(parts) {
             range: rangeOut(item.range),
             message: item.message,
             severity: item.severity,
+            tags: Array.isArray(item.tags) ? item.tags.filter((tag) => tag === 1 || tag === 2) : undefined,
             source: item.source,
             code: item.code === undefined ? undefined : String(item.code && item.code.value !== undefined ? item.code.value : item.code),
           })),
