@@ -181,6 +181,18 @@ function activate(context) {
     collection.dispose();
     return { received, hits: receiver.hits, present, removed: collection.has(uri) === false };
   });
+  reg('sampleV2.cancellationStatics', async () => {
+    let notified = false;
+    vscode.CancellationToken.Cancelled.onCancellationRequested(() => { notified = true; });
+    await Promise.resolve();
+    const error = new vscode.CancellationError();
+    return {
+      none: vscode.CancellationToken.None.isCancellationRequested,
+      cancelled: vscode.CancellationToken.Cancelled.isCancellationRequested,
+      notified,
+      errorName: error.name,
+    };
+  });
   reg('sampleV2.cancellationToken', () => {
     const source = new vscode.CancellationTokenSource();
     let events = 0;
