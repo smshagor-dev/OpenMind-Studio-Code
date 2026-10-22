@@ -99,6 +99,20 @@ function VscodeImportPanel() {
     finally { setBusy(false); }
   };
 
+  const importSnippets = async () => {
+    if (!selectedSource) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const count = await invoke<number>("vscode_import_snippets", {
+        edition: selectedSource.edition, profile: selectedSource.profile,
+      });
+      container.extensions.contributions.apply();
+      setExtensionNotice("Imported " + count + " VS Code snippet files into OpenMind completion.");
+    } catch (failure) { setError(String(failure)); }
+    finally { setBusy(false); }
+  };
+
   const importProfile = async () => {
     if (!selectedSource) return;
     setBusy(true);
@@ -168,7 +182,9 @@ function VscodeImportPanel() {
               <button type="button" className="prefs-json" disabled={busy || (!settings && !shortcuts)}
                 onClick={() => void apply()}>Import selected items</button>{" "}
               <button type="button" className="prefs-json" disabled={busy}
-                onClick={() => void importProfile()}>Save as an OpenMind profile</button>
+                onClick={() => void importProfile()}>Save as an OpenMind profile</button>{" "}
+              <button type="button" className="prefs-json" disabled={busy || preview.snippets.length === 0}
+                onClick={() => void importSnippets()}>Import snippets</button>
             </div>
           ) : null}
           {extensionNotice ? <p role="status">{extensionNotice}</p> : null}
