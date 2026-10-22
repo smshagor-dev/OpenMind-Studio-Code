@@ -52,6 +52,7 @@ function VscodeImportPanel() {
   const [shortcuts, setShortcuts] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [extensionNotice, setExtensionNotice] = useState<string | null>(null);
   const choose = (source: VscodeSource) => source.edition + ":" + source.profile;
   const selectedSource = sources.find((source) => choose(source) === selected);
 
@@ -98,6 +99,21 @@ function VscodeImportPanel() {
     finally { setBusy(false); }
   };
 
+  const importExtension = async (folder: string) => {
+    if (!selectedSource) return;
+    setBusy(true);
+    setError(null);
+    setExtensionNotice(null);
+    try {
+      const imported = await invoke<{ id: string }>("vscode_import_extension", {
+        edition: selectedSource.edition, folder,
+      });
+      setExtensionNotice("Imported " + imported.id + " (disabled). Review its compatibility and permissions in Extensions before enabling.");
+      await container.extensions.registry.refresh();
+    } catch (failure) { setError(String(failure)); }
+    finally { setBusy(false); }
+  };
+
   return (
     <section className="prefs-import" aria-label="Import settings from VS Code">
       <button className="prefs-json" type="button" onClick={() => {
@@ -129,13 +145,17 @@ function VscodeImportPanel() {
                 <ul>{preview.skipped.map((value, index) => <li key={value + index}>{value}</li>)}</ul>
               </details> : null}
               {preview.extensions.length > 0 ? <details><summary>Detected VS Code extensions (review required)</summary>
-                <ul>{preview.extensions.map((name) => <li key={name}>{name}</li>)}</ul>
+                <ul>{preview.extensions.map((name) => <li key={name}>{name}{" "}
+                  <button type="button" className="prefs-json" disabled={busy}
+                    onClick={() => void importExtension(name)}>Import disabled</button>
+                </li>)}</ul>
               </details> : null}
               {preview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
               <button type="button" className="prefs-json" disabled={busy || (!settings && !shortcuts)}
                 onClick={() => void apply()}>Import selected items</button>
             </div>
           ) : null}
+          {extensionNotice ? <p role="status">{extensionNotice}</p> : null}
           {result ? <p role="status">Imported {result.settingsImported} settings and {result.shortcutsImported} shortcuts.
             {result.settingsBackup ? " Settings backup: " + result.settingsBackup + "." : ""}
             {result.shortcutsBackup ? " Shortcuts backup: " + result.shortcutsBackup + "." : ""}
