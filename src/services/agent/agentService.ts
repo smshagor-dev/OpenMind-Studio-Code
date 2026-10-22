@@ -593,8 +593,10 @@ export class AgentService {
       const active = await this.host
         .settingGet(`agent.active.${this.host.taskScope ?? "main"}`)
         .catch(() => null);
+      // History restoration must not hold up a downloaded local engine.
+      // It is independent of model startup and may involve disk I/O.
       if (active && this.history && this.host.hasFolder())
-        await this.restoreHistory(active, true);
+        void this.restoreHistory(active, true).catch(() => undefined);
       // Before the local-catalog fallback below runs, so a restored OpenMindAI Cloud selection is
       // recognized as a cloud model and never silently swapped back to a local one.
       // A downloaded local model must never wait for Cloud settings during startup.
@@ -618,7 +620,10 @@ export class AgentService {
   /** Whether `id` names one of OpenMindAI Cloud's three published models (not a local GGUF one). Known
    * only once `loadCloudStatus()` has resolved at least once. */
   private isCloudModel(id: string | null | undefined): boolean {
-    return !!id && (this.state.cloud?.models.some((m) => m.id === id) ?? false);
+    return !!id && (
+      id === "openmindai-lite" || id === "openmindai-super" || id === "openmindai-ultra" ||
+      (this.state.cloud?.models.some((m) => m.id === id) ?? false)
+    );
   }
 
   /** Preloads the configured agent without downloading or starting a conversation. */
@@ -646,8 +651,8 @@ export class AgentService {
               ? "ready"
               : "idle",
         });
-      } catch {
-        this.set({ engineState: "failed" });
+      } catch (error) {
+        this.set({ engineState: "failed", overviewError: String(error) });
       }
     })().finally(() => {
       this.warming = null;
