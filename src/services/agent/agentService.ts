@@ -365,7 +365,7 @@ export class AgentService {
       return {
         ...DEFAULT_AGENT_OPTIONS,
         contextTokens: 0,
-        useGpu: false,
+        useGpu: true,
         maxOutputTokens: lowMemory ? 1024 : mediumMemory ? 2048 : 4096,
         reasoningBudgetTokens: lowMemory ? 0 : mediumMemory ? 256 : 1024,
         maxSteps: lowMemory ? 48 : mediumMemory ? 96 : 128,
