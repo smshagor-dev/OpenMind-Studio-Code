@@ -1,4 +1,5 @@
 import type { EventBus } from "../eventBus";
+import type { VsCodeExtensionSource } from "../extensionsIpc";
 import type { AppEvents } from "../events";
 import type { IpcClient } from "../ipc";
 import type { ProfileList, ProfileSummary, VsCodeProfileSource } from "./profilesIpc";
@@ -10,6 +11,7 @@ export interface ProfileState {
   /** The Profiles window is open. */
   open: boolean;
   vscodeProfiles: VsCodeProfileSource[];
+  vscodeExtensions: VsCodeExtensionSource[];
 }
 
 /**
@@ -19,7 +21,7 @@ export interface ProfileState {
  * dialogs and never contain keys, passwords or local paths (the backend guarantees it).
  */
 export class ProfileService {
-  private state: ProfileState = { list: null, busy: false, open: false, vscodeProfiles: [] };
+  private state: ProfileState = { list: null, busy: false, open: false, vscodeProfiles: [], vscodeExtensions: [] };
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -60,6 +62,7 @@ export class ProfileService {
     this.set({ open: true });
     await this.load();
     await this.detectVsCodeProfiles();
+    await this.detectVsCodeExtensions();
   }
 
   async detectVsCodeProfiles(): Promise<void> {
@@ -73,6 +76,32 @@ export class ProfileService {
 
   async importDetectedVsCode(sourceId: string): Promise<boolean> {
     return this.run("import VS Code profile", () => this.ipc.profileImportDetectedVscode(sourceId));
+  }
+
+  async detectVsCodeExtensions(): Promise<void> {
+    try {
+      this.set({ vscodeExtensions: await this.ipc.extDetectVscode() });
+    } catch (error) {
+      this.fail("detect VS Code extensions", error);
+      this.set({ vscodeExtensions: [] });
+    }
+  }
+
+  async importVsCodeExtension(sourceId: string): Promise<boolean> {
+    this.set({ busy: true });
+    try {
+      const extension = await this.ipc.extImportVscode(sourceId);
+      this.events.emit("appNotice", {
+        message: `Imported ${extension.id} as disabled. Review its permissions before enabling it in Extensions.`,
+      });
+      await this.detectVsCodeExtensions();
+      return true;
+    } catch (error) {
+      this.fail("import VS Code extension", error);
+      return false;
+    } finally {
+      this.set({ busy: false });
+    }
   }
 
   closeWindow(): void {
