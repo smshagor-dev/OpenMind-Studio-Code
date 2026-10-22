@@ -74,7 +74,7 @@ function createLanguagesApi(parts) {
     const scheme = entry.scheme || '*';
     if (language !== '*' && language !== doc.languageId) return 0;
     if (scheme !== '*' && scheme !== doc.uri.scheme) return 0;
-    let patternScore = 0;
+    // A matching pattern filters the document; it doesn't raise wildcard scores.
     if (entry.pattern !== undefined) {
       const pattern = typeof entry.pattern === 'string' ? entry.pattern : entry.pattern?.pattern;
       if (typeof pattern !== 'string' || !pattern) return 0;
@@ -91,11 +91,8 @@ function createLanguagesApi(parts) {
       } catch {
         return 0;
       }
-      patternScore = 10;
-    }
-    const languageScore = language === '*' ? 5 : 10;
-    const schemeScore = scheme === '*' ? 5 : 10;
-    return Math.max(patternScore, Math.min(languageScore, schemeScore));
+     }
+    return language === '*' ? 5 : 10;
   }
 
   return namespace('languages', {
