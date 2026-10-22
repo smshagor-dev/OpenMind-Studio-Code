@@ -416,6 +416,8 @@ fn main() {
             commands::profiles::profile_export,
             commands::profiles::profile_import,
             commands::profiles::profile_import_vscode,
+            commands::profiles::profile_detect_vscode,
+            commands::profiles::profile_import_detected_vscode,
             commands::format::format_options,
             commands::format::format_run,
             commands::about::about_info,
