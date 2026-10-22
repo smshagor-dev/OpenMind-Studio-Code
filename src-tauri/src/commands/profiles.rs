@@ -189,6 +189,73 @@ pub fn profile_import(text: String, state: State<'_, AppState>) -> Result<Profil
     Ok(store.summary())
 }
 
+/// VS Code writes JSON with comments and trailing commas. Preserve quoted strings,
+/// remove only comments outside strings, then remove trailing commas.
+fn parse_vscode_jsonc(text: &str) -> Result<Value, String> {
+    let chars: Vec<char> = text.trim_start_matches('\u{feff}').chars().collect();
+    let mut cleaned = String::with_capacity(text.len());
+    let mut i = 0;
+    let mut quoted = false;
+    let mut escaped = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if quoted {
+            cleaned.push(c);
+            if escaped { escaped = false; }
+            else if c == '\\' { escaped = true; }
+            else if c == '"' { quoted = false; }
+            i += 1;
+            continue;
+        }
+        if c == '"' {
+            quoted = true;
+            cleaned.push(c);
+            i += 1;
+            continue;
+        }
+        if c == '/' && chars.get(i + 1) == Some(&'/') {
+            i += 2;
+            while i < chars.len() && chars[i] != '\n' { i += 1; }
+            continue;
+        }
+        if c == '/' && chars.get(i + 1) == Some(&'*') {
+            i += 2;
+            let mut closed = false;
+            while i + 1 < chars.len() {
+                if chars[i] == '*' && chars[i + 1] == '/' {
+                    i += 2;
+                    closed = true;
+                    break;
+                }
+                i += 1;
+            }
+            if !closed { return Err("Unterminated block comment in VS Code JSON.".into()); }
+            continue;
+        }
+        cleaned.push(c);
+        i += 1;
+    }
+    let chars: Vec<char> = cleaned.chars().collect();
+    let mut result = String::with_capacity(cleaned.len());
+    let mut quoted = false;
+    let mut escaped = false;
+    for (i, &c) in chars.iter().enumerate() {
+        if quoted {
+            result.push(c);
+            if escaped { escaped = false; }
+            else if c == '\\' { escaped = true; }
+            else if c == '"' { quoted = false; }
+            continue;
+        }
+        if c == '"' { quoted = true; result.push(c); continue; }
+        if c == ',' && chars[i + 1..].iter().find(|x| !x.is_whitespace()).is_some_and(|next| *next == '}' || *next == ']') {
+            continue;
+        }
+        result.push(c);
+    }
+    serde_json::from_str(&result).map_err(|e| format!("Invalid VS Code JSON: {e}"))
+}
+
 /// Imports compatible VS Code preferences into a separate OpenMind Studio profile.
 /// It never alters the active profile or copies account tokens, passwords or paths.
 #[tauri::command]
@@ -201,13 +268,13 @@ pub fn profile_import_vscode(
     if settings_text.len() > 1024 * 1024 || keybindings_text.as_ref().is_some_and(|s| s.len() > 1024 * 1024) {
         return Err("VS Code settings or keybindings file is too large.".into());
     }
-    let values: Value = serde_json::from_str(settings_text.trim_start_matches('\u{feff}'))
-        .map_err(|e| format!("Could not parse VS Code settings.json: {e}. Export JSON without comments first."))?;
+    let values: Value = parse_vscode_jsonc(&settings_text)
+        .map_err(|e| format!("Could not parse VS Code settings.json: {e}"))?;
     let values = values.as_object().ok_or("VS Code settings must be a JSON object.")?;
     let shortcuts = match keybindings_text {
         Some(text) if !text.trim().is_empty() => {
-            let rows: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
-                .map_err(|e| format!("Could not parse VS Code keybindings.json: {e}. Export JSON without comments first."))?;
+            let rows: Value = parse_vscode_jsonc(&text)
+                .map_err(|e| format!("Could not parse VS Code keybindings.json: {e}"))?;
             let rows = rows.as_array().ok_or("VS Code keybindings must be a JSON array.")?;
             let mut parsed = Vec::new();
             for row in rows {
