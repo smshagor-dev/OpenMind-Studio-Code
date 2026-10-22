@@ -127,6 +127,20 @@ function setup(
 }
 
 describe("AgentService", () => {
+  it("uses a small request budget without workspace context for greetings", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
+    await service.start();
+    await service.send("Hi");
+    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
+    expect(request?.options.maxOutputTokens).toBeLessThanOrEqual(128);
+    expect(request?.options.reasoningBudgetTokens).toBe(0);
+    expect(request?.options.maxSteps).toBe(1);
+    expect(request?.history).toHaveLength(0);
+    expect(request?.activeFile).toBeNull();
+    expect(request?.unsaved).toEqual([]);
+  });
+
   it("renders many tiny stream deltas in one batch and retains exact output", async () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
