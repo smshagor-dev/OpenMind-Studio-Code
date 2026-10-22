@@ -310,6 +310,116 @@ class CancellationTokenSource {
   }
 }
 
+// Value types shared by language tooling extensions. They are usable even when a
+// corresponding provider contribution is not yet implemented by the workbench.
+class CodeActionKind {
+  constructor(value = '') { this.value = value; }
+  append(part) { return new CodeActionKind(this.value ? this.value + '.' + part : part); }
+  contains(other) {
+    const value = other instanceof CodeActionKind ? other.value : String(other);
+    return !this.value || value === this.value || value.startsWith(this.value + '.');
+  }
+  intersects(other) {
+    const value = other instanceof CodeActionKind ? other.value : String(other);
+    return this.contains(value) || new CodeActionKind(value).contains(this);
+  }
+}
+CodeActionKind.Empty = new CodeActionKind('');
+CodeActionKind.QuickFix = new CodeActionKind('quickfix');
+CodeActionKind.Refactor = new CodeActionKind('refactor');
+CodeActionKind.RefactorExtract = new CodeActionKind('refactor.extract');
+CodeActionKind.RefactorInline = new CodeActionKind('refactor.inline');
+CodeActionKind.RefactorRewrite = new CodeActionKind('refactor.rewrite');
+CodeActionKind.Source = new CodeActionKind('source');
+CodeActionKind.SourceOrganizeImports = new CodeActionKind('source.organizeImports');
+CodeActionKind.SourceFixAll = new CodeActionKind('source.fixAll');
+
+class CodeAction {
+  constructor(title, kind) {
+    this.title = title;
+    this.kind = kind;
+  }
+}
+
+class CodeLens {
+  constructor(range, command) {
+    this.range = range;
+    this.command = command;
+    this.isResolved = command !== undefined;
+  }
+}
+
+class DocumentLink {
+  constructor(range, target) {
+    this.range = range;
+    this.target = target;
+  }
+}
+
+const SymbolKind = {
+  File: 0, Module: 1, Namespace: 2, Package: 3, Class: 4, Method: 5,
+  Property: 6, Field: 7, Constructor: 8, Enum: 9, Interface: 10,
+  Function: 11, Variable: 12, Constant: 13, String: 14, Number: 15,
+  Boolean: 16, Array: 17, Object: 18, Key: 19, Null: 20, EnumMember: 21,
+  Struct: 22, Event: 23, Operator: 24, TypeParameter: 25,
+};
+
+class DocumentSymbol {
+  constructor(name, detail, kind, range, selectionRange) {
+    this.name = name;
+    this.detail = detail;
+    this.kind = kind;
+    this.range = range;
+    this.selectionRange = selectionRange;
+    this.children = [];
+  }
+}
+
+class SymbolInformation {
+  constructor(name, kind, containerName, location) {
+    this.name = name;
+    this.kind = kind;
+    if (typeof containerName === 'string') {
+      this.containerName = containerName;
+      this.location = location;
+    } else {
+      this.containerName = '';
+      this.location = containerName;
+    }
+  }
+}
+
+class FoldingRange {
+  constructor(start, end, kind) {
+    this.start = start;
+    this.end = end;
+    this.kind = kind;
+  }
+}
+const FoldingRangeKind = { Comment: 'comment', Imports: 'imports', Region: 'region' };
+
+class ParameterInformation {
+  constructor(label, documentation) {
+    this.label = label;
+    this.documentation = documentation;
+  }
+}
+class SignatureInformation {
+  constructor(label, documentation) {
+    this.label = label;
+    this.documentation = documentation;
+    this.parameters = [];
+    this.activeParameter = 0;
+  }
+}
+class SignatureHelp {
+  constructor() {
+    this.signatures = [];
+    this.activeSignature = 0;
+    this.activeParameter = 0;
+  }
+}
+
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
 const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 };
 
@@ -648,6 +758,18 @@ function createApi(host, ext) {
     CompletionItem,
     CompletionItemKind,
     CompletionList,
+    CodeAction,
+    CodeActionKind,
+    CodeLens,
+    DocumentLink,
+    SymbolKind,
+    DocumentSymbol,
+    SymbolInformation,
+    FoldingRange,
+    FoldingRangeKind,
+    ParameterInformation,
+    SignatureInformation,
+    SignatureHelp,
     SnippetString,
     CancellationTokenSource,
     ConfigurationTarget,
