@@ -236,6 +236,8 @@ fn main() {
             commands::lsp::lsp_set_verbose,
             commands::extensions::ext_inspect_vsix,
             commands::extensions::ext_install,
+            commands::extensions::ext_detect_vscode,
+            commands::extensions::ext_import_vscode,
             commands::extension_manage::ext_read_icon,
             commands::marketplace::ext_market_search,
             commands::marketplace::ext_market_details,
