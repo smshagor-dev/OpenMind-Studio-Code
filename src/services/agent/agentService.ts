@@ -371,7 +371,18 @@ export class AgentService {
         maxContinuations: lowMemory ? 2 : mediumMemory ? 4 : 8,
       };
     }
-    return this.state.options ?? { ...DEFAULT_AGENT_OPTIONS };
+    // Cloud context is negotiated by the hosted model, not constrained by PC RAM.
+    // Keep endpoint integrations and UI preferences, but never reuse legacy manual
+    // token limits after switching from a local installation.
+    return {
+      ...DEFAULT_AGENT_OPTIONS,
+      searchEndpoint: this.state.options?.searchEndpoint ?? "",
+      visionEndpoint: this.state.options?.visionEndpoint ?? "",
+      imageEndpoint: this.state.options?.imageEndpoint ?? "",
+      showReasoning: this.state.options?.showReasoning ?? true,
+      autoScroll: this.state.options?.autoScroll ?? true,
+      contextTokens: 0,
+    };
   }
 
   async updateOptions(change: Partial<AgentOptions>): Promise<void> {
