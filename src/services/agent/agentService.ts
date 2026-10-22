@@ -724,15 +724,11 @@ export class AgentService {
     await this.activate();
   }
 
-  /** `"local"` or `"cloud"`, whichever the current selection actually is. */
+  /** The coding assistant runs only local models; hosted models belong to AI Providers. */
   inferenceMode(): "local" | "cloud" {
     return "local";
   }
 
-  /** Switches between the local engine and OpenMindAI Cloud, remembering each side's last model so going
-   * back and forth within a session loses nothing. A no-op when the target side has nothing to select yet
-   * (no downloaded local model, or no cloud model the last test reported available) — the UI disables that
-   * option in that case rather than silently doing nothing. */
   async toggleInference(_mode: "local" | "cloud"): Promise<void> {
     // Cloud providers are configured and used in AI Providers, not the local coding assistant.
   }
