@@ -665,3 +665,17 @@ fn vscode_event_emitter_disposal_during_dispatch_is_respected() {
     assert_eq!(result["skipped"], 0);
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_position_and_range_option_overloads_preserve_originals() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.positionOverloads", json!([]));
+    assert_eq!(result["original"], 4);
+    assert_eq!(result["changed"], 8);
+    assert_eq!(result["movedLine"], 5);
+    assert_eq!(result["movedColumn"], 5);
+    assert_eq!(result["changedEnd"], 8);
+    assert_eq!(result["samePosition"], true);
+    assert_eq!(result["sameRange"], true);
+    fixture.host.stop();
+}
