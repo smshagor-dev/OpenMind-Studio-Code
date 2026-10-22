@@ -561,14 +561,31 @@ function createApi(host, ext) {
     createWebviewPanel: webviews.createWebviewPanel,
   });
 
+  const extensionObject = (found) => {
+    if (!found) return undefined;
+    const extension = {
+      id: found.id,
+      extensionPath: found.path,
+      extensionUri: Uri.file(found.path),
+      packageJSON: found.manifest,
+      get isActive() { return state.running.has(found.id); },
+      get exports() { return state.running.get(found.id)?.module?.exports; },
+      async activate() {
+        if (!state.extensions.has(found.id)) throw new Error(`Extension '${found.id}' was uninstalled.`);
+        return host.activateExtension(found.id);
+      },
+    };
+    return extension;
+  };
   const extensions = namespace('extensions', {
     getExtension(id) {
-      const found = state.extensions.get(id) || [...state.extensions.values()].find((item) => item.id.toLowerCase() === String(id).toLowerCase());
-      if (!found) return undefined;
-      return { id: found.id, extensionPath: found.path, packageJSON: found.manifest, isActive: state.running.has(found.id), exports: undefined };
+      const normalized = String(id).toLowerCase();
+      const found = state.extensions.get(normalized) ||
+        [...state.extensions.values()].find((item) => item.id.toLowerCase() === normalized);
+      return extensionObject(found);
     },
     get all() {
-      return [...state.extensions.values()].map((found) => ({ id: found.id, extensionPath: found.path, packageJSON: found.manifest, isActive: state.running.has(found.id) }));
+      return [...state.extensions.values()].map(extensionObject);
     },
   });
 
