@@ -428,8 +428,8 @@ mod tests {
         let catalog = openmind_llm::Catalog::builtin().expect("catalog");
         let model = catalog.get("nemotron-3-nano-4b-q4").expect("model");
         let hw = hardware(8, 1, 0);
-        assert_eq!(automatic_context_tokens(model, &hw, false, 0), 8_192);
-        assert_eq!(automatic_context_tokens(model, &hw, false, 30_000), 8_192);
+        assert_eq!(automatic_context_tokens(model, &hw, false, 0), 4_096);
+        assert_eq!(automatic_context_tokens(model, &hw, false, 30_000), 4_096);
         assert_eq!(effective_context_tokens(4_096, model.context_tokens), 4_096);
     }
 
