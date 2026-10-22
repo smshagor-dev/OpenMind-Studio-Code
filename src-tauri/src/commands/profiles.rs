@@ -189,6 +189,49 @@ pub fn profile_import(text: String, state: State<'_, AppState>) -> Result<Profil
     Ok(store.summary())
 }
 
+/// Imports compatible VS Code preferences into a separate OpenMind Studio profile.
+/// It never alters the active profile or copies account tokens, passwords or paths.
+#[tauri::command]
+pub fn profile_import_vscode(
+    name: String,
+    settings_text: String,
+    keybindings_text: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<ProfileList, String> {
+    if settings_text.len() > 1024 * 1024 || keybindings_text.as_ref().is_some_and(|s| s.len() > 1024 * 1024) {
+        return Err("VS Code settings or keybindings file is too large.".into());
+    }
+    let values: Value = serde_json::from_str(settings_text.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("Could not parse VS Code settings.json: {e}. Export JSON without comments first."))?;
+    let values = values.as_object().ok_or("VS Code settings must be a JSON object.")?;
+    let shortcuts = match keybindings_text {
+        Some(text) if !text.trim().is_empty() => {
+            let rows: Value = serde_json::from_str(text.trim_start_matches('\u{feff}'))
+                .map_err(|e| format!("Could not parse VS Code keybindings.json: {e}. Export JSON without comments first."))?;
+            let rows = rows.as_array().ok_or("VS Code keybindings must be a JSON array.")?;
+            let mut parsed = Vec::new();
+            for row in rows {
+                let Some(key) = row.get("key").and_then(Value::as_str) else { continue };
+                let Some(command) = row.get("command").and_then(Value::as_str) else { continue };
+                // The imported bindings still pass OpenMind's normal validation and normalization.
+                parsed.push(KeybindingEntry {
+                    key: key.to_string(),
+                    command: command.to_string(),
+                    when: row.get("when").and_then(Value::as_str).map(str::to_string),
+                    args: row.get("args").cloned(),
+                });
+            }
+            parsed
+        }
+        _ => Vec::new(),
+    };
+    let (store, file, keybindings) = store_for(&state)?;
+    list(&store, &file, &keybindings)?;
+    store.create(&name, profiles::snapshot(values), profiles::keybindings_snapshot(&shortcuts))
+        .map_err(|e| e.to_string())?;
+    Ok(store.summary())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
