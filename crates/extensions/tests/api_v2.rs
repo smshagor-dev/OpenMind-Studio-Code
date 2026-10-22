@@ -587,3 +587,14 @@ fn vscode_snippet_builders_escape_literal_text_choices_and_variables() {
     assert_eq!(value, json!(r"price \$10\}${1|red\,blue,a\|b|}${TM_FILENAME:a\$b}"));
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_markdown_literal_text_is_escaped_and_code_fences_are_safe() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.markdownSafety", json!([]));
+    assert_eq!(result["trusted"], false);
+    assert_eq!(result["html"], false);
+    assert_eq!(result["escaped"], true);
+    assert_eq!(result["codeFence"], true);
+    fixture.host.stop();
+}
