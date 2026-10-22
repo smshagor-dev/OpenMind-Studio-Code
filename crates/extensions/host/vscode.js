@@ -143,7 +143,9 @@ class Uri {
     );
   }
   toString() {
-    const encoded = encodeURI(this.path).replace(/^\/([a-zA-Z]):/, '/$1%3A');
+    const encoded = encodeURI(this.path)
+      .replace(/[?#]/g, (char) => encodeURIComponent(char))
+      .replace(/^\/([a-zA-Z]):/, '/$1%3A');
     return `${this.scheme}://${this.authority}${encoded}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
   }
   toJSON() {
