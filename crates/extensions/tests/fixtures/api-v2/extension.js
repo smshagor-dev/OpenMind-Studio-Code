@@ -167,6 +167,23 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.languageValues', () => {
+    const range = new vscode.Range(0, 0, 0, 3);
+    const action = new vscode.CodeAction('Apply correction', vscode.CodeActionKind.QuickFix);
+    const child = new vscode.DocumentSymbol('run', 'function', vscode.SymbolKind.Function, range, range);
+    const signature = new vscode.SignatureInformation('run(value)', 'A function');
+    signature.parameters.push(new vscode.ParameterInformation('value'));
+    return {
+      action: action.title,
+      quickfixContains: vscode.CodeActionKind.QuickFix.contains(new vscode.CodeActionKind('quickfix.rewrite')),
+      sourceVsRefactor: vscode.CodeActionKind.Source.intersects(vscode.CodeActionKind.Refactor),
+      lensResolved: new vscode.CodeLens(range, { title: 'Run', command: 'run' }).isResolved,
+      linkTarget: new vscode.DocumentLink(range, vscode.Uri.parse('https://example.org')).target.scheme,
+      childKind: child.kind,
+      foldingKind: new vscode.FoldingRange(0, 3, vscode.FoldingRangeKind.Region).kind,
+      signatureParameters: signature.parameters.length,
+    };
+  });
   reg('sampleV2.languageMatch', () => {
     const document = { languageId: 'typescript', uri: vscode.Uri.file('C:/workspace/index.ts') };
     return {
