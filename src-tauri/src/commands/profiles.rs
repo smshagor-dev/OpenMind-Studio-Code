@@ -292,7 +292,15 @@ pub fn profile_import_vscode(
     };
     let (store, file, keybindings) = store_for(&state)?;
     list(&store, &file, &keybindings)?;
-    store.create(&name, profiles::snapshot(values), profiles::keybindings_snapshot(&shortcuts))
+    let existing = store.summary();
+    let base = profiles::clean_name(&name).map_err(|e| e.to_string())?;
+    let mut unique = base.clone();
+    let mut number = 2;
+    while existing.profiles.iter().any(|p| p.name == unique) {
+        unique = format!("{base} ({number})");
+        number += 1;
+    }
+    store.create(&unique, profiles::snapshot(values), profiles::keybindings_snapshot(&shortcuts))
         .map_err(|e| e.to_string())?;
     Ok(store.summary())
 }
