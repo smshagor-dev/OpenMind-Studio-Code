@@ -104,6 +104,10 @@ const host = { state, request, notify, log, als };
 setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
+host.activateExtension = async (id) => {
+  await activate({ id });
+  return state.running.get(id)?.module?.exports;
+};
 
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
 const originalLoad = Module._load;
