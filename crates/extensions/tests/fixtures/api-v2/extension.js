@@ -173,6 +173,13 @@ function activate(context) {
       exact: vscode.languages.match('typescript', document),
       wildcard: vscode.languages.match('*', document),
       mismatch: vscode.languages.match('python', document),
+      glob: vscode.languages.match({ language: 'typescript', pattern: '**/*.ts' }, document),
+      brace: vscode.languages.match({ language: 'typescript', pattern: '**/*.{ts,tsx}' }, document),
+      otherFile: vscode.languages.match({ language: 'typescript', pattern: '**/*.py' }, document),
+      relative: vscode.languages.match({
+        language: 'typescript',
+        pattern: new vscode.RelativePattern('C:/workspace', '**/*.ts'),
+      }, document),
     };
   });
   reg('sampleV2.extensionState', () => {
