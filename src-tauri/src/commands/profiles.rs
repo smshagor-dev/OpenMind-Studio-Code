@@ -385,6 +385,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn discovers_vscode_and_insiders_profiles_without_reading_other_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let default = dir.path().join("Code").join("User");
+        let custom = dir.path().join("Code - Insiders").join("User").join("profiles").join("my-profile");
+        std::fs::create_dir_all(&default).expect("mkdir");
+        std::fs::create_dir_all(&custom).expect("mkdir");
+        std::fs::write(default.join("settings.json"), "{}").expect("settings");
+        std::fs::write(default.join("keybindings.json"), "[]").expect("shortcuts");
+        std::fs::write(custom.join("settings.json"), "{}").expect("settings");
+        let sources = vscode_profile_sources(dir.path());
+        assert_eq!(sources.len(), 2);
+        assert!(sources.iter().any(|profile| profile.id == "Code:default" && profile.keybindings_path.is_some()));
+        assert!(sources.iter().any(|profile| profile.id == "Code - Insiders:my-profile"));
+    }
+
+    #[test]
     fn vscode_jsonc_import_keeps_strings_and_removes_comments_and_trailing_commas() {
         let value = parse_vscode_jsonc(
             r#"{ // editor preference
