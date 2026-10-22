@@ -111,9 +111,8 @@ export function LocalSection({ overview, downloads, modelId, installing }: {
   );
 }
 
-/** Where a user gets their own OpenMindAI Cloud API key (a user-facing account site — separate from the
- * `api.openmindai.org` API host the app actually talks to). */
-const CLOUD_KEY_SIGNUP_URL = "https://chat.openmindai.org";
+/** Where a user gets their own OpenMindAI Cloud API key (the OpenMindAI developer portal, hosted at api.openmindai.org). */
+const CLOUD_KEY_SIGNUP_URL = "https://api.openmindai.org/";
 
 /** The whole Online tab, in both the Setup dialog (model chip / "Configure now") and the Settings dialog
  * (gear icon) — one real page, not fragments: the connection (address/key/test) and the model choice
