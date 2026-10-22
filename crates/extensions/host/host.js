@@ -157,9 +157,13 @@ function guardGlobals() {
 guardGlobals();
 
 function insideExtension(descriptor, file) {
-  const root = path.resolve(descriptor.path);
-  const resolved = path.resolve(file);
-  return resolved === root || resolved.startsWith(root + path.sep);
+  // Resolve symlinks as well as "..": a VSIX entry point must not escape
+  // the installed extension directory through a junction or symlink.
+  const root = fs.realpathSync(descriptor.path);
+  const resolved = fs.realpathSync(file);
+  const relative = path.relative(root, resolved);
+  return relative !== '' && relative !== '..' &&
+    !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
 
 function memento(file) {
