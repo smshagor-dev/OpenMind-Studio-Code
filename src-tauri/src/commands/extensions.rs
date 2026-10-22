@@ -331,6 +331,37 @@ pub fn ext_detect_vscode() -> Vec<VsCodeExtensionSource> {
     detected_vscode_extensions()
 }
 
+/// Refuse links and unexpectedly large trees before creating the temporary VSIX.
+/// This also avoids copying files outside the VS Code extension directory.
+fn validate_vscode_extension_tree(root: &std::path::Path) -> Result<(), String> {
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    let mut count = 0usize;
+    let mut bytes = 0u64;
+    while let Some((folder, depth)) = stack.pop() {
+        if depth > 40 { return Err("VS Code extension directory nesting is too deep.".into()); }
+        for item in std::fs::read_dir(folder).map_err(|e| e.to_string())? {
+            let item = item.map_err(|e| e.to_string())?;
+            count += 1;
+            if count > 20_000 { return Err("VS Code extension has too many files.".into()); }
+            let meta = std::fs::symlink_metadata(item.path()).map_err(|e| e.to_string())?;
+            if meta.file_type().is_symlink() {
+                return Err("VS Code extension contains a symbolic link or junction; import a trusted VSIX instead.".into());
+            }
+            if meta.is_dir() {
+                stack.push((item.path(), depth + 1));
+            } else if meta.is_file() {
+                bytes = bytes.saturating_add(meta.len());
+                if bytes > 512 * 1024 * 1024 {
+                    return Err("VS Code extension exceeds the 512 MB import limit.".into());
+                }
+            } else {
+                return Err("VS Code extension contains an unsupported filesystem entry.".into());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Import an installed extension only on explicit user action. The installed copy is
 /// repacked and passed through the regular VSIX manifest/permissions validation.
 #[tauri::command]
@@ -361,6 +392,7 @@ pub async fn ext_import_vscode(
                 .unwrap_or_default().as_nanos();
             let archive = std::env::temp_dir().join(format!("openmind-vscode-{id}-{}.vsix", std::process::id()));
             let outcome = (|| {
+                validate_vscode_extension_tree(&canonical_candidate).map_err(openmind_extensions::ExtensionError::Refused)?;
                 vsix::pack(&canonical_candidate, &archive)?;
                 let installed = app.state::<AppState>().extensions.store.install(&archive, false)?;
                 Ok::<_, openmind_extensions::ExtensionError>(installed)
