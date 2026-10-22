@@ -1,4 +1,6 @@
 'use strict';
+const path = require('path');
+const { globToRegExp } = require('./workspace.js');
 // The `languages` namespace of OpenMind Studio's extension host (a VS Code API subset, written for this app). Moved out
 // of vscode.js in Milestone 18, which added document and range formatting providers and `TextEdit`. Providers only
 // answer the app's requests (`host/provide`); the app keeps its bundled language servers and formatters first and
@@ -72,9 +74,28 @@ function createLanguagesApi(parts) {
     const scheme = entry.scheme || '*';
     if (language !== '*' && language !== doc.languageId) return 0;
     if (scheme !== '*' && scheme !== doc.uri.scheme) return 0;
-    // Complex glob patterns are deliberately not claimed supported by this score helper.
-    if (entry.pattern !== undefined) return 0;
-    return language === '*' ? 5 : 10;
+    let patternScore = 0;
+    if (entry.pattern !== undefined) {
+      const pattern = typeof entry.pattern === 'string' ? entry.pattern : entry.pattern?.pattern;
+      if (typeof pattern !== 'string' || !pattern) return 0;
+      const uriPath = String(doc.uri.path || '').replace(/\\/g, '/');
+      let candidate = uriPath;
+      if (typeof entry.pattern === 'object' && entry.pattern.base) {
+        const base = String(entry.pattern.base?.fsPath || entry.pattern.base).replace(/\\/g, '/');
+        const relative = path.posix.relative(base, uriPath);
+        if (relative === '..' || relative.startsWith('../') || path.posix.isAbsolute(relative)) return 0;
+        candidate = relative;
+      }
+      try {
+        if (!globToRegExp(pattern).test(candidate)) return 0;
+      } catch {
+        return 0;
+      }
+      patternScore = 10;
+    }
+    const languageScore = language === '*' ? 5 : 10;
+    const schemeScore = scheme === '*' ? 5 : 10;
+    return Math.max(patternScore, Math.min(languageScore, schemeScore));
   }
 
   return namespace('languages', {
