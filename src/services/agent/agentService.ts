@@ -354,10 +354,13 @@ export class AgentService {
   }
 
   options(): AgentOptions {
+    // Local AI always uses safe built-in defaults; saved tuning belongs to Cloud.
+    if (this.inferenceMode() === "local") return { ...DEFAULT_AGENT_OPTIONS };
     return this.state.options ?? { ...DEFAULT_AGENT_OPTIONS };
   }
 
   async updateOptions(change: Partial<AgentOptions>): Promise<void> {
+    if (this.inferenceMode() === "local") return;
     const previousContext = this.options().contextTokens;
     const options = agentOptions({ ...this.options(), ...change });
     this.set({ options });
