@@ -529,3 +529,16 @@ fn extension_api_exposes_activation_exports_only_after_activation_finishes() {
     assert_eq!(activated["listed"], true);
     fixture.host.stop();
 }
+
+#[test]
+fn extension_list_change_event_fires_when_host_reregisters_a_package() {
+    let Some(fixture) = setup() else { return; };
+    assert_eq!(run(&fixture, "sampleV2.extensionChangeCount", json!([])), json!(0));
+    fixture.host.request(
+        "host/register",
+        json!({ "extension": host_descriptor(&fixture.paths, &fixture.extension, Some("test")) }),
+        WAIT,
+    ).expect("register");
+    assert_eq!(run(&fixture, "sampleV2.extensionChangeCount", json!([])), json!(1));
+    fixture.host.stop();
+}
