@@ -116,11 +116,26 @@ class Uri {
     }
     return new Uri('file', '', normalized, '', '');
   }
-  static parse(value) {
+  static parse(value, strict = false) {
     const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/.exec(String(value));
-    if (!match) return Uri.file(value);
+    if (!match) {
+      if (strict) throw new Error('Invalid URI: ' + String(value));
+      return Uri.file(value);
+    }
     const decode = (value) => decodeURIComponent(value || '');
     return new Uri(match[1], decode(match[2]), decode(match[3]), decode(match[4]), decode(match[5]));
+  }
+  static from(components) {
+    if (!components || typeof components !== 'object' || !components.scheme) {
+      throw new TypeError('Uri.from requires a scheme.');
+    }
+    return new Uri(
+      String(components.scheme),
+      String(components.authority || ''),
+      String(components.path || ''),
+      String(components.query || ''),
+      String(components.fragment || ''),
+    );
   }
   static joinPath(base, ...segments) {
     return base.with({ path: path.posix.join(base.path, ...segments) });
@@ -142,7 +157,10 @@ class Uri {
       change.fragment ?? this.fragment,
     );
   }
-  toString() {
+  toString(skipEncoding = false) {
+    if (skipEncoding) {
+      return `${this.scheme}://${this.authority}${this.path}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
+    }
     const encoded = encodeURI(this.path)
       .replace(/[?#]/g, (char) => encodeURIComponent(char))
       .replace(/^\/([a-zA-Z]):/, '/$1%3A');
