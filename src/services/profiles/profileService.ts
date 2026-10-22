@@ -142,6 +142,36 @@ export class ProfileService {
     }
   }
 
+  /** Import compatible VS Code settings and optional keybindings as an inactive profile.
+   * Nothing is applied to the current workspace or existing OpenMind profile.
+   */
+  async importFromVsCode(): Promise<boolean> {
+    try {
+      const settingsPath = await this.ipc.openDocumentDialog();
+      if (settingsPath === null) return false;
+      const settings = await this.ipc.documentRead(settingsPath);
+      if (settings.state !== "file") throw new Error("Cannot read VS Code settings.json.");
+      const shortcutsPath = await this.ipc.openDocumentDialog();
+      let shortcuts: string | null = null;
+      if (shortcutsPath !== null) {
+        const read = await this.ipc.documentRead(shortcutsPath);
+        if (read.state !== "file") throw new Error("Cannot read VS Code keybindings.json.");
+        shortcuts = read.content;
+      }
+      const done = await this.run(
+        "import VS Code preferences",
+        () => this.ipc.profileImportVscode("Imported VS Code", settings.content, shortcuts),
+      );
+      if (done) this.events.emit("appNotice", {
+        message: "VS Code settings imported into a new profile. Switch to it to apply compatible preferences.",
+      });
+      return done;
+    } catch (error) {
+      this.fail("import VS Code settings", error);
+      return false;
+    }
+  }
+
   /** Import Profile: adds the file as a new profile (it is not applied until you switch to it). */
   async importProfile(): Promise<boolean> {
     try {
