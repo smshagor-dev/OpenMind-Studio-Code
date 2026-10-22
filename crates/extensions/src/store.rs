@@ -241,13 +241,21 @@ impl ExtensionStore {
                 tracing::warn!(%err, "an extension folder couldn't be listed");
             }
         }
-        let ids: Vec<String> = listing.extensions.iter().map(|e| e.id.clone()).collect();
+        let dependencies: std::collections::HashMap<String, bool> = listing
+            .extensions
+            .iter()
+            .map(|extension| (extension.id.clone(), extension.enabled))
+            .collect();
         for extension in &mut listing.extensions {
             for dependency in &extension.manifest.extension_dependencies {
-                if !ids.contains(&dependency.to_lowercase()) {
-                    extension
-                        .warnings
-                        .push(format!("Requires {dependency}, which isn't installed."));
+                match dependencies.get(&dependency.to_lowercase()) {
+                    None => extension.warnings.push(format!(
+                        "Requires {dependency}, which isn't installed."
+                    )),
+                    Some(false) => extension.warnings.push(format!(
+                        "Requires {dependency}, which is disabled."
+                    )),
+                    Some(true) => {}
                 }
             }
         }
