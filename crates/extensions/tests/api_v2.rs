@@ -607,3 +607,16 @@ fn vscode_cancellation_token_notifies_only_once() {
     assert_eq!(result["cancelled"], true);
     fixture.host.stop();
 }
+
+#[test]
+fn diagnostic_collection_foreach_receives_uri_diagnostics_and_collection() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.diagnosticCollection", json!([]));
+    assert_eq!(result["received"]["scheme"], "file");
+    assert_eq!(result["received"]["count"], 1);
+    assert_eq!(result["received"]["same"], true);
+    assert_eq!(result["hits"], 1);
+    assert_eq!(result["present"], true);
+    assert_eq!(result["removed"], true);
+    fixture.host.stop();
+}
