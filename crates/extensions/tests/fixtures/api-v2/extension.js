@@ -155,7 +155,17 @@ function activate(context) {
     return true;
   });
   reg('sampleV2.watched', () => watcherEvents);
+  reg('sampleV2.extensionState', () => {
+    const extension = vscode.extensions.getExtension('openmind-samples.sample-api-v2');
+    return {
+      found: !!extension,
+      active: extension?.isActive,
+      exportsReady: extension?.exports?.ready === true,
+      uri: extension?.extensionUri?.scheme,
+    };
+  });
   reg('sampleV2.events', () => seen);
+  return { ready: true };
 }
 
 module.exports = { activate };
