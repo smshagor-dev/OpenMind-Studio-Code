@@ -18,15 +18,35 @@ function InferenceTabs() {
   // the user having to close and reopen Agent Settings.
   const state = useSyncExternalStore((listener) => agent.subscribe(listener), () => agent.getState());
   const [tab, setTab] = useState<"offline" | "online">(agent.inferenceMode() === "cloud" ? "online" : "offline");
+  const [switching, setSwitching] = useState(false);
+  const activeMode = agent.inferenceMode();
+  const switchMode = async (mode: "local" | "cloud") => {
+    if (switching || mode === activeMode) return;
+    setSwitching(true);
+    try {
+      if (mode === "cloud" && !state.cloud) await agent.loadCloudStatus();
+      await agent.toggleInference(mode);
+      setTab(mode === "local" ? "offline" : "online");
+    } finally {
+      setSwitching(false);
+    }
+  };
   return (
     <div className="agent-inference-tabs">
+      <div role="group" aria-label="Active AI provider" className="agent-setup-tabs">
+        <button type="button" className="agent-setup-tab" aria-pressed={activeMode === "local"} disabled={switching}
+          onClick={() => { void switchMode("local"); }}>Local {activeMode === "local" ? "✓" : ""}</button>
+        <button type="button" className="agent-setup-tab" aria-pressed={activeMode === "cloud"} disabled={switching}
+          onClick={() => { void switchMode("cloud"); }}>Cloud {activeMode === "cloud" ? "✓" : ""}</button>
+      </div>
+      <p className="agent-model__progress-text">Active: {activeMode === "local" ? "Local AI" : "OpenMind Cloud"} · Choose which assistant handles requests.</p>
       <div className="agent-setup-tabs" role="tablist" aria-label={t("agent.inference.title")}>
         <button type="button" role="tab" className="agent-setup-tab" aria-selected={tab === "offline"}
           onClick={() => { setTab("offline"); }}>
           {t("agent.inference.tabOffline")}
         </button>
         <button type="button" role="tab" className="agent-setup-tab" aria-selected={tab === "online"}
-          onClick={() => { setTab("online"); }}>
+          onClick={() => { setTab("online"); if (!state.cloud) void agent.loadCloudStatus(); }}>
           {t("agent.inference.tabOnline")}
         </button>
       </div>
