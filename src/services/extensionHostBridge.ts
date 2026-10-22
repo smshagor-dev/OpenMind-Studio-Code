@@ -47,6 +47,8 @@ export interface HostDiagnostic {
   range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
   message: string;
   severity: number;
+  /** VS Code DiagnosticTag: 1 = unnecessary, 2 = deprecated. */
+  tags?: number[];
   source?: string;
   code?: string;
 }
