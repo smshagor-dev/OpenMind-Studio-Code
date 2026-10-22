@@ -240,6 +240,7 @@ function activate(context) {
       shareAuthority: share.authority,
       sharePath: share.path,
       shareFsPath: share.fsPath.replaceAll(String.fromCharCode(92), '/'),
+      escapedPath: vscode.Uri.file('C:/workspace/what?#.ts').toString().includes('what%3F%23.ts'),
     };
   });
   reg('sampleV2.languageMatch', () => {
