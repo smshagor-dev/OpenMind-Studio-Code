@@ -333,65 +333,24 @@ describe("AgentService", () => {
     expect(again.service.getState().mode).toBe("plan");
   });
 
-  it("toggles between local and cloud, remembering each side's own last model", async () => {
-    const { service, ipc } = setup([model("a", "ready"), model("b", "ready")]);
-    vi.mocked(ipc.cloudStatus).mockResolvedValue({
-      baseUrl: "https://cloud.openmindai.org/api/v1/openmindai",
-      isDefaultBaseUrl: true,
-      hasKey: true,
-      models: [
-        { id: "openmindai-super", name: "OpenMindAI Super", available: true },
-        { id: "openmindai-ultra", name: "OpenMindAI Ultra", available: false },
-        { id: "openmindai-lite", name: "OpenMindAI Lite", available: false },
-      ],
-    });
+  it("keeps the coding assistant local even when Cloud is configured", async () => {
+    const { service, ipc } = setup([model("a", "ready")]);
     await service.start();
-    await service.selectModel("a");
-    expect(service.inferenceMode()).toBe("local");
+    await service.loadCloudStatus();
     await service.toggleInference("cloud");
-    expect(service.inferenceMode()).toBe("cloud");
-    // Only the model the last connection test actually reported available is offered.
-    expect(service.getState().modelId).toBe("openmindai-super");
-    await service.toggleInference("local");
     expect(service.inferenceMode()).toBe("local");
-    // "a" was remembered, not re-picked as "the first ready local model".
     expect(service.getState().modelId).toBe("a");
-    await service.toggleInference("cloud");
-    expect(service.getState().modelId).toBe("openmindai-super");
-    // A refresh() cycle (the local-overview fallback logic) must never pull a cloud selection back to
-    // a local model, since a cloud model never appears in the local overview.
-    await service.refresh();
-    expect(service.inferenceMode()).toBe("cloud");
-    expect(service.getState().modelId).toBe("openmindai-super");
+    await service.selectModel("openmindai-lite");
+    expect(service.getState().modelId).toBe("a");
+    expect(ipc.startEngine).toHaveBeenCalled();
   });
 
-  it("always switches sides even with nothing downloaded or no key yet -- never a dead click", async () => {
-    // The radios are never disabled in the UI; the toggle must take effect regardless (it is
-    // ready()/sendBlocker() that separately explains, afterwards, why Send may still be unavailable).
-    const { service, ipc } = setup([model("a", "notDownloaded")]);
-    vi.mocked(ipc.cloudStatus).mockResolvedValue({
-      baseUrl: "https://cloud.openmindai.org/api/v1/openmindai",
-      isDefaultBaseUrl: true,
-      hasKey: false,
-      models: [
-        { id: "openmindai-super", name: "OpenMindAI Super", available: false },
-        { id: "openmindai-ultra", name: "OpenMindAI Ultra", available: false },
-        { id: "openmindai-lite", name: "OpenMindAI Lite", available: false },
-      ],
-    });
+  it("migrates an old Cloud model preference to a local model", async () => {
+    const { service, settings } = setup([model("a", "ready")]);
+    settings.set("agent.model", "openmindai-super");
     await service.start();
     expect(service.inferenceMode()).toBe("local");
-    expect(service.ready()).toBe(false);
-
-    await service.toggleInference("cloud");
-    expect(service.inferenceMode()).toBe("cloud");
-    expect(service.getState().modelId).toBe("openmindai-super");
-    expect(service.ready()).toBe(false); // no key yet -- Send stays blocked, but the switch itself worked
-
-    await service.toggleInference("local");
-    expect(service.inferenceMode()).toBe("local");
-    expect(service.getState().modelId).toBe("a"); // not downloaded, but the switch itself worked
-    expect(service.ready()).toBe(false);
+    expect(service.getState().modelId).toBe("a");
   });
 
   it("asks for the licence before a download and follows its progress", async () => {
