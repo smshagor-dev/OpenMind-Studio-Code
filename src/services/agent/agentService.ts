@@ -354,8 +354,23 @@ export class AgentService {
   }
 
   options(): AgentOptions {
-    // Local AI always uses safe built-in defaults; saved tuning belongs to Cloud.
-    if (this.inferenceMode() === "local") return { ...DEFAULT_AGENT_OPTIONS };
+    // Local AI configures itself from the detected machine. Rust independently
+    // sizes the llama.cpp KV cache using available RAM, model size and VRAM.
+    if (this.inferenceMode() === "local") {
+      const hardware = this.state.overview?.hardware;
+      const gib = 1024 ** 3;
+      const ram = hardware?.totalRamBytes ?? 0;
+      const lowMemory = ram > 0 && ram <= 9 * gib;
+      const mediumMemory = ram > 0 && ram <= 17 * gib;
+      return {
+        ...DEFAULT_AGENT_OPTIONS,
+        contextTokens: 0,
+        maxOutputTokens: lowMemory ? 1024 : mediumMemory ? 2048 : 4096,
+        reasoningBudgetTokens: lowMemory ? 0 : mediumMemory ? 256 : 1024,
+        maxSteps: lowMemory ? 48 : mediumMemory ? 96 : 128,
+        maxContinuations: lowMemory ? 2 : mediumMemory ? 4 : 8,
+      };
+    }
     return this.state.options ?? { ...DEFAULT_AGENT_OPTIONS };
   }
 
