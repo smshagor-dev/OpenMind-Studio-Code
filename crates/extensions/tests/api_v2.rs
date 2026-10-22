@@ -634,3 +634,14 @@ fn vscode_file_uri_decodes_query_and_unc_network_share() {
     assert_eq!(result["escapedPath"], true);
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_uri_factory_strict_parse_and_formatting_are_available() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.uriFactory", json!([]));
+    assert_eq!(result["formatted"], "memfs://local/folder/space%20name");
+    assert_eq!(result["unencoded"], "memfs://local/folder/space name");
+    assert_eq!(result["strictFailed"], true);
+    assert_eq!(result["changed"], "memfs://local/other");
+    fixture.host.stop();
+}
