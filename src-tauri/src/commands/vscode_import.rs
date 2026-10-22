@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use openmind_settings::{keybindings, store, vscode_import};
 use serde::Serialize;
 use serde_json::{Map, Value};
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::app_state::AppState;
 
@@ -138,6 +138,47 @@ pub fn vscode_import_apply(
         skipped: preview.skipped,
         warnings: preview.warnings,
     })
+}
+
+/// Package a user-selected installed VS Code extension with the same safe VSIX
+/// checks as a normal install. It is imported DISABLED: users must inspect
+/// its permissions and explicitly enable it before any third-party code runs.
+#[tauri::command]
+pub async fn vscode_import_extension(
+    edition: String,
+    folder: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<openmind_extensions::InstalledExtension, String> {
+    let source = vscode_import::extension_path(&edition, &folder)?;
+    let store = state.extensions.store.clone();
+    let installed = tokio::task::spawn_blocking(move || {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?.as_nanos();
+        let staging = std::env::temp_dir().join(format!(
+            "openmind-vscode-import-{}-{unique}", std::process::id()
+        ));
+        fs::create_dir(&staging).map_err(|e| e.to_string())?;
+        let archive = staging.join("extension.vsix");
+        let result = (|| {
+            openmind_extensions::vsix::pack(&source, &archive)
+                .map_err(|e| e.to_string())?;
+            let installed = store.install(&archive, false)
+                .map_err(|e| e.to_string())?;
+            match store.set_enabled(&installed.id, false) {
+                Ok(disabled) => Ok(disabled),
+                Err(error) => {
+                    let _ = store.uninstall(&installed.id);
+                    Err(format!("Couldn't disable imported extension: {error}"))
+                }
+            }
+        })();
+        let _ = fs::remove_dir_all(&staging);
+        result
+    }).await.map_err(|error| error.to_string())??;
+    crate::state::refresh_soon(&app, &[crate::state::Domain::Extensions]);
+    crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
+    Ok(installed)
 }
 
 #[cfg(test)]
