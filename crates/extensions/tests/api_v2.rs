@@ -645,3 +645,14 @@ fn vscode_uri_factory_strict_parse_and_formatting_are_available() {
     assert_eq!(result["changed"], "memfs://local/other");
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_cancellation_constants_and_error_are_available() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.cancellationStatics", json!([]));
+    assert_eq!(result["none"], false);
+    assert_eq!(result["cancelled"], true);
+    assert_eq!(result["notified"], true);
+    assert_eq!(result["errorName"], "Canceled");
+    fixture.host.stop();
+}
