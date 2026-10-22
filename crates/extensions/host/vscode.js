@@ -114,7 +114,8 @@ class Uri {
   static parse(value) {
     const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/.exec(String(value));
     if (!match) return Uri.file(value);
-    return new Uri(match[1], match[2], decodeURIComponent(match[3]), match[4], match[5]);
+    const decode = (value) => decodeURIComponent(value || '');
+    return new Uri(match[1], decode(match[2]), decode(match[3]), decode(match[4]), decode(match[5]));
   }
   static joinPath(base, ...segments) {
     return base.with({ path: path.posix.join(base.path, ...segments) });
