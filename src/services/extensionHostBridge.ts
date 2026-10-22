@@ -319,6 +319,10 @@ export class HostBridge {
   }
 
   private registerProvider(registration: ProviderRegistration): void {
+    // A host restart or duplicate registration can reuse a handle. Dispose the
+    // previous Monaco/formatter binding before installing its replacement.
+    this.providers.get(registration.handle)?.();
+    this.providers.delete(registration.handle);
     const invoke: ProviderInvoke = (payload) =>
       this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload });
     const formatting = registration.kind === "formatting" || registration.kind === "rangeFormatting";
