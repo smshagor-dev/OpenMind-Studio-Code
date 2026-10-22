@@ -127,11 +127,11 @@ function setup(
 }
 
 describe("AgentService", () => {
-  it("starts the installed local model without GPU offload", async () => {
+  it("starts the installed local model with automatic GPU offload", async () => {
     const { service, ipc } = setup([model("a", "ready")]);
     await service.start();
-    expect(ipc.startEngine).toHaveBeenCalledWith("a", false, 0);
-    expect(service.options().useGpu).toBe(false);
+    expect(ipc.startEngine).toHaveBeenCalledWith("a", true, 0);
+    expect(service.options().useGpu).toBe(true);
   });
 
   it("uses a small request budget without workspace context for greetings", async () => {
