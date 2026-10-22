@@ -355,15 +355,43 @@ impl ExtensionStore {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
+        // Preserve the previous version until the staged replacement is in place.
+        // A failed rename must never leave the user without the installed extension.
+        let backup = self.paths.staging.join(format!(
+            "{folder}-backup-{}-{unique}",
+            std::process::id()
+        ));
         if let Some(existing) = &previous {
-            self.remove_folder(existing)?;
+            let base = if existing.enabled {
+                &self.paths.installed
+            } else {
+                &self.paths.disabled
+            };
+            let source = ensure_inside(base, &existing.path)?;
+            if let Err(err) = fs::rename(&source, &backup) {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(ExtensionError::io("Couldn't back up the installed extension", err));
+            }
         }
         if let Err(err) = fs::rename(&staging, &target) {
+            if previous.is_some() {
+                if let Err(restore_error) = fs::rename(&backup, &target) {
+                    return Err(ExtensionError::Refused(format!(
+                        "Extension replacement failed: {err}; restoring the previous version also failed: {restore_error}. Backup remains at {}",
+                        backup.display()
+                    )));
+                }
+            }
             let _ = fs::remove_dir_all(&staging);
             return Err(ExtensionError::io(
                 format!("Couldn't move the extension into {}", target.display()),
                 err,
             ));
+        }
+        if previous.is_some() {
+            if let Err(err) = fs::remove_dir_all(&backup) {
+                tracing::warn!(path = %backup.display(), %err, "couldn't remove extension backup");
+            }
         }
         self.find(&manifest.id())
     }
