@@ -106,7 +106,7 @@ const events = require('./vscode.js').createEventHub();
 host.events = events;
 host.activateExtension = async (id) => {
   await activate({ id });
-  return state.running.get(id)?.module;
+  return state.running.get(id)?.exports;
 };
 
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
@@ -275,7 +275,11 @@ async function activate(params, chain = []) {
     if (chain.includes(params.id)) {
       throw new Error(`Circular extension dependency: ${[...chain, params.id].join(' -> ')}`);
     }
-    if (state.running.has(params.id)) return { activated: false };
+    if (state.running.has(params.id)) {
+      const current = state.running.get(params.id);
+      if (current.activating) throw new Error(`Extension '${params.id}' is still activating; retry after activation finishes.`);
+      return { activated: false };
+    }
     // VS Code's extensionDependencies must be present and activated first. A warning
     // in the extension list alone is insufficient: activation would otherwise fail
     // later with an opaque missing command/API error.
@@ -309,15 +313,18 @@ async function activate(params, chain = []) {
       secrets: secretStorage(descriptor.id),
     };
     const api = createApi(host, descriptor);
-    const run = { module: null, context, api, subscriptions };
+    const run = { module: null, exports: undefined, context, api, subscriptions, activating: true };
     state.running.set(descriptor.id, run);
     try {
       fs.mkdirSync(descriptor.globalStorage, { recursive: true });
       fs.mkdirSync(descriptor.logPath, { recursive: true });
       run.module = require(file);
       if (run.module && typeof run.module.activate === 'function') {
-        await run.module.activate(context);
+        run.exports = await run.module.activate(context);
+      } else {
+        run.exports = run.module;
       }
+      run.activating = false;
     } catch (error) {
       cleanup(run);
       state.running.delete(descriptor.id);
