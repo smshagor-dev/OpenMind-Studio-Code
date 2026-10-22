@@ -542,3 +542,13 @@ fn extension_list_change_event_fires_when_host_reregisters_a_package() {
     assert_eq!(run(&fixture, "sampleV2.extensionChangeCount", json!([])), json!(1));
     fixture.host.stop();
 }
+
+#[test]
+fn language_selector_matching_uses_vscode_style_scores() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.languageMatch", json!([]));
+    assert_eq!(result["exact"], 10);
+    assert_eq!(result["wildcard"], 5);
+    assert_eq!(result["mismatch"], 0);
+    fixture.host.stop();
+}
