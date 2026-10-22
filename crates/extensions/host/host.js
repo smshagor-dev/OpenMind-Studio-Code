@@ -210,6 +210,9 @@ const handlers = {
   },
 
   'host/register': (params) => {
+    // A reinstalled extension may have new permissions and a different root.
+    // Do not reuse a guard built for an earlier version of its descriptor.
+    guards.delete(params.extension.id);
     state.extensions.set(params.extension.id, params.extension);
     return { ok: true };
   },
