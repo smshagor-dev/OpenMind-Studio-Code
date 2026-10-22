@@ -167,6 +167,14 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.languageMatch', () => {
+    const document = { languageId: 'typescript', uri: vscode.Uri.file('C:/workspace/index.ts') };
+    return {
+      exact: vscode.languages.match('typescript', document),
+      wildcard: vscode.languages.match('*', document),
+      mismatch: vscode.languages.match('python', document),
+    };
+  });
   reg('sampleV2.extensionState', () => {
     const extension = vscode.extensions.getExtension('openmind-samples.sample-api-v2');
     return {
