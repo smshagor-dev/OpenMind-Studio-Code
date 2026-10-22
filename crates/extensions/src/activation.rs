@@ -74,6 +74,13 @@ pub fn activation_order(
         if !extension.enabled {
             return Err(format!("Extension dependency {id} is disabled."));
         }
+        if !crate::manifest::engine_compatible(&extension.manifest) {
+            return Err(format!(
+                "{id} requires VS Code engine {}, but OpenMind Studio supports the {} API subset.",
+                extension.manifest.engines_vscode.as_deref().unwrap_or("unknown"),
+                crate::manifest::EXTENSION_API_VERSION
+            ));
+        }
         if !visiting.insert(id.to_string()) {
             return Err(format!("Circular extension dependency involving {id}."));
         }
