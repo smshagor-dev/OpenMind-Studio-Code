@@ -167,6 +167,17 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.markdownSafety', () => {
+    const markdown = new vscode.MarkdownString();
+    markdown.appendText('[unsafe](https://example.org)');
+    markdown.appendCodeblock('backticks: ```', 'js');
+    return {
+      trusted: markdown.isTrusted,
+      html: markdown.supportHtml,
+      escaped: markdown.value.startsWith('\\\\[unsafe\\\\]'),
+      codeFence: markdown.value.includes('````js'),
+    };
+  });
   reg('sampleV2.snippetEscaping', () => {
     const snippet = new vscode.SnippetString();
     snippet.appendText('price $10}');
