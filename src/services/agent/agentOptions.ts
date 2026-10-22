@@ -22,7 +22,7 @@ export interface AgentOptions {
 
 export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
   effort: "medium",
-  useGpu: false,
+  useGpu: true,
   searchEndpoint: "",
   visionEndpoint: "",
   imageEndpoint: "",
