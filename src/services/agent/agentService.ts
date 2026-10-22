@@ -715,9 +715,11 @@ export class AgentService {
   }
 
   async selectModel(id: string): Promise<void> {
-    if (this.warming || this.state.transcript.busy) return;
-    // The coding assistant only accepts installed/catalogued local models.
+    if (this.state.transcript.busy) return;
+    // Do not silently discard a model selection while startup is still warming.
     if (this.isCloudModel(id)) return;
+    if (this.warming) await this.warming;
+    if (this.state.transcript.busy) return;
     this.lastLocalModelId = id;
     this.set({ modelId: id });
     await this.host.settingSet(MODEL_KEY, id).catch(() => undefined);
