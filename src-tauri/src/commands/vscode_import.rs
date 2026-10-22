@@ -140,6 +140,99 @@ pub fn vscode_import_apply(
     })
 }
 
+/// An imported snippet collection that the editor can register for a language.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedSnippet {
+    pub language: String,
+    pub text: String,
+}
+
+fn snippets_dir(state: &AppState) -> Result<PathBuf, String> {
+    Ok(state.settings_file.parent()
+        .ok_or("Cannot locate settings directory.")?
+        .join("snippets"))
+}
+
+/// Copy compatible snippet definitions into OpenMind's settings area. Backups
+/// of replaced files are retained and no files from VS Code are modified.
+#[tauri::command]
+pub fn vscode_import_snippets(
+    edition: String,
+    profile: String,
+    state: State<'_, AppState>,
+) -> Result<usize, String> {
+    let files = vscode_import::snippet_contents(&edition, &profile)?;
+    let dest = snippets_dir(&state)?;
+    fs::create_dir_all(&dest).map_err(|e| e.to_string())?;
+    let mut count = 0;
+    for (name, text) in files {
+        let target = dest.join(&name);
+        let saved = backup(&target)?;
+        let temp = dest.join(format!("{name}.importing"));
+        if let Err(error) = fs::write(&temp, text) {
+            return Err(format!("Couldn't write snippet {name}: {error}"));
+        }
+        if target.exists() {
+            fs::remove_file(&target).map_err(|e| e.to_string())?;
+        }
+        if let Err(error) = fs::rename(&temp, &target) {
+            restore(&target, &saved)?;
+            return Err(format!("Couldn't import snippet {name}: {error}"));
+        }
+        count += 1;
+    }
+    Ok(count)
+}
+
+/// Snippets imported to OpenMind are now usable in completion lists; a
+/// globally-scoped VS Code snippet requires a specific language scope.
+#[tauri::command]
+pub fn vscode_imported_snippets(
+    state: State<'_, AppState>,
+) -> Result<Vec<ImportedSnippet>, String> {
+    let dir = snippets_dir(&state)?;
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut result = Vec::new();
+    for file in entries.take(200) {
+        let file = file.map_err(|e| e.to_string())?;
+        let path = file.path();
+        let name = file.file_name().to_string_lossy().to_string();
+        if !(name.ends_with(".json") || name.ends_with(".code-snippets")) { continue; }
+        let metadata = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 1024 * 1024 { continue; }
+        let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        if name.ends_with(".json") {
+            let language = name.trim_end_matches(".json").to_string();
+            result.push(ImportedSnippet { language, text });
+        } else {
+            let Ok(Value::Object(snippets)) = serde_json::from_str::<Value>(&text) else { continue; };
+            let mut scoped: std::collections::BTreeMap<String, Map<String, Value>> =
+                std::collections::BTreeMap::new();
+            for (label, value) in snippets {
+                let Some(scope) = value.get("scope").and_then(Value::as_str) else { continue; };
+                for language in scope.split(',').map(str::trim).filter(|scope| !scope.is_empty()) {
+                    if language.len() > 64 || !language.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
+                        continue;
+                    }
+                    scoped.entry(language.to_string()).or_default().insert(label.clone(), value.clone());
+                }
+            }
+            for (language, definitions) in scoped {
+                result.push(ImportedSnippet {
+                    language,
+                    text: serde_json::to_string(&definitions).map_err(|e| e.to_string())?,
+                });
+            }
+        }
+    }
+    Ok(result)
+}
+
 /// Store a VS Code profile as a separate OpenMind profile without switching the
 /// current editor settings. OpenMind profile rules filter paths and credentials.
 #[tauri::command]
