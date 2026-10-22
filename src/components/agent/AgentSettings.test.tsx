@@ -80,7 +80,7 @@ describe("context window settings", () => {
   it("keeps local mode automatic without exposing advanced settings", () => {
     harness.state.modelId = "local";
     render(<AgentSettings />);
-    expect(screen.getByText("Local AI uses automatic settings. No configuration is required.")).toBeInTheDocument();
+    expect(screen.getByText("Local AI automatically adjusts to this PC. No configuration is required.")).toBeInTheDocument();
     expect(screen.queryByRole("spinbutton", { name: "agent.settings.reasoningBudgetTokens" })).not.toBeInTheDocument();
   });
   it("saves a separate reasoning budget, including zero", async () => {
