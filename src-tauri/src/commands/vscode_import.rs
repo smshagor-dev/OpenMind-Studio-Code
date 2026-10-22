@@ -140,6 +140,42 @@ pub fn vscode_import_apply(
     })
 }
 
+/// Store a VS Code profile as a separate OpenMind profile without switching the
+/// current editor settings. OpenMind profile rules filter paths and credentials.
+#[tauri::command]
+pub fn vscode_import_profile(
+    edition: String,
+    profile: String,
+    state: State<'_, AppState>,
+) -> Result<openmind_settings::profiles::ProfileList, String> {
+    use openmind_settings::profiles::{self, ProfileStore};
+    let preview = vscode_import::inspect(
+        &edition, &profile, &crate::commands::extensions::extras(&state)
+    )?;
+    let settings_dir = state.settings_file.parent()
+        .ok_or("Cannot locate OpenMind settings directory.")?;
+    let store = ProfileStore::new(settings_dir);
+    let current = store::read_layer(&state.settings_file);
+    if let Some(error) = current.error {
+        return Err(format!("Existing settings are invalid: {error}"));
+    }
+    let shortcuts = keybindings::read_file(&state.keybindings_file);
+    if let Some(error) = shortcuts.error {
+        return Err(format!("Existing shortcuts are invalid: {error}"));
+    }
+    store.ensure_seeded(&current.values, &shortcuts.entries)
+        .map_err(|error| error.to_string())?;
+    let values: Map<String, Value> = preview.settings.iter()
+        .map(|item| (item.id.clone(), item.value.clone())).collect();
+    let name = format!("VS Code {} {}", edition, profile);
+    store.create(
+        &name.chars().take(40).collect::<String>(),
+        profiles::snapshot(&values),
+        preview.keybindings,
+    ).map_err(|error| error.to_string())?;
+    Ok(store.summary())
+}
+
 /// Package a user-selected installed VS Code extension with the same safe VSIX
 /// checks as a normal install. It is imported DISABLED: users must inspect
 /// its permissions and explicitly enable it before any third-party code runs.
