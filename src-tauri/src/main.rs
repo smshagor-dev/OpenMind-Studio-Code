@@ -155,6 +155,7 @@ fn main() {
             commands::vscode_import::vscode_import_sources,
             commands::vscode_import::vscode_import_preview,
             commands::vscode_import::vscode_import_apply,
+            commands::vscode_import::vscode_import_extension,
             commands::filesystem::fs_read_dir,
             commands::filesystem::fs_metadata,
             commands::filesystem::fs_is_binary,
