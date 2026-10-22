@@ -172,7 +172,7 @@ function createLanguagesApi(parts) {
             code: item.code === undefined ? undefined : String(item.code && item.code.value !== undefined ? item.code.value : item.code),
           })),
         });
-      return track({
+      const collectionApi = {
         name,
         set(target, diagnostics) {
           if (Array.isArray(target)) {
@@ -194,13 +194,14 @@ function createLanguagesApi(parts) {
           for (const file of stored.keys()) push(file, []);
           stored.clear();
         },
-        forEach(callback) {
-          for (const [file, list] of stored) callback(Uri.file(file), list, this);
+        forEach(callback, thisArg) {
+          for (const [file, list] of stored) callback.call(thisArg, Uri.file(file), list, collectionApi);
         },
         dispose() {
-          this.clear();
+          collectionApi.clear();
         },
-      });
+      };
+      return track(collectionApi);
     },
   });
 }
