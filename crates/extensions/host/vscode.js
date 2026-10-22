@@ -569,7 +569,7 @@ function createApi(host, ext) {
       extensionUri: Uri.file(found.path),
       packageJSON: found.manifest,
       get isActive() { return state.running.has(found.id); },
-      get exports() { return state.running.get(found.id)?.module; },
+      get exports() { return state.running.get(found.id)?.exports; },
       async activate() {
         if (!state.extensions.has(found.id)) throw new Error(`Extension '${found.id}' was uninstalled.`);
         return host.activateExtension(found.id);
