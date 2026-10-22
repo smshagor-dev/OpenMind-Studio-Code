@@ -167,6 +167,13 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.snippetEscaping', () => {
+    const snippet = new vscode.SnippetString();
+    snippet.appendText('price $10}');
+    snippet.appendChoice(['red,blue', 'a|b']);
+    snippet.appendVariable('TM_FILENAME', 'a$b');
+    return snippet.value;
+  });
   reg('sampleV2.snippetBuilders', () => {
     const snippet = new vscode.SnippetString('start ');
     snippet.appendTabstop().appendPlaceholder('name');
