@@ -656,3 +656,12 @@ fn vscode_cancellation_constants_and_error_are_available() {
     assert_eq!(result["errorName"], "Canceled");
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_event_emitter_disposal_during_dispatch_is_respected() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.eventDisposal", json!([]));
+    assert_eq!(result["count"], 2);
+    assert_eq!(result["skipped"], 0);
+    fixture.host.stop();
+}
