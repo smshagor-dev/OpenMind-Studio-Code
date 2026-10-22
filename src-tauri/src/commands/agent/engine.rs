@@ -311,11 +311,7 @@ fn automatic_context_tokens(
     } else {
         8_192
     };
-    if hardware.total_ram_bytes > 0 && hardware.total_ram_bytes <= 9 * GIB && gpu_room < 2 * GIB {
-        // Keep the local engine responsive on 8 GB machines with CPU-bound inference.
-        // Larger requests still use the existing compaction and context-fit safeguards.
-        limit = limit.min(4_096);
-    } else if hardware.available_ram_bytes > 0
+    if hardware.available_ram_bytes > 0
         && hardware.available_ram_bytes < 2 * GIB
         && gpu_room < 2 * GIB
     {
@@ -428,8 +424,8 @@ mod tests {
         let catalog = openmind_llm::Catalog::builtin().expect("catalog");
         let model = catalog.get("nemotron-3-nano-4b-q4").expect("model");
         let hw = hardware(8, 1, 0);
-        assert_eq!(automatic_context_tokens(model, &hw, false, 0), 4_096);
-        assert_eq!(automatic_context_tokens(model, &hw, false, 30_000), 4_096);
+        assert_eq!(automatic_context_tokens(model, &hw, false, 0), 8_192);
+        assert_eq!(automatic_context_tokens(model, &hw, false, 30_000), 8_192);
         assert_eq!(effective_context_tokens(4_096, model.context_tokens), 4_096);
     }
 
