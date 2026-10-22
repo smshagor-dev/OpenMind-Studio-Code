@@ -92,6 +92,34 @@ pub fn sources() -> Vec<Source> {
     output
 }
 
+/// Resolve a discovered VS Code extension folder without accepting caller paths.
+pub fn extension_path(edition: &str, folder: &str) -> Result<PathBuf, String> {
+    if folder.is_empty() || folder.len() > 160 || !folder.bytes().all(|c|
+        c.is_ascii_alphanumeric() || c == b'.' || c == b'-' || c == b'_' || c == b'@'
+    ) || folder == "." || folder == ".." {
+        return Err("Invalid extension folder name.".into());
+    }
+    // Validate edition using the same allow-list as profile discovery.
+    config_root(edition)?;
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .ok_or("Cannot locate the VS Code extensions directory.")?;
+    let store = match edition {
+        "insiders" => ".vscode-insiders",
+        "codium" | "oss" => ".vscode-oss",
+        _ => ".vscode",
+    };
+    let root = PathBuf::from(home).join(store).join("extensions");
+    let expected = root.join(folder);
+    let actual_root = root.canonicalize().map_err(|e| e.to_string())?;
+    let actual = expected.canonicalize().map_err(|e| e.to_string())?;
+    if !actual.starts_with(&actual_root) || actual == actual_root ||
+        !expected.is_dir() || !actual.join("package.json").is_file() {
+        return Err("This extension wasn't found in the selected VS Code installation.".into());
+    }
+    Ok(actual)
+}
+
 /// Strip JSONC comments and trailing commas without changing the contents of string literals.
 pub fn jsonc(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
@@ -225,8 +253,9 @@ pub fn inspect(edition: &str, profile: &str, extras: &Extras) -> Result<Preview,
     if let Some(home) = home {
         if let Ok(entries) = fs::read_dir(PathBuf::from(home).join(extension_folder).join("extensions")) {
             for entry in entries.flatten() {
-                if entry.path().join("package.json").is_file() {
-                    preview.extensions.push(entry.file_name().to_string_lossy().to_string());
+                let name = entry.file_name().to_string_lossy().to_string();
+                if extension_path(edition, &name).is_ok() {
+                    preview.extensions.push(name);
                 }
             }
         }
