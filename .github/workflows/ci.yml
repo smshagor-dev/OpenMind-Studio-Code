@@ -10,7 +10,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, fix/local-startup-cloud-independent]
   workflow_call:
 
 permissions:
