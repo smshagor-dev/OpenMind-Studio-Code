@@ -523,5 +523,9 @@ fn extension_api_exposes_activation_exports_only_after_activation_finishes() {
     assert_eq!(state["active"], true);
     assert_eq!(state["exportsReady"], true);
     assert_eq!(state["uri"], "file");
+    let activated = run(&fixture, "sampleV2.activateExtension", json!([]));
+    assert_eq!(activated["active"], true);
+    assert_eq!(activated["ready"], true);
+    assert_eq!(activated["listed"], true);
     fixture.host.stop();
 }
