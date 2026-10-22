@@ -167,6 +167,11 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.snippetBuilders', () => {
+    const snippet = new vscode.SnippetString('start ');
+    snippet.appendTabstop().appendPlaceholder('name');
+    return snippet.value;
+  });
   reg('sampleV2.languageValues', () => {
     const range = new vscode.Range(0, 0, 0, 3);
     const action = new vscode.CodeAction('Apply correction', vscode.CodeActionKind.QuickFix);
