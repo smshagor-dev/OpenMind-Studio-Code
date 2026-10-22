@@ -157,6 +157,8 @@ fn main() {
             commands::vscode_import::vscode_import_apply,
             commands::vscode_import::vscode_import_extension,
             commands::vscode_import::vscode_import_profile,
+            commands::vscode_import::vscode_import_snippets,
+            commands::vscode_import::vscode_imported_snippets,
             commands::filesystem::fs_read_dir,
             commands::filesystem::fs_metadata,
             commands::filesystem::fs_is_binary,
