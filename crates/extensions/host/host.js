@@ -115,6 +115,7 @@ const state = {
 };
 
 const host = { state, request, notify, log, als };
+host.activateExtension = (id) => activateWithDependencies(id);
 setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
@@ -228,7 +229,7 @@ const handlers = {
     return { ok: true };
   },
 
-  'host/activate': (params) => als.run(params.id, () => activate(params)),
+  'host/activate': (params) => activateWithDependencies(params.id),
 
   'host/deactivate': async (params) => deactivate(params.id),
 
@@ -268,6 +269,19 @@ const handlers = {
   },
 };
 
+async function activateWithDependencies(id, chain = new Set()) {
+  if (state.running.has(id)) return { activated: false };
+  const descriptor = state.extensions.get(id);
+  if (!descriptor) throw new Error("Extension '" + id + "' is not enabled or registered.");
+  if (chain.has(id)) throw new Error("Circular extension dependency involving " + id);
+  chain.add(id);
+  for (const dependency of descriptor.manifest?.extensionDependencies || []) {
+    await activateWithDependencies(dependency.toLowerCase(), chain);
+  }
+  chain.delete(id);
+  return als.run(id, () => activate({ id }));
+}
+
 async function activate(params) {
   {
     const descriptor = state.extensions.get(params.id);
@@ -303,7 +317,9 @@ async function activate(params) {
       fs.mkdirSync(descriptor.logPath, { recursive: true });
       run.module = require(file);
       if (run.module && typeof run.module.activate === 'function') {
-        await run.module.activate(context);
+        run.exports = await run.module.activate(context);
+      } else {
+        run.exports = run.module;
       }
     } catch (error) {
       // Also unregister commands/providers created before activation failed.
