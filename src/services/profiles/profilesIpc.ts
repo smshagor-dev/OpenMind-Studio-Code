@@ -29,6 +29,7 @@ export interface ProfilesIpc {
   profileDelete: (id: string) => Promise<ProfileList>;
   profileExport: (id: string) => Promise<string>;
   profileImport: (text: string) => Promise<ProfileList>;
+  profileImportVscode: (name: string, settingsText: string, keybindingsText: string | null) => Promise<ProfileList>;
 }
 
 export const tauriProfilesIpc: ProfilesIpc = {
@@ -41,4 +42,6 @@ export const tauriProfilesIpc: ProfilesIpc = {
   profileDelete: (id) => invoke<ProfileList>("profile_delete", { id }),
   profileExport: (id) => invoke<string>("profile_export", { id }),
   profileImport: (text) => invoke<ProfileList>("profile_import", { text }),
+  profileImportVscode: (name, settingsText, keybindingsText) =>
+    invoke<ProfileList>("profile_import_vscode", { name, settingsText, keybindingsText }),
 };
