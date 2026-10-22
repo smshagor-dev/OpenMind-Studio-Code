@@ -590,13 +590,10 @@ export class AgentService {
       )
         this.set({ mode });
       if (model) this.set({ modelId: model });
-      const active = await this.host
-        .settingGet(`agent.active.${this.host.taskScope ?? "main"}`)
-        .catch(() => null);
-      // History restoration must not hold up a downloaded local engine.
-      // It is independent of model startup and may involve disk I/O.
-      if (active && this.history && this.host.hasFolder())
-        void this.restoreHistory(active, true).catch(() => undefined);
+      // Always open a fresh conversation on editor startup. Previous chats
+      // remain in History and can be opened explicitly by the user.
+      this.savedActiveId = null;
+      void this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, "").catch(() => undefined);
       // Before the local-catalog fallback below runs, so a restored OpenMindAI Cloud selection is
       // recognized as a cloud model and never silently swapped back to a local one.
       // A downloaded local model must never wait for Cloud settings during startup.
