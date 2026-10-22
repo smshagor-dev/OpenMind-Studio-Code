@@ -349,6 +349,21 @@ function secretStorage(extensionId) {
   };
 }
 
+function purgeExtensionModules(descriptor) {
+  // Node caches both the entry module and its local dependencies. Without
+  // clearing them, a VSIX update keeps executing the old implementation.
+  const root = fs.realpathSync(descriptor.path);
+  for (const file of Object.keys(require.cache)) {
+    let real;
+    try { real = fs.realpathSync(file); } catch { real = path.resolve(file); }
+    const relative = path.relative(root, real);
+    if (relative === '' || (relative !== '..' &&
+        !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative))) {
+      delete require.cache[file];
+    }
+  }
+}
+
 function cleanup(run) {
   disposeApi(run.api);
   for (const disposable of run.subscriptions.splice(0).reverse()) {
@@ -384,6 +399,11 @@ async function deactivate(id) {
     }
   }
   state.running.delete(id);
+  const descriptor = state.extensions.get(id);
+  if (descriptor) {
+    try { purgeExtensionModules(descriptor); }
+    catch (error) { log(id, 'error', `Couldn't clear extension module cache: ${error}`); }
+  }
   return { deactivated: true };
 }
 
