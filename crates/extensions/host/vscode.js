@@ -109,6 +109,11 @@ class Uri {
   static file(fsPath) {
     let normalized = String(fsPath).replace(/\\/g, '/');
     if (/^[a-zA-Z]:/.test(normalized)) normalized = `/${normalized}`;
+    if (normalized.startsWith('//')) {
+      const parts = normalized.slice(2).split('/');
+      const authority = parts.shift();
+      if (authority) return new Uri('file', authority, '/' + parts.join('/'), '', '');
+    }
     return new Uri('file', '', normalized, '', '');
   }
   static parse(value) {
