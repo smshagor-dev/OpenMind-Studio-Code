@@ -245,19 +245,32 @@ class Diagnostic {
 }
 
 class MarkdownString {
-  constructor(value = '') {
-    this.value = value;
+  constructor(value = '', supportThemeIcons = false) {
+    this.value = String(value);
+    this.isTrusted = false;
+    this.supportHtml = false;
+    this.supportThemeIcons = !!supportThemeIcons;
+    this.baseUri = undefined;
   }
   appendText(text) {
-    this.value += text;
+    // Text is literal: escape Markdown punctuation and prevent injecting links.
+    const punctuation = new Set([92, 96, 42, 95, 123, 125, 91, 93, 40, 41, 35, 43, 45, 46, 33, 62, 124]);
+    this.value += [...String(text)].map((char) =>
+      punctuation.has(char.charCodeAt(0)) ? String.fromCharCode(92) + char : char
+    ).join('');
     return this;
   }
   appendMarkdown(text) {
-    this.value += text;
+    this.value += String(text);
     return this;
   }
   appendCodeblock(code, language = '') {
-    this.value += `\n\`\`\`${language}\n${code}\n\`\`\`\n`;
+    const raw = String(code);
+    const fences = raw.match(/`+/g) || [];
+    const size = Math.max(3, ...fences.map((fence) => fence.length + 1));
+    const fence = '`'.repeat(size);
+    const safeLanguage = String(language).replace(/[^a-zA-Z0-9_+#-]/g, '');
+    this.value += '\n' + fence + safeLanguage + '\n' + raw + '\n' + fence + '\n';
     return this;
   }
 }
