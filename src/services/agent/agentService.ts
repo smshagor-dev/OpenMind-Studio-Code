@@ -589,23 +589,12 @@ export class AgentService {
         mode === "plan"
       )
         this.set({ mode });
-      if (model) this.set({ modelId: model });
+      // Migrate any former Cloud selection to the local model catalog.
+      if (model && !this.isCloudModel(model)) this.set({ modelId: model });
       // Always open a fresh conversation on editor startup. Previous chats
       // remain in History and can be opened explicitly by the user.
       this.savedActiveId = null;
       void this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, "").catch(() => undefined);
-      // Before the local-catalog fallback below runs, so a restored OpenMindAI Cloud selection is
-      // recognized as a cloud model and never silently swapped back to a local one.
-      // A downloaded local model must never wait for Cloud settings during startup.
-      // Preserve an explicitly selected Cloud model, but load Cloud status only
-      // when that path is actually selected. Users can switch later.
-      const savedCloudSelection =
-        model === "openmindai-lite" ||
-        model === "openmindai-super" ||
-        model === "openmindai-ultra";
-      if (savedCloudSelection) {
-        await this.loadCloudStatus();
-      }
       await this.refresh();
       await this.activate();
     } catch {
@@ -727,8 +716,9 @@ export class AgentService {
 
   async selectModel(id: string): Promise<void> {
     if (this.warming || this.state.transcript.busy) return;
-    if (this.isCloudModel(id)) this.lastCloudModelId = id;
-    else this.lastLocalModelId = id;
+    // The coding assistant only accepts installed/catalogued local models.
+    if (this.isCloudModel(id)) return;
+    this.lastLocalModelId = id;
     this.set({ modelId: id });
     await this.host.settingSet(MODEL_KEY, id).catch(() => undefined);
     await this.activate();
@@ -736,40 +726,15 @@ export class AgentService {
 
   /** `"local"` or `"cloud"`, whichever the current selection actually is. */
   inferenceMode(): "local" | "cloud" {
-    return this.isCloudModel(this.state.modelId) ? "cloud" : "local";
+    return "local";
   }
 
   /** Switches between the local engine and OpenMindAI Cloud, remembering each side's last model so going
    * back and forth within a session loses nothing. A no-op when the target side has nothing to select yet
    * (no downloaded local model, or no cloud model the last test reported available) — the UI disables that
    * option in that case rather than silently doing nothing. */
-  async toggleInference(mode: "local" | "cloud"): Promise<void> {
-    if (mode === this.inferenceMode()) return;
-    if (mode === "cloud") {
-      // Prefer a model the last connection test reported available; fall back to any published
-      // cloud model (even with no key yet) so the switch always takes effect -- ready()/sendBlocker()
-      // already explain separately why Send itself may still be unavailable (no key, not tested).
-      const id =
-        this.lastCloudModelId ??
-        this.state.cloud?.models.find((m) => m.available)?.id ??
-        this.state.cloud?.models[0]?.id ??
-        null;
-      if (id) await this.selectModel(id);
-      return;
-    }
-    const models = this.state.overview?.models ?? [];
-    const downloaded = models.filter((m) => m.local.state === "ready");
-    // Prefer a downloaded model; fall back to any catalog entry (not yet downloaded) so the switch
-    // always takes effect instead of silently doing nothing -- the Setup page's own download flow,
-    // not this toggle, is where "nothing downloaded yet" gets resolved.
-    const id =
-      this.lastLocalModelId ??
-      downloaded.find((m) => m.id === this.state.overview?.recommended)?.id ??
-      downloaded[0]?.id ??
-      models.find((m) => m.id === this.state.overview?.recommended)?.id ??
-      models[0]?.id ??
-      null;
-    if (id) await this.selectModel(id);
+  async toggleInference(_mode: "local" | "cloud"): Promise<void> {
+    // Cloud providers are configured and used in AI Providers, not the local coding assistant.
   }
 
   async setMode(mode: AgentMode): Promise<void> {
