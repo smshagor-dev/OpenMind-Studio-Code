@@ -174,7 +174,7 @@ function activate(context) {
     return {
       trusted: markdown.isTrusted,
       html: markdown.supportHtml,
-      escaped: markdown.value.startsWith('\\\\[unsafe\\\\]'),
+      escaped: markdown.value.startsWith(String.fromCharCode(92) + '[unsafe' + String.fromCharCode(92) + ']'),
       codeFence: markdown.value.includes('````js'),
     };
   });
