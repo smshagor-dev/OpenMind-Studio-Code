@@ -254,11 +254,25 @@ const handlers = {
   },
 };
 
-async function activate(params) {
+async function activate(params, chain = []) {
   {
     const descriptor = state.extensions.get(params.id);
     if (!descriptor) throw new Error(`Extension '${params.id}' is not known to the extension host.`);
+    if (chain.includes(params.id)) {
+      throw new Error(`Circular extension dependency: ${[...chain, params.id].join(' -> ')}`);
+    }
     if (state.running.has(params.id)) return { activated: false };
+    // VS Code's extensionDependencies must be present and activated first. A warning
+    // in the extension list alone is insufficient: activation would otherwise fail
+    // later with an opaque missing command/API error.
+    const dependencies = descriptor.manifest && descriptor.manifest.extensionDependencies || [];
+    for (const name of dependencies) {
+      const dependencyId = String(name).toLowerCase();
+      const dependency = state.extensions.get(dependencyId);
+      if (!dependency) throw new Error(`Extension '${params.id}' requires '${name}', which is not enabled or installed.`);
+      if (!dependency.main) throw new Error(`Extension '${params.id}' requires '${name}', which has no runnable entry point.`);
+      await activate({ id: dependencyId }, [...chain, params.id]);
+    }
     if (!descriptor.main) return { activated: false, note: 'This extension has no code to run.' };
     const mainFile = path.resolve(descriptor.path, descriptor.main);
     const file = fs.existsSync(mainFile) || path.extname(mainFile) ? mainFile : `${mainFile}.js`;
