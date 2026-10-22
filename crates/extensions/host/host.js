@@ -157,9 +157,13 @@ function guardGlobals() {
 guardGlobals();
 
 function insideExtension(descriptor, file) {
-  const root = path.resolve(descriptor.path);
-  const resolved = path.resolve(file);
-  return resolved === root || resolved.startsWith(root + path.sep);
+  // A junction or symlink may escape the installed extension directory even
+  // when the lexical path looks safe. Resolve both locations before activating.
+  const root = fs.realpathSync(descriptor.path);
+  const resolved = fs.realpathSync(file);
+  const relative = path.relative(root, resolved);
+  return relative !== '' && relative !== '..' &&
+    !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
 
 function memento(file) {
@@ -287,8 +291,8 @@ async function activate(params) {
         await run.module.activate(context);
       }
     } catch (error) {
-      cleanup(run);
-      state.running.delete(descriptor.id);
+      // Also unregister commands/providers created before activation failed.
+      await deactivate(descriptor.id);
       const message = error && error.message ? error.message : String(error);
       log(descriptor.id, 'error', `Activation failed: ${error && error.stack ? error.stack : message}`);
       throw new Error(`Activating ${descriptor.id} failed: ${message}`);
