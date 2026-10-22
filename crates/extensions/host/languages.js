@@ -74,7 +74,7 @@ function createLanguagesApi(parts) {
     if (scheme !== '*' && scheme !== doc.uri.scheme) return 0;
     // Complex glob patterns are deliberately not claimed supported by this score helper.
     if (entry.pattern !== undefined) return 0;
-    return language === '*' || scheme === '*' ? 5 : 10;
+    return language === '*' ? 5 : 10;
   }
 
   return namespace('languages', {
