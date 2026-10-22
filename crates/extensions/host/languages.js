@@ -80,7 +80,7 @@ function createLanguagesApi(parts) {
       if (typeof pattern !== 'string' || !pattern) return 0;
       // Uri.file() represents Windows drive paths as /C:/...; RelativePattern
       // may receive C:/... from the VS Code user profile. Normalize both.
-      const normalizedPath = (value) => String(value).replace(/\\/g, '/').replace(/^\\/([A-Za-z]:\\/)/, '$1');
+      const normalizedPath = (value) => String(value).replace(/\\/g, '/').replace(/^\/([A-Za-z]:\/)/, '$1');
       const uriPath = normalizedPath(doc.uri.fsPath || doc.uri.path || '');
       let candidate = uriPath;
       if (typeof entry.pattern === 'object' && entry.pattern.base) {
