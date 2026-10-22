@@ -556,3 +556,18 @@ fn language_selector_matching_uses_vscode_style_scores() {
     assert_eq!(result["relative"], 10);
     fixture.host.stop();
 }
+
+#[test]
+fn language_tooling_value_types_are_available_to_extensions() {
+    let Some(fixture) = setup() else { return; };
+    let values = run(&fixture, "sampleV2.languageValues", json!([]));
+    assert_eq!(values["action"], "Apply correction");
+    assert_eq!(values["quickfixContains"], true);
+    assert_eq!(values["sourceVsRefactor"], false);
+    assert_eq!(values["lensResolved"], true);
+    assert_eq!(values["linkTarget"], "https");
+    assert_eq!(values["childKind"], 11);
+    assert_eq!(values["foldingKind"], "region");
+    assert_eq!(values["signatureParameters"], 1);
+    fixture.host.stop();
+}
