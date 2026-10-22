@@ -214,6 +214,13 @@ const handlers = {
     return { ok: true };
   },
 
+  'host/unregister': async (params) => {
+    await deactivate(params.id);
+    state.extensions.delete(params.id);
+    guards.delete(params.id);
+    return { ok: true };
+  },
+
   'host/activate': (params) => als.run(params.id, () => activate(params)),
 
   'host/deactivate': async (params) => deactivate(params.id),
