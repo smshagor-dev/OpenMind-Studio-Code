@@ -1,4 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
+import { agent } from "../../services/agent";
+import { CloudSetup } from "../agent/AgentSetup";
 
 import { container } from "../../services/container";
 import { PROVIDER_KIND_LABELS, type AiProviderView } from "../../services/ai/aiProviderService";
@@ -174,6 +176,7 @@ export function ProviderList() {
     (listener) => container.ai.providers.subscribe(listener),
     () => container.ai.providers.getVersion(),
   );
+  const cloudState = useSyncExternalStore((listener) => agent.subscribe(listener), () => agent.getState());
   const [deleting, setDeleting] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const providers = container.ai.providers.all();
@@ -192,6 +195,11 @@ export function ProviderList() {
           ))}
         </ul>
       )}
+      <section className="ai-provider" aria-label="OpenMindAI Cloud" style={{ marginTop: 16, padding: 16 }}>
+        <h3>OpenMindAI Cloud</h3>
+        <p className="ai-intro">Cloud API connection, encrypted developer key, connection test and available models. Local AI remains independent.</p>
+        <CloudSetup cloud={cloudState.cloud} modelId={cloudState.modelId} />
+      </section>
       <ListButtons
         onClear={() => {
           setClearing(true);

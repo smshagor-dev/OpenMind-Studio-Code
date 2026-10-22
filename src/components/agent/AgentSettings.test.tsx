@@ -78,7 +78,7 @@ describe("automatic inference settings", () => {
   it("does not expose technical tuning controls for Local AI", () => {
     harness.state.modelId = "local";
     render(<AgentSettings />);
-    expect(screen.getByRole("tablist", { name: "agent.inference.title" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist", { name: "agent.inference.title" })).not.toBeInTheDocument();
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "agent.settings.apply" })).not.toBeInTheDocument();
   });
