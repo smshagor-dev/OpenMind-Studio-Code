@@ -218,6 +218,7 @@ const handlers = {
     // Do not reuse a guard built for an earlier version of its descriptor.
     guards.delete(params.extension.id);
     state.extensions.set(params.extension.id, params.extension);
+    events.fire('extensions', undefined);
     return { ok: true };
   },
 
@@ -225,6 +226,7 @@ const handlers = {
     await deactivate(params.id);
     state.extensions.delete(params.id);
     guards.delete(params.id);
+    events.fire('extensions', undefined);
     return { ok: true };
   },
 
