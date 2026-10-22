@@ -58,6 +58,13 @@ fn describe(
     enabled: bool,
 ) -> InstalledExtension {
     let mut warnings = Vec::new();
+    if !crate::manifest::engine_compatible(&manifest) {
+        warnings.push(format!(
+            "Requires VS Code engine {}, but OpenMind Studio currently exposes a {} API subset.",
+            manifest.engines_vscode.as_deref().unwrap_or("unknown"),
+            crate::manifest::EXTENSION_API_VERSION
+        ));
+    }
     if manifest.activation_events.contains(&ActivationEvent::Star) {
         warnings
             .push("Activates at every start-up (\"*\"), which can slow the app down.".to_string());
