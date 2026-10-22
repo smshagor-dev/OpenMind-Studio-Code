@@ -13,7 +13,7 @@ fn changed(app: &AppHandle) {
 }
 
 /// Asks the host to deactivate an extension (best effort: a host that is gone has nothing to deactivate).
-async fn deactivate_in_host(state: &AppState, id: &str) {
+pub(crate) async fn deactivate_in_host(state: &AppState, id: &str) {
     let Some(host) = state.extensions.running_host() else {
         return;
     };
