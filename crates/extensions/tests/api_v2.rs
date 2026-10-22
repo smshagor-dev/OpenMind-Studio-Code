@@ -631,5 +631,6 @@ fn vscode_file_uri_decodes_query_and_unc_network_share() {
     assert_eq!(result["shareAuthority"], "server");
     assert_eq!(result["sharePath"], "/share/hello.ts");
     assert_eq!(result["shareFsPath"], "//server/share/hello.ts");
+    assert_eq!(result["escapedPath"], true);
     fixture.host.stop();
 }
