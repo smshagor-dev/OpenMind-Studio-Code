@@ -308,6 +308,27 @@ pub fn profile_import_vscode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vscode_jsonc_import_keeps_strings_and_removes_comments_and_trailing_commas() {
+        let value = parse_vscode_jsonc(
+            r#"{ // editor preference
+                "editor.fontSize": 16,
+                "editor.fontFamily": "https://example.com//not-a-comment",
+                /* supported VS Code JSONC syntax */
+                "editor.insertSpaces": true,
+            }"#,
+        ).expect("valid JSONC");
+        assert_eq!(value["editor.fontSize"], 16);
+        assert_eq!(value["editor.fontFamily"], "https://example.com//not-a-comment");
+        assert_eq!(value["editor.insertSpaces"], true);
+    }
+
+    #[test]
+    fn vscode_jsonc_rejects_unterminated_comments() {
+        assert!(parse_vscode_jsonc(r#"{"a": 1, /* comment"#).is_err());
+    }
+
     use openmind_settings::Extras;
     use serde_json::json;
 
