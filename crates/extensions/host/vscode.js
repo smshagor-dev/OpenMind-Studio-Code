@@ -66,24 +66,35 @@ class Disposable {
 class EventEmitter {
   constructor() {
     this._listeners = new Set();
+    this._disposed = false;
     this.event = (listener, thisArg, disposables) => {
-      const bound = thisArg ? listener.bind(thisArg) : listener;
-      this._listeners.add(bound);
-      const disposable = new Disposable(() => this._listeners.delete(bound));
+      if (typeof listener !== 'function') throw new TypeError('Event listener must be a function');
+      if (this._disposed) return new Disposable(() => {});
+      const subscription = { listener, thisArg, active: true };
+      this._listeners.add(subscription);
+      const disposable = new Disposable(() => {
+        subscription.active = false;
+        this._listeners.delete(subscription);
+      });
       if (Array.isArray(disposables)) disposables.push(disposable);
       return disposable;
     };
   }
   fire(data) {
-    for (const listener of [...this._listeners]) {
+    if (this._disposed) return;
+    for (const subscription of [...this._listeners]) {
+      if (!subscription.active) continue;
       try {
-        listener(data);
+        subscription.listener.call(subscription.thisArg, data);
       } catch (error) {
         console.error(`Error in an event listener: ${error && error.stack ? error.stack : error}`);
       }
     }
   }
   dispose() {
+    if (this._disposed) return;
+    this._disposed = true;
+    for (const subscription of this._listeners) subscription.active = false;
     this._listeners.clear();
   }
 }
