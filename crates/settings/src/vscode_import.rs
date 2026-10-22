@@ -187,6 +187,41 @@ fn read_jsonc(path: &Path) -> Result<Option<Value>, String> {
     }
 }
 
+/// Read safe VS Code snippet files as normalized JSON. Source files are
+/// never changed or executed, and links outside the profile are refused.
+pub fn snippet_contents(edition: &str, profile: &str) -> Result<Vec<(String, String)>, String> {
+    let root = source_path(edition, profile)?;
+    let folder = root.join("snippets");
+    if !folder.exists() { return Ok(Vec::new()); }
+    let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
+    let canonical_folder = folder.canonicalize().map_err(|e| e.to_string())?;
+    if !canonical_folder.starts_with(&canonical_root) || canonical_folder == canonical_root {
+        return Err("Snippets folder escapes its VS Code profile.".into());
+    }
+    let mut result = Vec::new();
+    let entries = fs::read_dir(&folder).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.len() > 100 || !name.bytes().all(|ch| ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'-' || ch == b'.') {
+            continue;
+        }
+        if !(name.ends_with(".json") || name.ends_with(".code-snippets")) {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(entry.path()).map_err(|e| e.to_string())?;
+        if !metadata.is_file() || metadata.file_type().is_symlink() { continue; }
+        let canonical = entry.path().canonicalize().map_err(|e| e.to_string())?;
+        if !canonical.starts_with(&canonical_folder) { continue; }
+        if let Some(Value::Object(map)) = read_jsonc(&canonical)? {
+            let text = serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?;
+            result.push((name, text));
+        }
+    }
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
+}
+
 pub fn inspect(edition: &str, profile: &str, extras: &Extras) -> Result<Preview, String> {
     let folder = source_path(edition, profile)?;
     if !sources().iter().any(|s| s.edition == edition && s.profile == profile) {
