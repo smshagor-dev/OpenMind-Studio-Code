@@ -598,3 +598,12 @@ fn vscode_markdown_literal_text_is_escaped_and_code_fences_are_safe() {
     assert_eq!(result["codeFence"], true);
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_cancellation_token_notifies_only_once() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.cancellationToken", json!([]));
+    assert_eq!(result["events"], 1);
+    assert_eq!(result["cancelled"], true);
+    fixture.host.stop();
+}
