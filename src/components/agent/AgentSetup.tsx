@@ -121,9 +121,8 @@ const CLOUD_KEY_SIGNUP_URL = "https://chat.openmindai.org";
  * near-identical cards (same description, same "Runs on OpenMindAI Cloud" text) with their own "Use"
  * button each, as if they were three separate downloads like the local editions — they are not: a single
  * key enables all of them server-side, so the model is one dropdown, not three cards. */
-export function CloudSetup({ cloud, modelId }: { cloud: CloudStatus | null | undefined; modelId: string | null }) {
+export function CloudSetup({ cloud }: { cloud: CloudStatus | null | undefined; modelId?: string | null }) {
   const t = useT();
-  const switching = agent.getState().engineState === "loading" || agent.getState().transcript.busy;
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +132,6 @@ export function CloudSetup({ cloud, modelId }: { cloud: CloudStatus | null | und
   // null = nothing picked by hand yet -- the dropdown shows a derived default instead (below), so the
   // default follows a changing `cloud`/`modelId` live without a setState-in-an-effect anti-pattern; once
   // the user picks something by hand it sticks for the rest of this session.
-  const [pickedModelId, setPickedModelId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -146,16 +144,6 @@ export function CloudSetup({ cloud, modelId }: { cloud: CloudStatus | null | und
   }, []);
 
   if (!cloud) return <p className="agent-model__progress-text">{t("agent.loading")}</p>;
-
-  // The currently active cloud model if there is one, else the one the last connection test reported
-  // available, else the first -- same fallback order as toggleInference()'s own cloud branch.
-  const defaultModelId = cloud.models.find((m) => m.id === modelId)?.id
-    ?? cloud.models.find((m) => m.available)?.id
-    ?? cloud.models[0]?.id
-    ?? "";
-  const selectedModelId = pickedModelId ?? defaultModelId;
-  const selectedModel = cloud.models.find((m) => m.id === selectedModelId) ?? null;
-  const inUse = selectedModelId !== "" && selectedModelId === modelId;
 
   return (
     <fieldset className="agent-cloud-settings">
@@ -226,56 +214,35 @@ export function CloudSetup({ cloud, modelId }: { cloud: CloudStatus | null | und
         </button>
       </div>
       {error ? <p className="agent-notice agent-notice--error" role="alert">{error}</p> : null}
-      <label className="agent-cloud-settings__key-row">
-        <span>{t("agent.cloud.setup.modelLabel")}</span>
-        <select value={selectedModelId} onChange={(event) => { setPickedModelId(event.target.value); }}>
+      <div className="agent-cloud-settings__models">
+        <strong>{t("agent.cloud.setup.modelLabel")}</strong>
+        <ul>
           {cloud.models.map((model) => (
-            <option key={model.id} value={model.id}>{model.name}</option>
+            <li key={model.id}>{model.name} — {model.available ? "Available" : "Not confirmed"}</li>
           ))}
-        </select>
-      </label>
-      {selectedModel && !selectedModel.available ? (
-        <p className="agent-model__progress-text">{t("agent.cloud.setup.notConfirmed")}</p>
-      ) : null}
-      <div className="agent-model__actions">
-        <button type="button" className="button button--primary" disabled={!selectedModelId || inUse || switching || !cloud.hasKey}
-          onClick={() => { if (selectedModelId) void agent.selectModel(selectedModelId); }}>
-          {inUse ? t("agent.model.inUse") : t("agent.model.use")}
-        </button>
+        </ul>
+        <p className="agent-model__progress-text">
+          OpenMindAI Cloud models are managed separately from the local coding assistant.
+        </p>
       </div>
     </fieldset>
   );
 }
 
-export function AgentSetup({ overview, downloads, modelId, installing, cloud }: {
+export function AgentSetup({ overview, downloads, modelId, installing }: {
   overview: AgentOverview; downloads: Record<string, DownloadState>; modelId: string | null; installing: boolean;
   cloud?: CloudStatus | null;
 }) {
   const t = useT();
-  const [tab, setTab] = useState<"offline" | "online">(agent.inferenceMode() === "cloud" ? "online" : "offline");
   return (
     <div className="agent-setup">
-      <p className="agent-model__progress-text">{t("agent.setup.hardware", { ram: formatBytes(overview.hardware.totalRamBytes), threads: overview.hardware.cpuThreads, disk: overview.freeDiskBytes === null ? "—" : formatBytes(overview.freeDiskBytes) })}</p>
-      <p className="agent-setup__subtitle">{t("agent.ui.setupSubtitle")}</p>
-      <div className="agent-setup-tabs" role="tablist" aria-label={t("agent.inference.title")}>
-        <button type="button" role="tab" className="agent-setup-tab" aria-selected={tab === "offline"}
-          onClick={() => { setTab("offline"); }}>
-          {t("agent.inference.tabOffline")}
-        </button>
-        <button type="button" role="tab" className="agent-setup-tab" aria-selected={tab === "online"}
-          onClick={() => { setTab("online"); }}>
-          {t("agent.inference.tabOnline")}
-        </button>
-      </div>
-      {tab === "offline" ? (
-        <div role="tabpanel">
-          <LocalSection overview={overview} downloads={downloads} modelId={modelId} installing={installing} />
-        </div>
-      ) : (
-        <div role="tabpanel">
-          <CloudSetup cloud={cloud} modelId={modelId} />
-        </div>
-      )}
+      <p className="agent-model__progress-text">
+        {t("agent.setup.hardware", { ram: formatBytes(overview.hardware.totalRamBytes),
+          threads: overview.hardware.cpuThreads,
+          disk: overview.freeDiskBytes === null ? "—" : formatBytes(overview.freeDiskBytes) })}
+      </p>
+      <p className="agent-setup__subtitle">Local AI runs entirely on this computer.</p>
+      <LocalSection overview={overview} downloads={downloads} modelId={modelId} installing={installing} />
       <p className="agent-setup__privacy">{t("agent.ui.privacy")}</p>
     </div>
   );
