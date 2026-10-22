@@ -167,6 +167,26 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.diagnosticTags', () => {
+    const collection = vscode.languages.createDiagnosticCollection('sampleV2-tagged');
+    const diag = new vscode.Diagnostic(new vscode.Range(0, 0, 0, 4), 'unused variable');
+    diag.tags = [vscode.DiagnosticTag.Unnecessary, vscode.DiagnosticTag.Deprecated, 900];
+    diag.relatedInformation = [
+      new vscode.DiagnosticRelatedInformation(
+        new vscode.Location(vscode.Uri.file('C:/workspace/test.ts'), diag.range), 'declared here',
+      ),
+    ];
+    collection.set(vscode.Uri.file('C:/workspace/test.ts'), [diag]);
+    const result = {
+      first: diag.tags[0],
+      second: diag.tags[1],
+      related: diag.relatedInformation[0].message,
+      trigger: vscode.CompletionTriggerKind.Invoke,
+      actionTrigger: vscode.CodeActionTriggerKind.Automatic,
+    };
+    collection.dispose();
+    return result;
+  });
   reg('sampleV2.diagnosticCollection', () => {
     const collection = vscode.languages.createDiagnosticCollection('sampleV2-check');
     const uri = vscode.Uri.file('C:/workspace/example.ts');
