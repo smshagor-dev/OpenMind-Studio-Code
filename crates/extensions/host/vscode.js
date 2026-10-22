@@ -502,6 +502,25 @@ class SignatureHelp {
   }
 }
 
+class CancellationError extends Error {
+  constructor() {
+    super('Canceled');
+    this.name = 'Canceled';
+  }
+}
+
+const CancellationToken = Object.freeze({
+  None: Object.freeze({ isCancellationRequested: false, onCancellationRequested: () => new Disposable(() => {}) }),
+  Cancelled: Object.freeze({
+    isCancellationRequested: true,
+    onCancellationRequested: (listener, thisArg) => {
+      // An already cancelled token notifies its listener asynchronously.
+      queueMicrotask(() => listener.call(thisArg));
+      return new Disposable(() => {});
+    },
+  }),
+});
+
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
 const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 };
 
@@ -854,6 +873,8 @@ function createApi(host, ext) {
     SignatureHelp,
     SnippetString,
     CancellationTokenSource,
+    CancellationToken,
+    CancellationError,
     ConfigurationTarget,
     ViewColumn,
     EndOfLine,
