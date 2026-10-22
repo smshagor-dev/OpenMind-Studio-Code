@@ -167,6 +167,20 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.diagnosticCollection', () => {
+    const collection = vscode.languages.createDiagnosticCollection('sampleV2-check');
+    const uri = vscode.Uri.file('C:/workspace/example.ts');
+    collection.set(uri, [new vscode.Diagnostic(new vscode.Range(0, 0, 0, 4), 'sample')]);
+    let received = null;
+    const receiver = { hits: 0 };
+    collection.forEach(function (item, diagnostics, owner) {
+      this.hits += 1;
+      received = { scheme: item.scheme, count: diagnostics.length, same: owner === collection };
+    }, receiver);
+    const present = collection.has(uri);
+    collection.dispose();
+    return { received, hits: receiver.hits, present, removed: collection.has(uri) === false };
+  });
   reg('sampleV2.cancellationToken', () => {
     const source = new vscode.CancellationTokenSource();
     let events = 0;
