@@ -348,12 +348,17 @@ class CancellationTokenSource {
     const emitter = new EventEmitter();
     this.token = { isCancellationRequested: false, onCancellationRequested: emitter.event };
     this._emitter = emitter;
+    this._disposed = false;
   }
   cancel() {
+    if (this.token.isCancellationRequested) return;
     this.token.isCancellationRequested = true;
     this._emitter.fire();
   }
-  dispose() {
+  dispose(cancel = false) {
+    if (this._disposed) return;
+    if (cancel) this.cancel();
+    this._disposed = true;
     this._emitter.dispose();
   }
 }
