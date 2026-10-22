@@ -1075,8 +1075,9 @@ export class AgentService {
       return false;
     }
     this.conversation.workspace = task.workspace;
+    const quickConversation = this.isQuickConversation(task.text, task.attachments ?? [], task.mode) && this.state.goal?.state !== "active";
     try {
-      await this.connectSavedMcp();
+      if (!quickConversation) await this.connectSavedMcp();
     } catch (error) {
       this.host.notify(String(error));
       return false;
@@ -1098,7 +1099,7 @@ export class AgentService {
             ]
           : [],
       )
-      .slice(-80);
+      .slice(quickConversation ? -4 : -80);
     let transcript = addUser(this.state.transcript, task.text, this.now());
     for (const item of task.attachments ?? []) {
       if (item.data)
@@ -1139,13 +1140,13 @@ export class AgentService {
         mode: task.mode,
         taskId: task.id,
         activeFile:
-          this.state.includeActiveFile === false ? null : (this.state.activeFile ?? null),
+          quickConversation || this.state.includeActiveFile === false ? null : (this.state.activeFile ?? null),
         attachments: task.attachments ?? [],
         conversationId: this.conversation.id,
         history,
         options: task.options,
         workspace: task.workspace,
-        unsaved: this.host.unsavedPaths(),
+        unsaved: quickConversation ? [] : this.host.unsavedPaths(),
         uiLanguage: this.host.uiLanguage(),
       });
       return true;
