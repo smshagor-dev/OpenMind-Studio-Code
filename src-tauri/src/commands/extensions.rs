@@ -322,6 +322,22 @@ pub async fn ext_install(
     state: State<'_, AppState>,
 ) -> Result<InstalledExtension, String> {
     let path = PathBuf::from(path);
+    // Running Node modules are cached by the extension host. Stop the old code
+    // before replacing files, otherwise an update appears installed while old
+    // commands and providers remain active in memory.
+    if replace {
+        let inspected = {
+            let path = path.clone();
+            tokio::task::spawn_blocking(move || vsix::inspect(&path))
+                .await
+                .map_err(|err| err.to_string())?
+                .map_err(|err| err.to_string())?
+        };
+        let id = inspected.manifest.id();
+        if state.extensions.store.find(&id).is_ok() {
+            crate::commands::extension_manage::deactivate_in_host(&state, &id).await;
+        }
+    }
     let extension = {
         let app = app.clone();
         tokio::task::spawn_blocking(move || {
