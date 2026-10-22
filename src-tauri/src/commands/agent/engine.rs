@@ -311,7 +311,11 @@ fn automatic_context_tokens(
     } else {
         8_192
     };
-    if hardware.available_ram_bytes > 0
+    if hardware.total_ram_bytes > 0 && hardware.total_ram_bytes <= 9 * GIB && gpu_room < 2 * GIB {
+        // Keep the local engine responsive on 8 GB machines with CPU-bound inference.
+        // Larger requests still use the existing compaction and context-fit safeguards.
+        limit = limit.min(4_096);
+    } else if hardware.available_ram_bytes > 0
         && hardware.available_ram_bytes < 2 * GIB
         && gpu_room < 2 * GIB
     {
