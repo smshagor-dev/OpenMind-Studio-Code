@@ -578,6 +578,8 @@ function createApi(host, ext) {
     return extension;
   };
   const extensions = namespace('extensions', {
+    onDidChange: (listener, thisArg, disposables) =>
+      track(host.events.on('extensions')(asExtension(listener), thisArg, disposables)),
     getExtension(id) {
       const normalized = String(id).toLowerCase();
       const found = state.extensions.get(normalized) ||
