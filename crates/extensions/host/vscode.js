@@ -298,6 +298,18 @@ class Diagnostic {
   }
 }
 
+// VS Code diagnostic metadata used by linter and refactoring extensions.
+const DiagnosticTag = Object.freeze({ Unnecessary: 1, Deprecated: 2 });
+class DiagnosticRelatedInformation {
+  constructor(location, message) {
+    this.location = location;
+    this.message = message;
+  }
+}
+const CompletionTriggerKind = Object.freeze({ Invoke: 0, TriggerCharacter: 1, TriggerForIncompleteCompletions: 2 });
+const CodeActionTriggerKind = Object.freeze({ Invoke: 1, Automatic: 2 });
+const SymbolTag = Object.freeze({ Deprecated: 1 });
+
 class MarkdownString {
   constructor(value = '', supportThemeIcons = false) {
     this.value = String(value);
@@ -882,6 +894,11 @@ function createApi(host, ext) {
     Location,
     Diagnostic,
     DiagnosticSeverity,
+    DiagnosticTag,
+    DiagnosticRelatedInformation,
+    CompletionTriggerKind,
+    CodeActionTriggerKind,
+    SymbolTag,
     MarkdownString,
     Hover,
     CompletionItem,
