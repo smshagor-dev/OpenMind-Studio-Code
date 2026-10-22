@@ -99,6 +99,20 @@ function VscodeImportPanel() {
     finally { setBusy(false); }
   };
 
+  const importProfile = async () => {
+    if (!selectedSource) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await invoke("vscode_import_profile", {
+        edition: selectedSource.edition, profile: selectedSource.profile,
+      });
+      await container.profiles.load();
+      setExtensionNotice("VS Code profile imported to OpenMind Profiles. Switch to it from the Profiles menu.");
+    } catch (failure) { setError(String(failure)); }
+    finally { setBusy(false); }
+  };
+
   const importExtension = async (folder: string) => {
     if (!selectedSource) return;
     setBusy(true);
@@ -152,7 +166,9 @@ function VscodeImportPanel() {
               </details> : null}
               {preview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
               <button type="button" className="prefs-json" disabled={busy || (!settings && !shortcuts)}
-                onClick={() => void apply()}>Import selected items</button>
+                onClick={() => void apply()}>Import selected items</button>{" "}
+              <button type="button" className="prefs-json" disabled={busy}
+                onClick={() => void importProfile()}>Save as an OpenMind profile</button>
             </div>
           ) : null}
           {extensionNotice ? <p role="status">{extensionNotice}</p> : null}
