@@ -579,3 +579,11 @@ fn vscode_snippet_builders_append_tabstops_and_placeholders() {
     assert_eq!(snippet, json!("start $1${2:name}"));
     fixture.host.stop();
 }
+
+#[test]
+fn vscode_snippet_builders_escape_literal_text_choices_and_variables() {
+    let Some(fixture) = setup() else { return; };
+    let value = run(&fixture, "sampleV2.snippetEscaping", json!([]));
+    assert_eq!(value, json!(r"price \$10\}${1|red\,blue,a\|b|}${TM_FILENAME:a\$b}"));
+    fixture.host.stop();
+}
