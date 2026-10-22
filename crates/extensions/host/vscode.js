@@ -514,9 +514,12 @@ const CancellationToken = Object.freeze({
   Cancelled: Object.freeze({
     isCancellationRequested: true,
     onCancellationRequested: (listener, thisArg) => {
-      // An already cancelled token notifies its listener asynchronously.
-      queueMicrotask(() => listener.call(thisArg));
-      return new Disposable(() => {});
+      // Already cancelled: notify asynchronously unless the subscription is disposed.
+      let disposed = false;
+      queueMicrotask(() => {
+        if (!disposed) listener.call(thisArg);
+      });
+      return new Disposable(() => { disposed = true; });
     },
   }),
 });
