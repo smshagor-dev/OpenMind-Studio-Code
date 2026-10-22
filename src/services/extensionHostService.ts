@@ -132,7 +132,7 @@ export class ExtensionHostService {
     const reason = status.error ?? "The extension host stopped unexpectedly.";
     this.log(`Extension host crashed: ${reason}`);
     this.deps.events.emit("appError", { message: `Extension host: ${reason}` });
-    if (Date.now() - this.startedAt > STABLE_MS) this.autoRestarts = 0;
+    if (this.startedAt > 0 && Date.now() - this.startedAt > STABLE_MS) this.autoRestarts = 0;
     if (!this.needsHost()) return;
     if (this.autoRestarts >= MAX_AUTO_RESTARTS) {
       this.log(
