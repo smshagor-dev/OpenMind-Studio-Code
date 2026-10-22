@@ -167,6 +167,15 @@ function activate(context) {
   let extensionChanges = 0;
   context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
   reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.cancellationToken', () => {
+    const source = new vscode.CancellationTokenSource();
+    let events = 0;
+    source.token.onCancellationRequested(() => { events += 1; });
+    source.cancel();
+    source.cancel();
+    source.dispose(true);
+    return { events, cancelled: source.token.isCancellationRequested };
+  });
   reg('sampleV2.markdownSafety', () => {
     const markdown = new vscode.MarkdownString();
     markdown.appendText('[unsafe](https://example.org)');
