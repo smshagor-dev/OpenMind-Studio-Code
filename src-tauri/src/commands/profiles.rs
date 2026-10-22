@@ -189,6 +189,72 @@ pub fn profile_import(text: String, state: State<'_, AppState>) -> Result<Profil
     Ok(store.summary())
 }
 
+/// An installed VS Code/Insiders profile found on this computer. Discovery is read-only.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VsCodeProfileSource {
+    pub id: String,
+    pub label: String,
+    pub settings_path: String,
+    pub keybindings_path: Option<String>,
+}
+
+/// Finds the current user's VS Code profiles (not portable installations at unknown locations).
+/// Never reads secrets, tokens, browser storage or extension state.
+fn vscode_profile_sources(appdata: &Path) -> Vec<VsCodeProfileSource> {
+    let mut profiles = Vec::new();
+    for (product, folder) in [("VS Code", "Code"), ("VS Code Insiders", "Code - Insiders")] {
+        let root = appdata.join(folder).join("User");
+        let mut candidates = vec![("default".to_string(), "Default".to_string(), root.clone())];
+        let profile_root = root.join("profiles");
+        if let Ok(entries) = std::fs::read_dir(profile_root) {
+            for entry in entries.flatten().take(100) {
+                let path = entry.path();
+                if !path.is_dir() || path.is_symlink() { continue; }
+                let id = entry.file_name().to_string_lossy().to_string();
+                candidates.push((id.clone(), format!("Profile {id}"), path));
+            }
+        }
+        for (id, name, path) in candidates {
+            let settings = path.join("settings.json");
+            if !settings.is_file() { continue; }
+            let bindings = path.join("keybindings.json");
+            profiles.push(VsCodeProfileSource {
+                id: format!("{folder}:{id}"),
+                label: format!("{product} — {name}"),
+                settings_path: settings.to_string_lossy().into_owned(),
+                keybindings_path: bindings.is_file().then(|| bindings.to_string_lossy().into_owned()),
+            });
+        }
+    }
+    profiles
+}
+
+#[tauri::command]
+pub fn profile_detect_vscode() -> Vec<VsCodeProfileSource> {
+    let Some(appdata) = std::env::var_os("APPDATA") else { return Vec::new() };
+    vscode_profile_sources(Path::new(&appdata))
+}
+
+/// Imports a discovered VS Code profile. Source selection is by discovered ID:
+/// callers cannot make this endpoint read arbitrary filesystem paths.
+#[tauri::command]
+pub fn profile_import_detected_vscode(
+    source_id: String,
+    state: State<'_, AppState>,
+) -> Result<ProfileList, String> {
+    let sources = profile_detect_vscode();
+    let source = sources.iter().find(|s| s.id == source_id)
+        .ok_or("The selected VS Code profile is no longer available.")?;
+    let settings = std::fs::read_to_string(&source.settings_path)
+        .map_err(|e| format!("Cannot read VS Code settings: {e}"))?;
+    let shortcuts = source.keybindings_path.as_ref()
+        .map(std::fs::read_to_string)
+        .transpose()
+        .map_err(|e| format!("Cannot read VS Code keybindings: {e}"))?;
+    import_vscode_profile(&source.label, &settings, shortcuts.as_deref(), &state)
+}
+
 /// VS Code writes JSON with comments and trailing commas. Preserve quoted strings,
 /// remove only comments outside strings, then remove trailing commas.
 fn parse_vscode_jsonc(text: &str) -> Result<Value, String> {
@@ -265,15 +331,24 @@ pub fn profile_import_vscode(
     keybindings_text: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<ProfileList, String> {
-    if settings_text.len() > 1024 * 1024 || keybindings_text.as_ref().is_some_and(|s| s.len() > 1024 * 1024) {
+    import_vscode_profile(&name, &settings_text, keybindings_text.as_deref(), &state)
+}
+
+fn import_vscode_profile(
+    name: &str,
+    settings_text: &str,
+    keybindings_text: Option<&str>,
+    state: &AppState,
+) -> Result<ProfileList, String> {
+    if settings_text.len() > 1024 * 1024 || keybindings_text.is_some_and(|s| s.len() > 1024 * 1024) {
         return Err("VS Code settings or keybindings file is too large.".into());
     }
-    let values: Value = parse_vscode_jsonc(&settings_text)
+    let values: Value = parse_vscode_jsonc(settings_text)
         .map_err(|e| format!("Could not parse VS Code settings.json: {e}"))?;
     let values = values.as_object().ok_or("VS Code settings must be a JSON object.")?;
     let shortcuts = match keybindings_text {
         Some(text) if !text.trim().is_empty() => {
-            let rows: Value = parse_vscode_jsonc(&text)
+            let rows: Value = parse_vscode_jsonc(text)
                 .map_err(|e| format!("Could not parse VS Code keybindings.json: {e}"))?;
             let rows = rows.as_array().ok_or("VS Code keybindings must be a JSON array.")?;
             let mut parsed = Vec::new();
@@ -290,7 +365,7 @@ pub fn profile_import_vscode(
         }
         _ => Vec::new(),
     };
-    let (store, file, keybindings) = store_for(&state)?;
+    let (store, file, keybindings) = store_for(state)?;
     list(&store, &file, &keybindings)?;
     let existing = store.summary();
     let base = profiles::clean_name(&name).map_err(|e| e.to_string())?;
