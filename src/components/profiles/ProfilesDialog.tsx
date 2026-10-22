@@ -182,7 +182,21 @@ export function ProfilesDialog() {
             {t("profiles.create")}
           </button>
         </div>
+        <p className="profile__meta">
+          Import VS Code: first select settings.json, then optionally select keybindings.json
+          (cancel the second dialog to skip shortcuts). A new profile is created without changing your current setup.
+          Only compatible preferences and shortcuts are retained; JSON files containing comments are not supported yet.
+        </p>
         <div className="modal__actions">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              void container.profiles.importFromVsCode();
+            }}
+          >
+            Import from VS Code
+          </button>
           <button
             type="button"
             disabled={busy}
