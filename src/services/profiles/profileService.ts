@@ -1,7 +1,7 @@
 import type { EventBus } from "../eventBus";
 import type { AppEvents } from "../events";
 import type { IpcClient } from "../ipc";
-import type { ProfileList, ProfileSummary } from "./profilesIpc";
+import type { ProfileList, ProfileSummary, VsCodeProfileSource } from "./profilesIpc";
 
 export interface ProfileState {
   list: ProfileList | null;
@@ -9,6 +9,7 @@ export interface ProfileState {
   busy: boolean;
   /** The Profiles window is open. */
   open: boolean;
+  vscodeProfiles: VsCodeProfileSource[];
 }
 
 /**
@@ -18,7 +19,7 @@ export interface ProfileState {
  * dialogs and never contain keys, passwords or local paths (the backend guarantees it).
  */
 export class ProfileService {
-  private state: ProfileState = { list: null, busy: false, open: false };
+  private state: ProfileState = { list: null, busy: false, open: false, vscodeProfiles: [] };
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -58,6 +59,20 @@ export class ProfileService {
   async openWindow(): Promise<void> {
     this.set({ open: true });
     await this.load();
+    await this.detectVsCodeProfiles();
+  }
+
+  async detectVsCodeProfiles(): Promise<void> {
+    try {
+      this.set({ vscodeProfiles: await this.ipc.profileDetectVscode() });
+    } catch (error) {
+      this.fail("detect VS Code profiles", error);
+      this.set({ vscodeProfiles: [] });
+    }
+  }
+
+  async importDetectedVsCode(sourceId: string): Promise<boolean> {
+    return this.run("import VS Code profile", () => this.ipc.profileImportDetectedVscode(sourceId));
   }
 
   closeWindow(): void {
