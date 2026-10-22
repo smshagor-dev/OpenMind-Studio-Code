@@ -230,6 +230,18 @@ function activate(context) {
       signatureParameters: signature.parameters.length,
     };
   });
+  reg('sampleV2.uriRoundtrip', () => {
+    const file = vscode.Uri.parse('file:///C:/My%20Files/hello.ts?mode=read%20only#anchor%20one');
+    const share = vscode.Uri.file('\\\\server\\share\\hello.ts');
+    return {
+      path: file.path,
+      query: file.query,
+      fragment: file.fragment,
+      shareAuthority: share.authority,
+      sharePath: share.path,
+      shareFsPath: share.fsPath.replaceAll(String.fromCharCode(92), '/'),
+    };
+  });
   reg('sampleV2.languageMatch', () => {
     const document = { languageId: 'typescript', uri: vscode.Uri.file('C:/workspace/index.ts') };
     return {
