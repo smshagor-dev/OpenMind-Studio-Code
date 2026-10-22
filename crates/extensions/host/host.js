@@ -106,7 +106,7 @@ const events = require('./vscode.js').createEventHub();
 host.events = events;
 host.activateExtension = async (id) => {
   await activate({ id });
-  return state.running.get(id)?.module?.exports;
+  return state.running.get(id)?.module;
 };
 
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
