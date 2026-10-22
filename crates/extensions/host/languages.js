@@ -64,7 +64,21 @@ function createLanguagesApi(parts) {
     (Array.isArray(result) ? result : []).filter((edit) => edit && edit.range).map((edit) => ({ range: rangeOut(edit.range), newText: String(edit.newText ?? '') }));
   const formattingOptions = (options) => ({ tabSize: (options && options.tabSize) || 4, insertSpaces: !options || options.insertSpaces !== false });
 
+  function matchSelector(selector, doc) {
+    if (Array.isArray(selector)) return Math.max(0, ...selector.map((part) => matchSelector(part, doc)));
+    if (!selector || !doc || !doc.uri) return 0;
+    const entry = typeof selector === 'string' ? { language: selector } : selector;
+    const language = entry.language || '*';
+    const scheme = entry.scheme || '*';
+    if (language !== '*' && language !== doc.languageId) return 0;
+    if (scheme !== '*' && scheme !== doc.uri.scheme) return 0;
+    // Complex glob patterns are deliberately not claimed supported by this score helper.
+    if (entry.pattern !== undefined) return 0;
+    return language === '*' || scheme === '*' ? 5 : 10;
+  }
+
   return namespace('languages', {
+    match: matchSelector,
     getLanguages: async () => request('workspace/getLanguages', {}),
     registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
       need('languages');
