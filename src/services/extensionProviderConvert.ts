@@ -142,6 +142,7 @@ export interface MarkerInput {
   endColumn: number;
   message: string;
   severity: number;
+  tags?: number[];
   source?: string;
   code?: string;
 }
@@ -151,6 +152,7 @@ export function toMarkers(
     range: HostRange;
     message: string;
     severity: number;
+    tags?: number[];
     source?: string;
     code?: string;
   }[],
@@ -159,6 +161,9 @@ export function toMarkers(
     ...toMonacoRange(diagnostic.range),
     message: diagnostic.message,
     severity: markerSeverity(diagnostic.severity),
+    ...(diagnostic.tags === undefined ? {} : {
+      tags: diagnostic.tags.filter((tag) => tag === 1 || tag === 2),
+    }),
     ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
     ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
   }));
