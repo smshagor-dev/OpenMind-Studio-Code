@@ -20,6 +20,13 @@ export interface ProfileList {
   covers: string[];
 }
 
+export interface VsCodeProfileSource {
+  id: string;
+  label: string;
+  settingsPath: string;
+  keybindingsPath: string | null;
+}
+
 export interface ProfilesIpc {
   profilesList: () => Promise<ProfileList>;
   profileCreate: (name: string, fromCurrent: boolean) => Promise<ProfileList>;
@@ -30,6 +37,8 @@ export interface ProfilesIpc {
   profileExport: (id: string) => Promise<string>;
   profileImport: (text: string) => Promise<ProfileList>;
   profileImportVscode: (name: string, settingsText: string, keybindingsText: string | null) => Promise<ProfileList>;
+  profileDetectVscode: () => Promise<VsCodeProfileSource[]>;
+  profileImportDetectedVscode: (sourceId: string) => Promise<ProfileList>;
 }
 
 export const tauriProfilesIpc: ProfilesIpc = {
@@ -42,6 +51,8 @@ export const tauriProfilesIpc: ProfilesIpc = {
   profileDelete: (id) => invoke<ProfileList>("profile_delete", { id }),
   profileExport: (id) => invoke<string>("profile_export", { id }),
   profileImport: (text) => invoke<ProfileList>("profile_import", { text }),
+  profileDetectVscode: () => invoke<VsCodeProfileSource[]>("profile_detect_vscode"),
+  profileImportDetectedVscode: (sourceId) => invoke<ProfileList>("profile_import_detected_vscode", { sourceId }),
   profileImportVscode: (name, settingsText, keybindingsText) =>
     invoke<ProfileList>("profile_import_vscode", { name, settingsText, keybindingsText }),
 };
