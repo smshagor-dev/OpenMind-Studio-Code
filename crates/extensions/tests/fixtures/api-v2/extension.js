@@ -181,6 +181,22 @@ function activate(context) {
     collection.dispose();
     return { received, hits: receiver.hits, present, removed: collection.has(uri) === false };
   });
+  reg('sampleV2.positionOverloads', () => {
+    const position = new vscode.Position(3, 4);
+    const changed = position.with({ character: 8 });
+    const moved = position.translate({ lineDelta: 2, characterDelta: 1 });
+    const range = new vscode.Range(position, moved);
+    const altered = range.with({ end: changed });
+    return {
+      original: position.character,
+      changed: changed.character,
+      movedLine: moved.line,
+      movedColumn: moved.character,
+      changedEnd: altered.end.character,
+      samePosition: position.with({}) === position,
+      sameRange: range.with({}) === range,
+    };
+  });
   reg('sampleV2.eventDisposal', () => {
     const emitter = new vscode.EventEmitter();
     const receiver = { count: 0 };
