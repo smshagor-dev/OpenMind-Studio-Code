@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import { container } from "../services/container";
 import type { SettingsIssue, SettingsScope } from "../services/ipc";
@@ -19,6 +20,130 @@ function IssueList({ issues, label }: { issues: SettingsIssue[]; label: string }
         </li>
       ))}
     </ul>
+  );
+}
+
+type VscodeSource = { edition: string; profile: string; label: string };
+type VscodePreview = {
+  settings: { id: string; value: unknown }[];
+  keybindings: { key: string; command: string }[];
+  extensions: string[];
+  snippets: string[];
+  skipped: string[];
+  warnings: string[];
+};
+type VscodeImportResult = {
+  settingsImported: number;
+  shortcutsImported: number;
+  settingsBackup: string | null;
+  shortcutsBackup: string | null;
+  skipped: string[];
+  warnings: string[];
+};
+
+/** Opt-in import: a source never runs external extensions and existing files are backed up. */
+function VscodeImportPanel() {
+  const [expanded, setExpanded] = useState(false);
+  const [sources, setSources] = useState<VscodeSource[]>([]);
+  const [selected, setSelected] = useState("");
+  const [preview, setPreview] = useState<VscodePreview | null>(null);
+  const [result, setResult] = useState<VscodeImportResult | null>(null);
+  const [settings, setSettings] = useState(true);
+  const [shortcuts, setShortcuts] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const choose = (source: VscodeSource) => source.edition + ":" + source.profile;
+  const selectedSource = sources.find((source) => choose(source) === selected);
+
+  const load = async () => {
+    setExpanded(true);
+    setBusy(true);
+    setError(null);
+    try {
+      const detected = await invoke<VscodeSource[]>("vscode_import_sources");
+      setSources(detected);
+      setSelected(detected[0] ? choose(detected[0]) : "");
+      setPreview(null);
+      setResult(null);
+    } catch (failure) {
+      setError(String(failure));
+    } finally { setBusy(false); }
+  };
+
+  const inspect = async () => {
+    if (!selectedSource) return;
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      setPreview(await invoke<VscodePreview>("vscode_import_preview", {
+        edition: selectedSource.edition, profile: selectedSource.profile,
+      }));
+    } catch (failure) { setError(String(failure)); }
+    finally { setBusy(false); }
+  };
+
+  const apply = async () => {
+    if (!selectedSource || !preview || (!settings && !shortcuts)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const applied = await invoke<VscodeImportResult>("vscode_import_apply", {
+        edition: selectedSource.edition, profile: selectedSource.profile,
+        importSettings: settings, importShortcuts: shortcuts,
+      });
+      setResult(applied);
+      await container.settings.reload();
+    } catch (failure) { setError(String(failure)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <section className="prefs-import" aria-label="Import settings from VS Code">
+      <button className="prefs-json" type="button" onClick={() => {
+        if (expanded) { setExpanded(false); } else { void load(); }
+      }}>
+        {expanded ? "Hide VS Code import" : "Import from VS Code"}
+      </button>
+      {expanded ? (
+        <div className="prefs-import__details">
+          <p>Import compatible settings and shortcuts from a local VS Code profile. Existing OpenMind files are backed up. Credentials and extensions are never executed or copied.</p>
+          {sources.length === 0 ? <p role="status">No VS Code user profiles detected on this computer.</p> : (
+            <>
+              <label htmlFor="vscode-import-source">VS Code profile </label>
+              <select id="vscode-import-source" value={selected} disabled={busy}
+                onChange={(event) => { setSelected(event.target.value); setPreview(null); setResult(null); }}>
+                {sources.map((source) => <option key={choose(source)} value={choose(source)}>{source.label}</option>)}
+              </select>
+              <button className="prefs-json" type="button" disabled={busy} onClick={() => void inspect()}>
+                Preview compatible items
+              </button>
+            </>
+          )}
+          {preview ? (
+            <div aria-live="polite">
+              <p>{preview.settings.length} supported settings · {preview.keybindings.length} shortcuts · {preview.snippets.length} snippet files · {preview.extensions.length} installed extensions found.</p>
+              <label><input type="checkbox" checked={settings} onChange={(event) => setSettings(event.target.checked)} /> Import compatible settings</label>{" "}
+              <label><input type="checkbox" checked={shortcuts} onChange={(event) => setShortcuts(event.target.checked)} /> Import unconditional shortcuts</label>
+              {preview.skipped.length > 0 ? <details><summary>{preview.skipped.length} unsupported or skipped settings and shortcuts</summary>
+                <ul>{preview.skipped.map((value, index) => <li key={value + index}>{value}</li>)}</ul>
+              </details> : null}
+              {preview.extensions.length > 0 ? <details><summary>Detected VS Code extensions (review required)</summary>
+                <ul>{preview.extensions.map((name) => <li key={name}>{name}</li>)}</ul>
+              </details> : null}
+              {preview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+              <button type="button" className="prefs-json" disabled={busy || (!settings && !shortcuts)}
+                onClick={() => void apply()}>Import selected items</button>
+            </div>
+          ) : null}
+          {result ? <p role="status">Imported {result.settingsImported} settings and {result.shortcutsImported} shortcuts.
+            {result.settingsBackup ? " Settings backup: " + result.settingsBackup + "." : ""}
+            {result.shortcutsBackup ? " Shortcuts backup: " + result.shortcutsBackup + "." : ""}
+          </p> : null}
+          {error ? <p role="alert" className="prefs-banner prefs-banner--error">{error}</p> : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -65,6 +190,7 @@ export function SettingsTab() {
     : (container.commands.reasonFor(jsonCommand) ?? t("common.notAvailable"));
   return (
     <div className="prefs-settings">
+      {scope === "user" ? <VscodeImportPanel /> : null}
       <div className="prefs-toolbar">
         <input
           type="search"
