@@ -550,5 +550,9 @@ fn language_selector_matching_uses_vscode_style_scores() {
     assert_eq!(result["exact"], 10);
     assert_eq!(result["wildcard"], 5);
     assert_eq!(result["mismatch"], 0);
+    assert_eq!(result["glob"], 10);
+    assert_eq!(result["brace"], 10);
+    assert_eq!(result["otherFile"], 0);
+    assert_eq!(result["relative"], 10);
     fixture.host.stop();
 }
