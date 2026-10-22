@@ -315,6 +315,22 @@ describe("AgentService", () => {
     });
   });
 
+  it("does not lose a model selection made while the engine is warming", async () => {
+    const { service, ipc } = setup([model("a", "ready"), model("b", "ready")]);
+    let finish!: (value: boolean) => void;
+    vi.mocked(ipc.startEngine).mockImplementationOnce(
+      () => new Promise<boolean>((resolve) => { finish = resolve; }),
+    );
+    const starting = service.start();
+    await vi.waitFor(() => { expect(ipc.startEngine).toHaveBeenCalledTimes(1); });
+    const selecting = service.selectModel("b");
+    finish(true);
+    await starting;
+    await selecting;
+    expect(service.getState().modelId).toBe("b");
+    expect(ipc.startEngine).toHaveBeenCalledTimes(2);
+  });
+
   it("remembers the chosen model and mode", async () => {
     const { service, settings } = setup([
       model("a", "ready"),
