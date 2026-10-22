@@ -511,3 +511,25 @@ pub(crate) async fn workspace_key_of(state: &AppState) -> Option<String> {
         .flatten()?;
     Some(workspace_key(&workspace.path))
 }
+
+#[cfg(test)]
+mod vscode_import_tests {
+    use super::validate_vscode_extension_tree;
+
+    #[test]
+    fn accepts_a_small_regular_extension_tree() {
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(root.path().join("dist")).expect("mkdir");
+        std::fs::write(root.path().join("package.json"), "{}").expect("manifest");
+        std::fs::write(root.path().join("dist").join("main.js"), "exports.activate = () => {};").expect("entry");
+        validate_vscode_extension_tree(root.path()).expect("safe tree");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_links_to_files_outside_the_extension() {
+        let root = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink("/etc/passwd", root.path().join("outside")).expect("symlink");
+        assert!(validate_vscode_extension_tree(root.path()).is_err());
+    }
+}
