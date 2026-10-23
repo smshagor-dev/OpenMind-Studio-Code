@@ -22,11 +22,12 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 const PROVIDE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Requests the window may send to the host.
-const ALLOWED_REQUESTS: [&str; 8] = [
+const ALLOWED_REQUESTS: [&str; 9] = [
     "host/activate",
     "host/deactivate",
     "host/executeCommand",
     "host/provide",
+    "host/cancelProvide",
     "host/tree",
     "host/resolveWebviewView",
     "host/provideTasks",
@@ -313,3 +314,4 @@ pub async fn ext_activate_for(
     }
     Ok(results)
 }
+

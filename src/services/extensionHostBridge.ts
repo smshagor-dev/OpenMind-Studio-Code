@@ -13,15 +13,21 @@ export interface HostDocument {
   isDirty: boolean;
 }
 
-/** A language feature an extension registered (completion, hover, definition, formatting). */
+/** A language feature an extension registered with the host. */
 export interface ProviderRegistration {
   handle: string;
-  kind: "completion" | "hover" | "definition" | "formatting" | "rangeFormatting";
+  kind: "completion" | "hover" | "definition" | "typeDefinition" | "implementation" |
+    "reference" | "highlight" | "documentSymbol" | "folding" | "formatting" | "rangeFormatting";
   extension: string;
-  selector: { language?: string; scheme?: string; pattern?: string }[];
+  selector: { language?: string; scheme?: string; pattern?: string | { base: string; pattern: string } }[];
   triggerCharacters?: string[];
   /** The extension's name, for a formatter ("Format Document With..."). */
   displayName?: string;
+}
+
+export interface ProviderCancellation {
+  readonly isCancellationRequested: boolean;
+  onCancellationRequested: (listener: () => void) => { dispose(): void };
 }
 
 export type ProviderInvoke = (payload: {
@@ -29,7 +35,8 @@ export type ProviderInvoke = (payload: {
   position?: { line: number; character: number };
   range?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
   options?: { tabSize: number; insertSpaces: boolean };
-}) => Promise<unknown>;
+  context?: { includeDeclaration?: boolean };
+}, token?: ProviderCancellation) => Promise<unknown>;
 
 /** A custom-scheme document an extension opens (`window.showTextDocument`, read-only in the app). */
 export interface VirtualDocumentRequest {
@@ -133,6 +140,7 @@ export class HostBridge {
   /** Commands extensions registered in the host (not necessarily contributed in a manifest). */
   private readonly hostCommands = new Set<string>();
   private readonly providers = new Map<string, () => void>();
+  private nextProviderRequest = 0;
 
   constructor(private deps: BridgeDeps) {}
 
@@ -325,8 +333,22 @@ export class HostBridge {
     // previous Monaco/formatter binding before installing its replacement.
     this.providers.get(registration.handle)?.();
     this.providers.delete(registration.handle);
-    const invoke: ProviderInvoke = (payload) =>
-      this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload });
+    const invoke: ProviderInvoke = async (payload, token) => {
+      if (token?.isCancellationRequested) return null;
+      const requestId = `${registration.handle}:${++this.nextProviderRequest}`;
+      const pending = this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload, requestId });
+      const cancel = () => {
+        void this.deps.hostRequest("host/cancelProvide", { requestId }).catch(() => undefined);
+      };
+      const subscription = token?.onCancellationRequested(cancel);
+      if (token?.isCancellationRequested) cancel();
+      try {
+        const result = await pending;
+        return token?.isCancellationRequested ? null : result;
+      } finally {
+        subscription?.dispose();
+      }
+    };
     const formatting = registration.kind === "formatting" || registration.kind === "rangeFormatting";
     if (formatting && !this.deps.registerFormatter) return;
     const dispose =
@@ -336,3 +358,4 @@ export class HostBridge {
     this.providers.set(registration.handle, dispose);
   }
 }
+

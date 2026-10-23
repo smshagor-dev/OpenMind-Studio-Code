@@ -34,18 +34,27 @@ function createLanguagesApi(parts) {
     return list.map((item) =>
       typeof item === 'string'
         ? { language: item }
-        : { language: item.language, scheme: item.scheme, pattern: typeof item.pattern === 'string' ? item.pattern : undefined },
+        : { language: item.language, scheme: item.scheme, pattern: typeof item.pattern === 'string'
+          ? item.pattern : item.pattern && { base: item.pattern.base, pattern: item.pattern.pattern } },
     );
   }
 
   function register(kind, selector, invoke, extra) {
     handleCounter += 1;
     const handle = `${ext.id}:${kind}:${handleCounter}`;
-    state.providers.set(handle, { kind, extension: ext.id, invoke });
+    state.providers.set(handle, { kind, extension: ext.id, invoke: (params) => {
+      const doc = document(state.documents.get(params.path));
+      if (!doc) throw new Error('The document is not open.');
+      if (!matchSelector(selector, doc)) return null;
+      return invoke(params);
+    } });
     notify('languages/registered', { handle, kind, extension: ext.id, selector: selectors(selector), ...extra });
     return track(
       new Disposable(() => {
-        if (state.providers.delete(handle)) notify('languages/unregistered', { handle });
+        if (state.providers.delete(handle)) {
+          host.cancelProviderRequests?.(handle);
+          notify('languages/unregistered', { handle });
+        }
       }),
     );
   }
@@ -65,6 +74,18 @@ function createLanguagesApi(parts) {
   const editsOut = (result) =>
     (Array.isArray(result) ? result : []).filter((edit) => edit && edit.range).map((edit) => ({ range: rangeOut(edit.range), newText: String(edit.newText ?? '') }));
   const formattingOptions = (options) => ({ tabSize: (options && options.tabSize) || 4, insertSpaces: !options || options.insertSpaces !== false });
+  const locationsOut = (result) => (Array.isArray(result) ? result : result ? [result] : []).map((item) => ({
+    uri: (item.uri || item.targetUri).toString(),
+    path: toPath(item.uri || item.targetUri),
+    range: rangeOut(item.range || item.targetRange),
+    targetSelectionRange: rangeOut(item.targetSelectionRange),
+    originSelectionRange: rangeOut(item.originSelectionRange),
+  }));
+  function locationProvider(kind, selector, provider, method) {
+    need('languages');
+    return register(kind, selector, async ({ path: file, position, token = cancelled }) =>
+      locationsOut(await provider[method](document(state.documents.get(file)), new Position(position.line, position.character), token)));
+  }
 
   function matchSelector(selector, doc) {
     if (Array.isArray(selector)) return Math.max(0, ...selector.map((part) => matchSelector(part, doc)));
@@ -106,8 +127,8 @@ function createLanguagesApi(parts) {
       return register(
         'completion',
         selector,
-        async ({ path: file, position }) => {
-          const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), cancelled, { triggerKind: 0 });
+        async ({ path: file, position, token = cancelled }) => {
+          const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), token, { triggerKind: 0 });
           const items = Array.isArray(result) ? result : result ? result.items : [];
           return (items || []).map((item) => ({
             label: typeof item.label === 'string' ? item.label : item.label.label,
@@ -124,36 +145,71 @@ function createLanguagesApi(parts) {
     },
     registerHoverProvider(selector, provider) {
       need('languages');
-      return register('hover', selector, async ({ path: file, position }) => {
-        const result = await provider.provideHover(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
+      return register('hover', selector, async ({ path: file, position, token = cancelled }) => {
+        const result = await provider.provideHover(document(state.documents.get(file)), new Position(position.line, position.character), token);
         if (!result) return null;
         return { contents: result.contents.map(text).filter((entry) => entry !== undefined), range: rangeOut(result.range) };
       });
     },
     registerDefinitionProvider(selector, provider) {
+      return locationProvider('definition', selector, provider, 'provideDefinition');
+    },
+    registerTypeDefinitionProvider(selector, provider) {
+      return locationProvider('typeDefinition', selector, provider, 'provideTypeDefinition');
+    },
+    registerImplementationProvider(selector, provider) {
+      return locationProvider('implementation', selector, provider, 'provideImplementation');
+    },
+    registerReferenceProvider(selector, provider) {
       need('languages');
-      return register('definition', selector, async ({ path: file, position }) => {
-        const result = await provider.provideDefinition(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
-        const list = Array.isArray(result) ? result : result ? [result] : [];
-        return list.map((item) => ({ path: toPath(item.uri || item.targetUri), range: rangeOut(item.range || item.targetRange) }));
+      return register('reference', selector, async ({ path: file, position, context, token = cancelled }) =>
+        locationsOut(await provider.provideReferences(document(state.documents.get(file)), new Position(position.line, position.character),
+          { includeDeclaration: !!context?.includeDeclaration }, token)));
+    },
+    registerDocumentHighlightProvider(selector, provider) {
+      need('languages');
+      return register('highlight', selector, async ({ path: file, position, token = cancelled }) => {
+        const result = await provider.provideDocumentHighlights(document(state.documents.get(file)), new Position(position.line, position.character), token);
+        return (result || []).map((item) => ({ range: rangeOut(item.range), kind: item.kind }));
+      });
+    },
+    registerDocumentSymbolProvider(selector, provider, metadata) {
+      need('languages');
+      return register('documentSymbol', selector, async ({ path: file, token = cancelled }) => {
+        const result = await provider.provideDocumentSymbols(document(state.documents.get(file)), token);
+        const convert = (item) => ({
+          name: item.name, detail: item.detail || '', kind: item.kind, tags: item.tags,
+          range: rangeOut(item.range || item.location.range),
+          selectionRange: rangeOut(item.selectionRange || item.location.range),
+          children: (item.children || []).map(convert),
+          containerName: item.containerName,
+        });
+        return (result || []).map(convert);
+      }, { displayName: metadata?.label });
+    },
+    registerFoldingRangeProvider(selector, provider) {
+      need('languages');
+      return register('folding', selector, async ({ path: file, token = cancelled }) => {
+        const result = await provider.provideFoldingRanges(document(state.documents.get(file)), {}, token);
+        return (result || []).map((item) => ({ start: item.start, end: item.end, kind: item.kind }));
       });
     },
     /** Format Document With...: the edits for the whole document. */
     registerDocumentFormattingEditProvider(selector, provider) {
       need('languages');
-      return register('formatting', selector, async ({ path: file, options }) => {
+      return register('formatting', selector, async ({ path: file, options, token = cancelled }) => {
         const doc = document(state.documents.get(file));
         if (!doc) throw new Error('The document is not open.');
-        return editsOut(await provider.provideDocumentFormattingEdits(doc, formattingOptions(options), cancelled));
+        return editsOut(await provider.provideDocumentFormattingEdits(doc, formattingOptions(options), token));
       }, { displayName: (ext.manifest && (ext.manifest.displayName || ext.manifest.name)) || ext.id });
     },
     /** Format Selection: the edits for one range. */
     registerDocumentRangeFormattingEditProvider(selector, provider) {
       need('languages');
-      return register('rangeFormatting', selector, async ({ path: file, range, options }) => {
+      return register('rangeFormatting', selector, async ({ path: file, range, options, token = cancelled }) => {
         const doc = document(state.documents.get(file));
         if (!doc) throw new Error('The document is not open.');
-        return editsOut(await provider.provideDocumentRangeFormattingEdits(doc, rangeIn(range), formattingOptions(options), cancelled));
+        return editsOut(await provider.provideDocumentRangeFormattingEdits(doc, rangeIn(range), formattingOptions(options), token));
       }, { displayName: (ext.manifest && (ext.manifest.displayName || ext.manifest.name)) || ext.id });
     },
     createDiagnosticCollection(name = `collection-${(handleCounter += 1)}`) {
@@ -208,3 +264,4 @@ function createLanguagesApi(parts) {
 }
 
 module.exports = { createLanguagesApi, TextEdit };
+

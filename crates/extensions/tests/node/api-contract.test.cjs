@@ -45,3 +45,31 @@ test('workspace paths choose the deepest root and honor includeWorkspaceFolder',
   assert.equal(api.workspace.asRelativePath(uri, true), 'Project/nested/src/file.js');
   disposeApi(api);
 });
+
+test('cancellation propagates from a parent and notifies late listeners asynchronously', async () => {
+  const { api } = fixture();
+  const parent = new api.CancellationTokenSource();
+  const child = new api.CancellationTokenSource(parent.token);
+  parent.cancel();
+  assert.equal(child.token.isCancellationRequested, true);
+  let called = false;
+  child.token.onCancellationRequested(() => { called = true; });
+  assert.equal(called, false);
+  await Promise.resolve();
+  assert.equal(called, true);
+  child.dispose();
+  parent.dispose();
+  disposeApi(api);
+});
+
+test('disposing a late cancellation subscription prevents its callback', async () => {
+  const { api } = fixture();
+  const source = new api.CancellationTokenSource();
+  source.cancel();
+  let called = false;
+  source.token.onCancellationRequested(() => { called = true; }).dispose();
+  await Promise.resolve();
+  assert.equal(called, false);
+  source.dispose();
+  disposeApi(api);
+});

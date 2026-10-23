@@ -9,10 +9,13 @@ This inventory enumerates runtime namespace exports and top-level value exports 
 
 Run: node --test crates/extensions/tests/node/*.test.cjs
 
+Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed across 7 extension-related files. Strict TypeScript validation of the Monaco adapter, its integration test, formatter registry and their imported dependencies passed. Full-project lint/build and Windows execution remain unverified.
+
 - Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
 - File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
 - Permission regression cases: outside destinations, existing symlink targets, future paths under symlinks and dangling symlinks. These are regression checks, not proof of a sandbox.
-- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 19 exported numeric enum objects against the official declaration values.
+- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 20 exported numeric enum objects against the official declaration values. Parent cancellation and late-listener disposal are covered.
+- Language providers: real stdio-host tests cover references, type definitions, implementations, highlights, nested symbols, folding, selectors and cancellation/disposal. Vitest sends requests through the real host and HostBridge into mocked Monaco registrations to verify coordinate conversion, URI schemes, reference context, disposal and cancellation. This does not establish browser rendering behavior.
 
 ## Infrastructure still required
 
@@ -22,7 +25,7 @@ Run: node --test crates/extensions/tests/node/*.test.cjs
 | Testing | No tests namespace; extension test controllers, runs and Test Explorer integration unsupported. |
 | Notebooks | No notebooks namespace; extension serializers/controllers and notebook WorkspaceEdit operations unsupported. |
 | SCM | No scm namespace; extension providers unsupported. Built-in Git does not establish SCM API compatibility. |
-| Languages | Completion, hover, definition, document/range formatting and diagnostics have host implementations. Additional provider families, resolution, cancellation and full selector fidelity remain incomplete. No Monaco UI tests were run here. |
+| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Additional families, completion/item resolution, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
 | Tasks/terminals | Existing shell/process task and terminal bridges need live workbench validation. CustomExecution and problem matchers remain unsupported. |
 | Webviews/trees | Existing host modules and UI bridge need actual rendering, restore, messaging, CSP and resource-policy validation. |
 | Lifecycle | Local tests cover the cases above. Recovery after an OS-level host crash, activation timeouts, ESM loading and orphan-process cleanup still need validation or implementation. |
@@ -30,7 +33,7 @@ Run: node --test crates/extensions/tests/node/*.test.cjs
 | Filesystems | Same-scheme file rename and file copy plus custom-provider delegation implemented. Cross-scheme transfers and local directory copy explicitly reject. Local rename overwrite=false has a check/rename race and needs an atomic platform implementation for a strict no-clobber guarantee. Provider file-change events still require integration work. |
 | Profiles/install/marketplace | Existing implementation has not been fully audited or executed here. VSIX install, dependencies, imports, updates, native modules and legal distribution sources require separate end-to-end evidence. |
 | Permissions/isolation | Node require guards are not a security sandbox. Native code, process.binding, alternative loaders, shared module state, file descriptors and filesystem races remain limitations. Do not run hostile extensions as though isolated by these guards. Workspace Trust is not a verified enforcement boundary. |
-| Platforms | Node tests ran on Linux with Node 24.19.0. Rust/Cargo is unavailable; Rust, TypeScript, Tauri and Windows builds were not run. No real marketplace extension compatibility or Windows result is claimed. |
+| Platforms | Node and focused Vitest tests ran on Linux with Node 24.19.0. A strict TypeScript check of the Monaco adapter, integration test and their imported dependency graph passed against Monaco 0.56.0; this is not a full-project build. Rust/Cargo is unavailable; Rust, Tauri and Windows builds were not run. No real marketplace extension compatibility or Windows result is claimed. |
 
 ## Namespace member inventory
 
@@ -178,26 +181,26 @@ Run: node --test crates/extensions/tests/node/*.test.cjs
 | `languages.registerDefinitionProvider` | Present; partial or unverified |
 | `languages.registerDocumentDropEditProvider` | Unsupported |
 | `languages.registerDocumentFormattingEditProvider` | Present; partial or unverified |
-| `languages.registerDocumentHighlightProvider` | Unsupported |
+| `languages.registerDocumentHighlightProvider` | Present; partial or unverified |
 | `languages.registerDocumentLinkProvider` | Unsupported |
 | `languages.registerDocumentRangeFormattingEditProvider` | Present; partial or unverified |
 | `languages.registerDocumentRangeSemanticTokensProvider` | Unsupported |
 | `languages.registerDocumentSemanticTokensProvider` | Unsupported |
-| `languages.registerDocumentSymbolProvider` | Unsupported |
+| `languages.registerDocumentSymbolProvider` | Present; partial or unverified |
 | `languages.registerEvaluatableExpressionProvider` | Unsupported |
-| `languages.registerFoldingRangeProvider` | Unsupported |
+| `languages.registerFoldingRangeProvider` | Present; partial or unverified |
 | `languages.registerHoverProvider` | Present; partial or unverified |
-| `languages.registerImplementationProvider` | Unsupported |
+| `languages.registerImplementationProvider` | Present; partial or unverified |
 | `languages.registerInlayHintsProvider` | Unsupported |
 | `languages.registerInlineCompletionItemProvider` | Unsupported |
 | `languages.registerInlineValuesProvider` | Unsupported |
 | `languages.registerLinkedEditingRangeProvider` | Unsupported |
 | `languages.registerOnTypeFormattingEditProvider` | Unsupported |
-| `languages.registerReferenceProvider` | Unsupported |
+| `languages.registerReferenceProvider` | Present; partial or unverified |
 | `languages.registerRenameProvider` | Unsupported |
 | `languages.registerSelectionRangeProvider` | Unsupported |
 | `languages.registerSignatureHelpProvider` | Unsupported |
-| `languages.registerTypeDefinitionProvider` | Unsupported |
+| `languages.registerTypeDefinitionProvider` | Present; partial or unverified |
 | `languages.registerTypeHierarchyProvider` | Unsupported |
 | `languages.registerWorkspaceSymbolProvider` | Unsupported |
 | `languages.setLanguageConfiguration` | Unsupported |
@@ -277,8 +280,8 @@ Run: node --test crates/extensions/tests/node/*.test.cjs
 | `DiagnosticTag` | Present; behavior needs per-member verification |
 | `Disposable` | Present; behavior needs per-member verification |
 | `DocumentDropEdit` | Unsupported |
-| `DocumentHighlight` | Unsupported |
-| `DocumentHighlightKind` | Unsupported |
+| `DocumentHighlight` | Present; behavior needs per-member verification |
+| `DocumentHighlightKind` | Present; behavior needs per-member verification |
 | `DocumentLink` | Present; behavior needs per-member verification |
 | `DocumentSymbol` | Present; behavior needs per-member verification |
 | `EndOfLine` | Present; behavior needs per-member verification |

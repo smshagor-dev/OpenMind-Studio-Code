@@ -410,11 +410,18 @@ class SnippetString {
 }
 
 class CancellationTokenSource {
-  constructor() {
+  constructor(parent) {
     const emitter = new EventEmitter();
-    this.token = { isCancellationRequested: false, onCancellationRequested: emitter.event };
+    this.token = { isCancellationRequested: false, onCancellationRequested: (listener, thisArg, disposables) => {
+      if (!this.token.isCancellationRequested) return emitter.event(listener, thisArg, disposables);
+      const subscription = CancellationToken.Cancelled.onCancellationRequested(listener, thisArg);
+      if (Array.isArray(disposables)) disposables.push(subscription);
+      return subscription;
+    } };
     this._emitter = emitter;
     this._disposed = false;
+    this._parent = parent?.onCancellationRequested(() => this.cancel());
+    if (parent?.isCancellationRequested) this.cancel();
   }
   cancel() {
     if (this.token.isCancellationRequested) return;
@@ -425,6 +432,7 @@ class CancellationTokenSource {
     if (this._disposed) return;
     if (cancel) this.cancel();
     this._disposed = true;
+    this._parent?.dispose();
     this._emitter.dispose();
   }
 }
@@ -516,6 +524,14 @@ class FoldingRange {
   }
 }
 const FoldingRangeKind = { Comment: 1, Imports: 2, Region: 3 };
+
+const DocumentHighlightKind = { Text: 0, Read: 1, Write: 2 };
+class DocumentHighlight {
+  constructor(range, kind = DocumentHighlightKind.Text) {
+    this.range = range;
+    this.kind = kind;
+  }
+}
 
 class ParameterInformation {
   constructor(label, documentation) {
@@ -919,6 +935,8 @@ function createApi(host, ext) {
     SymbolInformation,
     FoldingRange,
     FoldingRangeKind,
+    DocumentHighlight,
+    DocumentHighlightKind,
     ParameterInformation,
     SignatureInformation,
     SignatureHelp,
@@ -973,5 +991,5 @@ function disposeApi(api) {
   if (cleanup) cleanup();
 }
 
-module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, unsupported };
+module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, CancellationTokenSource, unsupported };
 

@@ -116,6 +116,12 @@ const guards = new Map();
 const activations = new Map();
 const activationWaits = new Map();
 const deactivations = new Map();
+const providerRequests = new Map();
+host.cancelProviderRequests = (handle) => {
+  for (const entry of providerRequests.values()) {
+    if (entry.handle === handle) als.run(entry.extension, () => entry.source.cancel());
+  }
+};
 
 function waitsFor(start, target, seen = new Set()) {
   if (start === target) return true;
@@ -261,7 +267,31 @@ const handlers = {
   'host/provide': async (params) => {
     const entry = state.providers.get(params.handle);
     if (!entry) throw new Error('This language feature is no longer registered.');
-    return als.run(entry.extension, () => entry.invoke(params));
+    const id = typeof params.requestId === 'string' && params.requestId ? params.requestId : Symbol('language request');
+    if (providerRequests.has(id)) throw new Error('Duplicate language request identifier.');
+    const source = new (require('./vscode.js').CancellationTokenSource)();
+    providerRequests.set(id, { source, extension: entry.extension, handle: params.handle });
+    let cancellation;
+    const cancelled = new Promise((resolve) => {
+      cancellation = source.token.onCancellationRequested(() => resolve(null));
+    });
+    try {
+      const result = await Promise.race([
+        als.run(entry.extension, () => entry.invoke({ ...params, token: source.token })),
+        cancelled,
+      ]);
+      return source.token.isCancellationRequested ? null : result;
+    } finally {
+      providerRequests.delete(id);
+      cancellation.dispose();
+      source.dispose();
+    }
+  },
+
+  'host/cancelProvide': (params) => {
+    const entry = providerRequests.get(params.requestId);
+    if (entry) als.run(entry.extension, () => entry.source.cancel());
+    return { ok: true };
   },
 
   'host/tree': async (params) => {
@@ -458,6 +488,9 @@ function deactivate(id) {
 async function deactivateOnce(id) {
   const run = state.running.get(id);
   if (!run) return { deactivated: false };
+  for (const entry of providerRequests.values()) {
+    if (entry.extension === id) als.run(id, () => entry.source.cancel());
+  }
   try {
     if (run.module && typeof run.module.deactivate === 'function') {
       await als.run(id, () => run.module.deactivate());

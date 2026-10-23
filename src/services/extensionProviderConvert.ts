@@ -25,7 +25,21 @@ export interface HostHover {
 
 export interface HostLocation {
   path: string;
+  uri?: string;
   range: HostRange;
+  targetSelectionRange?: HostRange;
+  originSelectionRange?: HostRange;
+}
+
+export interface HostDocumentSymbol {
+  name: string;
+  detail: string;
+  kind: number;
+  tags?: number[];
+  range: HostRange;
+  selectionRange: HostRange;
+  children?: HostDocumentSymbol[];
+  containerName?: string;
 }
 
 /**
@@ -168,3 +182,4 @@ export function toMarkers(
     ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
   }));
 }
+
