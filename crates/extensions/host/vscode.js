@@ -392,7 +392,14 @@ class SnippetString {
     return this;
   }
   appendPlaceholder(value, number = this._tabstop++) {
-    const text = typeof value === 'function' ? value(new SnippetString()).value : SnippetString.escape(value);
+    let text;
+    if (typeof value === 'function') {
+      const nested = new SnippetString();
+      nested._tabstop = this._tabstop;
+      value(nested);
+      this._tabstop = nested._tabstop;
+      text = nested.value;
+    } else text = SnippetString.escape(value);
     this.value += String.fromCharCode(36, 123) + SnippetString.index(number) + ':' + text + '}';
     return this;
   }
@@ -406,9 +413,17 @@ class SnippetString {
     if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       throw new TypeError('Invalid snippet variable');
     }
-    this.value += defaultValue === undefined
-      ? String.fromCharCode(36) + name
-      : String.fromCharCode(36, 123) + name + ':' + SnippetString.escape(defaultValue) + '}';
+    let fallback;
+    if (typeof defaultValue === 'function') {
+      const nested = new SnippetString();
+      nested._tabstop = this._tabstop;
+      defaultValue(nested);
+      this._tabstop = nested._tabstop;
+      fallback = nested.value;
+    } else if (defaultValue !== undefined) fallback = SnippetString.escape(defaultValue);
+    this.value += fallback === undefined
+      ? String.fromCharCode(36, 123) + name + '}'
+      : String.fromCharCode(36, 123) + name + ':' + fallback + '}';
     return this;
   }
 }

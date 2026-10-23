@@ -88,16 +88,42 @@ function documentsRig(hasTextTab = true) {
     editorsCovered: () => current.covered,
   });
   const tab = { value: hasTextTab };
+  const editor = { insertSnippetFor: vi.fn(() => true) };
   const service = new ExtensionEditorService({
     documents,
-    editor: {} as unknown as EditorService,
+    editor: editor as unknown as EditorService,
     sync,
     hasTextTab: () => tab.value,
   });
-  return { buffers, events, documents, sent, sync, service, tab, selections, listeners, current, editorOptions };
+  return { buffers, events, documents, sent, sync, service, tab, selections, listeners, current, editorOptions, editor };
 }
 
 describe("ExtensionEditorService", () => {
+  it("validates snippet versions, previews and all ranges before invoking Monaco", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.sync.start();
+    const range = { startLine: 0, startColumn: 0, endLine: 0, endColumn: 5 };
+    const request = { path: FILE, version: 1, editorId: "pane", snippet: "${1:hello}",
+      ranges: [range], undoStopBefore: false };
+    expect(r.service.insertSnippet({ ...request, version: 99 }).applied).toBe(false);
+    r.tab.value = false;
+    expect(r.service.insertSnippet(request).applied).toBe(false);
+    r.tab.value = true;
+    expect(r.service.insertSnippet({ ...request, ranges: [{ ...range, endColumn: 999 }] }).applied).toBe(false);
+    expect(r.service.insertSnippet({ ...request, ranges: [range, range] }).applied).toBe(false);
+    expect(r.editor.insertSnippetFor).not.toHaveBeenCalled();
+    r.editor.insertSnippetFor.mockImplementation(() => {
+      r.documents.applyHostEdits(id, [{ ...range, text: "hello" }]);
+      return true;
+    });
+    expect(r.service.insertSnippet(request)).toEqual({ applied: true });
+    expect(r.editor.insertSnippetFor).toHaveBeenCalledWith(r.documents.modelUri(id), request.snippet,
+      [{ ...range, text: "" }], { undoStopBefore: false }, "pane");
+    expect(r.sent.at(-1)).toMatchObject(["host/documentChanged", { version: 2 }]);
+    r.sync.stop(); r.buffers.disposeAll();
+  });
+
   it("applies an edit to the open buffer only: dirty, version up, the host told before the answer", async () => {
     const r = documentsRig();
     const id = await r.documents.openFromPath(FILE);
@@ -495,6 +521,7 @@ describe("StatusBarItemsService", () => {
 describe("HostBridge: editor and status bar messages", () => {
   function bridge() {
     const editorApi = {
+      insertSnippet: vi.fn().mockReturnValue({ applied: true }),
       applyEdits: vi.fn().mockReturnValue({ applied: true }),
       applyWorkspaceEdit: vi.fn().mockReturnValue({ applied: false, reason: "no" }),
       setSelections: vi.fn(),
@@ -531,6 +558,8 @@ describe("HostBridge: editor and status bar messages", () => {
       applied: false,
       reason: "no",
     });
+    await expect(b.handleRequest("editor/insertSnippet", { path: FILE, snippet: "$1" })).resolves.toEqual({ applied: true });
+    expect(editorApi.insertSnippet).toHaveBeenCalledWith({ path: FILE, snippet: "$1" });
     b.handleNotification("editor/setSelections", { path: FILE });
     b.handleNotification("editor/revealRange", { path: FILE });
     expect(editorApi.setSelections).toHaveBeenCalledOnce();

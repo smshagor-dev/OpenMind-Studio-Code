@@ -414,6 +414,28 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         for (const key of ['undoStopBefore', 'undoStopAfter']) if (options?.[key] !== undefined && typeof options[key] !== 'boolean') throw new TypeError('Undo options must be boolean.');
         return sendEdits(filePath, version, edits, { eol: builder._eol, undoStopBefore: options?.undoStopBefore, undoStopAfter: options?.undoStopAfter });
       },
+      async insertSnippet(snippet, location, options) {
+        need('workspaceWrite');
+        if (editorId && !state.visibleEditors?.some(value => value.id === editorId)) return false;
+        const doc = state.documents.get(filePath);
+        if (!doc) return false;
+        checkEditable(filePath);
+        if (!snippet || typeof snippet.value !== 'string') throw new TypeError('A SnippetString is required.');
+        for (const key of ['undoStopBefore', 'undoStopAfter']) if (options?.[key] !== undefined && typeof options[key] !== 'boolean') throw new TypeError('Undo options must be boolean.');
+        const locations = location === undefined ? undefined : Array.isArray(location) ? location : [location];
+        const ranges = locations?.map(value => {
+          const start = value?.start ?? value, end = value?.end ?? value;
+          if (![start?.line, start?.character, end?.line, end?.character].every(n => Number.isInteger(n) && n >= 0)) throw new TypeError('A snippet location must be a Position or Range.');
+          return { startLine: start.line, startColumn: start.character, endLine: end.line, endColumn: end.character };
+        });
+        if (ranges?.length === 0) return true;
+        const result = await request('editor/insertSnippet', {
+          extension: ext.id, path: filePath, version: doc.version,
+          ...(editorId ? { editorId } : {}), snippet: snippet.value, ranges,
+          undoStopBefore: options?.undoStopBefore, undoStopAfter: options?.undoStopAfter,
+        });
+        return result?.applied === true;
+      },
       revealRange(range, revealType) {
         notify('editor/revealRange', {
           extension: ext.id,

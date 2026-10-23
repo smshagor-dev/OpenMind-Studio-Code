@@ -313,6 +313,8 @@ export class HostBridge {
           p.target === "workspace" ? "workspace" : "user",
         );
         return null;
+      case "editor/insertSnippet":
+        return this.editorApi().insertSnippet(p);
       case "editor/applyEdits":
         return this.editorApi().applyEdits(p);
       case "editor/applyWorkspaceEdit":
