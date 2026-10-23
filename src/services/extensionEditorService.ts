@@ -62,6 +62,7 @@ export class ExtensionEditorService {
     const { documents, sync } = this.deps;
     const id = documents.idForHostPath(file.path);
     if (id === null) return { reason: `${file.path} isn't open.` };
+    if (documents.isReadOnly(id)) return { reason: "The virtual document is read-only." };
     if (!this.deps.hasTextTab(id) && documents.snapshot(id).path !== null) {
       return { reason: `${file.path} is shown read-only (a preview), so it can't be edited.` };
     }

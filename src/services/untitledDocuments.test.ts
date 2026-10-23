@@ -52,9 +52,9 @@ function rig() {
       const model = group.activeTabId ? buffers.get(group.activeTabId) : undefined;
       if (!model) continue;
       const pane = panes.get(group.id);
-      if (pane) { if (pane.native.getModel() !== model) pane.native.setModel(model); continue; }
+      if (pane) { pane.native.updateOptions({ readOnly: documents.isReadOnly(group.activeTabId ?? "") }); if (pane.native.getModel() !== model) pane.native.setModel(model); continue; }
       const element = document.createElement("div"); document.body.append(element);
-      const native = monaco.editor.create(element, { model, dimension: { width: 600, height: 300 }, overviewRulerLanes: 0, minimap: { enabled: false } });
+      const native = monaco.editor.create(element, { model, readOnly: documents.isReadOnly(group.activeTabId ?? ""), dimension: { width: 600, height: 300 }, overviewRulerLanes: 0, minimap: { enabled: false } });
       const detach = editor.attach(native, { groupId: group.id, viewColumn: () => groups.getState().groups.findIndex(value => value.id === group.id) + 1 });
       native.updateOptions({ minimap: { enabled: false } });
       panes.set(group.id, { native, off: detach, element });
@@ -63,7 +63,7 @@ function rig() {
   const api = new ExtensionEditorService({ documents, editor, sync, hasTextTab: id => groups.tabsForDoc(id).some(value => value.tab.kind === "text") });
   const opening = new ExtensionDocumentOpening({ documents, editor, groups, workspace });
   cleanups.push(() => { opening.reset(); api.resetDecorations(); off(); sync.stop(); for (const pane of panes.values()) { pane.off(); pane.native.dispose(); pane.element.remove(); } workspace.dispose(); buffers.disposeAll(); });
-  return { ipc, documents, buffers, groups, workspace, sync, api, opening, notifications,
+  return { ipc, documents, buffers, groups, workspace, sync, api, opening, notifications, panes, editor,
     connect(value: Host) { host = value; sync.start(); } };
 }
 
@@ -179,8 +179,8 @@ it("preserves named untitled identity on initial sync, failed save, and close, w
 it("edits and saves a writable virtual provider through native Monaco and a real stdio host", async () => {
   const r = rig();
   const bridge = new HostBridge({
-    openVirtualTextDocument: (uri, content, language) => {
-      const id = r.documents.openVirtual(uri, content, language);
+    openVirtualTextDocument: (uri, content, language, readonly, version) => {
+      const id = r.documents.openVirtual(uri, content, language, readonly, version);
       const data = r.sync.describe(id); if (!data) throw Error("missing model"); return data;
     },
     showTextDocument: (path, options, context) => r.opening.show(path, options, context),
@@ -268,4 +268,75 @@ it("Save All persists an edited virtual buffer even before it has a tab", async 
   expect(save).toHaveBeenCalledWith("editable:///hidden.txt", "after");
   expect(r.documents.isDirty(id)).toBe(false);
   expect(r.ipc.documentSave).not.toHaveBeenCalled();
+});
+
+it("shows read-only content as a native editor without duplicate opens or a version reset, and refreshes it without allowing writes", async () => {
+  const r = rig();
+  const bridge = new HostBridge({
+    openVirtualTextDocument: (uri, content, language, readonly, version) => {
+      const id = r.documents.openVirtual(uri, content, language, readonly, version);
+      const data = r.sync.describe(id); if (!data) throw Error("missing model"); return data;
+    },
+    showTextDocument: (path, options, context) => r.opening.show(path, options, context),
+    editorApi: r.api,
+  } as BridgeDeps);
+  const host = await fixture({ after: fn => cleanups.push(fn) }, { "test.locked": { permissions: ["commands", "workspaceRead", "workspaceWrite"], code: `
+    const v=require('vscode');let text='initial',doc,editor,opened=0;const changed=new v.EventEmitter();
+    exports.activate=()=>{
+      v.workspace.registerTextDocumentContentProvider('readonlytext',{onDidChange:changed.event,provideTextDocumentContent:()=>text});
+      v.workspace.onDidOpenTextDocument(()=>opened++);
+      v.commands.registerCommand('lockedOpen',async()=>{doc=await v.workspace.openTextDocument(v.Uri.parse('readonlytext:/locked.txt?keep=1#part'));return{version:doc.version,opened}});
+      v.commands.registerCommand('lockedChange',value=>{text=value;changed.fire(doc.uri)});
+      v.commands.registerCommand('lockedShow',async()=>{editor=await v.window.showTextDocument(doc,{viewColumn:2,preview:false,selection:new v.Range(0,0,0,4)});const type=v.window.createTextEditorDecorationType({color:'red'});editor.setDecorations(type,[new v.Range(0,0,0,4)]);return{same:editor.document===doc,text:doc.getText(),version:doc.version,opened,column:editor.viewColumn,selection:editor.selection.end.character,saved:await doc.save()}});
+      v.commands.registerCommand('lockedEdit',()=>editor.edit(b=>b.insert(new v.Position(0,0),'bad')));
+      v.commands.registerCommand('lockedSnippet',()=>editor.insertSnippet(new v.SnippetString('bad')));
+      v.commands.registerCommand('lockedState',()=>({text:doc.getText(),version:doc.version,dirty:doc.isDirty,opened,closed:doc.isClosed}));
+    };` } }, { handleRequest: (method, params) => bridge.handleRequest(method, params) });
+  let refreshDone: (() => void) | undefined;
+  cleanups.push(host.onNotification(value => {
+    if (value.method.startsWith("editor/")) bridge.handleNotification(value.method, value.params);
+    if (value.method === "workspace/virtualDocumentChanged") {
+      r.documents.updateVirtual(String(value.params.uri), String(value.params.text));
+      r.sync.flush(); refreshDone?.(); refreshDone = undefined;
+    }
+  }));
+  r.connect(host); await host.request("host/activate", { id: "test.locked" });
+  expect(await host.request("host/executeCommand", { command: "lockedOpen" })).toEqual({ version: 1, opened: 1 });
+  const before = new Promise<void>(resolve => { refreshDone = resolve; });
+  await host.request("host/executeCommand", { command: "lockedChange", args: ["before showing"] }); await before;
+  expect(await host.request("host/executeCommand", { command: "lockedShow" })).toEqual({ same: true, text: "before showing", version: 2, opened: 1, column: 2, selection: 4, saved: false });
+  const id = r.documents.allIds()[0]; if (!id) throw Error("missing readonly model");
+  const pane = [...r.panes.values()][0]; if (!pane) throw Error("missing readonly pane");
+  expect(pane.native.getOption(monaco.editor.EditorOption.readOnly)).toBe(true);
+  pane.native.trigger("keyboard", "type", { text: "cannot type" });
+  expect(r.editor.insertAtCursor("cannot insert")).toBe(false);
+  expect(r.editor.pasteText("cannot paste")).toBe(false);
+  expect(await r.editor.copySelection(true)).toBe(false);
+  expect(r.documents.contentOf(id)).toBe("before showing");
+  expect(r.buffers.get(id)?.getAllDecorations().some(value => value.options.className?.startsWith("openmind-decoration-"))).toBe(true);
+  await expect(host.request("host/executeCommand", { command: "lockedEdit" })).rejects.toThrow("read-only");
+  await expect(host.request("host/executeCommand", { command: "lockedSnippet" })).rejects.toThrow("read-only");
+  const after = new Promise<void>(resolve => { refreshDone = resolve; });
+  await host.request("host/executeCommand", { command: "lockedChange", args: ["refreshed"] }); await after;
+  expect(await host.request("host/executeCommand", { command: "lockedState" })).toEqual({ text: "refreshed", version: 3, dirty: false, opened: 1, closed: false });
+  await r.workspace.close(id);
+  expect(await host.request("host/executeCommand", { command: "lockedState" })).toMatchObject({ closed: true, text: "refreshed" });
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  expect(r.ipc.saveDocumentDialog).not.toHaveBeenCalled();
+});
+
+it("preflights read-only virtual targets before any workspace edit and prevents service writes and saves", async () => {
+  const r = rig(); r.sync.start();
+  const writable = r.documents.openVirtual("editable:///write.txt", "original", "plaintext");
+  const locked = r.documents.openVirtual("locked:///read.txt", "protected", "plaintext", true, 20);
+  const save = vi.fn().mockResolvedValue(undefined); r.documents.setVirtualSaver(save);
+  const edit = { startLine: 0, startColumn: 0, endLine: 0, endColumn: 0, text: "bad" };
+  expect(r.api.applyWorkspaceEdit({ files: [{ path: r.documents.hostPath(writable), version: 1, edits: [edit] }, { path: r.documents.hostPath(locked), version: 20, edits: [edit] }] })).toEqual({ applied: false, reason: "The virtual document is read-only." });
+  expect(r.documents.contentOf(writable)).toBe("original");
+  expect(r.documents.contentOf(locked)).toBe("protected");
+  expect(() => { r.documents.replaceText(locked, "bad"); }).toThrow("read-only");
+  expect(() => { r.documents.applyHostEdits(locked, [edit]); }).toThrow("read-only");
+  await expect(r.documents.save(locked)).rejects.toThrow("read-only");
+  expect(save).not.toHaveBeenCalled();
+  expect(r.sync.initial().documents).toContainEqual(expect.objectContaining({ path: "locked:///read.txt", readonly: true, version: 20, isDirty: false }));
 });

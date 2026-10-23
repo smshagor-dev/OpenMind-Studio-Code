@@ -708,8 +708,9 @@ const notifications = {
     events.fire('workspaceFolders', {});
   },
   'host/documentOpened': (params) => {
-    state.documents.set(params.path, { ...state.documents.get(params.path), ...params });
-    events.fire('documentOpened', params);
+    const current = state.documents.get(params.path);
+    state.documents.set(params.path, { ...current, ...params });
+    if (!(current?.virtual && !current.native && params.native)) events.fire('documentOpened', params);
   },
   'host/documentChanged': (params) => {
     state.documents.set(params.path, { ...state.documents.get(params.path), ...params });

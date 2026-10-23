@@ -227,6 +227,8 @@ describe("HostDocumentSync", () => {
     const listeners = new Map<string, () => void>();
     const documents = {
       isVirtual: () => false,
+      isReadOnly: () => false,
+      initialHostVersion: () => 1,
       allIds: () => [...texts.keys()],
       hostPath: (id: string) => `C:/My Site/${id}.txt`,
       has: (id: string) => texts.has(id),

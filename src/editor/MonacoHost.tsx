@@ -16,6 +16,7 @@ import { defineMonacoThemes } from "./monacoThemes";
 interface MonacoHostProps {
   model: monaco.editor.ITextModel | null;
   theme: string;
+  readOnly?: boolean;
   /** Hands the created editor to the caller (which may return a teardown); keeps this component service-free. */
   onEditorMounted?: (editor: monaco.editor.IStandaloneCodeEditor) => () => void;
 }
@@ -26,7 +27,7 @@ interface MonacoHostProps {
  * dirty state, or IPC. All of that lives in the services; this just shows
  * whatever model it's handed.
  */
-export function MonacoHost({ model, theme, onEditorMounted }: MonacoHostProps) {
+export function MonacoHost({ model, theme, readOnly = false, onEditorMounted }: MonacoHostProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
 
@@ -37,6 +38,8 @@ export function MonacoHost({ model, theme, onEditorMounted }: MonacoHostProps) {
     defineMonacoThemes();
     const editor = monaco.editor.create(containerRef.current, {
       automaticLayout: true,
+      readOnly,
+      domReadOnly: readOnly,
       theme,
       minimap: { enabled: true },
       fontFamily: "Consolas, 'Courier New', monospace",
@@ -54,8 +57,9 @@ export function MonacoHost({ model, theme, onEditorMounted }: MonacoHostProps) {
   }, []);
 
   useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
     editorRef.current?.setModel(model);
-  }, [model]);
+  }, [model, readOnly]);
 
   useEffect(() => {
     monaco.editor.setTheme(theme);
@@ -63,3 +67,4 @@ export function MonacoHost({ model, theme, onEditorMounted }: MonacoHostProps) {
 
   return <div ref={containerRef} className="monaco-host" />;
 }
+

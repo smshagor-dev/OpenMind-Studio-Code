@@ -85,7 +85,7 @@ function createEditing(types) {
         return data().isUntitled || /^[a-z][a-z0-9+.-]+:\/\//.test(filePath) ? Uri.parse(filePath) : Uri.file(filePath);
       },
       get fileName() {
-        return data().isUntitled ? Uri.parse(filePath).fsPath : filePath;
+        return data().isUntitled || data().virtual ? Uri.parse(filePath).fsPath : filePath;
       },
       get languageId() {
         return data().languageId;
@@ -347,7 +347,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       doc.save = async () => {
         need('workspaceWrite');
         const current = state.documents.get(key);
-        if (!current || (current.virtual && !current.native)) return false;
+        if (!current || (current.virtual && (!current.native || current.readonly !== false))) return false;
         const answer = await request('workspace/saveDocument', { extension: ext.id, path: key });
         return !!(answer && answer.saved);
       };

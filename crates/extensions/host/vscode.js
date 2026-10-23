@@ -1378,21 +1378,16 @@ function createApi(host, ext) {
       const showOptions = { viewColumn: column, preserveFocus: !!options.preserveFocus, preview: options.preview, selection };
       const doc = target && target.getText ? target : await workspace.openTextDocument(target);
       const uri = doc.uri;
-      if (uri.scheme === 'file' || (uri.scheme === 'untitled' && doc.isUntitled) || state.documents.get(uri.toString())?.native) {
-        return editors.showEditor(uri.scheme === 'file' ? uri.fsPath : uri.toString(), showOptions);
+      if (uri.scheme !== 'file' && uri.scheme !== 'untitled') {
+        const data = state.documents.get(uri.toString());
+        if (!data) throw new Error('The virtual document is closed or unknown.');
+        if (!data.native) {
+          const opened = await request('workspace/openVirtualTextDocument', { extension: ext.id, uri: uri.toString(), text: data.text, languageId: data.languageId, readonly: data.readonly !== false, version: data.version });
+          if (!opened?.native || opened.path !== uri.toString()) throw new Error('The native virtual document could not be opened.');
+          state.documents.set(data.path, { ...data, ...opened });
+        }
       }
-      if (column !== undefined || options.preserveFocus || options.preview !== undefined || selection) throw unsupportedError('window.showTextDocument.virtualOptions');
-      const data = state.documents.get(uri.toString());
-      await request('ui/showVirtualDocument', {
-        extension: ext.id,
-        uri: uri.toString(),
-        scheme: uri.scheme,
-        path: uri.path,
-        text: doc.getText(),
-        languageId: doc.languageId,
-        readonly: !data || data.readonly !== false,
-      });
-      return undefined;
+      return editors.showEditor(uri.scheme === 'file' ? uri.fsPath : uri.toString(), showOptions);
     },
     async showQuickPick(items, options = {}) {
       const list = await Promise.resolve(items);

@@ -111,7 +111,7 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
           if (bytes.length > MAX_FILE_BYTES) throw FileSystemError.Unavailable('The file is larger than 32 MB.');
           const text = Buffer.from(bytes).toString('utf8'); if (text === current.text) return;
           if (current.native) {
-            host.notify('workspace/virtualDocumentChanged', { extension: ext.id, uri: key, scheme, path: clean.path, text, languageId: current.languageId, readonly: false });
+            host.notify('workspace/virtualDocumentChanged', { extension: ext.id, uri: key, scheme, path: clean.path, text, languageId: current.languageId, readonly: entry.readonly });
             return;
           }
           const previous = current.text, lines = previous.split('\n');

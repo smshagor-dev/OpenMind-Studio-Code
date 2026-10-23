@@ -176,7 +176,7 @@ export class HostDocumentSync {
 
   /** The version the host has of a document. */
   versionOf(id: string): number {
-    return this.versions.get(id) ?? 1;
+    return this.versions.get(id) ?? (this.deps.documents.has(id) ? this.deps.documents.initialHostVersion(id) : 1);
   }
 
   /** After the app itself changed a buffer (an extension's edit): the host hears it now, not after the delay. */
@@ -234,9 +234,9 @@ export class HostDocumentSync {
     this.paths.set(id, path);
     return {
       path,
-      ...(this.deps.documents.isVirtual(id) ? { virtual: true, native: true, readonly: false } : snapshot.path === null ? { isUntitled: true } : {}),
+      ...(this.deps.documents.isVirtual(id) ? { virtual: true, native: true, readonly: this.deps.documents.isReadOnly(id) } : snapshot.path === null ? { isUntitled: true } : {}),
       languageId: this.deps.documents.languageOf(id),
-      version: this.versions.get(id) ?? 1,
+      version: this.versionOf(id),
       text: this.deps.documents.contentOf(id),
       isDirty: dirty,
       eol: this.deps.documents.eolOf(id) === "\r\n" ? 2 : 1,
@@ -282,7 +282,7 @@ export class HostDocumentSync {
   }
 
   private sendChange(id: string): void {
-    this.versions.set(id, (this.versions.get(id) ?? 1) + 1);
+    this.versions.set(id, this.versionOf(id) + 1);
     const document = this.describe(id);
     if (document) this.deps.notify("host/documentChanged", document);
   }

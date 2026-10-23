@@ -164,7 +164,7 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
     },
     saveDocument: async (path) => {
       const id = documents.idForHostPath(path);
-      if (id === null) return false;
+      if (id === null || documents.isReadOnly(id)) return false;
       await workspace.save(id);
       return (documents.isVirtual(id) || documents.snapshot(id).path !== null) && !documents.isDirty(id);
     },

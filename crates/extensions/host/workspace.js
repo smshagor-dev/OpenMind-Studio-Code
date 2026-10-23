@@ -162,14 +162,20 @@ function createWorkspaceApi(parts) {
     const key = clean.toString();
     const known = state.documents.get(key);
     if (known?.native && known.virtual) {
-      if (entry.readonly) throw new Error('The virtual filesystem is now read-only.');
+      if (entry.readonly !== known.readonly) {
+        const opened = await request('workspace/openVirtualTextDocument', { extension: ext.id, uri: key, text: known.text, languageId: known.languageId, readonly: entry.readonly, version: known.version });
+        if (!opened?.native || opened.path !== key) throw new Error('The native virtual document could not be opened.');
+        Object.assign(known, opened);
+      }
       known.fileSystemProvider = entry.id;
       return document(known);
     }
+    if (known?.virtual && known.fileSystemProvider === entry.id) return document(known);
     const bytes = await providerCall(host, entry, 'readFile', clean);
     if (bytes.length > 32 * 1024 * 1024) throw new Error('Virtual document content exceeds 32 MB.');
     const data = { fileSystemProvider: entry.id, path: key, text: Buffer.from(bytes).toString('utf8'), languageId: guessLanguage(normalized), version: 1, isDirty: false, virtual: true, readonly: entry.readonly };
     state.documents.set(key, data);
+    if (entry.readonly) host.events.fire('documentOpened', data);
     if (!entry.readonly) {
       data.native = true;
       try {
