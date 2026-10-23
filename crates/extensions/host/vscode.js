@@ -443,6 +443,61 @@ class CancellationTokenSource {
 
 // Value types shared by language tooling extensions. They are usable even when a
 // corresponding provider contribution is not yet implemented by the workbench.
+class Color {
+  constructor(red, green, blue, alpha) { this.red = red; this.green = green; this.blue = blue; this.alpha = alpha; }
+}
+class ColorInformation {
+  constructor(range, color) { this.range = range; this.color = color; }
+}
+class ColorPresentation {
+  constructor(label) { this.label = label; }
+}
+class InlayHintLabelPart {
+  constructor(value) { this.value = value; }
+}
+class InlayHint {
+  constructor(position, label, kind) { this.position = position; this.label = label; this.kind = kind; }
+}
+const InlayHintKind = Object.freeze({ Type: 1, Parameter: 2 });
+
+class SemanticTokens {
+  constructor(data, resultId) { this.data = data; this.resultId = resultId; }
+}
+class SemanticTokensEdit {
+  constructor(start, deleteCount, data) { this.start = start; this.deleteCount = deleteCount; this.data = data; }
+}
+class SemanticTokensEdits {
+  constructor(edits, resultId) { this.edits = edits; this.resultId = resultId; }
+}
+class SemanticTokensBuilder {
+  constructor(legend) { this.legend = legend; this.tokens = []; }
+  push(line, char, length, tokenType, tokenModifiers = 0) {
+    if (typeof line === 'object') {
+      const range = line;
+      if (!this.legend || range.start.line !== range.end.line) throw new Error('Named semantic tokens require a legend and a single-line range.');
+      const type = this.legend.tokenTypes.indexOf(char);
+      if (type < 0) throw new Error('Unknown semantic token type.');
+      let modifiers = 0;
+      for (const name of length || []) {
+        const index = this.legend.tokenModifiers.indexOf(name);
+        if (index < 0 || index >= 32) throw new Error('Unknown semantic token modifier.');
+        modifiers = (modifiers | (1 << index)) >>> 0;
+      }
+      return this.push(range.start.line, range.start.character, range.end.character - range.start.character, type, modifiers);
+    }
+    if (![line, char, length, tokenType, tokenModifiers].every(n => Number.isInteger(n) && n >= 0 && n <= 0xffffffff) || length === 0) throw new Error('Invalid semantic token.');
+    this.tokens.push([line, char, length, tokenType, tokenModifiers]);
+  }
+  build(resultId) {
+    const data = []; let line = 0; let char = 0;
+    for (const token of [...this.tokens].sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
+      data.push(token[0] - line, token[0] === line ? token[1] - char : token[1], ...token.slice(2));
+      [line, char] = token;
+    }
+    return new SemanticTokens(new Uint32Array(data), resultId);
+  }
+}
+
 class CodeActionKind {
   constructor(value = '') { this.value = value; }
   append(part) { return new CodeActionKind(this.value ? this.value + '.' + part : part); }
@@ -476,8 +531,8 @@ class CodeLens {
   constructor(range, command) {
     this.range = range;
     this.command = command;
-    this.isResolved = command !== undefined;
   }
+  get isResolved() { return this.command !== undefined; }
 }
 
 class DocumentLink {
@@ -751,6 +806,7 @@ function createApi(host, ext) {
   const scm = namespace('scm', scmModule.create(workbenchParts));
   const debug = namespace('debug', debugModule.create(workbenchParts));
   const languages = createLanguagesApi({
+    asExtension,
     host,
     ext,
     need,
@@ -759,7 +815,7 @@ function createApi(host, ext) {
     namespace,
     editors,
     toPath,
-    types: { Position, Range, SnippetString, CancellationTokenSource, Uri },
+    types: { Position, Range, SnippetString, CancellationTokenSource, Uri, CodeActionKind, Diagnostic, Color },
   });
   const { tasks } = tasksModule.createTaskApi({ host, ext, need, track, Disposable, EventEmitter, namespace, asExtension });
 
@@ -967,6 +1023,8 @@ function createApi(host, ext) {
     CompletionList,
     CodeAction,
     CodeActionKind,
+    SemanticTokens, SemanticTokensBuilder, SemanticTokensEdit, SemanticTokensEdits,
+    Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabelPart, InlayHintKind,
     CodeLens,
     DocumentLink,
     SymbolKind,
