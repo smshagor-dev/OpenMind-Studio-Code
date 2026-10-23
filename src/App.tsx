@@ -35,6 +35,7 @@ import { AiProviderManager } from "./components/ai/AiProviderManager";
 import { QuickOpen } from "./components/QuickOpen";
 import { ExtensionDialogs } from "./components/ExtensionDialogs";
 import { ExtensionPrompts } from "./components/ExtensionPrompts";
+import { ExtensionWorkbench } from "./components/ExtensionWorkbench";
 import { SecondarySideBar } from "./components/SecondarySideBar";
 import { SideBar } from "./components/SideBar";
 import { StatusBar } from "./components/StatusBar";
@@ -218,6 +219,7 @@ export function App() {
       <FirstRunWorkloads />
       <ExtensionDialogs />
       <ExtensionPrompts />
+      <ExtensionWorkbench />
       <Suspense fallback={null}>
         {aboutOpen ? <AboutDialog onClose={closeAbout} /> : null}
         {runtimesOpen ? <RuntimeManagerDialog onClose={closeRuntimes} /> : null}
@@ -247,3 +249,4 @@ function useWindowFocused(): boolean {
   }, []);
   return focused;
 }
+

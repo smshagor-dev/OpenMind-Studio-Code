@@ -317,7 +317,7 @@ fn an_unsupported_vscode_api_fails_with_a_clear_message() {
     .expect("manifest");
     std::fs::write(
         folder.join("main.js"),
-        "const vscode = require('vscode');\nexports.activate = () => { try { vscode.debug.startDebugging(undefined, 'x'); } catch (e) { globalThis.probeMessage = e.message; }\n vscode.commands.registerCommand('probe.message', () => globalThis.probeMessage); };",
+        "const vscode = require('vscode');\nexports.activate = () => { try { vscode.debug.registerDebugAdapterTrackerFactory('x', {}); } catch (e) { globalThis.probeMessage = e.message; }\n vscode.commands.registerCommand('probe.message', () => globalThis.probeMessage); };",
     )
     .expect("main");
     let vsix_path = fixture.paths.cache.join("probe.vsix");
@@ -337,7 +337,7 @@ fn an_unsupported_vscode_api_fails_with_a_clear_message() {
         .expect("run");
     assert_eq!(
         message,
-        json!("VS Code API 'debug.startDebugging' is not supported by OpenMind Studio yet.")
+        json!("VS Code API 'debug.registerDebugAdapterTrackerFactory' is not supported by OpenMind Studio yet.")
     );
     host.stop();
 }
@@ -490,7 +490,7 @@ fn an_unsupported_api_names_itself_and_is_logged_against_the_extension() {
     };
     run(&host, &extension.id);
     let err = call(&host, "sampleUnsupported.run").expect_err("unsupported");
-    let message = "VS Code API 'debug.startDebugging' is not supported by OpenMind Studio yet.";
+    let message = "VS Code API 'debug.registerDebugAdapterTrackerFactory' is not supported by OpenMind Studio yet.";
     assert!(err.contains(message), "{err}");
     let log = host.log().read();
     assert!(
@@ -838,3 +838,4 @@ fn every_sample_installs_disables_enables_and_uninstalls_cleanly() {
     assert!(fixture.store.list().extensions.is_empty());
     assert!(fixture.store.list().broken.is_empty());
 }
+

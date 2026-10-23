@@ -22,12 +22,13 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 const PROVIDE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Requests the window may send to the host.
-const ALLOWED_REQUESTS: [&str; 9] = [
+const ALLOWED_REQUESTS: [&str; 10] = [
     "host/activate",
     "host/deactivate",
     "host/executeCommand",
     "host/provide",
     "host/cancelProvide",
+    "host/workbench",
     "host/tree",
     "host/resolveWebviewView",
     "host/provideTasks",
@@ -185,7 +186,8 @@ fn timeout_for(method: &str) -> Duration {
         | "host/tree"
         | "host/resolveWebviewView"
         | "host/provideTasks"
-        | "host/fs" => COMMAND_TIMEOUT,
+        | "host/fs"
+        | "host/workbench" => COMMAND_TIMEOUT,
         "host/provide" => PROVIDE_TIMEOUT,
         _ => ACTIVATE_TIMEOUT,
     }

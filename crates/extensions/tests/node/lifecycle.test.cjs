@@ -102,3 +102,15 @@ test('cross-extension commands execute under the registered owner permissions', 
   for (const id of ['test.caller', 'test.callee']) await host.request('host/activate', { id });
   assert.equal(await host.request('host/executeCommand', { command: 'caller.run' }), 'EPERMISSION');
 });
+
+test('subscription disposal keeps the extension permission context', async t => {
+  const host = await fixture(t, { 'test.cleanup': { code: `
+    exports.activate = context => context.subscriptions.push({ dispose() {
+      fetch('data:text/plain,secret').then(() => console.log('cleanup-allowed'), error => console.log('cleanup:' + error.code));
+    } });` } });
+  await host.request('host/activate', { id: 'test.cleanup' });
+  await host.request('host/deactivate', { id: 'test.cleanup' });
+  await host.request('host/cancelProvide', { requestId: 'missing' });
+  assert.ok(host.messages.some(message => message.method === 'log/output' && message.params.text.includes('cleanup:EPERMISSION')));
+  assert.ok(!host.messages.some(message => message.method === 'log/output' && message.params.text.includes('cleanup-allowed')));
+});

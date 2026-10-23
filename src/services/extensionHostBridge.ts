@@ -85,6 +85,7 @@ export interface BridgeDeps {
   onStatusBarEvent?: (method: string, params: Record<string, unknown>) => void;
   /** `webview/*` notifications (panels), and `webview/reset` when the host went away. */
   onWebviewEvent?: (method: string, params: Record<string, unknown>) => void;
+  onWorkbenchEvent?: (method: string, params: Record<string, unknown>) => void;
   /** Extension terminals (`terminal/*`, Milestone 18). */
   terminals?: ExtensionTerminalService;
   /** Extension tasks (`tasks/execute`, `tasks/terminate`). */
@@ -286,6 +287,7 @@ export class HostBridge {
         if (method.startsWith("views/")) this.deps.onViewEvent?.(method, p);
         else if (method.startsWith("statusBar/")) this.deps.onStatusBarEvent?.(method, p);
         else if (method.startsWith("webview/")) this.deps.onWebviewEvent?.(method, p);
+        else if (method.startsWith("workbench/")) this.deps.onWorkbenchEvent?.(method, p);
     }
   }
 
@@ -310,6 +312,7 @@ export class HostBridge {
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});
     this.deps.onWebviewEvent?.("webview/reset", {});
+    this.deps.onWorkbenchEvent?.("workbench/reset", {});
   }
 
   private log(extension: string, channel: string, line: string): void {

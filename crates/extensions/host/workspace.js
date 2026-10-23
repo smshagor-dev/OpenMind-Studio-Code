@@ -173,6 +173,8 @@ function createWorkspaceApi(parts) {
   }
 
   const workspace = namespace('workspace', {
+    get isTrusted() { return state.isTrusted === true; },
+    onDidGrantWorkspaceTrust: event('workspaceTrusted'),
     get workspaceFolders() {
       const folders = state.workspaceFolders;
       if (!folders.length) return undefined;

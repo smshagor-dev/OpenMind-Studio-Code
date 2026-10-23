@@ -30,6 +30,7 @@ import type { SettingsService } from "./settingsService";
 import { StatusBarItemsService } from "./statusBarItemsService";
 import { panelsOf, WebviewService } from "./webviewService";
 import type { ThemeService } from "./themeService";
+import { extensionWorkbench } from "./extensionWorkbench";
 
 export interface ExtensionsWiringDeps {
   ipc: IpcClient;
@@ -182,6 +183,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
   });
 
   const bridge: HostBridge = new HostBridge({
+    onWorkbenchEvent: (method, params) => extensionWorkbench.handle(method, params),
     prompts,
     output: deps.output,
     hostRequest: (method, params) => {
@@ -296,6 +298,12 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
 
   let startupFinished = false;
 
+  extensionWorkbench.connect(async (params) => {
+    if (!(await host.start())) throw new Error("The extension host could not start. Configure a Node.js runtime in Extensions.");
+    return ipc.extHostRequest("host/workbench", params);
+  });
+  commands.register("extensions.workbench", async () => { await extensionWorkbench.show(); });
+
   /** Loads the installed extensions and starts following them. Nothing with code runs yet. */
   async function start(isMainWindow: boolean): Promise<void> {
     await registry.initialize();
@@ -346,3 +354,4 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     retryAfterInstall,
   };
 }
+

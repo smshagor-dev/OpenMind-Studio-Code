@@ -9,22 +9,23 @@ This inventory enumerates runtime namespace exports and top-level value exports 
 
 Run: node --test crates/extensions/tests/node/*.test.cjs
 
-Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed across 7 extension-related files. Strict TypeScript validation of the Monaco adapter, its integration test, formatter registry and their imported dependencies passed. Full-project lint/build and Windows execution remain unverified.
+Verified Linux run on 2026-10-23: 40 Node tests passed; 99 Vitest tests passed across 8 extension-related files. Strict TypeScript validation of the extension workbench, service, Monaco adapter and their integration tests/imported dependencies passed. Full-project lint/build and Windows execution remain unverified.
 
 - Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
 - File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
 - Permission regression cases: outside destinations, existing symlink targets, future paths under symlinks and dangling symlinks. These are regression checks, not proof of a sandbox.
-- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 20 exported numeric enum objects against the official declaration values. Parent cancellation and late-listener disposal are covered.
+- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 22 exported numeric enum objects against the official declaration values. Parent cancellation and late-listener disposal are covered.
+- Workbench: real-host tests cover test discovery/execution/cancellation, SCM commands/validation, notebook editing/execution/save, trust grants and adapter permissions. React integration renders the actual dialog against the child-process host. Frontend tests also cover stale responses, dirty notebook retention and failed-edit barriers. Native Tauri rendering remains unverified.
 - Language providers: real stdio-host tests cover references, type definitions, implementations, highlights, nested symbols, folding, selectors and cancellation/disposal. Vitest sends requests through the real host and HostBridge into mocked Monaco registrations to verify coordinate conversion, URI schemes, reference context, disposal and cancellation. This does not establish browser rendering behavior.
 
-## Infrastructure still required
+## Implemented subsets and remaining work
 
 | Area | Observed implementation and remaining work |
 | --- | --- |
-| Debug | No debug namespace; extension adapter execution and workbench integration unsupported. Built-in debugging is a separate facility. |
-| Testing | No tests namespace; extension test controllers, runs and Test Explorer integration unsupported. |
-| Notebooks | No notebooks namespace; extension serializers/controllers and notebook WorkspaceEdit operations unsupported. |
-| SCM | No scm namespace; extension providers unsupported. Built-in Git does not establish SCM API compatibility. |
+| Debug | Executable, socket and inline DAP transports, configuration/factory registration, sessions, source/function breakpoints and a dedicated workbench are implemented. A real debugpy adapter launched Python, stopped at a conditional breakpoint, returned threads/frames/scopes/variables, evaluated an expression and disconnected in the Node suite. Attach/restart are not integration-tested; reverse requests (including runInTerminal), trackers, data breakpoints and native editor gutter integration remain unsupported. |
+| Testing | Controllers, hierarchical discovery, run profiles, selected execution, results/diffs/output and cancellation are connected to the dedicated workbench and tested with actual extension code. Continuous testing and detailed coverage reporting remain unsupported. This is not a marketplace test-extension certification. |
+| Notebooks | Serializers, file-backed documents/cells, metadata, text edits, controller execution, textual outputs and save are connected to the dedicated workbench. Tests verify actual file persistence and dirty-cell preservation when an extension is disabled. Structural Notebook WorkspaceEdit, rich output renderers, native Jupyter integration, editor selections/affinity and untitled Save As remain unsupported. |
+| SCM | Providers, resource groups, input validation, selection, accept/resource commands and quick-diff URI resolution are exercised through the real host. The workbench displays groups and can compare original/current text through guarded workspace.fs. Advanced contribution menus/status commands remain incomplete; built-in Git is separate. |
 | Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Additional families, completion/item resolution, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
 | Tasks/terminals | Existing shell/process task and terminal bridges need live workbench validation. CustomExecution and problem matchers remain unsupported. |
 | Webviews/trees | Existing host modules and UI bridge need actual rendering, restore, messaging, CSP and resource-policy validation. |
@@ -32,7 +33,7 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | Activation events | Rust Trigger currently covers startup, command, language, view and workspace contains. URI/filesystem/debug/task/test/notebook triggers are not implemented by this dispatch enum. |
 | Filesystems | Same-scheme file rename and file copy plus custom-provider delegation implemented. Cross-scheme transfers and local directory copy explicitly reject. Local rename overwrite=false has a check/rename race and needs an atomic platform implementation for a strict no-clobber guarantee. Provider file-change events still require integration work. |
 | Profiles/install/marketplace | Existing implementation has not been fully audited or executed here. VSIX install, dependencies, imports, updates, native modules and legal distribution sources require separate end-to-end evidence. |
-| Permissions/isolation | Node require guards are not a security sandbox. Native code, process.binding, alternative loaders, shared module state, file descriptors and filesystem races remain limitations. Do not run hostile extensions as though isolated by these guards. Workspace Trust is not a verified enforcement boundary. |
+| Permissions/isolation | Node require guards are not a security sandbox. Native code, process.binding, alternative loaders, shared module state, file descriptors and filesystem races remain limitations. Do not run hostile extensions as though isolated by these guards. Workspace Trust defaults to untrusted; workbench execution requires an explicit session grant for the exact current roots, and manifests explicitly rejecting untrusted workspaces cannot activate there. These checks are tested; full VS Code restricted-settings semantics and an OS isolation boundary are not provided. |
 | Platforms | Node and focused Vitest tests ran on Linux with Node 24.19.0. A strict TypeScript check of the Monaco adapter, integration test and their imported dependency graph passed against Monaco 0.56.0; this is not a full-project build. Rust/Cargo is unavailable; Rust, Tauri and Windows builds were not run. No real marketplace extension compatibility or Windows result is claimed. |
 
 ## Namespace member inventory
@@ -111,7 +112,7 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `window.showErrorMessage` | Present; partial or unverified |
 | `window.showInformationMessage` | Present; partial or unverified |
 | `window.showInputBox` | Present; partial or unverified |
-| `window.showNotebookDocument` | Unsupported |
+| `window.showNotebookDocument` | Present; partial or unverified |
 | `window.showOpenDialog` | Unsupported |
 | `window.showQuickPick` | Present; partial or unverified |
 | `window.showSaveDialog` | Unsupported |
@@ -132,32 +133,32 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `workspace.fs` | Present; partial or unverified |
 | `workspace.getConfiguration` | Present; partial or unverified |
 | `workspace.getWorkspaceFolder` | Present; partial or unverified |
-| `workspace.isTrusted` | Unsupported |
+| `workspace.isTrusted` | Present; partial or unverified |
 | `workspace.name` | Present; partial or unverified |
-| `workspace.notebookDocuments` | Unsupported |
+| `workspace.notebookDocuments` | Present; partial or unverified |
 | `workspace.onDidChangeConfiguration` | Present; partial or unverified |
-| `workspace.onDidChangeNotebookDocument` | Unsupported |
+| `workspace.onDidChangeNotebookDocument` | Present; partial or unverified |
 | `workspace.onDidChangeTextDocument` | Present; partial or unverified |
 | `workspace.onDidChangeWorkspaceFolders` | Present; partial or unverified |
-| `workspace.onDidCloseNotebookDocument` | Unsupported |
+| `workspace.onDidCloseNotebookDocument` | Present; partial or unverified |
 | `workspace.onDidCloseTextDocument` | Present; partial or unverified |
 | `workspace.onDidCreateFiles` | Unsupported |
 | `workspace.onDidDeleteFiles` | Unsupported |
-| `workspace.onDidGrantWorkspaceTrust` | Unsupported |
-| `workspace.onDidOpenNotebookDocument` | Unsupported |
+| `workspace.onDidGrantWorkspaceTrust` | Present; partial or unverified |
+| `workspace.onDidOpenNotebookDocument` | Present; partial or unverified |
 | `workspace.onDidOpenTextDocument` | Present; partial or unverified |
 | `workspace.onDidRenameFiles` | Unsupported |
-| `workspace.onDidSaveNotebookDocument` | Unsupported |
+| `workspace.onDidSaveNotebookDocument` | Present; partial or unverified |
 | `workspace.onDidSaveTextDocument` | Present; partial or unverified |
 | `workspace.onWillCreateFiles` | Unsupported |
 | `workspace.onWillDeleteFiles` | Unsupported |
 | `workspace.onWillRenameFiles` | Unsupported |
 | `workspace.onWillSaveNotebookDocument` | Unsupported |
 | `workspace.onWillSaveTextDocument` | Unsupported |
-| `workspace.openNotebookDocument` | Unsupported |
+| `workspace.openNotebookDocument` | Present; partial or unverified |
 | `workspace.openTextDocument` | Present; partial or unverified |
 | `workspace.registerFileSystemProvider` | Present; partial or unverified |
-| `workspace.registerNotebookSerializer` | Unsupported |
+| `workspace.registerNotebookSerializer` | Present; partial or unverified |
 | `workspace.registerTaskProvider` | Unsupported |
 | `workspace.registerTextDocumentContentProvider` | Unsupported |
 | `workspace.rootPath` | Present; partial or unverified |
@@ -205,27 +206,27 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `languages.registerWorkspaceSymbolProvider` | Unsupported |
 | `languages.setLanguageConfiguration` | Unsupported |
 | `languages.setTextDocumentLanguage` | Unsupported |
-| `notebooks.createNotebookController` | Unsupported |
+| `notebooks.createNotebookController` | Present; partial or unverified |
 | `notebooks.createRendererMessaging` | Unsupported |
 | `notebooks.registerNotebookCellStatusBarItemProvider` | Unsupported |
-| `scm.createSourceControl` | Unsupported |
+| `scm.createSourceControl` | Present; partial or unverified |
 | `scm.inputBox` | Unsupported |
-| `debug.activeDebugConsole` | Unsupported |
-| `debug.activeDebugSession` | Unsupported |
-| `debug.addBreakpoints` | Unsupported |
+| `debug.activeDebugConsole` | Present; partial or unverified |
+| `debug.activeDebugSession` | Present; partial or unverified |
+| `debug.addBreakpoints` | Present; partial or unverified |
 | `debug.asDebugSourceUri` | Unsupported |
-| `debug.breakpoints` | Unsupported |
-| `debug.onDidChangeActiveDebugSession` | Unsupported |
-| `debug.onDidChangeBreakpoints` | Unsupported |
-| `debug.onDidReceiveDebugSessionCustomEvent` | Unsupported |
-| `debug.onDidStartDebugSession` | Unsupported |
-| `debug.onDidTerminateDebugSession` | Unsupported |
-| `debug.registerDebugAdapterDescriptorFactory` | Unsupported |
+| `debug.breakpoints` | Present; partial or unverified |
+| `debug.onDidChangeActiveDebugSession` | Present; partial or unverified |
+| `debug.onDidChangeBreakpoints` | Present; partial or unverified |
+| `debug.onDidReceiveDebugSessionCustomEvent` | Present; partial or unverified |
+| `debug.onDidStartDebugSession` | Present; partial or unverified |
+| `debug.onDidTerminateDebugSession` | Present; partial or unverified |
+| `debug.registerDebugAdapterDescriptorFactory` | Present; partial or unverified |
 | `debug.registerDebugAdapterTrackerFactory` | Unsupported |
-| `debug.registerDebugConfigurationProvider` | Unsupported |
-| `debug.removeBreakpoints` | Unsupported |
-| `debug.startDebugging` | Unsupported |
-| `debug.stopDebugging` | Unsupported |
+| `debug.registerDebugConfigurationProvider` | Present; partial or unverified |
+| `debug.removeBreakpoints` | Present; partial or unverified |
+| `debug.startDebugging` | Present; partial or unverified |
+| `debug.stopDebugging` | Present; partial or unverified |
 | `extensions.all` | Present; partial or unverified |
 | `extensions.getExtension` | Present; partial or unverified |
 | `extensions.onDidChange` | Present; partial or unverified |
@@ -235,7 +236,7 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `l10n.bundle` | Present; partial or unverified |
 | `l10n.t` | Present; partial or unverified |
 | `l10n.uri` | Present; partial or unverified |
-| `tests.createTestController` | Unsupported |
+| `tests.createTestController` | Present; partial or unverified |
 
 ## Top-level runtime value inventory
 
@@ -267,10 +268,10 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `CustomExecution` | Present; behavior needs per-member verification |
 | `DataTransfer` | Unsupported |
 | `DataTransferItem` | Unsupported |
-| `DebugAdapterExecutable` | Unsupported |
-| `DebugAdapterInlineImplementation` | Unsupported |
+| `DebugAdapterExecutable` | Present; behavior needs per-member verification |
+| `DebugAdapterInlineImplementation` | Present; behavior needs per-member verification |
 | `DebugAdapterNamedPipeServer` | Unsupported |
-| `DebugAdapterServer` | Unsupported |
+| `DebugAdapterServer` | Present; behavior needs per-member verification |
 | `DebugConfigurationProviderTriggerKind` | Unsupported |
 | `DebugConsoleMode` | Unsupported |
 | `DecorationRangeBehavior` | Unsupported |
@@ -297,7 +298,7 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `FileType` | Present; behavior needs per-member verification |
 | `FoldingRange` | Present; behavior needs per-member verification |
 | `FoldingRangeKind` | Present; behavior needs per-member verification |
-| `FunctionBreakpoint` | Unsupported |
+| `FunctionBreakpoint` | Present; behavior needs per-member verification |
 | `Hover` | Present; behavior needs per-member verification |
 | `IndentAction` | Unsupported |
 | `InlayHint` | Unsupported |
@@ -315,17 +316,17 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `Location` | Present; behavior needs per-member verification |
 | `LogLevel` | Unsupported |
 | `MarkdownString` | Present; behavior needs per-member verification |
-| `NotebookCellData` | Unsupported |
-| `NotebookCellKind` | Unsupported |
-| `NotebookCellOutput` | Unsupported |
-| `NotebookCellOutputItem` | Unsupported |
+| `NotebookCellData` | Present; behavior needs per-member verification |
+| `NotebookCellKind` | Present; behavior needs per-member verification |
+| `NotebookCellOutput` | Present; behavior needs per-member verification |
+| `NotebookCellOutputItem` | Present; behavior needs per-member verification |
 | `NotebookCellStatusBarAlignment` | Unsupported |
 | `NotebookCellStatusBarItem` | Unsupported |
 | `NotebookControllerAffinity` | Unsupported |
-| `NotebookData` | Unsupported |
+| `NotebookData` | Present; behavior needs per-member verification |
 | `NotebookEdit` | Unsupported |
 | `NotebookEditorRevealType` | Unsupported |
-| `NotebookRange` | Unsupported |
+| `NotebookRange` | Present; behavior needs per-member verification |
 | `OverviewRulerLane` | Unsupported |
 | `ParameterInformation` | Present; behavior needs per-member verification |
 | `Position` | Present; behavior needs per-member verification |
@@ -349,7 +350,7 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `SignatureInformation` | Present; behavior needs per-member verification |
 | `SnippetString` | Present; behavior needs per-member verification |
 | `SnippetTextEdit` | Unsupported |
-| `SourceBreakpoint` | Unsupported |
+| `SourceBreakpoint` | Present; behavior needs per-member verification |
 | `StatusBarAlignment` | Present; behavior needs per-member verification |
 | `SymbolInformation` | Present; behavior needs per-member verification |
 | `SymbolKind` | Present; behavior needs per-member verification |
@@ -372,10 +373,10 @@ Verified Linux run on 2026-10-23: 29 Node tests passed; 95 Vitest tests passed a
 | `TerminalLink` | Unsupported |
 | `TerminalLocation` | Unsupported |
 | `TerminalProfile` | Unsupported |
-| `TestMessage` | Unsupported |
-| `TestRunProfileKind` | Unsupported |
-| `TestRunRequest` | Unsupported |
-| `TestTag` | Unsupported |
+| `TestMessage` | Present; behavior needs per-member verification |
+| `TestRunProfileKind` | Present; behavior needs per-member verification |
+| `TestRunRequest` | Present; behavior needs per-member verification |
+| `TestTag` | Present; behavior needs per-member verification |
 | `TextDocumentChangeReason` | Unsupported |
 | `TextDocumentSaveReason` | Unsupported |
 | `TextEdit` | Present; behavior needs per-member verification |

@@ -23,6 +23,7 @@ async function fixture(t, definitions) {
   });
   const pending = new Map();
   const messages = [];
+  const listeners = new Set();
   let next = 0;
   let buffer = Buffer.alloc(0);
   function send(message) {
@@ -39,6 +40,7 @@ async function fixture(t, definitions) {
       const message = JSON.parse(buffer.subarray(end + 4, end + 4 + length));
       buffer = buffer.subarray(end + 4 + length);
       messages.push(message);
+      if (message.method && message.id === undefined) for (const listener of listeners) listener(message);
       if (message.method && message.id !== undefined) {
         send({ jsonrpc: '2.0', id: message.id, result: null });
       } else if (message.id !== undefined) {
@@ -64,7 +66,7 @@ async function fixture(t, definitions) {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`Host timed out: ${method}`));
-      }, 3000);
+      }, method === 'host/workbench' && params.domain === 'debug' ? 25000 : 3000);
       pending.set(id, { resolve, reject, timer });
       send({ jsonrpc: '2.0', id, method, params });
     });
@@ -78,7 +80,7 @@ async function fixture(t, definitions) {
     fs.rmSync(root, { recursive: true, force: true });
   });
   await request('host/init', { extensions });
-  return { request, messages, extensions };
+  return { request, messages, extensions, onNotification(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }
 
 module.exports = { fixture };

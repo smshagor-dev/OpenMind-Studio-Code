@@ -35,6 +35,11 @@ const TASKS_JS: &str = include_str!("../host/tasks.js");
 const FSPROVIDER_JS: &str = include_str!("../host/fsprovider.js");
 const WORKSPACE_JS: &str = include_str!("../host/workspace.js");
 const LANGUAGES_JS: &str = include_str!("../host/languages.js");
+const WORKBENCH_JS: &str = include_str!("../host/workbench.js");
+const TESTING_JS: &str = include_str!("../host/testing.js");
+const SCM_JS: &str = include_str!("../host/scm.js");
+const NOTEBOOKS_JS: &str = include_str!("../host/notebooks.js");
+const DEBUG_JS: &str = include_str!("../host/debug.js");
 
 const READY_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
@@ -330,6 +335,11 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
         ("fsprovider.js", FSPROVIDER_JS),
         ("workspace.js", WORKSPACE_JS),
         ("languages.js", LANGUAGES_JS),
+        ("workbench.js", WORKBENCH_JS),
+        ("testing.js", TESTING_JS),
+        ("scm.js", SCM_JS),
+        ("notebooks.js", NOTEBOOKS_JS),
+        ("debug.js", DEBUG_JS),
     ] {
         let file = paths.host_dir.join(name);
         if std::fs::read_to_string(&file).is_ok_and(|current| current == content) {
@@ -401,3 +411,4 @@ mod tests {
         assert_eq!(node.source, NodeSource::Portable);
     }
 }
+

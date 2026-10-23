@@ -14,6 +14,10 @@ const tasksModule = require('./tasks.js');
 const { createWorkspaceApi, RelativePattern } = require('./workspace.js');
 const { createLanguagesApi, TextEdit } = require('./languages.js');
 const { FileType, FileSystemError } = require('./fsprovider.js');
+const testingModule = require('./testing.js');
+const scmModule = require('./scm.js');
+const notebookModule = require('./notebooks.js');
+const debugModule = require('./debug.js');
 
 // Called with the message whenever an unsupported API is used (the host logs it, attributed to the extension).
 const { setReporter: setUnsupportedReporter, unsupportedError } = require('./unsupported.js');
@@ -733,6 +737,12 @@ function createApi(host, ext) {
 
   // -- workspace and languages (their own modules)
   const workspace = createWorkspaceApi({ host, ext, need, track, asExtension, Disposable, EventEmitter, Uri, editors, namespace, toPath });
+  const workbenchParts = { host, ext, need, track, Disposable, EventEmitter, CancellationTokenSource, Uri, workspace, editors };
+  const notebookApi = notebookModule.create(workbenchParts);
+  Object.defineProperties(workspace, Object.getOwnPropertyDescriptors(notebookApi.workspace));
+  const tests = namespace('tests', testingModule.create(workbenchParts));
+  const scm = namespace('scm', scmModule.create(workbenchParts));
+  const debug = namespace('debug', debugModule.create(workbenchParts));
   const languages = createLanguagesApi({
     host,
     ext,
@@ -834,13 +844,15 @@ function createApi(host, ext) {
     createWebviewPanel: webviews.createWebviewPanel,
   });
 
+  Object.defineProperties(window, Object.getOwnPropertyDescriptors(notebookApi.window));
+
   const extensionObject = (found) => {
     if (!found) return undefined;
     const extension = {
       id: found.id,
       extensionPath: found.path,
       extensionUri: Uri.file(found.path),
-      packageJSON: found.manifest,
+      packageJSON: found.packageJSON || found.manifest,
       get isActive() { const run = state.running.get(found.id); return !!run && !run.activating; },
       get exports() { return state.running.get(found.id)?.exports; },
       async activate() {
@@ -905,6 +917,25 @@ function createApi(host, ext) {
     window,
     workspace,
     languages,
+    tests,
+    scm,
+    debug,
+    notebooks: namespace('notebooks', notebookApi.notebooks),
+    TestRunRequest: testingModule.TestRunRequest,
+    TestRunProfileKind: testingModule.TestRunProfileKind,
+    TestMessage: testingModule.TestMessage,
+    TestTag: testingModule.TestTag,
+    NotebookRange: notebookModule.NotebookRange,
+    NotebookCellKind: notebookModule.NotebookCellKind,
+    NotebookCellData: notebookModule.NotebookCellData,
+    NotebookData: notebookModule.NotebookData,
+    NotebookCellOutput: notebookModule.NotebookCellOutput,
+    NotebookCellOutputItem: notebookModule.NotebookCellOutputItem,
+    DebugAdapterExecutable: debugModule.DebugAdapterExecutable,
+    DebugAdapterServer: debugModule.DebugAdapterServer,
+    DebugAdapterInlineImplementation: debugModule.DebugAdapterInlineImplementation,
+    SourceBreakpoint: debugModule.SourceBreakpoint,
+    FunctionBreakpoint: debugModule.FunctionBreakpoint,
     extensions,
     env,
     Disposable,
@@ -991,5 +1022,5 @@ function disposeApi(api) {
   if (cleanup) cleanup();
 }
 
-module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, CancellationTokenSource, unsupported };
+module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, CancellationTokenSource, CancellationToken, unsupported };
 

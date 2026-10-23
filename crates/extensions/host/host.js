@@ -104,6 +104,11 @@ const host = { state, request, notify, log, als };
 setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
+host.runWorkbenchCommand = async (command) => {
+  const entry = state.commands.get(command.command);
+  if (entry) return als.run(entry.id, () => entry.callback(...(command.arguments || [])));
+  return request('commands/execute', { command: command.command, args: command.arguments || [] });
+};
 host.activateExtension = async (id) => {
   const caller = who();
   await activate({ id }, activations.has(caller) ? [caller] : []);
@@ -221,7 +226,9 @@ function reviveArgument(value) {
 // ---- requests from the application ---------------------------------------------------------------------------------
 
 const handlers = {
+  'host/workbench': (params) => require('./workbench.js').handle(host, params),
   'host/init': (params) => {
+    state.isTrusted = params.isTrusted === true;
     for (const extension of params.extensions || []) state.extensions.set(extension.id, extension);
     state.configuration = params.configuration || {};
     state.workspaceFolders = params.workspaceFolders || [];
@@ -370,6 +377,14 @@ async function activateOnce(params, chain) {
     const mainFile = path.resolve(descriptor.path, descriptor.main);
     const file = fs.existsSync(mainFile) || path.extname(mainFile) ? mainFile : `${mainFile}.js`;
     if (!insideExtension(descriptor, file)) throw new Error('The extension entry point is outside its folder.');
+    const packageFile = path.join(descriptor.path, 'package.json');
+    if (fs.existsSync(packageFile)) {
+      if (!insideExtension(descriptor, packageFile)) throw new Error('The extension manifest is outside its folder.');
+      descriptor.packageJSON = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+    }
+    if (state.isTrusted !== true && descriptor.packageJSON?.capabilities?.untrustedWorkspaces?.supported === false) {
+      throw new Error(`Extension '${descriptor.id}' requires a trusted workspace.`);
+    }
     const subscriptions = [];
     const context = {
       subscriptions,
@@ -380,7 +395,7 @@ async function activateOnce(params, chain) {
       logUri: require('./vscode.js').Uri.file(descriptor.logPath),
       globalStoragePath: descriptor.globalStorage,
       logPath: descriptor.logPath,
-      extension: { id: descriptor.id, extensionPath: descriptor.path, packageJSON: descriptor.manifest },
+      extension: { id: descriptor.id, extensionPath: descriptor.path, packageJSON: descriptor.packageJSON || descriptor.manifest },
       environmentVariableCollection: undefined,
       globalState: memento(path.join(descriptor.globalStorage, 'globalState.json')),
       workspaceState: memento(path.join(descriptor.workspaceStorage || descriptor.globalStorage, 'workspaceState.json')),
@@ -463,14 +478,16 @@ function purgeExtensionModules(descriptor) {
 }
 
 function cleanup(run) {
-  disposeApi(run.api);
-  for (const disposable of run.subscriptions.splice(0).reverse()) {
-    try {
-      if (disposable && typeof disposable.dispose === 'function') disposable.dispose();
-    } catch (error) {
-      log('host', 'error', `dispose failed: ${error}`);
+  als.run(run.context.extension.id, () => {
+    disposeApi(run.api);
+    for (const disposable of run.subscriptions.splice(0).reverse()) {
+      try {
+        if (disposable && typeof disposable.dispose === 'function') disposable.dispose();
+      } catch (error) {
+        log(run.context.extension.id, 'error', `dispose failed: ${error}`);
+      }
     }
-  }
+  });
 }
 
 function deactivate(id) {
@@ -528,7 +545,10 @@ const notifications = {
     events.fire('configuration', { changed: params.changed || [] });
   },
   'host/workspaceFoldersChanged': (params) => {
+    const previous = state.workspaceFolders.map(folder => folder.path).sort();
     state.workspaceFolders = params.folders || [];
+    if (JSON.stringify(previous) !== JSON.stringify(state.workspaceFolders.map(folder => folder.path).sort())) state.isTrusted = false;
+    for (const domain of ['tests', 'scm', 'notebooks', 'debug']) require('./workbench.js').changed(host, domain);
     events.fire('workspaceFolders', {});
   },
   'host/documentOpened': (params) => {
