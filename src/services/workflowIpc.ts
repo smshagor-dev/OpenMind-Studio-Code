@@ -177,6 +177,8 @@ export interface CellResult {
 }
 
 export interface WorkflowIpc {
+  extensionTaskRun?: (task: { kind: string; commandLine: string; shellCommand?: string | null; shellArgs?: string[]; program?: string | null; args?: string[]; cwd: string; env: Record<string, string> }, shell: ShellKindName | null, cols: number, rows: number) => Promise<TaskTerminalInfo>;
+  tasksMatcherInfo?: (matchers: unknown[]) => Promise<{ name: string; supported: boolean; reason: string | null }[]>;
   debugConfigurations: (activeFile: string | null) => Promise<DebugConfigurations>;
   tasksList: (activeFile: string | null) => Promise<TaskListing>;
   tasksPlan: (
@@ -213,6 +215,8 @@ export interface WorkflowIpc {
 }
 
 export const tauriWorkflowIpc: WorkflowIpc = {
+  extensionTaskRun: (task, shell, cols, rows) => invoke<TaskTerminalInfo>("extension_task_run", { task, shell, cols, rows }),
+  tasksMatcherInfo: matchers => invoke("tasks_matcher_info", { matchers }),
   debugConfigurations: (activeFile) =>
     invoke<DebugConfigurations>("debug_configurations", { activeFile }),
   tasksList: (activeFile) => invoke<TaskListing>("tasks_list", { activeFile }),
@@ -233,3 +237,4 @@ export const tauriWorkflowIpc: WorkflowIpc = {
   notebookExecute: (path, cellIndex, code, fingerprint) =>
     invoke<CellResult>("notebook_execute", { path, cellIndex, code, fingerprint }),
 };
+

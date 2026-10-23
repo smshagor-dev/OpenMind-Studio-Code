@@ -1,7 +1,6 @@
 //! Tasks from the open folder's `.openmind/tasks.json` and `.vscode/tasks.json` (Milestone 19). Listing only reads
 //! the files; a task runs only through `task_run_step`, which the UI calls after the user confirmed it. The backend
-//! plans the step itself (the UI sends only which task and which step), so a page can never make this start a
-//! program of its choosing. A step runs as the program of a new integrated terminal (its exit code ends the terminal),
+//! plans disk tasks itself. Extension tasks use a separate descriptor after the extension permission and UI confirmation. A step runs as the program of a new integrated terminal (its exit code ends the terminal),
 //! with OpenMind's runtimes in front of that terminal's PATH only.
 
 use std::path::{Path, PathBuf};
@@ -11,7 +10,7 @@ use openmind_tasks::{
     execution_order, plan, Diagnostic, MatcherInfo, TaskDef, TaskFile, TaskShell, TaskStep,
 };
 use openmind_terminal::{CreateTerminalRequest, ShellKind, TerminalRegistry, TerminalSessionInfo};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, State};
 
@@ -334,6 +333,141 @@ pub async fn task_run_step(
     };
     tracing::info!(task = %step.label, "running a task the user confirmed");
     crate::commands::terminal::start_session(&state, app, terminal_id, owner, request)
+}
+
+/// An extension task after permission, workspace trust and user confirmation in the workbench.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionTaskRequest {
+    kind: String,
+    command_line: String,
+    program: Option<String>,
+    shell_command: Option<String>,
+    shell_args: Option<Vec<String>>,
+    args: Option<Vec<String>>,
+    cwd: String,
+    env: std::collections::BTreeMap<String, String>,
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn extension_task_run(
+    task: ExtensionTaskRequest,
+    shell: Option<ShellKind>,
+    cols: u16,
+    rows: u16,
+    window: tauri::Window,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<TerminalSessionInfo, String> {
+    let folder = folder_of(&state, &window)
+        .await?
+        .ok_or("Open a folder to run tasks.")?;
+    let folder = folder.canonicalize().map_err(|err| err.to_string())?;
+    let cwd = PathBuf::from(&task.cwd)
+        .canonicalize()
+        .map_err(|err| err.to_string())?;
+    if !cwd.is_dir() || !cwd.starts_with(&folder) {
+        return Err("The task folder must be inside the open workspace.".into());
+    }
+    if !matches!(task.kind.as_str(), "shell" | "process") || cols == 0 || rows == 0 {
+        return Err("Invalid task kind or terminal dimensions.".into());
+    }
+    let args = task.args.unwrap_or_default();
+    let shell_args = task.shell_args.unwrap_or_default();
+    if task.command_line.len() > 128 * 1024
+        || args.len() > 4096
+        || shell_args.len() > 4096
+        || task.env.len() > 1024
+        || args
+            .iter()
+            .chain(shell_args.iter())
+            .chain(task.shell_command.iter())
+            .any(|arg| arg.contains('\0') || arg.len() > 128 * 1024)
+        || task.command_line.contains('\0')
+        || task.env.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.contains(['=', '\0'])
+                || value.contains('\0')
+                || key.len() + value.len() > 128 * 1024
+        })
+    {
+        return Err("Invalid or oversized task arguments or environment.".into());
+    }
+    let runtime = crate::commands::run::environment(&state).await;
+    let (kind, program, args) = if task.kind == "process" {
+        let program = task
+            .program
+            .filter(|p| !p.is_empty() && !p.contains('\0') && p.len() <= 32768)
+            .ok_or("Process task needs a valid program.")?;
+        (
+            ShellKind::PowerShell,
+            resolve_program(&program, &runtime.path_prepend, &cwd)?,
+            args,
+        )
+    } else {
+        let kind = if task_shell(shell) == TaskShell::GitBash {
+            ShellKind::GitBash
+        } else {
+            ShellKind::PowerShell
+        };
+        let program = kind.executable().ok_or("The task shell is unavailable.")?;
+        let line = if let Some(command) = task.shell_command {
+            let quote = |text: &str| {
+                if kind == ShellKind::GitBash {
+                    format!("'{}'", text.replace('\'', "'\\''"))
+                } else {
+                    format!("'{}'", text.replace('\'', "''"))
+                }
+            };
+            let words = std::iter::once(command.as_str())
+                .chain(shell_args.iter().map(String::as_str))
+                .map(quote)
+                .collect::<Vec<_>>()
+                .join(" ");
+            if kind == ShellKind::GitBash {
+                words
+            } else {
+                format!("& {words}")
+            }
+        } else {
+            task.command_line
+        };
+        let args = if kind == ShellKind::GitBash {
+            vec!["-c".into(), line]
+        } else {
+            // A fresh PowerShell process has no stale LASTEXITCODE from an earlier command.
+            vec![
+                "-NoLogo".into(),
+                "-NoProfile".into(),
+                "-Command".into(),
+                format!("{line}\n$ok = $?\nif ($LASTEXITCODE) {{ exit $LASTEXITCODE }}\nif (-not $ok) {{ exit 1 }}\nexit 0"),
+            ]
+        };
+        (kind, program, args)
+    };
+    let mut env = openmind_terminal::default_environment();
+    env.extend(runtime.vars);
+    env.extend(task.env);
+    let owner = window.label().to_string();
+    let terminal_id = TerminalRegistry::generate_id();
+    state.editor_windows.track_terminal(&terminal_id, &owner);
+    let request = CreateTerminalRequest {
+        shell: Some(kind),
+        cwd: Some(cwd),
+        cols,
+        rows,
+        env,
+        path_prepend: runtime.path_prepend,
+        program: Some(program),
+        args,
+    };
+    crate::commands::terminal::start_session(&state, app, terminal_id, owner, request)
+}
+
+#[tauri::command]
+pub fn tasks_matcher_info(matchers: Vec<Value>) -> Vec<MatcherInfo> {
+    openmind_tasks::describe(&matchers)
 }
 
 /// The problems a finished task's output shows, by its problem matchers.

@@ -81,6 +81,7 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
     notice,
     log,
   });
+  const taskProblemPaths = new Map<string, Set<string>>();
   const tasks = new ExtensionTaskService({
     host: {
       activateFor: (trigger, report) => host.activateFor(trigger, report),
@@ -88,6 +89,38 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
       needsHost: () => host.needsHost(),
     },
     terminals: terminal,
+    startTask: async (task, onOutput) => {
+      await host.request("host/validateTask", { handle: task.handle });
+      const runTask = ipc.extensionTaskRun;
+      if (!runTask) throw new Error("Native extension task execution is unavailable.");
+      let pid: number | null = null;
+      let disposeOutput: (() => void) | undefined;
+      const sessionId = await terminal.createTaskTerminal(task.name, async (cols, rows) => {
+        const result = await runTask({ ...task, cwd: task.cwd ?? "" }, terminal.getState().lastShell, cols, rows);
+        pid = result.pid; return result;
+      }, true, id => { disposeOutput = terminal.onOutput(id, onOutput, true); });
+      if (!sessionId) disposeOutput?.();
+      return sessionId ? { sessionId, pid, disposeOutput } : null;
+    },
+    matcherNotes: async task => {
+      if (!task.problemMatchers.length) return [];
+      if (!ipc.tasksMatcherInfo) return ["Problem matcher support could not be checked."];
+      const info = await ipc.tasksMatcherInfo(task.matcherDefinitions ?? task.problemMatchers);
+      return info.filter(matcher => !matcher.supported).map(matcher => `${matcher.name}: ${matcher.reason ?? "Unsupported problem matcher"}`);
+    },
+    reportProblems: async (task, output, isCurrent) => {
+      const results = await ipc.tasksProblems(task.matcherDefinitions ?? task.problemMatchers, output, task.cwd ?? "");
+      if (!isCurrent()) return;
+      const collection = `extension-task:${task.extension}:${task.name}`;
+      const paths = new Set(results.map(result => result.file));
+      for (const path of new Set([...(taskProblemPaths.get(collection) ?? []), ...paths])) {
+        bridge.handleNotification("diagnostics/set", { collection, path, diagnostics: results.filter(result => result.file === path).map(result => ({
+          range: { startLine: Math.max(0, result.line - 1), startColumn: Math.max(0, result.column - 1), endLine: Math.max(0, result.line - 1), endColumn: Math.max(0, result.column) },
+          message: result.message, severity: result.severity === "error" ? 0 : result.severity === "warning" ? 1 : 2, source: result.source, code: result.code ?? undefined,
+        })) });
+      }
+      taskProblemPaths.set(collection, paths);
+    },
     quickPick: (request) => prompts.quickPick(request),
     confirm,
     notifyHost,

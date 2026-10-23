@@ -222,6 +222,8 @@ fn main() {
             commands::tasks::tasks_plan,
             commands::tasks::task_run_step,
             commands::tasks::tasks_problems,
+            commands::tasks::tasks_matcher_info,
+            commands::tasks::extension_task_run,
             commands::notebook::notebook_open,
             commands::notebook::notebook_save,
             commands::notebook::notebook_set_trust,
@@ -633,4 +635,3 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

@@ -62,12 +62,15 @@ const EMPTY_STATE: TerminalState = {
 export class TerminalService {
   private state: TerminalState = EMPTY_STATE;
   private readonly listeners = new Set<() => void>();
+  private readonly pseudo = new Map<string, { input(data: string): void; resize(columns: number, rows: number): void; close(): void }>();
   private readonly sinks = new Map<string, TerminalSink>();
   private readonly inputTaps = new Set<(id: string, data: string) => void>();
   /** Listeners of a session's raw output (a task's problem matchers read it). */
   private readonly taps = new Map<string, Set<(data: Uint8Array) => void>>();
   /** Callers waiting for a session to end (a task chain waits for each step). */
   private readonly exitWaiters = new Map<string, ((code: number | null) => void)[]>();
+  private taskStarts = 0;
+  private readonly earlyTaskExits = new Map<string, number | null>();
   private readonly pending = new Map<string, Uint8Array[]>();
   /** Sessions the user closed, so late output from their dying process is dropped, not buffered. */
   private readonly closedIds = new Set<string>();
@@ -185,8 +188,10 @@ export class TerminalService {
     title: string,
     start: (cols: number, rows: number) => Promise<{ id: string; shell: ShellKind; cwd: string }>,
     show: boolean,
+    onCreated?: (id: string) => void,
   ): Promise<string | null> {
     let info: { id: string; shell: ShellKind; cwd: string };
+    this.taskStarts++;
     try {
       info = await start(INITIAL_COLS, INITIAL_ROWS);
     } catch (error) {
@@ -194,14 +199,18 @@ export class TerminalService {
         message: error instanceof Error ? error.message : String(error),
       });
       return null;
-    }
+    } finally { this.taskStarts--; }
+    onCreated?.(info.id);
+    const earlyExit = this.earlyTaskExits.has(info.id), exitCode = this.earlyTaskExits.get(info.id) ?? null;
+    this.earlyTaskExits.delete(info.id);
     const session: TerminalSession = {
       id: info.id,
       shell: info.shell,
       title,
       cwd: info.cwd,
-      exited: false,
-      exitCode: null,
+      exited: earlyExit,
+      exitCode,
+      refreshable: false,
     };
     this.update({ sessions: [...this.state.sessions, session], activeId: session.id });
     this.log(`Started ${title} in ${session.cwd}`);
@@ -209,8 +218,32 @@ export class TerminalService {
     return session.id;
   }
 
+  async createPseudoterminal(title: string, cwd: string | null, driver: { input(data: string): void; resize(columns: number, rows: number): void; close(): void }): Promise<string> {
+    const id = `extension-pty-${crypto.randomUUID()}`;
+    this.pseudo.set(id, driver);
+    const session: TerminalSession = { id, shell: this.state.lastShell ?? this.state.shells[0]?.kind ?? "powerShell", title, cwd: cwd ?? this.getCwd() ?? "", exited: false, exitCode: null, refreshable: false };
+    this.update({ sessions: [...this.state.sessions, session], activeId: id });
+    try { await this.panel.show("terminal"); }
+    catch (error) { await this.closeTerminal(id); throw error; }
+    return id;
+  }
+
+  writePseudoterminal(id: string, data: string): void {
+    if (this.pseudo.has(id) && !this.closedIds.has(id)) {
+      this.handleOutput(id, new TextEncoder().encode(data));
+      const pending = this.pending.get(id);
+      if (pending) { let bytes = pending.reduce((total, chunk) => total + chunk.length, 0); while (pending.length > 1 && bytes > 4 * 1024 * 1024) bytes -= pending.shift()?.length ?? 0; }
+    }
+  }
+
+  exitPseudoterminal(id: string, code: number | null): void {
+    if (!this.pseudo.has(id)) return;
+    this.pseudo.delete(id); this.closedIds.add(id); this.handleExit(id, code);
+  }
+
   /** Listens to a session's raw output. */
-  onOutput(id: string, listener: (data: Uint8Array) => void): () => void {
+  onOutput(id: string, listener: (data: Uint8Array) => void, replayPending = false): () => void {
+    if (replayPending) for (const chunk of this.pending.get(id) ?? []) listener(chunk);
     const set = this.taps.get(id) ?? new Set<(data: Uint8Array) => void>();
     set.add(listener);
     this.taps.set(id, set);
@@ -254,7 +287,9 @@ export class TerminalService {
     this.closedIds.add(id);
     this.settle(id, null);
     this.update({ sessions, activeId });
-    await safely(this.events, () => this.ipc.terminalClose(id), "close the terminal", undefined);
+    const pseudo = this.pseudo.get(id);
+    if (pseudo) { this.pseudo.delete(id); pseudo.close(); }
+    else if (!id.startsWith("extension-pty-")) await safely(this.events, () => this.ipc.terminalClose(id), "close the terminal", undefined);
     if (sessions.length === 0 && this.panel.getState().activeTab === "terminal") {
       // Closing the last terminal closes the panel, like VS Code.
       await this.panel.hide();
@@ -345,11 +380,15 @@ export class TerminalService {
       return;
     }
     for (const tap of [...this.inputTaps]) tap(id, data);
+    const pseudo = this.pseudo.get(id);
+    if (pseudo) { pseudo.input(data); return; }
     void safely(this.events, () => this.ipc.terminalWrite(id, data), "send input", undefined);
   }
 
   resize(id: string, cols: number, rows: number): void {
-    void safely(this.events, () => this.ipc.terminalResize(id, cols, rows), "resize", undefined);
+    const pseudo = this.pseudo.get(id);
+    if (pseudo) { pseudo.resize(cols, rows); return; }
+    if (!id.startsWith("extension-pty-")) void safely(this.events, () => this.ipc.terminalResize(id, cols, rows), "resize", undefined);
   }
 
   /** Copies terminal text to the system clipboard; a failure is reported, not swallowed. */
@@ -402,6 +441,7 @@ export class TerminalService {
 
   dispose(): void {
     this.disposed = true;
+    for (const driver of this.pseudo.values()) { try { driver.close(); } catch (error) { this.log(`Pseudoterminal close failed: ${String(error)}`); } } this.pseudo.clear();
     for (const off of this.unsubscribers.splice(0)) {
       off();
     }
@@ -421,6 +461,10 @@ export class TerminalService {
 
   private handleExit(id: string, code: number | null): void {
     if (!this.state.sessions.some((session) => session.id === id)) {
+      if (this.taskStarts > 0 && !this.closedIds.has(id)) {
+        if (this.earlyTaskExits.size >= 128) { const oldest = this.earlyTaskExits.keys().next().value; if (oldest) this.earlyTaskExits.delete(oldest); }
+        this.earlyTaskExits.set(id, code);
+      }
       return;
     }
     const exited = this.state.sessions.find((session) => session.id === id);
@@ -458,3 +502,4 @@ function parsePersisted(raw: string): PersistedState | null {
     return null;
   }
 }
+
