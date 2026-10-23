@@ -81,7 +81,7 @@ function create(parts) {
     const serializer = state.serializers.get(type); if (!serializer) failure(`No serializer for '${type}'.`);
     if (!Array.isArray(notebookData?.cells)) failure('The notebook serializer returned invalid cells.');
     notebookData = structuredClone(notebookData);
-    const entry = { document: null, data: notebookData, cells: [], executions: new Set(), closed: false, dirty: uri.scheme === 'untitled', version: 1, serializer, uri };
+    const entry = { document: null, data: notebookData, cells: [], executions: new Set(), closed: false, dirty: uri.scheme === 'untitled', version: 1, serializer, uri, undo: [], redo: [], saved: uri.scheme === 'untitled' ? null : structuredClone(notebookData) };
     const doc = {
       uri, notebookType: type,
       get version() { return entry.version; }, get isDirty() { return entry.dirty; },
@@ -102,7 +102,7 @@ function create(parts) {
             if (entry.version !== version) failure('The notebook changed during serialization; retry saving.');
             await currentSerializer.fs.writeFile(uri, bytes);
           });
-          entry.dirty = false; host.events.fire('notebookSaved', doc); update(); return true;
+          entry.dirty = false; entry.saved = structuredClone(entry.data); host.events.fire('notebookSaved', doc); update(); return true;
         } finally { token.dispose(); }
       },
     };
@@ -245,6 +245,7 @@ function applyEdits(host, buckets, checkEditable) {
   for (const plan of plans) for (const edit of plan.replacements) edit.created = edit.cells.map(value => plan.entry.createCell(value));
   const notifications = [];
   for (const { entry, replacements, metadataEdits, metadata, metadataChanged } of plans) {
+    if (replacements.length || metadataEdits.length || metadataChanged) remember(entry);
     const cellChanges = [], contentChanges = [], opened = [], closed = [];
     for (const edit of metadataEdits) {
       entry.data.cells[edit.index].metadata = edit.value;
@@ -271,6 +272,13 @@ function applyEdits(host, buckets, checkEditable) {
   }
   changed(host, 'notebooks'); return true;
 }
+function remember(entry) {
+  const value = structuredClone(entry.data);
+  // Bound retained snapshots so large notebooks cannot grow history indefinitely.
+  entry.undo ||= []; entry.redo ||= []; entry.redo.length = 0;
+  entry.undo.push(value);
+  while (entry.undo.length > 30 || (entry.undo.length > 1 && JSON.stringify(entry.undo).length > 10 * 1024 * 1024)) entry.undo.shift();
+}
 function closeDocument(host, entry) {
   for (const execution of [...entry.executions]) { owned(host, execution.extension, () => execution.source.cancel()); execution.end(undefined); }
   entry.closed = true; registry(host).notebooks.delete(entry.uri.toString());
@@ -282,7 +290,7 @@ function snapshot(host) {
   return { serializers: [...new Set([...state.serializers.keys(), ...(host.contributions?.('notebooks') || []).map(value => value.type).filter(value => typeof value === 'string' && value)])],
     controllers: [...state.controllers].map(([handle, { controller }]) => ({ handle, id: controller.id, label: controller.label, notebookType: controller.notebookType })),
     documents: [...state.notebooks].map(([uri, entry]) => ({ uri, notebookType: entry.document.notebookType, dirty: entry.dirty, version: entry.version,
-      unavailable: !state.serializers.has(entry.document.notebookType),
+      unavailable: !state.serializers.has(entry.document.notebookType), canUndo: !!entry.undo?.length, canRedo: !!entry.redo?.length,
       cells: entry.data.cells.map((cell, index) => ({ id: entry.cells[index].document.uri.toString(), index, kind: cell.kind, languageId: cell.languageId, value: cell.value,
         running: [...entry.executions].some(execution => execution.cell.index === index), summary: cell.executionSummary,
         outputs: (cell.outputs || []).flatMap(output => output.items).map(item => ({ mime: item.mime,
@@ -337,11 +345,41 @@ async function invoke(host, params) {
       return document.uri.toString();
     } finally { token.dispose(); }
   }
+  if (params.op === 'undo' || params.op === 'redo') {
+    if (entry.executions.size) failure('Stop notebook execution before undo or redo.');
+    if (params.version !== entry.version) failure('The notebook changed; refresh before undo or redo.');
+    const serializer = state.serializers.get(entry.document.notebookType);
+    const owner = serializer && host.state.extensions.get(serializer.extension);
+    if (!owner) failure('The notebook serializer is unavailable.');
+    if (!owner.permissions.includes('workspaceWrite')) failure('Notebook undo requires workspaceWrite permission.');
+    if (entry.uri.scheme === 'file') require('./guard.js').createGuard(owner, () => host.state.workspaceFolders).checkPath(entry.uri.fsPath, true);
+    const from = params.op === 'undo' ? entry.undo : entry.redo;
+    const to = params.op === 'undo' ? entry.redo : entry.undo;
+    if (!from?.length) return false;
+    const next = from[from.length - 1];
+    // Allocate the replacement first; failures keep both the document and history intact.
+    const data = structuredClone(next);
+    const created = data.cells.map(value => entry.createCell(value));
+    const old = entry.cells;
+    to.push(structuredClone(entry.data)); from.pop();
+    for (const cell of old) {
+      const key = cell.document.uri.toString(), document = host.state.documents.get(key);
+      host.state.documents.delete(key); host.events.fire('documentClosed', document);
+    }
+    entry.data = data; entry.cells = created.map(value => value.cell); entry.version++;
+    entry.dirty = entry.saved === null || JSON.stringify(entry.saved) !== JSON.stringify(data);
+    for (const value of created) { host.state.documents.set(value.data.path, value.data); host.events.fire('documentOpened', value.data); }
+    host.events.fire('notebookChanged', { notebook: entry.document, metadata: data.metadata,
+      contentChanges: [{ range: new NotebookRange(0, old.length), addedCells: entry.cells, removedCells: old }], cellChanges: [] });
+    changed(host, 'notebooks'); return true;
+  }
   if (params.op === 'save') return entry.document.save();
   if (params.op === 'close') { if (entry.dirty && !params.discard) failure('Save or explicitly discard notebook changes before closing.'); closeDocument(host, entry); return true; }
   if (params.op === 'edit') {
     const cell = entry.cells[params.index]; if (!cell) failure('Notebook cell not found.');
     if (params.version !== entry.version && (!Object.hasOwn(params, 'previousValue') || String(params.previousValue) !== entry.data.cells[params.index].value)) failure('The notebook changed; reload before editing.');
+    if (entry.executions.size) failure('Stop notebook execution before editing.');
+    remember(entry);
     entry.data.cells[params.index].value = String(params.value);
     const data = host.state.documents.get(cell.document.uri.toString()); data.text = String(params.value); data.version++; data.isDirty = true;
     entry.version++; entry.dirty = true; host.events.fire('documentChanged', data);

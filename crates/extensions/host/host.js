@@ -116,6 +116,8 @@ const state = {
 };
 
 const host = { state, request, notify, log, als };
+host.provide = params => handlers['host/provide'](params);
+host.cancelProvide = params => handlers['host/cancelProvide'](params);
 setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
@@ -353,6 +355,11 @@ function reviveArgument(value) {
 // ---- requests from the application ---------------------------------------------------------------------------------
 
 const handlers = {
+  'host/quickInputEvent': params => {
+    const entry = state.quickInputs?.get(params.id);
+    if (!entry) return null;
+    return als.run(entry.extension, () => entry.event(params));
+  },
   'host/workbench': (params) => require('./workbench.js').handle(host, params),
   'host/init': (params) => {
     state.isTrusted = params.isTrusted === true;
@@ -707,6 +714,7 @@ const notifications = {
   'host/documentClosed': (params) => {
     const doc = state.documents.get(params.path);
     require('./contentproviders.js').close(host, doc);
+    for (const entry of state.fileSystems?.values() || []) if (entry.id === doc?.fileSystemProvider) entry.revisions.delete(params.path);
     state.documents.delete(params.path);
     events.fire('documentClosed', doc || params);
   },

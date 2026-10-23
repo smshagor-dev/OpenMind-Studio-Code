@@ -20,9 +20,9 @@ class FunctionBreakpoint {
 }
 
 class DapClient {
-  constructor(descriptor, event, log, observe = () => {}, runAdapter = fn => fn()) {
+  constructor(descriptor, event, log, observe = () => {}, runAdapter = fn => fn(), reverse = async command => { throw new Error(`Unsupported debug reverse request: ${command}`); }, cleanup = () => {}) {
     this.pending = new Map(); this.waiters = new Map(); this.sequence = 0; this.closed = false; this.buffer = Buffer.alloc(0);
-    this.onEvent = event; this.log = log; this.observe = observe; this.runAdapter = runAdapter;
+    this.onEvent = event; this.log = log; this.observe = observe; this.runAdapter = runAdapter; this.reverse = reverse; this.cleanup = cleanup;
     if (descriptor instanceof DebugAdapterInlineImplementation) {
       this.inline = descriptor.implementation;
       this.subscription = this.runAdapter(() => this.inline.onDidSendMessage(message => this.receive(message)));
@@ -92,8 +92,10 @@ class DapClient {
       for (const waiter of this.waiters.get(message.event) || []) { clearTimeout(waiter.timer); waiter.resolve(message.body); }
       this.waiters.delete(message.event); this.onEvent(message.event, message.body || {});
     } else if (message.type === 'request') {
-      this.send({ seq: ++this.sequence, type: 'response', request_seq: message.seq, command: message.command, success: false,
-        message: `Reverse request '${message.command}' is not supported by this client.` });
+      Promise.resolve().then(() => this.runAdapter(() => this.reverse(message.command, message.arguments || {}))).then(
+        body => { if (!this.closed) this.send({ seq: ++this.sequence, type: 'response', request_seq: message.seq, command: message.command, success: true, body: body || {} }); },
+        error => { if (!this.closed) this.send({ seq: ++this.sequence, type: 'response', request_seq: message.seq, command: message.command, success: false, message: String(error.message || error) }); },
+      ).catch(error => this.log(`Debug reverse response failed: ${error.message}`));
     }
   }
   reportExit(code, signal) {
@@ -101,6 +103,7 @@ class DapClient {
   }
   close(reason = new Error('Debug adapter stopped.'), isError = false) {
     if (this.closed) return; this.closed = true;
+    try { this.cleanup(); } catch (error) { this.log(`Debug terminal cleanup failed: ${error.message}`); }
     if (isError) this.observe('onError', reason);
     this.observe('onWillStopSession');
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(reason); } this.pending.clear();
@@ -227,6 +230,7 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
           fire('terminate', session); update();
         };
         if (![DebugAdapterExecutable, DebugAdapterServer, DebugAdapterInlineImplementation].some(type => descriptor instanceof type)) failure('Unsupported debug adapter descriptor.');
+        const debugTerminals = new Set();
         const trackers = [];
         for (const registration of state.trackers.values()) {
           if (registration.type !== '*' && registration.type !== config.type) continue;
@@ -265,13 +269,34 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
             }
           }
           else if (!['initialized', 'output', 'stopped', 'continued', 'breakpoint', 'thread', 'exited', 'process', 'module', 'loadedSource', 'capabilities', 'progressStart', 'progressUpdate', 'progressEnd', 'invalidated', 'memory'].includes(event)) fire('custom', { session, event, body }); update();
-        }), value => { entry.output = limit([...entry.output, value], 200); update(); }, observe, fn => owned(host, factory.extension, fn));
+        }), value => { entry.output = limit([...entry.output, value], 200); update(); }, observe, fn => owned(host, factory.extension, fn), async (command, args) => {
+          require('./workbench.js').requireTrust(host);
+          if (command === 'startDebugging') {
+            if (!args.configuration || !['launch', 'attach'].includes(args.request)) failure('Invalid child debug configuration.');
+            const api = host.state.running.get(factory.extension)?.api;
+            if (!api) failure('The debug extension is no longer active.');
+            const started = await api.debug.startDebugging(folder, { ...args.configuration, request: args.request });
+            if (!started) failure('Child debug session was cancelled.');
+            return {};
+          }
+          if (command !== 'runInTerminal') failure(`Unsupported debug reverse request: ${command}`);
+          if (!owner.permissions.includes('terminal')) failure('The debug adapter extension needs terminal permission.');
+          if (args.kind === 'external') failure('External debug terminals are not available; select integrated.');
+          if (args.argsCanBeInterpretedByShell) failure('Shell-interpreted debugger arguments are not supported.');
+          if (!Array.isArray(args.args) || !args.args.length || args.args.some(value => typeof value !== 'string' || value.includes('\0'))) failure('Invalid debug terminal arguments.');
+          const cwd = args.cwd || base || owner.path;
+          require('./guard.js').createGuard(owner, () => host.state.workspaceFolders).checkPath(cwd, false);
+          const terminalId = `${factory.extension}#debug-${id}-${debugTerminals.size}`; debugTerminals.add(terminalId);
+          const result = await host.request('terminal/runDebuggee', { extension: factory.extension, id: terminalId, name: args.title || session.name, cwd, args: args.args, env: args.env || {} });
+          if (entry.client.closed) host.notify('terminal/dispose', { extension: factory.extension, id: terminalId });
+          return result || {};
+        }, () => { for (const terminal of debugTerminals) host.notify('terminal/dispose', { extension: factory.extension, id: terminal }); debugTerminals.clear(); });
         if (!entry.client.closed) state.debugClients.set(id, entry);
         state.sessions.set(id, entry); state.activeDebugSession = entry; update();
         const initialized = entry.client.wait('initialized'); initialized.catch(() => {});
         try {
           entry.capabilities = await entry.client.request('initialize', { clientID: 'openmind-studio', adapterID: config.type,
-            pathFormat: 'path', linesStartAt1: true, columnsStartAt1: true, supportsVariableType: true, supportsRunInTerminalRequest: false });
+            pathFormat: 'path', linesStartAt1: true, columnsStartAt1: true, supportsVariableType: true, supportsRunInTerminalRequest: owner.permissions.includes('terminal'), supportsStartDebuggingRequest: true });
           const launch = entry.client.request(config.request, config, 30000); launch.catch(() => {});
           await initialized; await synchronize(entry);
           if (entry.capabilities.supportsConfigurationDoneRequest) await entry.client.request('configurationDone');

@@ -1,3 +1,4 @@
+import type { DynamicQuickInput } from "./extensionPromptService";
 import {
   extensionDialogOptions,
   type ExtensionDialogs,
@@ -21,6 +22,9 @@ export interface HostDocument {
 export interface ProviderRegistration {
   handle: string;
   kind:
+    | "workspaceSymbol"
+    | "callHierarchy"
+    | "typeHierarchy"
     | "inlineCompletion"
     | "completion"
     | "hover"
@@ -137,6 +141,7 @@ export interface HostDiagnostic {
 
 export interface BridgeDeps {
   dialogs?: ExtensionDialogs;
+  clipboard?: { readText(): Promise<string | null>; writeText(value: string): Promise<void> };
   prompts: ExtensionPromptService;
   output: OutputService;
   /** Sends a request to the host (used to invoke a registered language feature). */
@@ -254,6 +259,11 @@ export class HostBridge {
     switch (method) {
       case "ui/showMessage":
         return this.showMessage(p);
+      case "clipboard/readText":
+        return this.need(this.deps.clipboard, "Clipboard").readText();
+      case "clipboard/writeText":
+        await this.need(this.deps.clipboard, "Clipboard").writeText(text(p.text));
+        return null;
       case "ui/showOpenDialog":
         return this.need(this.deps.dialogs, "File dialogs").open(
           extensionDialogOptions(p.options),
@@ -313,6 +323,8 @@ export class HostBridge {
         );
       case "commands/getCommands":
         return this.deps.knownCommands();
+      case "terminal/runDebuggee":
+        return this.need(this.deps.terminals, "Terminals").runDebuggee(p);
       case "terminal/create":
         return this.need(this.deps.terminals, "Terminals").create(p);
       case "terminal/sendText":
@@ -356,6 +368,11 @@ export class HostBridge {
   handleNotification(method: string, params: unknown): void {
     const p = record(params);
     switch (method) {
+      case "quickInput/set":
+        this.deps.prompts.setQuickInput(p as unknown as DynamicQuickInput, event => {
+          void this.deps.hostRequest("host/quickInputEvent", event).catch((error: unknown) => { this.log(text(p.extension), "Quick input", String(error)); });
+        });
+        return;
       case "log/output":
         this.log(text(p.extension), text(p.channel), text(p.text));
         return;

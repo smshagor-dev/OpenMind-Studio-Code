@@ -197,6 +197,10 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     },
     showOutput: deps.showOutput,
     openExternal: (url) => ipc.openExternalUrl(url),
+    clipboard: {
+      readText: async () => (await import("@tauri-apps/plugin-clipboard-manager")).readText(),
+      writeText: async value => (await import("@tauri-apps/plugin-clipboard-manager")).writeText(value),
+    },
     readDocument: async (path) => {
       const read = await ipc.documentRead(path);
       if (read.state !== "file") return null;

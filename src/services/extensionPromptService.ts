@@ -47,8 +47,20 @@ export interface ConfirmPrompt {
 
 export type ExtensionPrompt = MessagePrompt | QuickPickPrompt | InputPrompt | ConfirmPrompt;
 
+export interface DynamicQuickInput {
+  id: string; extension: string; kind: "quickPick" | "input"; visible: boolean;
+  title?: string; placeholder?: string; prompt?: string; value: string; enabled: boolean; busy: boolean;
+  password?: boolean; ignoreFocusOut?: boolean; canSelectMany?: boolean; matchOnDescription?: boolean; matchOnDetail?: boolean;
+  step?: number; totalSteps?: number; valueSelection?: [number, number];
+  validationMessage?: string | { message: string; severity: number };
+  buttons: { id: string; tooltip?: string; back?: boolean }[];
+  items: { id: string; label: string; description?: string; detail?: string; kind?: number; alwaysShow?: boolean; buttons: { id: string; tooltip?: string }[] }[];
+  selectedItems: string[]; activeItems: string[];
+}
+
 export interface ExtensionPromptState {
   // Messages stack up; a quick pick or input box takes the whole attention, one at a time.
+  dynamic?: DynamicQuickInput;
   messages: MessagePrompt[];
   dialog: QuickPickPrompt | InputPrompt | ConfirmPrompt | null;
 }
@@ -64,6 +76,7 @@ type Resolver = (value: unknown) => void;
  */
 export class ExtensionPromptService {
   private nextId = 1;
+  private dynamicEvent: ((params: Record<string, unknown>) => void) | null = null;
   private state: ExtensionPromptState = { messages: [], dialog: null };
   private queued: (QuickPickPrompt | InputPrompt | ConfirmPrompt)[] = [];
   private readonly resolvers = new Map<number, Resolver>();
@@ -78,6 +91,25 @@ export class ExtensionPromptService {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  setQuickInput(prompt: DynamicQuickInput, event: (params: Record<string, unknown>) => void): void {
+    if (!prompt.visible) {
+      if (this.state.dynamic?.id === prompt.id) { this.state = { ...this.state, dynamic: undefined }; this.dynamicEvent = null; this.notify(); }
+      return;
+    }
+    if (this.state.dynamic && this.state.dynamic.id !== prompt.id) this.quickInputEvent("hide");
+    this.dynamicEvent = event; this.state = { ...this.state, dynamic: prompt }; this.notify();
+  }
+
+  quickInputEvent(event: string, params: Record<string, unknown> = {}): void {
+    const current = this.state.dynamic;
+    if (!current) return;
+    const callback = this.dynamicEvent;
+    if (event === "hide") { this.state = { ...this.state, dynamic: undefined }; this.dynamicEvent = null; }
+    else if (event === "value" && typeof params.value === "string") this.state = { ...this.state, dynamic: { ...current, value: params.value } };
+    else if ((event === "selection" || event === "active") && Array.isArray(params.items)) this.state = { ...this.state, dynamic: { ...current, [event === "selection" ? "selectedItems" : "activeItems"]: params.items.filter((item): item is string => typeof item === "string") } };
+    this.notify(); callback?.({ id: current.id, event, ...params });
   }
 
   /** Resolves with the clicked button's label, or `null` when it was dismissed (or had no buttons). */
@@ -125,6 +157,7 @@ export class ExtensionPromptService {
   dismissAll(): void {
     for (const id of [...this.resolvers.keys()]) this.finish(id, null);
     this.state = { messages: [], dialog: null };
+    this.dynamicEvent = null;
     this.queued = [];
     this.notify();
   }
@@ -153,7 +186,7 @@ export class ExtensionPromptService {
     let dialog = this.state.dialog;
     if (dialog?.id === id) dialog = this.queued.shift() ?? null;
     else this.queued = this.queued.filter((prompt) => prompt.id !== id);
-    this.state = { messages, dialog };
+    this.state = { ...this.state, messages, dialog };
     this.notify();
   }
 
@@ -161,3 +194,4 @@ export class ExtensionPromptService {
     for (const listener of this.listeners) listener();
   }
 }
+

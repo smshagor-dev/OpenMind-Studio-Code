@@ -2,6 +2,7 @@
 const { AsyncLocalStorage } = require('async_hooks');
 const { registry, changed, owned, key, text, failure, limit } = require('./workbench.js');
 const execution = new AsyncLocalStorage();
+const requestSources = new WeakMap();
 const TestRunProfileKind = { Run: 1, Debug: 2, Coverage: 3 };
 class TestRunRequest {
   constructor(include, exclude, profile, continuous = false) {
@@ -19,6 +20,8 @@ class TestTag { constructor(id) { this.id = id; } }
 function create(parts) {
   const { host, ext, need, track, Disposable, CancellationTokenSource } = parts;
   const state = registry(host);
+  state.continuousTests ||= new Map();
+  const stop = handle => { for (const [id, value] of state.continuousTests) if (value.controller === handle) { state.continuousTests.delete(id); owned(host, ext.id, () => value.source.cancel()); value.source.dispose(); } };
   return {
     createTestController(id, label) {
       need('commands');
@@ -77,18 +80,18 @@ function create(parts) {
           if (![1, 2, 3].includes(kind) || typeof runHandler !== 'function') failure('Invalid test run profile.');
           const profileId = String(++state.counter);
           const profile = { id: profileId, label: profileLabel, kind, runHandler, isDefault, tag,
-            supportsContinuousRun, dispose() { controller.profiles.delete(profileId); update(); } };
+            supportsContinuousRun, dispose() { const id = `${handle}/${profileId}`; const active = state.continuousTests.get(id); if (active) { state.continuousTests.delete(id); active.source.cancel(); active.source.dispose(); } controller.profiles.delete(profileId); update(); } };
           controller.profiles.set(profileId, profile); update(); return profile;
         },
         createTestRun(request, name, persist = true) {
           alive();
-          const inherited = execution.getStore();
+          const inherited = execution.getStore() || requestSources.get(request);
           const source = inherited || new CancellationTokenSource();
           const run = { id: String(++state.counter), controller: handle, extension: ext.id, name: name || label, persist,
             token: source.token, source, ended: false, results: new Map(), output: '',
             end() {
               if (run.ended) return; run.ended = true;
-              if (!inherited || (source.handlerDone && ![...state.runs.values()].some(other => other.source === source && !other.ended))) source.dispose();
+              if (!inherited || (!source.continuous && source.handlerDone && ![...state.runs.values()].some(other => other.source === source && !other.ended))) source.dispose();
               update();
             },
             appendOutput(value) { run.output = (run.output + String(value)).slice(-65536); update(); },
@@ -109,11 +112,13 @@ function create(parts) {
         },
         dispose() {
           if (disposed) return; disposed = true;
+          stop(handle);
           state.tests.delete(handle);
           for (const run of state.runs.values()) if (run.controller === handle && !run.ended) { owned(host, ext.id, () => run.source.cancel()); run.end(); }
           update();
         },
       };
+      track(host.events.on('workspaceFolders')(() => stop(handle)));
       state.tests.set(handle, { extension: ext.id, controller });
       track(new Disposable(() => controller.dispose())); update(); return controller;
     },
@@ -126,7 +131,7 @@ function snapshot(host) {
     children: depth < 30 ? limit([...value.children].map(([, child]) => child)).map(child => item(child, depth + 1)) : [] });
   return { controllers: [...state.tests].map(([handle, { controller }]) => ({ handle, id: controller.id, label: controller.label,
     items: limit([...controller.items].map(([, value]) => value)).map(value => item(value)),
-    profiles: [...controller.profiles.values()].map(p => ({ id: p.id, label: p.label, kind: p.kind })) })),
+    profiles: [...controller.profiles.values()].map(p => ({ id: p.id, label: p.label, kind: p.kind, supportsContinuousRun: !!p.supportsContinuousRun, continuous: !!state.continuousTests?.has(`${handle}/${p.id}`) })) })),
   runs: limit([...state.runs.values()], 100).map(run => ({ id: run.id, controller: run.controller, name: run.name, ended: run.ended,
     results: limit([...run.results.values()]), output: run.output })) };
 }
@@ -138,6 +143,11 @@ async function invoke(host, params) {
   }
   const entry = state.tests.get(params.controller); if (!entry) failure('Test controller not found.');
   const c = entry.controller;
+  if (params.op === 'stopContinuous') {
+    const id = `${params.controller}/${params.profile}`, active = state.continuousTests?.get(id);
+    if (!active) return false;
+    state.continuousTests.delete(id); owned(host, entry.extension, () => active.source.cancel()); active.source.dispose(); changed(host, 'tests'); return true;
+  }
   if (params.op === 'discover') return owned(host, entry.extension, async () => {
     if (c.resolveHandler) await c.resolveHandler(undefined);
     if (c.refreshHandler) { const source = new (require('./vscode.js').CancellationTokenSource)(); try { await c.refreshHandler(source.token); } finally { source.dispose(); } }
@@ -148,13 +158,23 @@ async function invoke(host, params) {
   const profile = c.profiles.get(params.profile); if (!profile) failure('Test profile not found.');
   const all = new Map(); const walk = collection => { for (const [, item] of collection) { all.set(item.id, item); walk(item.children); } }; walk(c.items);
   const include = params.include?.map(id => all.get(id) || failure(`Test '${id}' not found.`));
-  const source = new (require('./vscode.js').CancellationTokenSource)();
+  const continuous = params.continuous === true;
+  if (continuous && !profile.supportsContinuousRun) failure('This profile does not support continuous testing.');
+  const id = `${params.controller}/${params.profile}`;
+  state.continuousTests ||= new Map();
+  if (continuous && state.continuousTests.has(id)) failure('Continuous testing is already active for this profile.');
+  const source = new (require('./vscode.js').CancellationTokenSource)(); source.continuous = continuous;
+  const request = new TestRunRequest(include, undefined, profile, continuous); requestSources.set(request, source);
+  if (continuous) { state.continuousTests.set(id, { source, controller: params.controller }); changed(host, 'tests'); }
   try {
-    await owned(host, entry.extension, () => execution.run(source, () => profile.runHandler(new TestRunRequest(include, undefined, profile), source.token)));
+    await owned(host, entry.extension, () => execution.run(source, () => profile.runHandler(request, source.token)));
     return true;
+  } catch (error) {
+    if (continuous) { state.continuousTests.delete(id); owned(host, entry.extension, () => source.cancel()); source.dispose(); changed(host, 'tests'); }
+    throw error;
   } finally {
     source.handlerDone = true;
-    if (![...state.runs.values()].some(run => run.source === source && !run.ended)) source.dispose();
+    if (!continuous && ![...state.runs.values()].some(run => run.source === source && !run.ended)) source.dispose();
   }
 }
 module.exports = { create, snapshot, invoke, TestRunRequest, TestRunProfileKind, TestMessage, TestTag };
