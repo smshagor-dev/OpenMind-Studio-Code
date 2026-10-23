@@ -448,7 +448,10 @@ const handlers = {
   'host/validateTask': params => require('./tasks.js').validateExecution(host, params),
   'host/executeCustomTask': params => require('./tasks.js').executeCustom(host, params),
   'host/provideTasks': async (params) => ({ tasks: await provideAll(host, params.type || null) }),
-  'host/fs': async (params) => handleFsRequest(host, params, require('./vscode.js').Uri),
+  'host/fs': async (params) => {
+    if (!state.fileSystems?.has(String(params.scheme || ''))) await host.activateByEvent?.('onFileSystem:' + String(params.scheme || ''));
+    return handleFsRequest(host, params, require('./vscode.js').Uri);
+  },
 
   'host/shutdown': async () => {
     for (const id of [...state.running.keys()]) await deactivate(id);
@@ -705,7 +708,7 @@ const notifications = {
     events.fire('workspaceFolders', {});
   },
   'host/documentOpened': (params) => {
-    state.documents.set(params.path, params);
+    state.documents.set(params.path, { ...state.documents.get(params.path), ...params });
     events.fire('documentOpened', params);
   },
   'host/documentChanged': (params) => {
@@ -714,7 +717,7 @@ const notifications = {
   },
   'host/documentSaved': (params) => {
     const current = state.documents.get(params.path);
-    if (current) state.documents.set(params.path, { ...current, ...params, isDirty: false });
+    if (current) state.documents.set(params.path, { ...current, ...params, isDirty: params.isDirty ?? false });
     events.fire('documentSaved', params);
   },
   'host/documentClosed': (params) => {

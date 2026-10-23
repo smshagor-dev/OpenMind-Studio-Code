@@ -234,7 +234,7 @@ export class HostDocumentSync {
     this.paths.set(id, path);
     return {
       path,
-      ...(snapshot.path === null ? { isUntitled: true } : {}),
+      ...(this.deps.documents.isVirtual(id) ? { virtual: true, native: true, readonly: false } : snapshot.path === null ? { isUntitled: true } : {}),
       languageId: this.deps.documents.languageOf(id),
       version: this.versions.get(id) ?? 1,
       text: this.deps.documents.contentOf(id),

@@ -1,3 +1,4 @@
+import { virtualDocumentWrite } from "./extensionVirtualDocuments";
 import { ExtensionDocumentOpening } from "./extensionDocumentOpening";
 import type { EditorService } from "./editorService";
 import type { EditorGroupService } from "./editorGroupService";
@@ -77,6 +78,9 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
     if (host.isRunning()) void ipc.extHostNotify(method, params).catch(() => undefined);
   };
   const confirm = prompts.confirm.bind(prompts);
+  documents.setVirtualSaver(async (uri, text) => {
+    await ipc.extHostRequest("host/fs", virtualDocumentWrite(uri, text));
+  });
 
   const terminals = new ExtensionTerminalService({
     terminals: terminal,
@@ -155,13 +159,14 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
       });
     },
     updateVirtualDocument: request => {
+      if (documents.updateVirtual(request.uri, request.text)) return;
       workspace.updateVirtualDocument({ uri: request.uri, text: request.text, language: request.languageId, extension: request.extension, readonly: true });
     },
     saveDocument: async (path) => {
       const id = documents.idForHostPath(path);
       if (id === null) return false;
       await workspace.save(id);
-      return documents.snapshot(id).path !== null && !documents.isDirty(id);
+      return (documents.isVirtual(id) || documents.snapshot(id).path !== null) && !documents.isDirty(id);
     },
     saveAll: async () => {
       await workspace.saveAll();

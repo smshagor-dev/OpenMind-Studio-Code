@@ -90,6 +90,9 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
     const readonly = !(options && options.isReadonly === false);
     const entry = { id: require('crypto').randomUUID(), revisions: new Map(), watches: new Set(), extension: ext.id, provider, readonly, caseSensitive: !(options && options.isCaseSensitive === false) };
     state.fileSystems.set(scheme, entry);
+    for (const data of state.documents?.values() || []) {
+      if (data.native && data.virtual && data.path.startsWith(scheme + '://')) data.fileSystemProvider = entry.id;
+    }
     let subscription;
     try { subscription = provider.onDidChangeFile?.(events => host.als.run(ext.id, () => {
       if (state.fileSystems.get(scheme) !== entry || !Array.isArray(events)) return;
@@ -107,6 +110,10 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
           if (state.fileSystems.get(scheme) !== entry || entry.revisions.get(key) !== revision || state.documents.get(key) !== current) return;
           if (bytes.length > MAX_FILE_BYTES) throw FileSystemError.Unavailable('The file is larger than 32 MB.');
           const text = Buffer.from(bytes).toString('utf8'); if (text === current.text) return;
+          if (current.native) {
+            host.notify('workspace/virtualDocumentChanged', { extension: ext.id, uri: key, scheme, path: clean.path, text, languageId: current.languageId, readonly: false });
+            return;
+          }
           const previous = current.text, lines = previous.split('\n');
           const Range = state.running.get(ext.id)?.api?.Range; if (!Range) return;
           const range = new Range(0, 0, lines.length - 1, lines.at(-1).length);
@@ -275,7 +282,7 @@ async function handleFsRequest(host, params, Uri) {
   if (!entry) throw new Error(`No file system provider for '${scheme}:'.`);
   const normalized = normalizeProviderPath(params.path);
   if (normalized === null) throw new Error(`NoPermissions: '${params.path}' leaves the '${scheme}:' file system.`);
-  const uri = new Uri(scheme, params.authority || '', normalized, '', '');
+  const uri = new Uri(scheme, params.authority || '', normalized, params.query || '', params.fragment || '');
   const op = String(params.op || '');
   try {
     switch (op) {

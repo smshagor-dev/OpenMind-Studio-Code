@@ -444,8 +444,8 @@ export class WorkspaceService {
       }
     }
     // Documents kept open without a tab (collaborative edits on the Owner's side) are saved too.
-    for (const id of this.documents.fileBackedIds()) {
-      if (!seen.has(id) && this.documents.isHeld(id) && this.documents.isDirty(id)) await this.save(id);
+    for (const id of this.documents.allIds()) {
+      if (!seen.has(id) && (this.documents.isVirtual(id) || (this.documents.snapshot(id).path !== null && this.documents.isHeld(id))) && this.documents.isDirty(id)) await this.save(id);
     }
   }
 
