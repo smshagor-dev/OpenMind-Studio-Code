@@ -9,7 +9,7 @@ This inventory enumerates runtime namespace exports and top-level value exports 
 
 Run: node --test crates/extensions/tests/node/*.test.cjs
 
-Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed across 8 extension-related files. Strict TypeScript validation of the extension workbench, service, Monaco adapter and their integration tests/imported dependencies passed. Full-project lint/build and Windows execution remain unverified.
+Verified Linux run on 2026-10-23: 52 Node tests passed; 102 Vitest tests passed across 8 extension-related files. Strict TypeScript validation of the extension workbench, service, Monaco adapter and their integration tests/imported dependencies passed. Full-project lint/build and Windows execution remain unverified.
 
 - Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
 - File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
@@ -17,21 +17,22 @@ Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed 
 - Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 22 exported numeric enum objects against the official declaration values. Parent cancellation and late-listener disposal are covered.
 - Notebook edits and saves: serializer inputs are copied to keep extension-owned/frozen objects from corrupting transaction state. Save As uses guarded exclusive writes and retains the original document when serialization fails or newer edits arrive.
 - Workbench: real-host tests cover test discovery/execution/cancellation, SCM commands/validation, notebook editing/execution/save, trust grants and adapter permissions. React integration renders the actual dialog against the child-process host. Frontend tests also cover stale responses, dirty notebook retention and failed-edit barriers. Native Tauri rendering remains unverified.
+- Additional provider evidence: real-host/HostBridge tests cover declaration, signature context, selection parent flattening, linked word patterns, on-type edit mapping, lazy link and completion resolution, snippet flags, incomplete results and extra edits. Monaco registrations remain mocked.
 - Language providers: real stdio-host tests cover references, type definitions, implementations, highlights, nested symbols, folding, selectors and cancellation/disposal. Vitest sends requests through the real host and HostBridge into mocked Monaco registrations to verify coordinate conversion, URI schemes, reference context, disposal and cancellation. This does not establish browser rendering behavior.
 
 ## Implemented subsets and remaining work
 
 | Area | Observed implementation and remaining work |
 | --- | --- |
-| Debug | Executable, socket and inline DAP transports, configuration/factory registration, sessions, source/function breakpoints and a dedicated workbench are implemented. A real debugpy adapter launched Python, stopped at a conditional breakpoint, returned threads/frames/scopes/variables, evaluated an expression and disconnected in the Node suite. Attach/restart are not integration-tested; reverse requests (including runInTerminal), trackers, data breakpoints and native editor gutter integration remain unsupported. |
+| Debug | Executable, socket and inline DAP transports, configuration/factory registration, sessions, source/function breakpoints and a dedicated workbench are implemented. A real debugpy adapter launched Python, stopped at a conditional breakpoint, returned threads/frames/scopes/variables, evaluated an expression and disconnected in the Node suite. Attach/restart are not integration-tested; Tracker factories (including wildcard and multiple registrations) now observe real DAP, preserve callback owner permissions and isolate tracker exceptions/mutations. Adapter-confirmed source/function breakpoints are available through DebugSession.getDebugProtocolBreakpoint. Inline and loopback TCP transports have real host integration tests, including failure cleanup. Reverse requests (including runInTerminal), virtual debug sources, data breakpoints and native editor gutter integration remain unsupported. |
 | Testing | Controllers, hierarchical discovery, run profiles, selected execution, results/diffs/output and cancellation are connected to the dedicated workbench and tested with actual extension code. Continuous testing and detailed coverage reporting remain unsupported. This is not a marketplace test-extension certification. |
 | Notebooks | Serializers, file-backed documents/cells, metadata, text edits, controller execution, textual outputs and save are connected to the dedicated workbench. Tests verify actual file persistence and dirty-cell preservation when an extension is disabled. NotebookEdit cell insertion/replacement/deletion and cell/notebook metadata updates now work through notebook-only WorkspaceEdit transactions, with validation before mutation, stable cell identities, reindexing and change events. The workbench supports New notebook, add/delete cells and Save As to a new file; exclusive creation refuses existing destinations and failures retain unsaved source text. Tests cover permissions, symlink containment, invalid/overlapping edits, serialization races and actual UI-to-file persistence. Mixed notebook/text/file WorkspaceEdit transactions, rich output renderers, native Jupyter integration and editor selections/affinity remain unsupported. No undo/redo integration is claimed. |
 | SCM | Providers, resource groups, input validation, selection, accept/resource commands and quick-diff URI resolution are exercised through the real host. The workbench displays groups and can compare original/current text through guarded workspace.fs. Advanced contribution menus/status commands remain incomplete; built-in Git is separate. |
-| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Additional families, completion/item resolution, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
+| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Declaration, signature help/context, selection ranges, linked editing, on-type formatting and document links (including lazy resolution) now connect through the real host and Monaco adapter. Completion preserves trigger context, incomplete lists, insert/replace ranges, snippets, label details, commit characters, tags and lazy resolution with additional edits. Completion acceptance commands route back through host-owned command execution and dispose with the provider. Additional language families, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
 | Tasks/terminals | Existing shell/process task and terminal bridges need live workbench validation. CustomExecution and problem matchers remain unsupported. |
 | Webviews/trees | Existing host modules and UI bridge need actual rendering, restore, messaging, CSP and resource-policy validation. |
 | Lifecycle | Local tests cover the cases above. Recovery after an OS-level host crash, activation timeouts, ESM loading and orphan-process cleanup still need validation or implementation. |
-| Activation events | Rust Trigger currently covers startup, command, language, view and workspace contains. URI/filesystem/debug/task/test/notebook triggers are not implemented by this dispatch enum. |
+| Activation events | Rust Trigger currently covers startup, command, language, view and workspace contains. The Node host now activates onFileSystem providers, onNotebook serializers and onDebug/onDebugResolve/onDebugAdapterProtocolTracker/onDebugInitialConfigurations handlers at their actual call sites. Notebook/debug contributions provide implicit type activation, and concurrent activation is coalesced. The SCM workbench emits onView:workbench.scm. These direct Node paths do not expand the Rust Trigger enum; URI/task triggers and a comprehensive event dispatch surface still require work. No invented onTest event is claimed. |
 | Filesystems | Same-scheme file rename and file copy plus custom-provider delegation implemented. Cross-scheme transfers and local directory copy explicitly reject. Local rename overwrite=false has a check/rename race and needs an atomic platform implementation for a strict no-clobber guarantee. Provider file-change events still require integration work. |
 | Profiles/install/marketplace | Existing implementation has not been fully audited or executed here. VSIX install, dependencies, imports, updates, native modules and legal distribution sources require separate end-to-end evidence. |
 | Permissions/isolation | Node require guards are not a security sandbox. Native code, process.binding, alternative loaders, shared module state, file descriptors and filesystem races remain limitations. Do not run hostile extensions as though isolated by these guards. Workspace Trust defaults to untrusted; workbench execution requires an explicit session grant for the exact current roots, and manifests explicitly rejecting untrusted workspaces cannot activate there. These checks are tested; full VS Code restricted-settings semantics and an OS isolation boundary are not provided. |
@@ -179,12 +180,12 @@ Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed 
 | `languages.registerCodeLensProvider` | Unsupported |
 | `languages.registerColorProvider` | Unsupported |
 | `languages.registerCompletionItemProvider` | Present; partial or unverified |
-| `languages.registerDeclarationProvider` | Unsupported |
+| `languages.registerDeclarationProvider` | Present; partial or unverified |
 | `languages.registerDefinitionProvider` | Present; partial or unverified |
 | `languages.registerDocumentDropEditProvider` | Unsupported |
 | `languages.registerDocumentFormattingEditProvider` | Present; partial or unverified |
 | `languages.registerDocumentHighlightProvider` | Present; partial or unverified |
-| `languages.registerDocumentLinkProvider` | Unsupported |
+| `languages.registerDocumentLinkProvider` | Present; partial or unverified |
 | `languages.registerDocumentRangeFormattingEditProvider` | Present; partial or unverified |
 | `languages.registerDocumentRangeSemanticTokensProvider` | Unsupported |
 | `languages.registerDocumentSemanticTokensProvider` | Unsupported |
@@ -196,12 +197,12 @@ Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed 
 | `languages.registerInlayHintsProvider` | Unsupported |
 | `languages.registerInlineCompletionItemProvider` | Unsupported |
 | `languages.registerInlineValuesProvider` | Unsupported |
-| `languages.registerLinkedEditingRangeProvider` | Unsupported |
-| `languages.registerOnTypeFormattingEditProvider` | Unsupported |
+| `languages.registerLinkedEditingRangeProvider` | Present; partial or unverified |
+| `languages.registerOnTypeFormattingEditProvider` | Present; partial or unverified |
 | `languages.registerReferenceProvider` | Present; partial or unverified |
 | `languages.registerRenameProvider` | Unsupported |
-| `languages.registerSelectionRangeProvider` | Unsupported |
-| `languages.registerSignatureHelpProvider` | Unsupported |
+| `languages.registerSelectionRangeProvider` | Present; partial or unverified |
+| `languages.registerSignatureHelpProvider` | Present; partial or unverified |
 | `languages.registerTypeDefinitionProvider` | Present; partial or unverified |
 | `languages.registerTypeHierarchyProvider` | Unsupported |
 | `languages.registerWorkspaceSymbolProvider` | Unsupported |
@@ -223,7 +224,7 @@ Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed 
 | `debug.onDidStartDebugSession` | Present; partial or unverified |
 | `debug.onDidTerminateDebugSession` | Present; partial or unverified |
 | `debug.registerDebugAdapterDescriptorFactory` | Present; partial or unverified |
-| `debug.registerDebugAdapterTrackerFactory` | Unsupported |
+| `debug.registerDebugAdapterTrackerFactory` | Present; partial or unverified |
 | `debug.registerDebugConfigurationProvider` | Present; partial or unverified |
 | `debug.removeBreakpoints` | Present; partial or unverified |
 | `debug.startDebugging` | Present; partial or unverified |
@@ -313,7 +314,7 @@ Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed 
 | `InlineValueVariableLookup` | Unsupported |
 | `InputBoxValidationSeverity` | Unsupported |
 | `LanguageStatusSeverity` | Unsupported |
-| `LinkedEditingRanges` | Unsupported |
+| `LinkedEditingRanges` | Present; behavior needs per-member verification |
 | `Location` | Present; behavior needs per-member verification |
 | `LogLevel` | Unsupported |
 | `MarkdownString` | Present; behavior needs per-member verification |
@@ -338,7 +339,7 @@ Verified Linux run on 2026-10-23: 46 Node tests passed; 100 Vitest tests passed 
 | `Range` | Present; behavior needs per-member verification |
 | `RelativePattern` | Present; behavior needs per-member verification |
 | `Selection` | Present; behavior needs per-member verification |
-| `SelectionRange` | Unsupported |
+| `SelectionRange` | Present; behavior needs per-member verification |
 | `SemanticTokens` | Unsupported |
 | `SemanticTokensBuilder` | Unsupported |
 | `SemanticTokensEdit` | Unsupported |

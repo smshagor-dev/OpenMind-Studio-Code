@@ -15,7 +15,7 @@ function activate(context) {
       const results = [
         attempt('inputBox', () => vscode.window.createInputBox()),
         attempt('decorations', () => vscode.window.createTextEditorDecorationType({})),
-        attempt('debug', () => vscode.debug.registerDebugAdapterTrackerFactory('x', {})),
+        attempt('debug', () => vscode.debug.asDebugSourceUri({ sourceReference: 1 })),
         attempt('notebook', () => vscode.notebooks.registerNotebookCellStatusBarItemProvider('x', {})),
         attempt('createFile', () => new vscode.WorkspaceEdit().createFile(vscode.Uri.file('x'))),
       ];

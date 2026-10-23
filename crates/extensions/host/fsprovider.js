@@ -116,6 +116,7 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
 
   async function onProvider(uri, op, ...args) {
     const scheme = uri.scheme;
+    await host.activateByEvent?.(`onFileSystem:${scheme}`);
     const entry = state.fileSystems.get(scheme);
     if (!entry) throw FileSystemError.Unavailable(`No file system provider for '${scheme}:'.`);
     return providerCall(host, entry, op, uri.with({ path: normalizeProviderPath(uri.path) ?? '' }), ...args);

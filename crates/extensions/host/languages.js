@@ -123,25 +123,39 @@ function createLanguagesApi(parts) {
     match: matchSelector,
     getLanguages: async () => request('workspace/getLanguages', {}),
     registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
-      need('languages');
-      return register(
-        'completion',
-        selector,
-        async ({ path: file, position, token = cancelled }) => {
-          const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), token, { triggerKind: 0 });
-          const items = Array.isArray(result) ? result : result ? result.items : [];
-          return (items || []).map((item) => ({
-            label: typeof item.label === 'string' ? item.label : item.label.label,
-            kind: item.kind,
-            detail: item.detail,
-            documentation: text(item.documentation),
-            insertText: item.insertText instanceof SnippetString ? { snippet: item.insertText.value } : item.insertText === undefined ? undefined : String(item.insertText),
-            sortText: item.sortText,
-            filterText: item.filterText,
-          }));
-        },
-        { triggerCharacters },
-      );
+      need('languages'); const cache = new Map(); let itemCounter = 0;
+      const serialize = (item, id) => ({
+        id, hasCommand: !!item.command, label: typeof item.label === 'string' ? item.label : item.label.label,
+        labelDetails: typeof item.label === 'object' ? { detail: item.label.detail, description: item.label.description } : undefined,
+        kind: item.kind, detail: item.detail, documentation: text(item.documentation),
+        insertText: item.textEdit ? item.textEdit.newText : item.insertText instanceof SnippetString ? { snippet: item.insertText.value } : item.insertText === undefined ? undefined : String(item.insertText),
+        sortText: item.sortText, filterText: item.filterText, preselect: item.preselect, commitCharacters: item.commitCharacters, tags: item.tags,
+        keepWhitespace: item.keepWhitespace,
+        range: item.textEdit ? rangeOut(item.textEdit.range) : item.range?.inserting
+          ? { insert: rangeOut(item.range.inserting), replace: rangeOut(item.range.replacing) } : rangeOut(item.range),
+        additionalTextEdits: editsOut(item.additionalTextEdits),
+      });
+      return register('completion', selector, async ({ path: file, position, action, itemId, context, token = cancelled }) => {
+        if (action === 'command') {
+          need('commands');
+          const cached = cache.get(itemId); if (!cached || cached.path !== file || !cached.value.command) throw new Error('Completion command is no longer available.');
+          return host.runWorkbenchCommand(cached.value.command);
+        }
+        if (action === 'resolve') {
+          const cached = cache.get(itemId); if (!cached || cached.path !== file) throw new Error('Completion item is no longer available.');
+          const result = typeof provider.resolveCompletionItem === 'function' ? await provider.resolveCompletionItem(cached.value, token) : cached.value;
+          if (result) cached.value = result;
+          return serialize(cached.value, itemId);
+        }
+        const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), token,
+          { triggerKind: context?.triggerKind ?? 0, triggerCharacter: context?.triggerCharacter });
+        const items = Array.isArray(result) ? result : result?.items || [];
+        return { isIncomplete: !!result?.isIncomplete, items: items.map(value => {
+          const id = String(++itemCounter); cache.set(id, { path: file, value });
+          while (cache.size > 5000) cache.delete(cache.keys().next().value);
+          return serialize(value, id);
+        }) };
+      }, { triggerCharacters });
     },
     registerHoverProvider(selector, provider) {
       need('languages');
@@ -159,6 +173,67 @@ function createLanguagesApi(parts) {
     },
     registerImplementationProvider(selector, provider) {
       return locationProvider('implementation', selector, provider, 'provideImplementation');
+    },
+    registerDeclarationProvider(selector, provider) {
+      return locationProvider('declaration', selector, provider, 'provideDeclaration');
+    },
+    registerSignatureHelpProvider(selector, provider, ...metadata) {
+      need('languages');
+      const options = typeof metadata[0] === 'object' ? metadata[0] : { triggerCharacters: metadata };
+      return register('signatureHelp', selector, async ({ path: file, position, context, token = cancelled }) => {
+        const value = await provider.provideSignatureHelp(document(state.documents.get(file)), new Position(position.line, position.character), token,
+          { triggerKind: context?.triggerKind ?? 1, triggerCharacter: context?.triggerCharacter, isRetrigger: !!context?.isRetrigger, activeSignatureHelp: context?.activeSignatureHelp });
+        if (!value) return null;
+        return { activeSignature: value.activeSignature, activeParameter: value.activeParameter,
+          signatures: value.signatures.map(signature => ({ label: signature.label, documentation: text(signature.documentation), activeParameter: signature.activeParameter,
+            parameters: signature.parameters.map(parameter => ({ label: parameter.label, documentation: text(parameter.documentation) })) })) };
+      }, { triggerCharacters: options.triggerCharacters || [], retriggerCharacters: options.retriggerCharacters || [] });
+    },
+    registerSelectionRangeProvider(selector, provider) {
+      need('languages');
+      return register('selectionRange', selector, async ({ path: file, positions, token = cancelled }) => {
+        const result = await provider.provideSelectionRanges(document(state.documents.get(file)), positions.map(value => new Position(value.line, value.character)), token);
+        const convert = (value, visited = new Set()) => {
+          if (!value) return undefined;
+          if (visited.has(value) || visited.size >= 100) throw new Error('Selection range parents contain a cycle or exceed the depth limit.');
+          visited.add(value); return { range: rangeOut(value.range), parent: convert(value.parent, visited) };
+        };
+        if (result && result.length !== positions.length) throw new Error('Selection range count must match requested positions.');
+        return result?.map(value => convert(value)) || null;
+      });
+    },
+    registerLinkedEditingRangeProvider(selector, provider) {
+      need('languages');
+      return register('linkedEditing', selector, async ({ path: file, position, token = cancelled }) => {
+        const result = await provider.provideLinkedEditingRanges(document(state.documents.get(file)), new Position(position.line, position.character), token);
+        return result ? { ranges: result.ranges.map(rangeOut), wordPattern: result.wordPattern && { source: result.wordPattern.source, flags: result.wordPattern.flags } } : null;
+      });
+    },
+    registerOnTypeFormattingEditProvider(selector, provider, firstTriggerCharacter, ...moreTriggerCharacters) {
+      need('languages');
+      if (typeof firstTriggerCharacter !== 'string' || !firstTriggerCharacter) throw new Error('On-type formatting requires a trigger character.');
+      return register('onTypeFormatting', selector, async ({ path: file, position, character, options, token = cancelled }) =>
+        editsOut(await provider.provideOnTypeFormattingEdits(document(state.documents.get(file)), new Position(position.line, position.character), character, formattingOptions(options), token)),
+        { triggerCharacters: [firstTriggerCharacter, ...moreTriggerCharacters] });
+    },
+    registerDocumentLinkProvider(selector, provider) {
+      need('languages'); const cache = new Map(); let itemCounter = 0;
+      const serialize = (value, id) => ({ id, range: rangeOut(value.range), target: value.target?.toString(), tooltip: value.tooltip });
+      return register('documentLink', selector, async ({ path: file, action, itemId, token = cancelled }) => {
+        if (action === 'resolve') {
+          const cached = cache.get(itemId); if (!cached || cached.path !== file) throw new Error('Document link is no longer available.');
+          if (typeof provider.resolveDocumentLink !== 'function') return serialize(cached.value, itemId);
+          const value = await provider.resolveDocumentLink(cached.value, token);
+          if (!value) return null;
+          cached.value = value; return serialize(value, itemId);
+        }
+        const values = await provider.provideDocumentLinks(document(state.documents.get(file)), token);
+        return (values || []).map(value => {
+          const id = String(++itemCounter); cache.set(id, { path: file, value });
+          while (cache.size > 1000) cache.delete(cache.keys().next().value);
+          return serialize(value, id);
+        });
+      });
     },
     registerReferenceProvider(selector, provider) {
       need('languages');

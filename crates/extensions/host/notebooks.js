@@ -56,11 +56,15 @@ function create(parts) {
     need('workspaceRead');
     let type, uri, notebookData;
     if (typeof typeOrUri === 'string') {
-      type = typeOrUri; uri = Uri.parse(`untitled:/notebook-${randomUUID()}`); notebookData = data || new NotebookData([]);
+      type = typeOrUri; await host.activateByEvent?.(`onNotebook:${type}`); uri = Uri.parse(`untitled:/notebook-${randomUUID()}`); notebookData = data || new NotebookData([]);
     } else {
       uri = typeOrUri;
       const existing = state.notebooks.get(uri.toString()); if (existing) return existing.document;
       // The UI supplies a type when a filename contribution cannot be inferred.
+      const declared = (host.contributions?.('notebooks') || []).filter(notebook => data?.notebookType ? notebook.type === data.notebookType
+        : notebook.selector?.some(selector => require('./workspace.js').globToRegExp(typeof selector === 'string' ? selector : selector.filenamePattern).test(uri.fsPath.replace(/\\/g, '/'))));
+      for (const notebook of declared) await host.activateByEvent?.(`onNotebook:${notebook.type}`);
+      if (data?.notebookType) await host.activateByEvent?.(`onNotebook:${data.notebookType}`);
       const candidates = [...state.serializers].filter(([candidate, value]) => {
         if (data?.notebookType) return candidate === data.notebookType;
         const descriptor = host.state.extensions.get(value.extension);
@@ -275,7 +279,7 @@ function closeDocument(host, entry) {
 }
 function snapshot(host) {
   const state = registry(host);
-  return { serializers: [...state.serializers.keys()],
+  return { serializers: [...new Set([...state.serializers.keys(), ...(host.contributions?.('notebooks') || []).map(value => value.type).filter(value => typeof value === 'string' && value)])],
     controllers: [...state.controllers].map(([handle, { controller }]) => ({ handle, id: controller.id, label: controller.label, notebookType: controller.notebookType })),
     documents: [...state.notebooks].map(([uri, entry]) => ({ uri, notebookType: entry.document.notebookType, dirty: entry.dirty, version: entry.version,
       unavailable: !state.serializers.has(entry.document.notebookType),
@@ -287,6 +291,7 @@ function snapshot(host) {
 async function invoke(host, params) {
   const state = registry(host);
   if (params.op === 'open' || params.op === 'new') {
+    await host.activateByEvent?.(`onNotebook:${params.type}`);
     const serializer = state.serializers.get(params.type); if (!serializer) failure('Notebook serializer not found.');
     const api = host.state.running.get(serializer.extension)?.api; if (!api) failure('The notebook extension is not active.');
     const document = await owned(host, serializer.extension, () => params.op === 'new'

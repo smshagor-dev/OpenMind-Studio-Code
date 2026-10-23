@@ -334,3 +334,144 @@ test('notebook structural edits require write permission and recheck symlink con
   await assert.rejects(writer.request('host/executeCommand', { command: 'notebook.modify' }), /filesystemOutsideWorkspace/);
   assert.equal((await writer.call('notebooks', 'snapshot')).documents[0].dirty, false); assert.equal(fs.readFileSync(outside, 'utf8'), 'outside');
 });
+
+const inlineDebugExtension = `const v = require('vscode');
+exports.activate = () => {
+  v.debug.registerDebugAdapterDescriptorFactory('inline-test', { createDebugAdapterDescriptor() {
+    const emitter = new v.EventEmitter(); let sequence = 100;
+    return new v.DebugAdapterInlineImplementation({ onDidSendMessage: emitter.event, dispose: () => emitter.dispose(),
+      handleMessage(message) {
+        let body = {};
+        if (message.command === 'initialize') body = { supportsConfigurationDoneRequest: true, supportsFunctionBreakpoints: true };
+        if (message.command === 'setBreakpoints') body = { breakpoints: message.arguments.breakpoints.map((value, i) => ({ id: i + 20, verified: true, line: value.line + 1, source: message.arguments.source })) };
+        if (message.command === 'setFunctionBreakpoints') body = { breakpoints: message.arguments.breakpoints.map((value, i) => ({ id: i + 50, verified: true })) };
+        if (message.command === 'threads') body = { threads: [{ id: 1, name: 'Inline thread' }] };
+        emitter.fire({ seq: ++sequence, type: 'response', request_seq: message.seq, command: message.command, success: true, body });
+        if (message.command === 'launch') emitter.fire({ seq: ++sequence, type: 'event', event: 'initialized' });
+        if (message.command === 'configurationDone') emitter.fire({ seq: ++sequence, type: 'event', event: 'custom.example', body: { value: 42 } });
+      }
+    });
+  } });
+};`;
+
+test('debug trackers observe actual inline DAP, isolate messages and exceptions, and resolve protocol breakpoints', async t => {
+  const h = await setup(t, inlineDebugExtension + `
+    const original = exports.activate; const log = []; let exact, wildcard;
+    exports.activate = () => { original();
+      v.debug.registerDebugAdapterTrackerFactory('other-type', { createDebugAdapterTracker() { log.push('wrong factory'); } });
+      wildcard = v.debug.registerDebugAdapterTrackerFactory('*', { createDebugAdapterTracker() { return {
+        onWillStartSession() { log.push('start'); },
+        onWillReceiveMessage(message) { log.push('send:' + message.command); message.command = 'corrupted'; throw new Error('tracker failure'); },
+        onDidSendMessage(message) { log.push('receive:' + (message.command || message.event)); if (message.body) message.body.threads = []; },
+        onWillStopSession() { log.push('stop'); }, onExit() { log.push('exit'); }
+      }; } });
+      exact = v.debug.registerDebugAdapterTrackerFactory('inline-test', { createDebugAdapterTracker() { return { onWillReceiveMessage(message) { log.push('exact:' + message.command); } }; } });
+      const source = new v.SourceBreakpoint(new v.Location(v.Uri.file(__dirname + '/target.py'), new v.Range(2,0,2,0)));
+      const fn = new v.FunctionBreakpoint('example'); v.debug.addBreakpoints([source, fn]);
+      v.debug.onDidReceiveDebugSessionCustomEvent(event => log.push('custom:' + event.event));
+      v.commands.registerCommand('debug.inspection', async () => ({ log, source: await v.debug.activeDebugSession?.getDebugProtocolBreakpoint(source), fn: await v.debug.activeDebugSession?.getDebugProtocolBreakpoint(fn) }));
+      v.commands.registerCommand('debug.disposeTracker', () => exact.dispose());
+    };`, ['commands', 'workspaceRead', 'processExecution']);
+  await h.activate(); await h.call('debug', 'start', { configuration: { type: 'inline-test', name: 'Inline', request: 'launch' } });
+  let value = await h.request('host/executeCommand', { command: 'debug.inspection' });
+  assert.equal(value.source.verified, true); assert.equal(value.source.line, 4); assert.equal(value.fn.id, 50);
+  assert.equal(value.log[0], 'start'); assert.ok(value.log.includes('exact:initialize')); assert.ok(value.log.includes('custom:custom.example')); assert.ok(!value.log.includes('custom:initialized')); assert.ok(!value.log.includes('wrong factory'));
+  await h.request('host/executeCommand', { command: 'debug.disposeTracker' });
+  const session = (await h.call('debug', 'snapshot')).sessions[0].id;
+  const result = await h.call('debug', 'threads', { session }); assert.equal(result.threads[0].name, 'Inline thread');
+  await h.call('debug', 'stop', { session }); value = await h.request('host/executeCommand', { command: 'debug.inspection' });
+  assert.ok(value.log.includes('send:threads')); assert.ok(!value.log.includes('exact:threads')); assert.deepEqual(value.log.slice(-2), ['stop', 'exit']);
+});
+
+test('debug tracker callbacks keep the observer extension permissions', async t => {
+  const h = await fixture(t, {
+    'test.adapter': { code: inlineDebugExtension, permissions: ['commands', 'workspaceRead', 'network', 'processExecution'] },
+    'test.observer': { permissions: ['commands', 'workspaceRead'], code: `const v = require('vscode'); let result;
+      exports.activate = () => {
+        v.debug.registerDebugAdapterTrackerFactory('*', { createDebugAdapterTracker() { return { onWillReceiveMessage() {
+          try { require('net'); result = 'allowed'; } catch (error) { result = error.code; }
+        } }; } });
+        v.commands.registerCommand('observer.result', () => result);
+      };` }
+  });
+  await h.request('host/init', { workspaceFolders: [{ path: h.extensions[0].path, name: 'Fixture' }], isTrusted: true });
+  await h.request('host/activate', { id: 'test.observer' }); await h.request('host/activate', { id: 'test.adapter' });
+  await h.request('host/workbench', { domain: 'debug', op: 'start', configuration: { type: 'inline-test', request: 'launch' } });
+  assert.equal(await h.request('host/executeCommand', { command: 'observer.result' }), 'EPERMISSION');
+  await h.request('host/deactivate', { id: 'test.observer' });
+  const session = (await h.request('host/workbench', { domain: 'debug', op: 'snapshot' })).sessions[0].id;
+  const result = await h.request('host/workbench', { domain: 'debug', op: 'threads', session }); assert.equal(result.threads[0].id, 1);
+  await h.request('host/workbench', { domain: 'debug', op: 'stop', session });
+});
+
+test('notebook and debug contributions activate installed extensions on demand without a manual command', async t => {
+  const notebook = await setup(t, notebookExtension);
+  fs.writeFileSync(path.join(notebook.root, 'package.json'), JSON.stringify({ contributes: { notebooks: [{ type: 'example', selector: [{ filenamePattern: '*.omnb' }] }] } }));
+  let snapshot = await notebook.call('notebooks', 'snapshot'); assert.deepEqual(snapshot.serializers, ['example']); assert.equal(snapshot.controllers.length, 0);
+  const first = await Promise.all([notebook.call('notebooks', 'new', { type: 'example' }), notebook.call('notebooks', 'new', { type: 'example' })]);
+  assert.equal(new Set(first).size, 2); snapshot = await notebook.call('notebooks', 'snapshot'); assert.equal(snapshot.controllers.length, 1); assert.equal(snapshot.documents.length, 2);
+  const debug = await setup(t, inlineDebugExtension, ['commands', 'workspaceRead', 'processExecution']);
+  fs.writeFileSync(path.join(debug.root, 'package.json'), JSON.stringify({ contributes: { debuggers: [{ type: 'inline-test', label: 'Dormant inline' }] } }));
+  assert.deepEqual((await debug.call('debug', 'snapshot')).types, ['inline-test']);
+  await debug.call('debug', 'start', { configuration: { type: 'inline-test', request: 'launch' } });
+  const session = (await debug.call('debug', 'snapshot')).sessions[0].id; assert.ok(session); await debug.call('debug', 'stop', { session });
+});
+
+test('custom filesystem access activates an onFileSystem extension with provider-owner permissions', async t => {
+  const h = await fixture(t, {
+    'test.filesystem': { permissions: ['workspaceRead'], code: `const v = require('vscode'); exports.activate = () => {
+      v.workspace.registerFileSystemProvider('dormant', { stat: () => ({ type: 1, ctime: 0, mtime: 0, size: 2 }), readDirectory: () => [], readFile: () => Buffer.from('42') });
+    };` },
+    'test.reader': { permissions: ['commands', 'workspaceRead'], code: `const v = require('vscode'); exports.activate = () => v.commands.registerCommand('dormant.read', async () => Buffer.from(await v.workspace.fs.readFile(v.Uri.parse('dormant:/answer'))).toString());` }
+  });
+  fs.writeFileSync(path.join(h.extensions[0].path, 'package.json'), JSON.stringify({ activationEvents: ['onFileSystem:dormant'] }));
+  await h.request('host/activate', { id: 'test.reader' });
+  assert.equal(await h.request('host/executeCommand', { command: 'dormant.read' }), '42');
+});
+
+test('socket debug adapters exchange framed DAP messages and disconnect cleanly', async t => {
+  const net = require('node:net'); const sockets = new Set(); const commands = [];
+  const server = net.createServer(socket => {
+    sockets.add(socket); socket.on('close', () => sockets.delete(socket)); let buffer = Buffer.alloc(0), sequence = 100;
+    const send = value => {
+      const bytes = Buffer.from(JSON.stringify(value)); const frame = Buffer.concat([Buffer.from(`Content-Length: ${bytes.length}\r\n\r\n`), bytes]);
+      socket.write(frame.subarray(0, 7)); socket.write(frame.subarray(7));
+    };
+    socket.on('data', bytes => {
+      buffer = Buffer.concat([buffer, bytes]);
+      for (;;) {
+        const end = buffer.indexOf('\r\n\r\n'); if (end < 0) return;
+        const length = Number(/Content-Length:\s*(\d+)/i.exec(buffer.subarray(0, end).toString())[1]);
+        if (buffer.length < end + 4 + length) return;
+        const message = JSON.parse(buffer.subarray(end + 4, end + 4 + length)); buffer = buffer.subarray(end + 4 + length); commands.push(message.command);
+        send({ seq: ++sequence, type: 'response', request_seq: message.seq, command: message.command, success: true,
+          body: message.command === 'threads' ? { threads: [{ id: 9, name: 'Socket target' }] } : {} });
+        if (message.command === 'launch') send({ seq: ++sequence, type: 'event', event: 'initialized' });
+      }
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { for (const socket of sockets) socket.destroy(); await new Promise(resolve => server.close(resolve)); });
+  const port = server.address().port;
+  const h = await setup(t, `const v = require('vscode'); exports.activate = () => v.debug.registerDebugAdapterDescriptorFactory('socket-test', {
+    createDebugAdapterDescriptor: () => new v.DebugAdapterServer(${port})
+  });`, ['commands', 'workspaceRead', 'network', 'processExecution']);
+  await h.activate(); await h.call('debug', 'start', { configuration: { type: 'socket-test', request: 'launch' } });
+  const session = (await h.call('debug', 'snapshot')).sessions[0].id;
+  assert.equal((await h.call('debug', 'threads', { session })).threads[0].name, 'Socket target');
+  await h.call('debug', 'stop', { session }); assert.equal((await h.call('debug', 'snapshot')).sessions.length, 0);
+  assert.deepEqual(commands, ['initialize', 'launch', 'threads', 'disconnect']);
+});
+
+test('debug trackers receive adapter spawn errors and sessions clean up', async t => {
+  const h = await setup(t, `const v = require('vscode'); const log = [];
+    exports.activate = () => {
+      v.debug.registerDebugAdapterTrackerFactory('*', { createDebugAdapterTracker: () => ({ onWillStartSession: () => log.push('start'), onError: error => log.push('error:' + error.message), onWillStopSession: () => log.push('stop') }) });
+      v.debug.registerDebugAdapterDescriptorFactory('missing', { createDebugAdapterDescriptor: () => new v.DebugAdapterExecutable(__dirname + '/missing-adapter') });
+      v.commands.registerCommand('debug.spawnLog', () => log);
+    };`, ['commands', 'workspaceRead', 'processExecution']);
+  await h.activate(); await assert.rejects(h.call('debug', 'start', { configuration: { type: 'missing', request: 'launch' } }), /ENOENT/);
+  assert.equal((await h.call('debug', 'snapshot')).sessions.length, 0);
+  const log = await h.request('host/executeCommand', { command: 'debug.spawnLog' });
+  assert.equal(log[0], 'start'); assert.ok(log.some(value => value.startsWith('error:'))); assert.equal(log.at(-1), 'stop');
+});

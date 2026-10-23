@@ -115,6 +115,40 @@ host.activateExtension = async (id) => {
   return state.running.get(id)?.exports;
 };
 
+// Read the installed manifest without running extension code. Only enabled descriptors
+// are registered with this host; manifest symlinks must stay inside that descriptor.
+host.manifestOf = descriptor => {
+  if (descriptor.packageJSON) return descriptor.packageJSON;
+  const file = path.join(descriptor.path, 'package.json');
+  if (!fs.existsSync(file)) return descriptor.manifest || {};
+  if (!insideExtension(descriptor, file)) throw new Error('The extension manifest is outside its folder.');
+  return descriptor.packageJSON = JSON.parse(fs.readFileSync(file, 'utf8'));
+};
+host.contributions = kind => {
+  const result = [];
+  for (const descriptor of state.extensions.values()) {
+    if (!descriptor.main) continue;
+    try {
+      const values = host.manifestOf(descriptor).contributes?.[kind];
+      if (Array.isArray(values)) for (const value of values) result.push({ ...value, extension: descriptor.id });
+    } catch (error) { log(descriptor.id, 'error', `Reading activation contributions failed: ${error.message}`); }
+  }
+  return result;
+};
+host.activateByEvent = async event => {
+  for (const descriptor of [...state.extensions.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+    const running = state.running.get(descriptor.id);
+    if (!descriptor.main || (running && (!running.activating || who() === descriptor.id))) continue;
+    let manifest;
+    try { manifest = host.manifestOf(descriptor); }
+    catch (error) { log(descriptor.id, 'error', `Reading activation events failed: ${error.message}`); continue; }
+    const explicit = Array.isArray(manifest.activationEvents) && manifest.activationEvents.includes(event);
+    const implicit = event.startsWith('onNotebook:') ? manifest.contributes?.notebooks?.some(value => value.type === event.slice('onNotebook:'.length))
+      : event.startsWith('onDebugResolve:') ? manifest.contributes?.debuggers?.some(value => value.type === event.slice('onDebugResolve:'.length)) : false;
+    if (explicit || implicit) await host.activateExtension(descriptor.id);
+  }
+};
+
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
 const originalLoad = Module._load;
 const guards = new Map();

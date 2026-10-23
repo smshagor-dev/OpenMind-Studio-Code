@@ -447,7 +447,7 @@ fn apis_that_stay_unsupported_still_fail_with_the_clear_message() {
     for (label, api) in [
         ("inputBox", "window.createInputBox"),
         ("decorations", "window.createTextEditorDecorationType"),
-        ("debug", "debug.registerDebugAdapterTrackerFactory"),
+        ("debug", "debug.asDebugSourceUri"),
         ("notebook", "notebooks.registerNotebookCellStatusBarItemProvider"),
         ("createFile", "WorkspaceEdit.createFile"),
     ] {

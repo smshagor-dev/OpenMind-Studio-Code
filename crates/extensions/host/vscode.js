@@ -537,6 +537,13 @@ class DocumentHighlight {
   }
 }
 
+class SelectionRange {
+  constructor(range, parent) {
+    if (parent && !parent.range.contains(range)) throw new Error('A selection range parent must contain its child.');
+    this.range = range; this.parent = parent;
+  }
+}
+class LinkedEditingRanges { constructor(ranges, wordPattern) { this.ranges = ranges; this.wordPattern = wordPattern; } }
 class ParameterInformation {
   constructor(label, documentation) {
     this.label = label;
@@ -969,6 +976,8 @@ function createApi(host, ext) {
     FoldingRangeKind,
     DocumentHighlight,
     DocumentHighlightKind,
+    SelectionRange,
+    LinkedEditingRanges,
     ParameterInformation,
     SignatureInformation,
     SignatureHelp,

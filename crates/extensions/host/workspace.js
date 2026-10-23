@@ -149,6 +149,8 @@ function createWorkspaceApi(parts) {
 
   /** A document of a custom scheme, read through its provider (read-only in the editor). */
   async function openSchemeDocument(uri) {
+    need('workspaceRead');
+    await host.activateByEvent?.(`onFileSystem:${uri.scheme}`);
     const entry = state.fileSystems && state.fileSystems.get(uri.scheme);
     if (!entry) throw new Error(`No file system provider for '${uri.scheme}:' (openTextDocument).`);
     const normalized = normalizeProviderPath(uri.path);

@@ -8,7 +8,16 @@ export interface HostRange {
 }
 
 export interface HostCompletionItem {
+  id?: string;
+  hasCommand?: boolean;
   label: string;
+  labelDetails?: { detail?: string; description?: string };
+  preselect?: boolean;
+  commitCharacters?: string[];
+  tags?: number[];
+  keepWhitespace?: boolean;
+  range?: HostRange | { insert: HostRange; replace: HostRange };
+  additionalTextEdits?: { range: HostRange; newText: string }[];
   /** VS Code's `CompletionItemKind`. */
   kind?: number;
   detail?: string;

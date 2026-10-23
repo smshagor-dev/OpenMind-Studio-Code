@@ -3,8 +3,8 @@ const vscode = require('vscode');
 function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sampleUnsupported.run', () => {
-      // Tracker factories remain outside the supported debug adapter subset.
-      vscode.debug.registerDebugAdapterTrackerFactory('sample', {});
+      // Virtual debug source URIs remain outside the supported debug subset.
+      vscode.debug.asDebugSourceUri({ sourceReference: 1 });
     }),
   );
 }

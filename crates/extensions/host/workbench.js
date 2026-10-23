@@ -5,7 +5,7 @@ function registry(host) {
   if (!host.state.extensionWorkbench) host.state.extensionWorkbench = {
     tests: new Map(), runs: new Map(), scm: new Map(), serializers: new Map(),
     controllers: new Map(), notebooks: new Map(), factories: new Map(), configurations: new Map(),
-    sessions: new Map(), breakpoints: [], pending: new Set(), counter: 0,
+    sessions: new Map(), trackers: new Map(), breakpoints: [], pending: new Set(), counter: 0,
   };
   return host.state.extensionWorkbench;
 }
@@ -32,7 +32,11 @@ function moduleFor(domain) {
 }
 async function handle(host, params) {
   const module = require(`./${moduleFor(params.domain)}.js`);
-  if (params.op === 'snapshot') return snapshot(host, params.domain);
+  if (params.op === 'snapshot') {
+    if (params.domain === 'debug') await host.activateByEvent?.('onDebugInitialConfigurations');
+    if (params.domain === 'scm') await host.activateByEvent?.('onView:workbench.scm');
+    return snapshot(host, params.domain);
+  }
   if (params.op === 'trust') {
     const expected = host.state.workspaceFolders.map(folder => folder.path).sort();
     if (!expected.length || !Array.isArray(params.folders) || JSON.stringify([...params.folders].sort()) !== JSON.stringify(expected)) failure('The workspace changed; refresh before granting trust.');

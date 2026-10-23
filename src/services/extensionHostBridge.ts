@@ -17,10 +17,11 @@ export interface HostDocument {
 export interface ProviderRegistration {
   handle: string;
   kind: "completion" | "hover" | "definition" | "typeDefinition" | "implementation" |
-    "reference" | "highlight" | "documentSymbol" | "folding" | "formatting" | "rangeFormatting";
+    "declaration" | "signatureHelp" | "selectionRange" | "linkedEditing" | "onTypeFormatting" | "documentLink" | "reference" | "highlight" | "documentSymbol" | "folding" | "formatting" | "rangeFormatting";
   extension: string;
   selector: { language?: string; scheme?: string; pattern?: string | { base: string; pattern: string } }[];
   triggerCharacters?: string[];
+  retriggerCharacters?: string[];
   /** The extension's name, for a formatter ("Format Document With..."). */
   displayName?: string;
 }
@@ -35,7 +36,11 @@ export type ProviderInvoke = (payload: {
   position?: { line: number; character: number };
   range?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
   options?: { tabSize: number; insertSpaces: boolean };
-  context?: { includeDeclaration?: boolean };
+  positions?: { line: number; character: number }[];
+  character?: string;
+  action?: "resolve" | "command";
+  itemId?: string;
+  context?: { includeDeclaration?: boolean; triggerKind?: number; triggerCharacter?: string; isRetrigger?: boolean; activeSignatureHelp?: unknown };
 }, token?: ProviderCancellation) => Promise<unknown>;
 
 /** A custom-scheme document an extension opens (`window.showTextDocument`, read-only in the app). */
