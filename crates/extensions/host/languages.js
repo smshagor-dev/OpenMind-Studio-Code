@@ -23,11 +23,12 @@ class TextEdit {
 }
 
 function createLanguagesApi(parts) {
-  const { host, ext, need, track, Disposable, namespace, editors, types, toPath } = parts;
+  const { host, ext, need, track, Disposable, namespace, editors, types, toPath, asExtension } = parts;
   const { state, notify, request } = host;
   const { Position, Range, SnippetString, CancellationTokenSource, Uri } = types;
   const { document } = editors;
   let handleCounter = 0;
+  const diagnosticCollections = state.languageDiagnostics ||= new Map();
 
   function selectors(selector) {
     const list = Array.isArray(selector) ? selector : [selector];
@@ -39,24 +40,30 @@ function createLanguagesApi(parts) {
     );
   }
 
-  function register(kind, selector, invoke, extra) {
+  function register(kind, selector, invoke, extra, changeEvent) {
     handleCounter += 1;
     const handle = `${ext.id}:${kind}:${handleCounter}`;
-    state.providers.set(handle, { kind, extension: ext.id, invoke: (params) => {
+    const wireSelector = selectors(selector);
+    let disposed = false;
+    const changed = changeEvent?.(() => { if (!disposed) notify('languages/changed', { handle }); });
+    const disposable = track(new Disposable(() => {
+      disposed = true;
+      try { changed?.dispose(); }
+      finally {
+        if (state.providers.delete(handle)) {
+          host.cancelProviderRequests?.(handle);
+          notify('languages/unregistered', { handle });
+        }
+      }
+    }));
+    state.providers.set(handle, { kind, extension: ext.id, invoke: params => {
       const doc = document(state.documents.get(params.path));
       if (!doc) throw new Error('The document is not open.');
       if (!matchSelector(selector, doc)) return null;
       return invoke(params);
     } });
-    notify('languages/registered', { handle, kind, extension: ext.id, selector: selectors(selector), ...extra });
-    return track(
-      new Disposable(() => {
-        if (state.providers.delete(handle)) {
-          host.cancelProviderRequests?.(handle);
-          notify('languages/unregistered', { handle });
-        }
-      }),
-    );
+    notify('languages/registered', { handle, kind, extension: ext.id, selector: wireSelector, ...extra });
+    return disposable;
   }
 
   const cancelled = new CancellationTokenSource().token;
@@ -85,6 +92,61 @@ function createLanguagesApi(parts) {
     need('languages');
     return register(kind, selector, async ({ path: file, position, token = cancelled }) =>
       locationsOut(await provider[method](document(state.documents.get(file)), new Position(position.line, position.character), token)));
+  }
+
+  function workspaceEditsOut(edit) {
+    if (edit == null) return undefined;
+    if (!(edit instanceof editors.WorkspaceEdit) || edit._notebooks.size) throw new Error('Language edits require a text-only WorkspaceEdit.');
+    const guard = require('./guard.js').createGuard(ext, () => state.workspaceFolders);
+    const edits = [];
+    for (const [uri, values] of edit.entries()) {
+      if (uri.scheme !== 'file') throw new Error('Language edits currently require file URIs.');
+      need('workspaceWrite');
+      guard.checkPath(uri.fsPath, true);
+      const version = state.documents.get(toPath(uri))?.version;
+      for (const value of values) {
+        const r = rangeOut(value.range);
+        if (!r || !Object.values(r).every(n => Number.isSafeInteger(n) && n >= 0) || r.startLine > r.endLine || (r.startLine === r.endLine && r.startColumn > r.endColumn)) throw new Error('Invalid language edit range.');
+        edits.push({ uri: uri.toString(), range: r, newText: String(value.newText), version });
+      }
+    }
+    return { edits };
+  }
+
+  // Keep original extension objects for lazy resolvers and command arguments. The
+  // wire never revives arbitrary objects supplied by the application as commands.
+  function cachedProvider(kind, selector, provide, resolve, serialize, extra, changeEvent) {
+    need('languages');
+    const cache = new Map(); let serial = 0;
+    const remember = (file, version, value) => {
+      const id = String(++serial); cache.set(id, { file, version, value });
+      while (cache.size > 2000) cache.delete(cache.keys().next().value);
+      return serialize(value, id, file);
+    };
+    return register(kind, selector, async params => {
+      const { path: file, action, itemId, token = cancelled } = params;
+      const doc = document(state.documents.get(file));
+      if (action === 'release') { for (const id of params.itemIds || []) if (cache.get(id)?.file === file) cache.delete(id); return null; }
+      if (action === 'resolve' || action === 'command') {
+        const item = cache.get(itemId);
+        if (!item || item.file !== file || item.version !== doc.version) throw new Error('Language item is stale or no longer available.');
+        if (action === 'command') {
+          need('commands');
+          if (item.value.disabled) throw new Error('This code action is disabled.');
+          const command = Number.isSafeInteger(params.partIndex) && params.partIndex >= 0 ? item.value.label?.[params.partIndex]?.command : typeof item.value.command === 'string' ? item.value : item.value.command;
+          if (!command) throw new Error('This language item has no command.');
+          return host.runWorkbenchCommand(command);
+        }
+        const value = resolve ? await resolve(item.value, token) : item.value;
+        if (token.isCancellationRequested || item.version !== doc.version) return null;
+        if (value) item.value = value;
+        return serialize(item.value, itemId, file);
+      }
+      const version = doc.version;
+      const values = await provide(doc, params, token);
+      if (token.isCancellationRequested || version !== doc.version) return null;
+      return values?.map(value => remember(file, version, value)) || null;
+    }, extra, changeEvent);
   }
 
   function matchSelector(selector, doc) {
@@ -153,9 +215,94 @@ function createLanguagesApi(parts) {
         return { isIncomplete: !!result?.isIncomplete, items: items.map(value => {
           const id = String(++itemCounter); cache.set(id, { path: file, value });
           while (cache.size > 5000) cache.delete(cache.keys().next().value);
-          return serialize(value, id);
+          return serialize(value, id, file);
         }) };
       }, { triggerCharacters });
+    },
+    registerRenameProvider(selector, provider) {
+      need('languages');
+      return register('rename', selector, async ({ path: file, position, newName, action, token = cancelled }) => {
+        const doc = document(state.documents.get(file)); const version = doc.version;
+        const pos = new Position(position.line, position.character);
+        if (action === 'prepare') {
+          if (!provider.prepareRename) return { defaultBehavior: true };
+          const value = await provider.prepareRename(doc, pos, token);
+          if (!value) return null;
+          if (version !== doc.version || token.isCancellationRequested) return null;
+          return value.range ? { range: rangeOut(value.range), placeholder: value.placeholder } : { range: rangeOut(value) };
+        }
+        const value = await provider.provideRenameEdits(doc, pos, newName, token);
+        return version !== doc.version || token.isCancellationRequested ? null : workspaceEditsOut(value) ?? null;
+      });
+    },
+    registerCodeActionsProvider(selector, provider, metadata) {
+      const serialize = (value, id) => ({ id, title: value.title, kind: value.kind?.value,
+        isPreferred: value.isPreferred, disabled: value.disabled?.reason,
+        edit: workspaceEditsOut(value.edit), hasCommand: typeof value.command === 'string' || !!value.command });
+      return cachedProvider('codeAction', selector, (doc, params, token) => {
+        const context = { diagnostics: (params.context?.diagnostics || []).map(value => (Object.assign(new types.Diagnostic(rangeIn(value.range), value.message, value.severity), value, { range: rangeIn(value.range) }))),
+          only: params.context?.only === undefined ? undefined : new types.CodeActionKind(params.context.only), triggerKind: params.context?.triggerKind ?? 1 };
+        return provider.provideCodeActions(doc, rangeIn(params.range), context, token);
+      }, provider.resolveCodeAction?.bind(provider), serialize,
+      { providedCodeActionKinds: metadata?.providedCodeActionKinds?.map(value => value.value) });
+    },
+    registerCodeLensProvider(selector, provider) {
+      return cachedProvider('codeLens', selector, (doc, params, token) => provider.provideCodeLenses(doc, token),
+        provider.resolveCodeLens?.bind(provider), (value, id) => ({ id, range: rangeOut(value.range), title: value.command?.title, hasCommand: !!value.command }),
+        undefined, provider.onDidChangeCodeLenses);
+    },
+    registerInlayHintsProvider(selector, provider) {
+      return cachedProvider('inlayHints', selector, (doc, params, token) => provider.provideInlayHints(doc, rangeIn(params.range), token),
+        provider.resolveInlayHint?.bind(provider), (value, id, file) => {
+          if (value.textEdits?.length) {
+            const edit = new editors.WorkspaceEdit(); edit.set(document(state.documents.get(file)).uri, value.textEdits); workspaceEditsOut(edit);
+          }
+          return { id, position: { line: value.position.line, character: value.position.character }, kind: value.kind,
+            label: typeof value.label === 'string' ? value.label : value.label.map(part => ({ value: part.value, tooltip: text(part.tooltip), hasCommand: !!part.command,
+              location: part.location && { uri: part.location.uri.toString(), range: rangeOut(part.location.range) } })),
+            tooltip: text(value.tooltip), paddingLeft: value.paddingLeft, paddingRight: value.paddingRight, textEdits: editsOut(value.textEdits) };
+        }, undefined, provider.onDidChangeInlayHints);
+    },
+    registerColorProvider(selector, provider) {
+      need('languages');
+      return register('color', selector, async ({ path: file, action, range, color, token = cancelled }) => {
+        const doc = document(state.documents.get(file)); const version = doc.version;
+        if (action === 'present') {
+          const value = await provider.provideColorPresentations(new types.Color(color.red, color.green, color.blue, color.alpha), { document: doc, range: rangeIn(range) }, token);
+          if (token.isCancellationRequested || doc.version !== version) return null;
+          if (value?.length) {
+            // Monaco inserts a presentation's label when textEdit is omitted.
+            const edit = new editors.WorkspaceEdit(); edit.replace(doc.uri, rangeIn(range), ''); workspaceEditsOut(edit);
+          }
+          return value?.map(item => ({ label: item.label, textEdit: item.textEdit && editsOut([item.textEdit])[0], additionalTextEdits: editsOut(item.additionalTextEdits) })) || null;
+        }
+        const values = await provider.provideDocumentColors(doc, token);
+        return token.isCancellationRequested || doc.version !== version ? null : values?.map(value => ({ range: rangeOut(value.range), color: value.color })) || null;
+      });
+    },
+    registerDocumentSemanticTokensProvider(selector, provider, legend) {
+      need('languages');
+      // Full results are always legal, even when an extension also offers deltas.
+      // No extension-side result lifetime is exposed by the VS Code provider API.
+      return register('semanticTokens', selector, async ({ path: file, token = cancelled }) => {
+        const doc = document(state.documents.get(file)); const version = doc.version;
+        const value = await provider.provideDocumentSemanticTokens(doc, token);
+        if (!value || token.isCancellationRequested || doc.version !== version) return null;
+        const data = Array.from(value.data || []);
+        if (data.length % 5 || !data.every(n => Number.isInteger(n) && n >= 0 && n <= 0xffffffff)) throw new Error('Invalid semantic token data.');
+        return { resultId: value.resultId, data };
+      }, { legend }, provider.onDidChangeSemanticTokens);
+    },
+    registerDocumentRangeSemanticTokensProvider(selector, provider, legend) {
+      need('languages');
+      return register('rangeSemanticTokens', selector, async ({ path: file, range, token = cancelled }) => {
+        const doc = document(state.documents.get(file)); const version = doc.version;
+        const value = await provider.provideDocumentRangeSemanticTokens(doc, rangeIn(range), token);
+        if (!value || token.isCancellationRequested || doc.version !== version) return null;
+        const data = Array.from(value.data || []);
+        if (data.length % 5 || !data.every(n => Number.isInteger(n) && n >= 0 && n <= 0xffffffff)) throw new Error('Invalid semantic token data.');
+        return { resultId: value.resultId, data };
+      }, { legend });
     },
     registerHoverProvider(selector, provider) {
       need('languages');
@@ -231,7 +378,7 @@ function createLanguagesApi(parts) {
         return (values || []).map(value => {
           const id = String(++itemCounter); cache.set(id, { path: file, value });
           while (cache.size > 1000) cache.delete(cache.keys().next().value);
-          return serialize(value, id);
+          return serialize(value, id, file);
         });
       });
     },
@@ -287,50 +434,64 @@ function createLanguagesApi(parts) {
         return editsOut(await provider.provideDocumentRangeFormattingEdits(doc, rangeIn(range), formattingOptions(options), token));
       }, { displayName: (ext.manifest && (ext.manifest.displayName || ext.manifest.name)) || ext.id });
     },
+    getDiagnostics(uri) {
+      need('languages');
+      const results = new Map();
+      for (const stored of diagnosticCollections.values()) for (const [key, value] of stored) {
+        if (uri && key !== uri.toString()) continue;
+        if (!results.has(key)) results.set(key, { uri: value.uri, list: [] });
+        results.get(key).list.push(...value.list);
+      }
+      return uri ? results.get(uri.toString())?.list || [] : [...results.values()].map(value => [value.uri, value.list]);
+    },
+    onDidChangeDiagnostics(listener, thisArg, disposables) {
+      need('languages');
+      return track(host.events.on('languageDiagnostics')(asExtension(listener), thisArg, disposables));
+    },
     createDiagnosticCollection(name = `collection-${(handleCounter += 1)}`) {
       need('languages');
-      const collection = `${ext.id}:${name}`;
-      const stored = new Map();
-      const push = (file, list) =>
+      const collection = `${ext.id}:${name}:${++handleCounter}`;
+      const stored = new Map(); let disposed = false;
+      diagnosticCollections.set(collection, stored);
+      const push = (uri, list) => {
         notify('diagnostics/set', {
-          collection,
-          path: file,
-          diagnostics: list.map((item) => ({
-            range: rangeOut(item.range),
-            message: item.message,
-            severity: item.severity,
-            tags: Array.isArray(item.tags) ? item.tags.filter((tag) => tag === 1 || tag === 2) : undefined,
-            source: item.source,
-            code: item.code === undefined ? undefined : String(item.code && item.code.value !== undefined ? item.code.value : item.code),
-          })),
+          collection, path: toPath(uri),
+          diagnostics: list.map(item => ({ range: rangeOut(item.range), message: item.message, severity: item.severity,
+            tags: item.tags?.filter(tag => tag === 1 || tag === 2), source: item.source,
+            code: item.code === undefined ? undefined : String(item.code?.value ?? item.code) })),
         });
+        host.events.fire('languageDiagnostics', { uris: [uri] });
+      };
+      const check = () => { if (disposed) throw new Error('Diagnostic collection has been disposed.'); };
       const collectionApi = {
         name,
         set(target, diagnostics) {
+          check();
           if (Array.isArray(target)) {
-            for (const [uri, list] of target) this.set(uri, list);
+            // Multiple entries for one URI are merged by the VS Code contract.
+            const merged = new Map();
+            for (const [uri, list] of target) {
+              const key = uri.toString();
+              if (list === undefined) merged.set(key, { uri, list: undefined });
+              else { const previous = merged.get(key); merged.set(key, { uri, list: [...(previous?.list || []), ...list] }); }
+            }
+            for (const value of merged.values()) this.set(value.uri, value.list);
             return;
           }
-          const file = toPath(target);
-          stored.set(file, diagnostics || []);
-          push(file, diagnostics || []);
+          if (diagnostics === undefined) { this.delete(target); return; }
+          const list = [...diagnostics]; stored.set(target.toString(), { uri: target, list }); push(target, list);
         },
-        get: (uri) => stored.get(toPath(uri)),
-        has: (uri) => stored.has(toPath(uri)),
-        delete(uri) {
-          const file = toPath(uri);
-          stored.delete(file);
-          push(file, []);
-        },
+        get(uri) { check(); return stored.get(uri.toString())?.list; },
+        has(uri) { check(); return stored.has(uri.toString()); },
+        delete(uri) { check(); stored.delete(uri.toString()); push(uri, []); },
         clear() {
-          for (const file of stored.keys()) push(file, []);
-          stored.clear();
+          check(); const values = [...stored.values()]; stored.clear();
+          for (const value of values) push(value.uri, []);
         },
-        forEach(callback, thisArg) {
-          for (const [file, list] of stored) callback.call(thisArg, Uri.file(file), list, collectionApi);
-        },
+        forEach(callback, thisArg) { check(); for (const value of stored.values()) callback.call(thisArg, value.uri, value.list, collectionApi); },
         dispose() {
-          collectionApi.clear();
+          if (disposed) return;
+          collectionApi.clear(); diagnosticCollections.delete(collection); disposed = true;
         },
       };
       return track(collectionApi);

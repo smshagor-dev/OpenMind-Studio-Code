@@ -1,3 +1,4 @@
+import { registerAdvancedHostProvider } from "./extensionAdvancedProviders";
 import * as monaco from "monaco-editor";
 
 import type { ProviderInvoke, ProviderRegistration } from "../services/extensionHostBridge";
@@ -81,6 +82,8 @@ export function registerHostProvider(
   invoke: ProviderInvoke,
   pathOf: (model: monaco.editor.ITextModel) => string | null,
 ): () => void {
+  const advanced = registerAdvancedHostProvider(registration, invoke, pathOf);
+  if (advanced) return advanced;
   const selector: monaco.languages.LanguageSelector = registration.selector;
   const ask = async (model: monaco.editor.ITextModel, position: monaco.Position | undefined,
     token: monaco.CancellationToken, context?: Parameters<ProviderInvoke>[0]["context"]) => {

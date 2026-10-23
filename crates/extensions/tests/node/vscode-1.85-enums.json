@@ -160,6 +160,10 @@
       "Run": 1,
       "Debug": 2,
       "Coverage": 3
+    },
+    "InlayHintKind": {
+      "Type": 1,
+      "Parameter": 2
     }
   }
 }
