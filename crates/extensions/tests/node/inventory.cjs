@@ -35,7 +35,7 @@ This inventory enumerates runtime namespace exports and top-level value exports 
 
 Run: node --test crates/extensions/tests/node/*.test.cjs
 
-Verified Linux run on 2026-10-23: 81 Node tests passed with zero skips; the full frontend suite passed 2,689 tests across 255 files. Full-project TypeScript validation and the Vite production bundle passed. ESLint passed for the changed inline/dialog adapters, HostBridge, host service/wiring and marker conversion; full-project lint was not run. The packaging prebuild needs Cargo metadata and could not run without Cargo. Rust/Tauri and Windows execution remain unverified.
+Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one skipped test. The 34 focused frontend tests for Monaco, native dialogs and host editor APIs passed. Full-project TypeScript and scoped ESLint passed. Full frontend regression validation is incomplete. Rust/Tauri and Windows builds were not run; Cargo is unavailable.
 
 - Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
 - File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
