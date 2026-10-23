@@ -148,7 +148,7 @@ function createWorkspaceApi(parts) {
     };
   }
 
-  /** A document of a custom scheme, read through its provider (read-only in the editor). */
+  /** A custom-scheme document; writable filesystem resources get native editor models. */
   async function openSchemeDocument(uri) {
     need('workspaceRead');
     if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);
@@ -160,11 +160,25 @@ function createWorkspaceApi(parts) {
     if (normalized === null) throw new Error(`'${uri.path}' leaves the '${uri.scheme}:' file system.`);
     const clean = uri.with({ path: normalized });
     const key = clean.toString();
+    const known = state.documents.get(key);
+    if (known?.native && known.virtual) {
+      if (entry.readonly) throw new Error('The virtual filesystem is now read-only.');
+      known.fileSystemProvider = entry.id;
+      return document(known);
+    }
     const bytes = await providerCall(host, entry, 'readFile', clean);
     if (bytes.length > 32 * 1024 * 1024) throw new Error('Virtual document content exceeds 32 MB.');
     const data = { fileSystemProvider: entry.id, path: key, text: Buffer.from(bytes).toString('utf8'), languageId: guessLanguage(normalized), version: 1, isDirty: false, virtual: true, readonly: entry.readonly };
     state.documents.set(key, data);
-    return document(data);
+    if (!entry.readonly) {
+      data.native = true;
+      try {
+        const opened = await request('workspace/openVirtualTextDocument', { extension: ext.id, uri: key, text: data.text, languageId: data.languageId });
+        if (!opened?.native || opened.path !== key) throw new Error('The native virtual document could not be opened.');
+        state.documents.set(key, { ...data, ...opened });
+      } catch (error) { if (state.documents.get(key) === data) state.documents.delete(key); throw error; }
+    }
+    return document(state.documents.get(key));
   }
 
   const watchers = new Set();

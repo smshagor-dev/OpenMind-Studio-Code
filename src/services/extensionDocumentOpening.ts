@@ -32,9 +32,9 @@ export class ExtensionDocumentOpening {
   private async open(path: string, options: TextDocumentShowOptions, signal: AbortSignal): Promise<{ editorId: string }> {
     const { documents, groups, workspace, editor } = this.deps;
     // Load first: failures must not leave extra groups behind.
-    const untitled = path.startsWith("untitled:");
-    const docId = untitled ? documents.idForHostPath(path) : await documents.openFromPath(path);
-    if (docId === null) throw new Error("The untitled document is closed or unknown.");
+    const uriDocument = path.startsWith("untitled:") || (/^[a-z][a-z0-9+.-]*:\/\//.test(path) && !path.startsWith("file:"));
+    const docId = uriDocument ? documents.idForHostPath(path) : await documents.openFromPath(path);
+    if (docId === null) throw new Error("The requested document is closed or unknown.");
     signal.throwIfAborted();
     this.deps.revealEditors?.();
     const uri = documents.modelUri(docId);
@@ -53,7 +53,7 @@ export class ExtensionDocumentOpening {
       groupId = groups.getState().groups[options.viewColumn - 1]?.id ?? groupId;
     }
     const openOptions = { groupId, preview: options.preview, preserveFocus: options.preserveFocus };
-    const opened = untitled ? workspace.openDocument(docId, "text", openOptions)
+    const opened = uriDocument ? workspace.openDocument(docId, "text", openOptions)
       : await workspace.openPath(path, { kind: "text", ...openOptions });
     if (opened === null) throw new Error("The requested text document could not be opened.");
     signal.throwIfAborted();

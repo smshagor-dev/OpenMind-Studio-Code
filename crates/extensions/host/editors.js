@@ -347,7 +347,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       doc.save = async () => {
         need('workspaceWrite');
         const current = state.documents.get(key);
-        if (!current || current.virtual) return false;
+        if (!current || (current.virtual && !current.native)) return false;
         const answer = await request('workspace/saveDocument', { extension: ext.id, path: key });
         return !!(answer && answer.saved);
       };
@@ -358,6 +358,13 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   /** With a folder open, an open file outside it is the outside-workspace permission's business. */
   function checkEditable(filePath) {
+    const virtual = state.documents.get(filePath);
+    if (virtual?.virtual) {
+      if (!virtual.native || virtual.readonly !== false) throw new Error("The virtual document is read-only.");
+      const uri = types.Uri.parse(filePath), entry = state.fileSystems?.get(uri.scheme);
+      if (!entry || entry.readonly) throw new Error("The writable virtual filesystem is unavailable.");
+      return;
+    }
     if (state.documents.get(filePath)?.isUntitled === true && filePath.startsWith('untitled:')) return;
     const target = resolvedPath(filePath);
     if (state.workspaceFolders.length > 0 && !state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), target))) {
@@ -573,7 +580,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     }
     const files = [];
     for (const [uri, list] of edit.entries()) {
-      const filePath = uri.scheme === 'untitled' ? uri.toString() : uri.fsPath;
+      const filePath = uri.scheme !== 'file' ? uri.toString() : uri.fsPath;
       const doc = state.documents.get(filePath);
       if (!doc) {
         console.error(`workspace.applyEdit: ${filePath} isn't open, and only open documents can be edited for now.`);

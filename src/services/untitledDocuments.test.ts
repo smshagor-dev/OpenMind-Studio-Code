@@ -1,6 +1,7 @@
+import { virtualDocumentWrite } from "./extensionVirtualDocuments";
 import { createRequire } from "node:module";
 import * as monaco from "monaco-editor";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { BufferManager } from "./bufferManager";
 import { DocumentService } from "./documentService";
@@ -13,6 +14,12 @@ import { HostDocumentSync } from "./extensionHostSync";
 import { ExtensionEditorService } from "./extensionEditorService";
 import { ExtensionDocumentOpening } from "./extensionDocumentOpening";
 import { HostBridge, type BridgeDeps } from "./extensionHostBridge";
+
+// jsdom has no Worker; these tests exercise the editor and host, not Monaco's TypeScript worker.
+const tsDefaults = monaco.typescript.typescriptDefaults;
+const originalTsMode = tsDefaults.modeConfiguration;
+beforeAll(() => { tsDefaults.setModeConfiguration({ ...originalTsMode, diagnostics: false, codeActions: false }); });
+afterAll(() => { tsDefaults.setModeConfiguration(originalTsMode); });
 
 interface Host {
   request(method: string, params?: unknown): Promise<unknown>;
@@ -167,4 +174,98 @@ it("preserves named untitled identity on initial sync, failed save, and close, w
   await r.documents.save(relative);
   expect(r.documents.snapshot(relative)).toMatchObject({ path: null, dirty: true });
   expect(r.ipc.saveDocumentDialog).toHaveBeenCalledWith(undefined);
+});
+
+it("edits and saves a writable virtual provider through native Monaco and a real stdio host", async () => {
+  const r = rig();
+  const bridge = new HostBridge({
+    openVirtualTextDocument: (uri, content, language) => {
+      const id = r.documents.openVirtual(uri, content, language);
+      const data = r.sync.describe(id); if (!data) throw Error("missing model"); return data;
+    },
+    showTextDocument: (path, options, context) => r.opening.show(path, options, context),
+    editorApi: r.api,
+    saveDocument: async path => {
+      const id = r.documents.idForHostPath(path); if (!id) return false;
+      await r.documents.save(id); return !r.documents.isDirty(id);
+    },
+  } as BridgeDeps);
+  const host = await fixture({ after: fn => cleanups.push(fn) }, { "test.virtualEdit": { permissions: ["commands", "workspaceRead", "workspaceWrite"], code: `
+    const v=require('vscode');let doc,editor,reads=0,writes=[],value='hello',fail=false,registration;const changes=new v.EventEmitter();
+    exports.activate=()=>{
+      registration=v.workspace.registerFileSystemProvider('editable',{onDidChangeFile:changes.event,stat:()=>({type:1,size:5,mtime:0,ctime:0}),readDirectory:()=>[],readFile:()=>{reads++;return Buffer.from(value)},writeFile:(uri,bytes)=>{if(fail)throw Error('provider failed');value=Buffer.from(bytes).toString('utf8');writes.push({uri:uri.toString(),value})}},{isReadonly:false});
+      v.commands.registerCommand('virtualOpen',async()=>{
+        const uri=v.Uri.parse('editable://store/test%20file.txt?revision=1');
+        doc=await v.workspace.openTextDocument(uri);
+        const changes=new v.WorkspaceEdit();changes.insert(doc.uri,new v.Position(0,5),'!');
+        const unshownEdit=await v.workspace.applyEdit(changes);
+        editor=await v.window.showTextDocument(doc,{viewColumn:2,preview:false});
+        await editor.insertSnippet(new v.SnippetString(' বাংলা'),new v.Position(0,6));
+        return{unshownEdit,text:doc.getText(),dirty:doc.isDirty,untitled:doc.isUntitled,column:editor.viewColumn};
+      });
+      v.commands.registerCommand('virtualSave',async()=>({saved:await doc.save(),text:doc.getText(),dirty:doc.isDirty,writes,reads}));
+      v.commands.registerCommand('virtualRefresh',()=>{value='external';changes.fire([{type:v.FileChangeType.Changed,uri:doc.uri}])});
+      v.commands.registerCommand('virtualFail',async()=>{await editor.edit(b=>b.insert(new v.Position(0,0),'>'));fail=true;return doc.save()});
+      v.commands.registerCommand('virtualDispose',()=>registration.dispose());
+      v.commands.registerCommand('virtualSnapshot',()=>({text:doc.getText(),dirty:doc.isDirty,closed:doc.isClosed}));
+    };` } }, { handleRequest: (method, params) => bridge.handleRequest(method, params) });
+  r.documents.setVirtualSaver(async (uri, content) => { await host.request("host/fs", virtualDocumentWrite(uri, content)); });
+  r.connect(host);
+  await host.request("host/activate", { id: "test.virtualEdit" });
+  expect(await host.request("host/executeCommand", { command: "virtualOpen" })).toEqual({ unshownEdit: true, text: "hello! বাংলা", dirty: true, untitled: false, column: 2 });
+  expect(await host.request("host/executeCommand", { command: "virtualSave" })).toEqual({ saved: true, text: "hello! বাংলা", dirty: false, reads: 1, writes: [{ uri: "editable://store/test%20file.txt?revision=1", value: "hello! বাংলা" }] });
+  const refreshed = new Promise<void>(resolve => {
+    cleanups.push(host.onNotification(value => {
+      if (value.method === "workspace/virtualDocumentChanged") {
+        r.documents.updateVirtual(String(value.params.uri), String(value.params.text));
+        r.sync.flush(); resolve();
+      }
+    }));
+  });
+  await host.request("host/executeCommand", { command: "virtualRefresh" });
+  await refreshed;
+  expect(await host.request("host/executeCommand", { command: "virtualSnapshot" })).toEqual({ text: "external", dirty: false, closed: false });
+  await expect(host.request("host/executeCommand", { command: "virtualFail" })).rejects.toThrow("provider failed");
+  expect(await host.request("host/executeCommand", { command: "virtualSnapshot" })).toEqual({ text: ">external", dirty: true, closed: false });
+  await host.request("host/executeCommand", { command: "virtualDispose" });
+  await expect(host.request("host/executeCommand", { command: "virtualSave" })).rejects.toThrow("No file system provider");
+  expect(r.ipc.documentOpen).not.toHaveBeenCalled();
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  expect(r.ipc.saveDocumentDialog).not.toHaveBeenCalled();
+});
+
+it("protects dirty virtual text from refresh and keeps edits made while a provider save is pending", async () => {
+  const r = rig(); r.sync.start();
+  const mixed = r.documents.openVirtual("editable:///mixed.txt", "one\r\ntwo\nthree", "plaintext");
+  expect(r.documents.isDirty(mixed)).toBe(false);
+  expect(r.documents.updateVirtual("editable:///mixed.txt", "new\nexternal\r\ntext")).toBe(true);
+  expect(r.documents.isDirty(mixed)).toBe(false);
+  const id = r.documents.openVirtual("editable:///draft.txt", "original", "plaintext");
+  expect(r.notifications.some(value => value.method === "host/documentOpened" && (value.params as { isUntitled?: boolean }).isUntitled)).toBe(false);
+  expect(r.documents.updateVirtual("editable:///draft.txt", "external")).toBe(true);
+  r.buffers.setValue(id, "saving");
+  expect(r.documents.updateVirtual("editable:///draft.txt", "overwrite")).toBe(false);
+  let finish: (() => void) | undefined;
+  r.documents.setVirtualSaver(() => new Promise<void>(resolve => { finish = resolve; }));
+  const saved = r.documents.save(id);
+  r.buffers.setValue(id, "newer");
+  finish?.(); await saved;
+  expect(r.documents.contentOf(id)).toBe("newer");
+  expect(r.documents.isDirty(id)).toBe(true);
+  expect(r.sync.initial().documents).toContainEqual(expect.objectContaining({ path: "editable:///draft.txt", text: "newer", virtual: true, native: true, isDirty: true }));
+  await expect(r.documents.saveAs(id)).rejects.toThrow("Save As is not supported");
+  r.documents.close(id);
+  expect(r.notifications.at(-1)).toMatchObject({ method: "host/documentClosed", params: { path: "editable:///draft.txt" } });
+});
+
+it("Save All persists an edited virtual buffer even before it has a tab", async () => {
+  const r = rig(); r.sync.start();
+  const id = r.documents.openVirtual("editable:///hidden.txt", "before", "plaintext");
+  const save = vi.fn().mockResolvedValue(undefined);
+  r.documents.setVirtualSaver(save);
+  r.buffers.setValue(id, "after");
+  await r.workspace.saveAll();
+  expect(save).toHaveBeenCalledWith("editable:///hidden.txt", "after");
+  expect(r.documents.isDirty(id)).toBe(false);
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
 });

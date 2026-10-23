@@ -25,6 +25,7 @@ export type ExternalState = "none" | "changed" | "deleted";
 export type DiskCheck = "same" | "reloaded" | "conflict" | "deleted" | "unavailable";
 
 interface DocumentRecord {
+  virtualUri?: string;
   untitledUri?: string;
   untitledName?: string;
   associatedPath?: string;
@@ -50,6 +51,7 @@ export class DocumentService {
   private readonly documents = new Map<string, DocumentRecord>();
   private nextId = 0;
   private languageResolver: ((path: string) => string | null) | null = null;
+  private virtualSaver: ((uri: string, text: string) => Promise<void>) | null = null;
   private beforeSave: ((id: string) => Promise<void>) | null = null;
   /** Opens still reading the file: a second open of the same path waits for the first instead of making a second document. */
   private readonly opening = new Map<string, Promise<string>>();
@@ -68,7 +70,7 @@ export class DocumentService {
     this.languageResolver = resolver;
   }
 
-  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }): string {
+  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }, virtualUri?: string): string {
     let namedPath: string | undefined;
     if (named) {
       const resource = new URL(named.uri);
@@ -82,18 +84,42 @@ export class DocumentService {
     const id = `untitled-${++this.nextId}`;
     this.documents.set(id, {
       path: null,
-      untitled: this.freeUntitledNumber(),
+      ...(virtualUri ? { virtualUri } : {}),
+      untitled: virtualUri ? null : this.freeUntitledNumber(),
       ...(named ? { untitledUri: named.uri, untitledName: basename(namedPath ?? ""), associatedPath: named.associatedPath } : {}),
       encoding: "utf8",
       lineEnding: "lf",
-      savedContent: "",
+      savedContent: virtualUri ? content : "",
       external: "none",
       diskContent: null,
     });
     this.buffers.create(id, content, language);
+    if (virtualUri) this.requireDocument(id).savedContent = this.buffers.getValue(id);
     this.watchDirtyState(id);
     this.events.emit("documentOpened", { id });
     return id;
+  }
+
+  /** A writable provider resource owns a model, but never a native filesystem path. */
+  openVirtual(uri: string, text: string, language: string): string {
+    if (!/^[a-z][a-z0-9+.-]*:\/\//.test(uri) || /^(file|untitled):/.test(uri)) throw new Error("Invalid virtual document URI.");
+    decodeURIComponent(new URL(uri).pathname);
+    const existing = this.idForHostPath(uri);
+    if (existing !== null) return existing;
+    const id = this.createUntitled(text, language, undefined, uri);
+    return id;
+  }
+
+  setVirtualSaver(save: (uri: string, text: string) => Promise<void>): void { this.virtualSaver = save; }
+  isVirtual(id: string): boolean { return this.requireDocument(id).virtualUri !== undefined; }
+
+  updateVirtual(uri: string, text: string): boolean {
+    const id = this.idForHostPath(uri);
+    if (id === null || !this.isVirtual(id) || this.isDirty(id)) return false;
+    const doc = this.requireDocument(id);
+    doc.savedContent = text.replace(/\r\n|\r|\n/g, this.eolOf(id));
+    this.buffers.replaceContent(id, text);
+    return true;
   }
 
   /** The lowest Untitled-N number no open document uses (VS Code reuses freed numbers). */
@@ -174,6 +200,16 @@ export class DocumentService {
   /** Saves to the document's current path, or delegates to `saveAs` if it has none yet. */
   async save(id: string, options: { format?: boolean } = {}): Promise<void> {
     const doc = this.requireDocument(id);
+    if (doc.virtualUri) {
+      if (!this.virtualSaver) throw new Error("The virtual filesystem is unavailable.");
+      const content = this.buffers.getValue(id);
+      await this.virtualSaver(doc.virtualUri, content);
+      if (!this.has(id)) return;
+      doc.savedContent = content;
+      this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
+      this.events.emit("documentSaved", { id, path: doc.virtualUri });
+      return;
+    }
     if (doc.path === null) {
       if (doc.associatedPath) { await this.writeAndMarkClean(id, doc, doc.associatedPath); return; }
       await this.saveAs(id);
@@ -192,6 +228,7 @@ export class DocumentService {
   /** Prompts for a path via the native save dialog, then saves there. */
   async saveAs(id: string): Promise<void> {
     const doc = this.requireDocument(id);
+    if (doc.virtualUri) throw new Error("Save As is not supported for virtual provider documents.");
     const chosenPath = await this.ipc.saveDocumentDialog(doc.path ?? doc.associatedPath);
     if (chosenPath === null) {
       return;
@@ -311,7 +348,7 @@ export class DocumentService {
     return {
       id,
       path: doc.path,
-      title: doc.path ? basename(doc.path) : doc.untitledName ?? `Untitled-${String(doc.untitled ?? 1)}`,
+      title: doc.path ? basename(doc.path) : doc.virtualUri ? basename(decodeURIComponent(new URL(doc.virtualUri).pathname)) : doc.untitledName ?? `Untitled-${String(doc.untitled ?? 1)}`,
       dirty: this.isDirty(id),
       encoding: doc.encoding,
       lineEnding: doc.lineEnding === "mixed" && !this.isDirty(id) ? "mixed" : this.eolOf(id) === "\r\n" ? "crlf" : "lf",
@@ -331,10 +368,10 @@ export class DocumentService {
   }
 
   /** Stable extension-host identity; untitled URIs never enter filesystem APIs. */
-  hostPath(id: string): string { const doc = this.requireDocument(id); return doc.path ?? doc.untitledUri ?? `untitled://openmind/${id}`; }
+  hostPath(id: string): string { const doc = this.requireDocument(id); return doc.path ?? doc.virtualUri ?? doc.untitledUri ?? `untitled://openmind/${id}`; }
 
   idForHostPath(path: string): string | null {
-    if (path.startsWith("untitled:")) {
+    if (/^[a-z][a-z0-9+.-]*:/.test(path) && !/^[a-z]:[\\/]/i.test(path)) {
       for (const [id, doc] of this.documents) if (doc.path === null && this.hostPath(id) === path) return id;
       return null;
     }
