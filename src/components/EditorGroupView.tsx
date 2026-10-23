@@ -132,6 +132,7 @@ function GroupContent({
     <div className="editor-group__content">
       <MonacoHost
         model={container.buffers.get(docId) ?? null}
+        readOnly={container.documents.isReadOnly(docId)}
         theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
         onEditorMounted={(editor) => {
           const detach = container.editor.attach(editor, {

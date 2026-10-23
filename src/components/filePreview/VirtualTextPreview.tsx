@@ -56,6 +56,7 @@ export function VirtualTextPreview({
     <div className="file-preview__virtual">
       <MonacoHost
         model={model}
+        readOnly={readOnly}
         theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
         onEditorMounted={(editor) => {
           editorRef.current = editor;
@@ -71,3 +72,4 @@ export function VirtualTextPreview({
     </div>
   );
 }
+

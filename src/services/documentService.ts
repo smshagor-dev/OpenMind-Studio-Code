@@ -26,6 +26,8 @@ export type DiskCheck = "same" | "reloaded" | "conflict" | "deleted" | "unavaila
 
 interface DocumentRecord {
   virtualUri?: string;
+  virtualReadOnly?: boolean;
+  initialHostVersion?: number;
   untitledUri?: string;
   untitledName?: string;
   associatedPath?: string;
@@ -70,7 +72,8 @@ export class DocumentService {
     this.languageResolver = resolver;
   }
 
-  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }, virtualUri?: string): string {
+  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }, virtual?: { uri: string; readonly: boolean; version: number }): string {
+    const virtualUri = virtual?.uri;
     let namedPath: string | undefined;
     if (named) {
       const resource = new URL(named.uri);
@@ -84,7 +87,7 @@ export class DocumentService {
     const id = `untitled-${++this.nextId}`;
     this.documents.set(id, {
       path: null,
-      ...(virtualUri ? { virtualUri } : {}),
+      ...(virtual ? { virtualUri: virtual.uri, virtualReadOnly: virtual.readonly, initialHostVersion: virtual.version } : {}),
       untitled: virtualUri ? null : this.freeUntitledNumber(),
       ...(named ? { untitledUri: named.uri, untitledName: basename(namedPath ?? ""), associatedPath: named.associatedPath } : {}),
       encoding: "utf8",
@@ -100,15 +103,25 @@ export class DocumentService {
     return id;
   }
 
-  /** A writable provider resource owns a model, but never a native filesystem path. */
-  openVirtual(uri: string, text: string, language: string): string {
+  /** Provider resources own native models, but never native filesystem paths. */
+  openVirtual(uri: string, text: string, language: string, readOnly = false, version = 1): string {
     if (!/^[a-z][a-z0-9+.-]*:\/\//.test(uri) || /^(file|untitled):/.test(uri)) throw new Error("Invalid virtual document URI.");
     decodeURIComponent(new URL(uri).pathname);
     const existing = this.idForHostPath(uri);
-    if (existing !== null) return existing;
-    const id = this.createUntitled(text, language, undefined, uri);
+    if (existing !== null) {
+      const doc = this.requireDocument(existing);
+      if (doc.virtualReadOnly !== readOnly) {
+        doc.virtualReadOnly = readOnly;
+        this.events.emit("documentDirtyChanged", { id: existing, dirty: this.isDirty(existing) });
+      }
+      return existing;
+    }
+    const id = this.createUntitled(text, language, undefined, { uri, readonly: readOnly, version });
     return id;
   }
+
+  isReadOnly(id: string): boolean { return this.requireDocument(id).virtualReadOnly === true; }
+  initialHostVersion(id: string): number { return this.requireDocument(id).initialHostVersion ?? 1; }
 
   setVirtualSaver(save: (uri: string, text: string) => Promise<void>): void { this.virtualSaver = save; }
   isVirtual(id: string): boolean { return this.requireDocument(id).virtualUri !== undefined; }
@@ -201,6 +214,7 @@ export class DocumentService {
   async save(id: string, options: { format?: boolean } = {}): Promise<void> {
     const doc = this.requireDocument(id);
     if (doc.virtualUri) {
+      if (doc.virtualReadOnly) throw new Error("The virtual document is read-only.");
       if (!this.virtualSaver) throw new Error("The virtual filesystem is unavailable.");
       const content = this.buffers.getValue(id);
       await this.virtualSaver(doc.virtualUri, content);
@@ -301,7 +315,7 @@ export class DocumentService {
 
   /** Replaces the text as one undoable edit that touches only what differs (the cursor stays where it can). Nothing is saved. */
   replaceText(id: string, text: string): void {
-    this.requireDocument(id);
+    if (this.isReadOnly(id)) throw new Error("The virtual document is read-only.");
     this.buffers.replaceContent(id, text);
   }
 
@@ -323,7 +337,7 @@ export class DocumentService {
   }
 
   applyHostEdits(id: string, edits: HostTextEdit[], options: HostEditOptions = {}): void {
-    this.requireDocument(id);
+    if (this.isReadOnly(id)) throw new Error("The virtual document is read-only.");
     this.buffers.applyHostEdits(id, edits, options);
   }
 

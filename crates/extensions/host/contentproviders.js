@@ -34,6 +34,10 @@ function create({ host, ext, need, track, Disposable, editors, guessLanguage }) 
     try {
       const text = await read(entry, uri);
       if (!entry.active || entry.revisions.get(key) !== revision || state.documents.get(key) !== data || text === data.text) return;
+      if (data.native) {
+        host.notify('workspace/virtualDocumentChanged', { extension: entry.extension, uri: key, scheme: uri.scheme, path: uri.path, text, languageId: data.languageId, readonly: true });
+        return;
+      }
       const previous = data.text; const end = editors.document(data).positionAt(previous.length);
       data.text = text; data.version++;
       host.events.fire('documentChanged', { ...data, contentChanges: [{ range: new editors.Range(0, 0, end.line, end.character), rangeOffset: 0, rangeLength: previous.length, text }] });
@@ -50,6 +54,7 @@ function create({ host, ext, need, track, Disposable, editors, guessLanguage }) 
     if (typeof provider?.provideTextDocumentContent !== 'function') throw new Error('A text document content provider needs provideTextDocumentContent().');
     const entry = { id: randomUUID(), extension: ext.id, scheme, provider, active: true, requests: new Map(), revisions: new Map() };
     state.textContentProviders.set(scheme, entry);
+    for (const data of state.documents.values()) if (data.native && data.virtual && data.readonly && data.path.startsWith(scheme + '://')) data.contentProvider = entry.id;
     let subscription;
     try {
       if (provider.onDidChange) subscription = owned(entry, () => provider.onDidChange(uri => { void owned(entry, () => refresh(entry, uri)); }));

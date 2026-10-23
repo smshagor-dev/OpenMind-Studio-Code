@@ -154,7 +154,7 @@ export interface BridgeDeps {
   hostRequest: (method: string, params: unknown) => Promise<unknown>;
   showOutput: (channel: string) => void;
   openExternal: (url: string) => Promise<void>;
-  openVirtualTextDocument?: (uri: string, content: string, language: string) => HostDocument;
+  openVirtualTextDocument?: (uri: string, content: string, language: string, readonly: boolean, version: number) => HostDocument;
   createUntitled?: (content: string, language: string, named?: { uri: string; associatedPath?: string }) => HostDocument;
   readDocument: (path: string) => Promise<HostDocument | null>;
   languageIds: () => string[];
@@ -307,8 +307,11 @@ export class HostBridge {
       case "ui/openExternal":
         await this.deps.openExternal(text(p.url));
         return true;
-      case "workspace/openVirtualTextDocument":
-        return this.need(this.deps.openVirtualTextDocument, "Virtual text documents")(text(p.uri), text(p.text), text(p.languageId) || "plaintext");
+      case "workspace/openVirtualTextDocument": {
+        const version = p.version === undefined ? 1 : Number(p.version);
+        if (!Number.isSafeInteger(version) || version < 1) throw new Error("Invalid virtual document version.");
+        return this.need(this.deps.openVirtualTextDocument, "Virtual text documents")(text(p.uri), text(p.text), text(p.languageId) || "plaintext", p.readonly === true, version);
+      }
       case "workspace/createUntitled": {
         if (p.content !== undefined && typeof p.content !== "string") throw new Error("Untitled content must be text.");
         if (p.language !== undefined && (typeof p.language !== "string" || !p.language)) throw new Error("Invalid untitled language.");

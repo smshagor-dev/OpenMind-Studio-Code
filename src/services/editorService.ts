@@ -563,7 +563,7 @@ export class EditorService {
   insertAtCursor(text: string): boolean {
     const editor = this.editor;
     const selection = editor?.getSelections()?.[0];
-    if (!editor?.executeEdits || !selection || editor.getModel() == null) return false;
+    if (!editor?.executeEdits || !selection || editor.getModel() == null || editor.getRawOptions?.().readOnly) return false;
     editor.executeEdits("ai", [{ range: selection, text, forceMoveMarkers: true }]);
     editor.focus();
     return true;
@@ -576,7 +576,7 @@ export class EditorService {
    */
   pasteText(text: string): boolean {
     const editor = this.editor;
-    if (!editor || editor.getModel() == null) return false;
+    if (!editor || editor.getModel() == null || editor.getRawOptions?.().readOnly) return false;
     editor.focus();
     editor.trigger("menu", "paste", { text });
     return true;
@@ -592,7 +592,7 @@ export class EditorService {
     const editor = this.editor;
     const model = editor?.getModel();
     const selections = editor?.getSelections();
-    if (!editor || !model || !selections || selections.length === 0) return false;
+    if (!editor || !model || !selections || selections.length === 0 || (cut && editor.getRawOptions?.().readOnly)) return false;
     const eol = model.getEOL();
     const ranges = selections.map((selection) =>
       selection.isEmpty()
@@ -612,6 +612,7 @@ export class EditorService {
       return selection.isEmpty() && !text.endsWith(eol) ? text + eol : text;
     });
     await this.ipc.clipboardWriteText(pieces.join(selections.length > 1 ? eol : ""));
+    if (cut && (editor.getModel() !== model || editor.getRawOptions?.().readOnly)) return false;
     if (cut && editor.executeEdits) {
       editor.focus();
       editor.executeEdits("cut", ranges.map((range) => ({ range, text: "" })));

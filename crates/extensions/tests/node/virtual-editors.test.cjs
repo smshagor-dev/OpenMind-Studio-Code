@@ -32,3 +32,23 @@ test('saving a restored virtual document during provider activation does not wai
  await host.request('host/activate',{id:'test.activationsave'});
  assert.equal(await host.request('host/executeCommand',{command:'bootSaved'}),'restored edits');
 });
+
+test('read-only filesystem documents return a targeted native editor without reopening or enabling save', async t => {
+ let host;
+ host = await fixture(t, { 'test.readonlypane': { permissions: ['commands','workspaceRead','workspaceWrite'], code: `const v=require('vscode');let opens=0,reads=0;exports.activate=()=>{v.workspace.onDidOpenTextDocument(()=>opens++);v.workspace.registerFileSystemProvider('readonlypane',{stat:()=>({type:1,size:4,mtime:0,ctime:0}),readDirectory:()=>[],readFile:()=>{reads++;return Buffer.from('safe')}});v.commands.registerCommand('showLockedPane',async()=>{const uri=v.Uri.parse('readonlypane:/file.txt');const d=await v.workspace.openTextDocument(uri);const same=await v.workspace.openTextDocument(uri);const editor=await v.window.showTextDocument(d,{viewColumn:3,preview:false});return{same:same===d,editorSame:editor.document===d,column:editor.viewColumn,text:d.getText(),saved:await d.save(),opens,reads}})}` } }, {
+   handleRequest(method,p) {
+     if (method === 'workspace/openVirtualTextDocument') {
+       assert.equal(p.readonly,true);
+       const data={path:p.uri,text:p.text,version:p.version,languageId:p.languageId,virtual:true,native:true,readonly:true,isDirty:false};
+       host.notify('host/documentOpened',data); return data;
+     }
+     if (method === 'ui/showTextDocument') {
+       host.notify('host/editorSnapshot',{editors:[{id:'locked-pane',path:p.path,active:true,viewColumn:3,selections:[{anchorLine:0,anchorColumn:0,activeLine:0,activeColumn:0}],tabSize:4,insertSpaces:true,visibleRanges:[]}],activeId:'locked-pane'});
+       return{ok:true,editorId:'locked-pane'};
+     }
+     throw Error('Unexpected request '+method);
+   }
+ });
+ await host.request('host/activate',{id:'test.readonlypane'});
+ assert.deepEqual(await host.request('host/executeCommand',{command:'showLockedPane'}),{same:true,editorSame:true,column:3,text:'safe',saved:false,opens:1,reads:1});
+});

@@ -208,8 +208,8 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       readText: async () => (await import("@tauri-apps/plugin-clipboard-manager")).readText(),
       writeText: async value => (await import("@tauri-apps/plugin-clipboard-manager")).writeText(value),
     },
-    openVirtualTextDocument: (uri, content, language) => {
-      const id = documents.openVirtual(uri, content, language);
+    openVirtualTextDocument: (uri, content, language, readonly, version) => {
+      const id = documents.openVirtual(uri, content, language, readonly, version);
       const data = sync.describe(id);
       if (!data) throw new Error("The virtual document could not be opened.");
       return data;
