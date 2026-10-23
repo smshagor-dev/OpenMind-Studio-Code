@@ -1,3 +1,4 @@
+import { DynamicExtensionQuickInput } from "./DynamicExtensionQuickInput";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { container } from "../services/container";
@@ -257,9 +258,11 @@ export function ExtensionPrompts() {
           ))}
         </div>
       ) : null}
+      {state.dynamic ? <DynamicExtensionQuickInput key={state.dynamic.id} prompt={state.dynamic} service={prompts} /> : null}
       {state.dialog?.kind === "quickPick" ? <QuickPick prompt={state.dialog} /> : null}
       {state.dialog?.kind === "input" ? <InputBox prompt={state.dialog} /> : null}
       {state.dialog?.kind === "confirm" ? <ConfirmBox prompt={state.dialog} /> : null}
     </>
   );
 }
+

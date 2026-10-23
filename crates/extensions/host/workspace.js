@@ -161,7 +161,8 @@ function createWorkspaceApi(parts) {
     const clean = uri.with({ path: normalized });
     const key = clean.toString();
     const bytes = await providerCall(host, entry, 'readFile', clean);
-    const data = { path: key, text: Buffer.from(bytes).toString('utf8'), languageId: guessLanguage(normalized), version: 1, isDirty: false, virtual: true, readonly: entry.readonly };
+    if (bytes.length > 32 * 1024 * 1024) throw new Error('Virtual document content exceeds 32 MB.');
+    const data = { fileSystemProvider: entry.id, path: key, text: Buffer.from(bytes).toString('utf8'), languageId: guessLanguage(normalized), version: 1, isDirty: false, virtual: true, readonly: entry.readonly };
     state.documents.set(key, data);
     return document(data);
   }
@@ -259,6 +260,7 @@ function createWorkspaceApi(parts) {
     createFileSystemWatcher(pattern, ignoreCreate, ignoreChange, ignoreDelete) {
       need('workspaceRead');
       const matches = matcherOf(pattern, () => state.workspaceFolders);
+      let disposed = false, stopProviderWatch;
       const created = new EventEmitter();
       const changed = new EventEmitter();
       const deleted = new EventEmitter();
@@ -272,22 +274,41 @@ function createWorkspaceApi(parts) {
         _fire(batch) {
           const each = (list, emitter, ignored) => {
             if (ignored) return;
-            for (const file of list || []) if (matches(path.resolve(file))) emitter.fire(Uri.file(file));
+            for (const file of list || []) {
+              if (typeof file === 'string') { if (matches(path.resolve(file))) emitter.fire(Uri.file(file)); continue; }
+              if (!file?.scheme) continue;
+              const base = pattern?.baseUri;
+              if (file.scheme === 'file') { if (matches(file.fsPath)) emitter.fire(file); }
+              else if (base?.scheme === file.scheme && base.authority === file.authority) {
+                const relative = path.posix.relative(base.path, file.path);
+                if (relative !== '..' && !relative.startsWith('../') && !path.posix.isAbsolute(relative) && globToRegExp(pattern.pattern).test(relative)) emitter.fire(file);
+              }
+            }
           };
           each(batch.created, created, watcher.ignoreCreateEvents);
           each(batch.changed, changed, watcher.ignoreChangeEvents);
           each(batch.deleted, deleted, watcher.ignoreDeleteEvents);
         },
         dispose() {
-          watchers.delete(watcher);
-          listener.dispose();
-          created.dispose();
-          changed.dispose();
-          deleted.dispose();
+          if (disposed) return; disposed = true;
+          try { stopProviderWatch?.(); }
+          finally { watchers.delete(watcher); listener.dispose(); created.dispose(); changed.dispose(); deleted.dispose(); }
         },
       };
       const listener = host.events.on('filesChanged')(asExtension((batch) => watcher._fire(batch)));
       watchers.add(watcher);
+      const base = pattern?.baseUri;
+      if (base?.scheme && base.scheme !== 'file') void Promise.resolve().then(async () => {
+        await host.activateByEvent?.(`onFileSystem:${base.scheme}`);
+        if (disposed) return;
+        const entry = state.fileSystems.get(base.scheme);
+        if (!entry || typeof entry.provider.watch !== 'function') return;
+        const subscription = await host.als.run(entry.extension, () => entry.provider.watch(base, { recursive: String(pattern.pattern).includes('**'), excludes: [] }));
+        let stopped = false;
+        const stop = () => { if (stopped) return; stopped = true; entry.watches.delete(stop); host.als.run(entry.extension, () => subscription?.dispose()); };
+        if (disposed || state.fileSystems.get(base.scheme) !== entry) stop();
+        else { stopProviderWatch = stop; entry.watches.add(stop); }
+      }).catch(error => host.log(ext.id, 'error', `Starting filesystem watch failed: ${error.message}`));
       return track(watcher);
     },
     /** Saves every open document with unsaved edits (the user's own Save All). */

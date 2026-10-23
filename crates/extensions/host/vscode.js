@@ -789,6 +789,7 @@ const publicEnums = Object.fromEntries(Object.entries(publicEnumValues).map(([na
 
 const ColorThemeKind = Object.freeze({ Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 });
 const UIKind = Object.freeze({ Desktop: 1, Web: 2 });
+const QuickInputButtons = Object.freeze({ Back: Object.freeze({ iconPath: undefined, tooltip: 'Back' }) });
 
 class CallHierarchyItem {
   constructor(kind, name, detail, uri, range, selectionRange) { Object.assign(this, { kind, name, detail, uri, range, selectionRange }); }
@@ -1214,6 +1215,72 @@ function createApi(host, ext) {
     else if (timeoutOrThenable) Promise.resolve(timeoutOrThenable).then(() => disposable.dispose(), () => disposable.dispose());
     return disposable;
   }
+  function createQuickInput(kind) {
+    const id = `${ext.id}#quick-${require('crypto').randomUUID()}`;
+    const inputs = state.quickInputs ||= new Map();
+    const emitters = new Map();
+    const objectIds = new WeakMap(); const objects = new Map(); let serial = 0;
+    let visible = false, disposed = false, scheduled = false;
+    const fields = { title: undefined, step: undefined, totalSteps: undefined, enabled: true, busy: false,
+      ignoreFocusOut: false, value: '', valueSelection: undefined, placeholder: undefined, buttons: [], prompt: undefined,
+      password: false, validationMessage: undefined, items: [], activeItems: [], selectedItems: [], canSelectMany: false,
+      matchOnDescription: false, matchOnDetail: false, keepScrollPosition: false };
+    const remember = value => {
+      if (!value || typeof value !== 'object') throw new TypeError('Quick input items and buttons must be objects.');
+      if (!objectIds.has(value)) objectIds.set(value, String(++serial));
+      const key = objectIds.get(value); objects.set(key, value); return key;
+    };
+    const emit = (name, value) => emitters.get(name)?.fire(value);
+    const button = value => ({ id: remember(value), tooltip: value.tooltip, back: value === QuickInputButtons.Back });
+    const snapshot = () => {
+      objects.clear();
+      const items = fields.items.map(item => ({ id: remember(item), label: String(item.label || ''), description: item.description, detail: item.detail,
+        kind: item.kind, picked: item.picked, alwaysShow: item.alwaysShow, buttons: (item.buttons || []).map(button) }));
+      return { extension: ext.id, id, kind, visible, ...Object.fromEntries(Object.entries(fields).filter(([key]) => !['items', 'buttons', 'activeItems', 'selectedItems'].includes(key))),
+        items, buttons: fields.buttons.map(button), activeItems: fields.activeItems.filter(value => fields.items.includes(value)).map(remember),
+        selectedItems: fields.selectedItems.filter(value => fields.items.includes(value)).map(remember) };
+    };
+    const push = () => {
+      if (disposed || scheduled || !visible) return;
+      scheduled = true; queueMicrotask(() => { scheduled = false; if (!disposed && visible) notify('quickInput/set', snapshot()); });
+    };
+    const api = {};
+    for (const key of Object.keys(fields)) Object.defineProperty(api, key, { enumerable: true, get: () => fields[key], set(value) {
+      if (disposed) return;
+      if (['items', 'buttons', 'activeItems', 'selectedItems'].includes(key) && !Array.isArray(value)) throw new TypeError(`${key} must be an array.`);
+      if (key === 'items' && value.some(item => !item || typeof item !== 'object' || typeof item.label !== 'string')) throw new TypeError('Quick pick items need string labels.');
+      const previous = fields[key]; fields[key] = key === 'value' ? String(value ?? '') : value;
+      if (key === 'items') { fields.selectedItems = fields.selectedItems.filter(item => value.includes(item)); fields.activeItems = fields.activeItems.filter(item => value.includes(item)); }
+      push();
+      if (key === 'value' && previous !== fields.value) emit('changeValue', fields.value);
+      if (key === 'activeItems') emit('changeActive', fields.activeItems);
+      if (key === 'selectedItems') emit('changeSelection', fields.selectedItems);
+    } });
+    for (const [name, eventName] of Object.entries({ onDidAccept: 'accept', onDidHide: 'hide', onDidChangeValue: 'changeValue',
+      onDidChangeActive: 'changeActive', onDidChangeSelection: 'changeSelection', onDidTriggerButton: 'button', onDidTriggerItemButton: 'itemButton' })) {
+      const emitter = new EventEmitter(); emitters.set(eventName, emitter);
+      api[name] = (listener, thisArg, disposables) => track(emitter.event(asExtension(value => listener.call(thisArg, value)), undefined, disposables));
+    }
+    api.show = () => { if (!disposed) { visible = true; push(); } };
+    api.hide = () => { if (visible) { visible = false; notify('quickInput/set', { extension: ext.id, id, visible: false }); emit('hide'); } };
+    api.dispose = () => { if (disposed) return; api.hide(); disposed = true; inputs.delete(id); objects.clear(); for (const emitter of emitters.values()) emitter.dispose(); };
+    inputs.set(id, { extension: ext.id, event: params => {
+      if (!visible || disposed) return;
+      if (params.event === 'hide') { api.hide(); return; }
+      if (!fields.enabled) return;
+      if (params.event === 'value') api.value = params.value;
+      else if (params.event === 'active' || params.event === 'selection') {
+        const selected = (Array.isArray(params.items) ? params.items : []).map(key => objects.get(key)).filter(value => value && fields.items.includes(value));
+        api[params.event === 'active' ? 'activeItems' : 'selectedItems'] = fields.canSelectMany || params.event === 'active' ? selected : selected.slice(0, 1);
+      } else if (params.event === 'accept') { const invalid = fields.validationMessage; if (kind !== 'input' || !(typeof invalid === 'string' ? invalid.length > 0 : invalid?.severity === 3)) emit('accept'); }
+      else if (params.event === 'button') { const value = objects.get(params.button); if (fields.buttons.includes(value)) emit('button', value); }
+      else if (params.event === 'itemButton') {
+        const item = objects.get(params.item), value = objects.get(params.button);
+        if (fields.items.includes(item) && item.buttons?.includes(value)) emit('itemButton', { item, button: value });
+      }
+    } });
+    return track(api);
+  }
   function withProgress(options, task) {
     if (typeof task !== 'function') return Promise.reject(new TypeError('Progress requires a task callback.'));
     const source = new CancellationTokenSource();
@@ -1257,6 +1324,8 @@ function createApi(host, ext) {
       const selected = await request('ui/showSaveDialog', { extension: ext.id, options: fileDialogOptions(options) });
       return selected == null ? undefined : Uri.file(selected);
     },
+    createQuickPick: () => createQuickInput('quickPick'),
+    createInputBox: () => createQuickInput('input'),
     withProgress,
     withScmProgress: task => withProgress({ location: publicEnums.ProgressLocation.SourceControl }, task),
     registerTreeDataProvider: trees.registerTreeDataProvider,
@@ -1460,6 +1529,7 @@ function createApi(host, ext) {
     CodeActionKind,
     SemanticTokens, SemanticTokensBuilder, SemanticTokensEdit, SemanticTokensEdits, SemanticTokensLegend,
     Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabelPart, InlayHintKind,
+    QuickInputButtons,
     CallHierarchyItem, CallHierarchyIncomingCall, CallHierarchyOutgoingCall, TypeHierarchyItem,
     InlineCompletionItem, InlineCompletionList, InlineCompletionTriggerKind,
     ColorThemeKind, UIKind,

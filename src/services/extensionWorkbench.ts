@@ -1,7 +1,7 @@
 export type ExtensionDomain = "tests" | "scm" | "notebooks" | "debug" | "languages";
 export interface TestNode { id: string; label: string; uri?: string; children: TestNode[] }
 export interface TestSnapshot {
-  controllers: { handle: string; label: string; items: TestNode[]; profiles: { id: string; label: string; kind: number }[] }[];
+  controllers: { handle: string; label: string; items: TestNode[]; profiles: { id: string; label: string; kind: number; supportsContinuousRun?: boolean; continuous?: boolean }[] }[];
   runs: { id: string; name: string; ended: boolean; output: string; results: { id: string; label: string; status: string; messages: { message: string }[] }[] }[];
 }
 export interface ScmSnapshot {

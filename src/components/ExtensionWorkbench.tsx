@@ -44,7 +44,8 @@ function Tests({ value }: { value: WorkbenchSnapshot["tests"] }) {
     {!value.controllers.length ? <p>No active extension has registered a test controller. Enable a testing extension and run its activation command.</p> : null}
     {value.controllers.map(controller => <section key={controller.handle}><h3>{controller.label}</h3>
       <button type="button" onClick={() => { act("tests", "discover", { controller: controller.handle }); }}>Discover tests</button>
-      {controller.profiles.map(profile => <button key={profile.id} type="button" onClick={() => { act("tests", "run", { controller: controller.handle, profile: profile.id }); }}>{profile.label}</button>)}
+      {controller.profiles.map(profile => <span key={profile.id}><button type="button" onClick={() => { act("tests", "run", { controller: controller.handle, profile: profile.id }); }}>{profile.label}</button>
+        {profile.supportsContinuousRun ? <button type="button" onClick={() => { act("tests", profile.continuous ? "stopContinuous" : "run", { controller: controller.handle, profile: profile.id, continuous: true }); }}>{profile.continuous ? "Stop watching" : "Watch tests"}</button> : null}</span>)}
       <TestTree nodes={controller.items} run={id => {
         const profile = controller.profiles.find(p => p.kind === 1) || controller.profiles[0];
         if (profile) act("tests", "run", { controller: controller.handle, profile: profile.id, include: [id] });

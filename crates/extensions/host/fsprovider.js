@@ -88,14 +88,43 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
     }
     // Writes only when the extension said so, explicitly.
     const readonly = !(options && options.isReadonly === false);
-    const entry = { extension: ext.id, provider, readonly, caseSensitive: !(options && options.isCaseSensitive === false) };
+    const entry = { id: require('crypto').randomUUID(), revisions: new Map(), watches: new Set(), extension: ext.id, provider, readonly, caseSensitive: !(options && options.isCaseSensitive === false) };
     state.fileSystems.set(scheme, entry);
+    let subscription;
+    try { subscription = provider.onDidChangeFile?.(events => host.als.run(ext.id, () => {
+      if (state.fileSystems.get(scheme) !== entry || !Array.isArray(events)) return;
+      const batch = { created: [], changed: [], deleted: [] };
+      for (const event of events.slice(0, 10000)) {
+        const uri = event?.uri;
+        if (uri?.scheme !== scheme || typeof uri.with !== 'function' || ![1, 2, 3].includes(event.type) || normalizeProviderPath(uri.path) === null) continue;
+        const clean = uri.with({ path: normalizeProviderPath(uri.path) });
+        batch[event.type === 1 ? 'changed' : event.type === 2 ? 'created' : 'deleted'].push(clean);
+        const key = clean.toString(), current = state.documents.get(key);
+        if (!current || current.fileSystemProvider !== entry.id || current.isDirty) continue;
+        const revision = (entry.revisions.get(key) || 0) + 1; entry.revisions.set(key, revision);
+        if (event.type === 3) continue;
+        void Promise.resolve().then(() => providerCall(host, entry, 'readFile', clean)).then(bytes => {
+          if (state.fileSystems.get(scheme) !== entry || entry.revisions.get(key) !== revision || state.documents.get(key) !== current) return;
+          if (bytes.length > MAX_FILE_BYTES) throw FileSystemError.Unavailable('The file is larger than 32 MB.');
+          const text = Buffer.from(bytes).toString('utf8'); if (text === current.text) return;
+          const previous = current.text, lines = previous.split('\n');
+          const Range = state.running.get(ext.id)?.api?.Range; if (!Range) return;
+          const range = new Range(0, 0, lines.length - 1, lines.at(-1).length);
+          current.text = text; current.version++;
+          host.events.fire('documentChanged', { ...current, contentChanges: [{ range, rangeOffset: 0, rangeLength: previous.length, text }] });
+          host.notify('workspace/virtualDocumentChanged', { extension: ext.id, uri: key, scheme, path: clean.path, text, languageId: current.languageId, readonly: true, version: current.version });
+        }).catch(error => { if (state.fileSystems.get(scheme) === entry) host.log(ext.id, 'error', `Virtual filesystem refresh failed: ${error.message}`); });
+      }
+      host.events.fire('filesChanged', batch);
+    })); } catch (error) { state.fileSystems.delete(scheme); throw error; }
     host.notify('fs/registered', { extension: ext.id, scheme, readonly });
     return track(
       new Disposable(() => {
         if (state.fileSystems.get(scheme) !== entry) return;
-        state.fileSystems.delete(scheme);
-        host.notify('fs/unregistered', { extension: ext.id, scheme });
+        state.fileSystems.delete(scheme); entry.revisions.clear();
+        for (const stop of [...entry.watches]) { try { stop(); } catch (error) { host.log(ext.id, 'error', `Stopping filesystem watch failed: ${error.message}`); } }
+        try { host.als.run(ext.id, () => subscription?.dispose()); }
+        finally { host.notify('fs/unregistered', { extension: ext.id, scheme }); }
       }),
     );
   }

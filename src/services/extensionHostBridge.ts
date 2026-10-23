@@ -1,3 +1,4 @@
+import type { DynamicQuickInput } from "./extensionPromptService";
 import {
   extensionDialogOptions,
   type ExtensionDialogs,
@@ -367,6 +368,11 @@ export class HostBridge {
   handleNotification(method: string, params: unknown): void {
     const p = record(params);
     switch (method) {
+      case "quickInput/set":
+        this.deps.prompts.setQuickInput(p as unknown as DynamicQuickInput, event => {
+          void this.deps.hostRequest("host/quickInputEvent", event).catch((error: unknown) => { this.log(text(p.extension), "Quick input", String(error)); });
+        });
+        return;
       case "log/output":
         this.log(text(p.extension), text(p.channel), text(p.text));
         return;
