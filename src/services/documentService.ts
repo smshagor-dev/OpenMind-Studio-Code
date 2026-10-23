@@ -65,7 +65,7 @@ export class DocumentService {
     this.languageResolver = resolver;
   }
 
-  createUntitled(): string {
+  createUntitled(content = "", language = "plaintext"): string {
     const id = `untitled-${++this.nextId}`;
     this.documents.set(id, {
       path: null,
@@ -76,8 +76,9 @@ export class DocumentService {
       external: "none",
       diskContent: null,
     });
-    this.buffers.create(id, "");
+    this.buffers.create(id, content, language);
     this.watchDirtyState(id);
+    this.events.emit("documentOpened", { id });
     return id;
   }
 
@@ -314,6 +315,19 @@ export class DocumentService {
     return null;
   }
 
+  /** Stable extension-host identity; untitled URIs never enter filesystem APIs. */
+  hostPath(id: string): string { return this.requireDocument(id).path ?? `untitled://openmind/${id}`; }
+
+  idForHostPath(path: string): string | null {
+    if (path.startsWith("untitled:")) {
+      for (const [id, doc] of this.documents) if (doc.path === null && this.hostPath(id) === path) return id;
+      return null;
+    }
+    return this.idForPath(path);
+  }
+
+  allIds(): string[] { return [...this.documents.keys()]; }
+
   /** Every open document that has a file behind it. */
   fileBackedIds(): string[] {
     return [...this.documents.entries()].filter(([, doc]) => doc.path !== null).map(([id]) => id);
@@ -482,6 +496,8 @@ export class DocumentService {
   }
 
   private async writeAndMarkClean(id: string, doc: DocumentRecord, path: string): Promise<void> {
+    const other = this.idForPath(path);
+    if (other !== null && other !== id) throw new Error("That file is already open in another document.");
     const content = this.buffers.getValue(id);
     // Nothing was edited and the file is where it was: leave the bytes on disk alone
     // (a mixed-line-ending file must not be rewritten just because Save was pressed).

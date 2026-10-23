@@ -225,10 +225,23 @@ function createWorkspaceApi(parts) {
       return [...state.documents.values()].map(document);
     },
     async openTextDocument(target) {
-      if (target && typeof target === 'object' && target.scheme && target.scheme !== 'file') return openSchemeDocument(target);
-      if (target && typeof target === 'object' && !target.scheme && !target.fsPath && !target.uri) {
-        throw unsupportedError('workspace.openTextDocument (untitled content)');
+      if (target?.scheme === 'untitled') {
+        const known = state.documents.get(target.toString());
+        if (!known?.isUntitled) throw new Error('The untitled document is closed or unknown.');
+        return document(known);
       }
+      if (target === undefined || (target && typeof target === 'object' && !target.scheme && !target.fsPath && !target.uri)) {
+        need('workspaceWrite');
+        const options = target || {};
+        for (const key of Object.keys(options)) if (!['content','language'].includes(key)) throw unsupportedError(`workspace.openTextDocument.${key}`);
+        if (options.content !== undefined && typeof options.content !== 'string') throw new TypeError('Untitled content must be text.');
+        if (options.language !== undefined && (typeof options.language !== 'string' || !options.language)) throw new TypeError('Invalid untitled language.');
+        const data = await request('workspace/createUntitled', { extension: ext.id, content: options.content ?? '', language: options.language ?? 'plaintext' });
+        if (!data?.isUntitled || !data.path?.startsWith('untitled://')) throw new Error('Invalid untitled document response.');
+        state.documents.set(data.path, data);
+        return document(data);
+      }
+      if (target && typeof target === 'object' && target.scheme && target.scheme !== 'file') return openSchemeDocument(target);
       const file = toPath(target);
       if (!file) throw new Error('openTextDocument needs a file path or a file Uri.');
       const resolved = resolvedPath(file);

@@ -158,10 +158,10 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
       workspace.updateVirtualDocument({ uri: request.uri, text: request.text, language: request.languageId, extension: request.extension, readonly: true });
     },
     saveDocument: async (path) => {
-      const id = documents.idForPath(path);
+      const id = documents.idForHostPath(path);
       if (id === null) return false;
       await workspace.save(id);
-      return true;
+      return documents.snapshot(id).path !== null && !documents.isDirty(id);
     },
     saveAll: async () => {
       await workspace.saveAll();

@@ -32,7 +32,9 @@ export class ExtensionDocumentOpening {
   private async open(path: string, options: TextDocumentShowOptions, signal: AbortSignal): Promise<{ editorId: string }> {
     const { documents, groups, workspace, editor } = this.deps;
     // Load first: failures must not leave extra groups behind.
-    const docId = await documents.openFromPath(path);
+    const untitled = path.startsWith("untitled:");
+    const docId = untitled ? documents.idForHostPath(path) : await documents.openFromPath(path);
+    if (docId === null) throw new Error("The untitled document is closed or unknown.");
     signal.throwIfAborted();
     this.deps.revealEditors?.();
     const uri = documents.modelUri(docId);
@@ -50,7 +52,9 @@ export class ExtensionDocumentOpening {
       }
       groupId = groups.getState().groups[options.viewColumn - 1]?.id ?? groupId;
     }
-    const opened = await workspace.openPath(path, { kind: "text", groupId, preview: options.preview, preserveFocus: options.preserveFocus });
+    const openOptions = { groupId, preview: options.preview, preserveFocus: options.preserveFocus };
+    const opened = untitled ? workspace.openDocument(docId, "text", openOptions)
+      : await workspace.openPath(path, { kind: "text", ...openOptions });
     if (opened === null) throw new Error("The requested text document could not be opened.");
     signal.throwIfAborted();
     const target = await this.waitForPane(uri, groupId, signal);

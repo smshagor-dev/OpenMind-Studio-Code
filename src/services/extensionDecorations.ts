@@ -62,7 +62,7 @@ export class ExtensionDecorations {
   set(params: Options): void {
     const type = this.owned(params);
     if (!type) return;
-    const id = this.documents.idForPath(text(params.path));
+    const id = this.documents.idForHostPath(text(params.path));
     const uri = id === null ? null : this.documents.modelUri(id);
     if (!uri) return;
     const target = this.editor.visibleEditorFor(uri, typeof params.editorId === "string" ? params.editorId : undefined);

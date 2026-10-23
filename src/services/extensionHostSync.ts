@@ -41,7 +41,7 @@ export interface HostSyncDeps {
 
 /**
  * Keeps the extension host's idea of the open files (text, language, version, active editor) current
- * while it runs. Only files with a path are shared. UI-free.
+ * while it runs. File-backed and untitled text documents are shared. UI-free.
  */
 export class HostDocumentSync {
   private offs: (() => void)[] = [];
@@ -61,7 +61,7 @@ export class HostDocumentSync {
   initial(): { documents: HostDocument[]; activeEditor: HostEditorInfo | null; visibleEditors?: HostEditorInfo[] } {
     this.hydrate();
     const documents = this.deps.documents
-      .fileBackedIds()
+      .allIds()
       .map((id) => this.describe(id))
       .filter((document): document is HostDocument => document !== null);
     return { documents, activeEditor: this.activeEditor(), ...(this.deps.visibleEditors ? { visibleEditors: this.visibleEditors() } : {}) };
@@ -77,6 +77,19 @@ export class HostDocumentSync {
       events.on("documentClosed", ({ id, path }) => {
         this.closed(id, path);
       }),
+      events.on("documentPathChanged", ({ id, from }) => {
+        const old = from ?? `untitled://openmind/${id}`;
+        const pending = this.timers.get(id);
+        if (pending !== undefined) {
+          clearTimeout(pending); this.timers.delete(id);
+          const latest = this.describe(id);
+          if (latest) this.deps.notify("host/documentChanged", { ...latest, path: old, isUntitled: from === null, version: (this.versions.get(id) ?? 1) + 1 });
+        }
+        this.deps.notify("host/documentClosed", { path: old });
+        this.versions.delete(id);
+        this.opened(id);
+        this.announceActive(true);
+      }),
       events.on("documentSaved", ({ id }) => {
         const document = this.describe(id);
         if (document) this.deps.notify("host/documentSaved", document);
@@ -90,7 +103,7 @@ export class HostDocumentSync {
       this.scheduleSelection();
     });
     if (offSelection) this.offs.push(offSelection);
-    for (const id of documents.fileBackedIds()) this.watch(id);
+    for (const id of documents.allIds()) this.watch(id);
     // The tab that is active now is known to the host from the start, without waiting for a tab change.
     this.hydrate();
     const editor = this.activeEditor();
@@ -176,8 +189,7 @@ export class HostDocumentSync {
     if (this.deps.visibleEditors) return (visible ?? this.visibleEditors()).find(editor => editor.active) ?? null;
     if (this.deps.editorsCovered?.() === true) return null;
     if (this.activeId === null || !this.deps.documents.has(this.activeId)) return null;
-    const path = this.deps.documents.snapshot(this.activeId).path;
-    if (path === null) return null;
+    const path = this.deps.documents.hostPath(this.activeId);
     const state = this.deps.editorState?.(this.activeId) ?? null;
     return {
       path,
@@ -212,12 +224,14 @@ export class HostDocumentSync {
     }, SELECTION_DELAY_MS);
   }
 
-  private describe(id: string): HostDocument | null {
+  describe(id: string): HostDocument | null {
     if (!this.deps.documents.has(id)) return null;
-    const { path, dirty } = this.deps.documents.snapshot(id);
-    if (path === null) return null;
+    const snapshot = this.deps.documents.snapshot(id);
+    const { dirty } = snapshot;
+    const path = this.deps.documents.hostPath(id);
     return {
       path,
+      ...(snapshot.path === null ? { isUntitled: true } : {}),
       languageId: this.deps.documents.languageOf(id),
       version: this.versions.get(id) ?? 1,
       text: this.deps.documents.contentOf(id),
@@ -237,10 +251,11 @@ export class HostDocumentSync {
     this.watchers.get(id)?.();
     this.watchers.delete(id);
     const timer = this.timers.get(id);
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) { clearTimeout(timer); this.sendChange(id); }
     this.timers.delete(id);
     this.versions.delete(id);
-    if (path !== null) this.deps.notify("host/documentClosed", { path });
+    const key = path ?? `untitled://openmind/${id}`;
+    this.deps.notify("host/documentClosed", { path: key });
   }
 
   private watch(id: string): void {

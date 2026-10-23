@@ -1378,8 +1378,8 @@ function createApi(host, ext) {
       const showOptions = { viewColumn: column, preserveFocus: !!options.preserveFocus, preview: options.preview, selection };
       const doc = target && target.getText ? target : await workspace.openTextDocument(target);
       const uri = doc.uri;
-      if (uri.scheme === 'file') {
-        return editors.showEditor(uri.fsPath, showOptions);
+      if (uri.scheme === 'file' || (uri.scheme === 'untitled' && doc.isUntitled)) {
+        return editors.showEditor(uri.scheme === 'file' ? uri.fsPath : uri.toString(), showOptions);
       }
       if (column !== undefined || options.preserveFocus || options.preview !== undefined || selection) throw unsupportedError('window.showTextDocument.virtualOptions');
       const data = state.documents.get(uri.toString());

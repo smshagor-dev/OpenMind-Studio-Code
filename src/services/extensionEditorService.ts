@@ -60,9 +60,9 @@ export class ExtensionEditorService {
   /** Checks one file of an edit: the document id when it can be edited, otherwise why not. */
   private editable(file: FileEdits): { id: string } | { reason: string } {
     const { documents, sync } = this.deps;
-    const id = documents.idForPath(file.path);
+    const id = documents.idForHostPath(file.path);
     if (id === null) return { reason: `${file.path} isn't open.` };
-    if (!this.deps.hasTextTab(id)) {
+    if (!this.deps.hasTextTab(id) && documents.snapshot(id).path !== null) {
       return { reason: `${file.path} is shown read-only (a preview), so it can't be edited.` };
     }
     if (sync.hasPending(id) || sync.versionOf(id) !== file.version) {
@@ -187,7 +187,7 @@ export class ExtensionEditorService {
   }
 
   private modelUriOf(path: string): string | null {
-    const id = this.deps.documents.idForPath(path);
+    const id = this.deps.documents.idForHostPath(path);
     return id === null ? null : this.deps.documents.modelUri(id);
   }
 }
