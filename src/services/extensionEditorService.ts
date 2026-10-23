@@ -68,6 +68,31 @@ export class ExtensionEditorService {
     ]);
   }
 
+  insertSnippet(params: unknown): EditResult {
+    const p = record(params);
+    if (typeof p.snippet !== "string") throw new Error("A snippet string is required.");
+    const options = parseEditOptions(p);
+    const file = { path: str(p.path), version: Number(p.version), edits: [] };
+    const found = this.editable(file);
+    if ("reason" in found) return { applied: false, reason: found.reason };
+    const ranges = p.ranges === undefined ? undefined : parseEdits(
+      (Array.isArray(p.ranges) ? p.ranges : [p.ranges]).map(value => ({ ...record(value), text: "" })),
+    );
+    try {
+      // Validate before Monaco can change a selection or create an undo stop.
+      this.deps.documents.validateHostEdits(found.id, ranges ?? []);
+      const uri = this.deps.documents.modelUri(found.id);
+      if (!uri) return { applied: false, reason: "The editor model is unavailable." };
+      const applied = this.deps.editor.insertSnippetFor(uri, p.snippet, ranges, options,
+        typeof p.editorId === "string" ? p.editorId : undefined);
+      if (applied && this.deps.sync.hasPending(found.id)) this.deps.sync.commitChange(found.id);
+      return { applied };
+    } catch (error) {
+      if (this.deps.sync.hasPending(found.id)) this.deps.sync.commitChange(found.id);
+      return { applied: false, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   /** `workspace.applyEdit`: several open documents (only documents that are open). */
   applyWorkspaceEdit(params: unknown): EditResult {
     const p = record(params);

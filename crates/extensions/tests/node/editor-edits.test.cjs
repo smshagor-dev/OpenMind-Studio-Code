@@ -42,3 +42,35 @@ test('editor option setters route live updates and option change events keep edi
  host.notify('host/editorOptionsChanged',{path:'/tmp/options.txt',tabSize:2,insertSpaces:false});
  assert.deepEqual(await host.request('host/executeCommand',{command:'check'}),{event:{same:true,tabSize:2,marker:'context'},options:{tabSize:2,insertSpaces:false}});
 });
+
+test('snippet insertion routes positions, ranges, defaults and undo flags through the real host', async t => {
+ const calls=[];
+ const host=await fixture(t,{'test.snippets':{permissions:['commands','workspaceWrite'],code:`const v=require('vscode');let saved;exports.activate=()=>{
+ v.commands.registerCommand('snippet',async(kind)=>{const e=v.window.activeTextEditor;saved=e;const s=new v.SnippetString().appendPlaceholder('name').appendText('=').appendTabstop(1);const location=kind==='default'?undefined:kind==='invalid'?{line:-1,character:0}:[new v.Position(0,0),new v.Range(0,2,0,4)];return e.insertSnippet(s,location,{undoStopBefore:false,undoStopAfter:false})});
+ v.commands.registerCommand('nestedSnippet',()=>new v.SnippetString().appendPlaceholder(b=>{b.appendPlaceholder('inner')}).appendVariable('NAME',b=>{b.appendPlaceholder('fallback')}).appendVariable('TM_FILENAME').appendTabstop().value);
+ v.commands.registerCommand('retainedSnippet',()=>saved.insertSnippet(new v.SnippetString('late')));
+ }`}}, {handleRequest(method,params){calls.push({method,params});return{applied:calls.length===1}}});
+ await host.request('host/activate',{id:'test.snippets'});
+ host.notify('host/documentOpened',{path:'/tmp/snippet.txt',text:'some text',languageId:'plaintext',version:7,isDirty:false});
+ const editor={id:'pane',path:'/tmp/snippet.txt',selections:[],tabSize:4,insertSpaces:true};
+ host.notify('host/editorSnapshot',{editors:[editor],activeId:'pane'});
+ assert.equal(await host.request('host/executeCommand',{command:'snippet'}),true);
+ assert.deepEqual(calls[0],{method:'editor/insertSnippet',params:{extension:'test.snippets',path:'/tmp/snippet.txt',editorId:'pane',version:7,snippet:'${1:name}=$1',ranges:[{startLine:0,startColumn:0,endLine:0,endColumn:0},{startLine:0,startColumn:2,endLine:0,endColumn:4}],undoStopBefore:false,undoStopAfter:false}});
+ assert.equal(await host.request('host/executeCommand',{command:'snippet',args:['default']}),false);
+ assert.equal(calls[1].params.ranges,undefined);
+ await assert.rejects(host.request('host/executeCommand',{command:'snippet',args:['invalid']}),/Position or Range/);
+ assert.equal(calls.length,2);
+ assert.equal(await host.request('host/executeCommand',{command:'nestedSnippet'}),'${1:${2:inner}}${NAME:${3:fallback}}${TM_FILENAME}$4');
+ host.notify('host/editorSnapshot',{editors:[],activeId:null});
+ assert.equal(await host.request('host/executeCommand',{command:'retainedSnippet'}),false);
+ assert.equal(calls.length,2);
+});
+
+test('snippet insertion requires workspaceWrite',async t=>{
+ const host=await fixture(t,{'test.readsnippet':{permissions:['commands'],code:`const v=require('vscode');exports.activate=()=>v.commands.registerCommand('attemptSnippet',()=>v.window.activeTextEditor.insertSnippet(new v.SnippetString('write')))`}});
+ await host.request('host/activate',{id:'test.readsnippet'});
+ host.notify('host/documentOpened',{path:'/tmp/read.txt',text:'read',languageId:'plaintext',version:1,isDirty:false});
+ host.notify('host/activeEditorChanged',{editor:{path:'/tmp/read.txt',selections:[]}});
+ await assert.rejects(host.request('host/executeCommand',{command:'attemptSnippet'}),/workspaceWrite/);
+ assert.equal(host.messages.filter(m=>m.method==='editor/insertSnippet').length,0);
+});

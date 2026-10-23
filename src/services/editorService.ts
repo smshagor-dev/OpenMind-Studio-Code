@@ -1,4 +1,4 @@
-import type * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor";
 
 import type { ExtensionEditorAction } from "./extensionContributionService";
 import type { HostRange, HostSelection } from "./hostEdits";
@@ -8,6 +8,7 @@ import type { IpcClient } from "./ipc";
 export type CodeEditorLike = Partial<
   Pick<
     monaco.editor.IStandaloneCodeEditor,
+    | "getContribution"
     | "addAction"
     | "setSelections"
     | "revealRange"
@@ -446,6 +447,23 @@ export class EditorService {
   optionsFor(uri: string): { tabSize: number; insertSpaces: boolean } | null {
     const options = this.editorShowing(uri)?.getModel()?.getOptions();
     return options ? { tabSize: options.tabSize, insertSpaces: options.insertSpaces } : null;
+  }
+
+  /** Uses Monaco's snippet session so placeholders and Tab navigation stay native. */
+  insertSnippetFor(uri: string, snippet: string, ranges: HostRange[] | undefined,
+    options: { undoStopBefore?: boolean; undoStopAfter?: boolean }, editorId?: string): boolean {
+    const editor = this.editorShowing(uri, editorId);
+    if (!editor || editor.getRawOptions?.().readOnly) return false;
+    const controller = editor.getContribution?.("snippetController2") as
+      | { insert(template: string | { range: monaco.Range; template: string }[], options: { undoStopBefore?: boolean; undoStopAfter?: boolean }): void }
+      | null | undefined;
+    if (!controller) return false;
+    if (ranges?.length === 0) return true;
+    controller.insert(ranges ? ranges.map(range => ({
+      range: new monaco.Range(range.startLine + 1, range.startColumn + 1, range.endLine + 1, range.endColumn + 1),
+      template: snippet,
+    })) : snippet, options);
+    return true;
   }
 
   setSelectionsFor(uri: string, selections: HostSelection[], editorId?: string): boolean {
