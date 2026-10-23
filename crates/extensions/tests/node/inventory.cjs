@@ -77,6 +77,6 @@ ${rows.join('\n')}
 | --- | --- |
 ${topRows.join('\n')}
 
-Regenerate this document with the inventory.cjs command above. Behavioral evidence must be updated separately when integration tests run. Keep PR #32 in draft until required validation and integration work are complete.
+Regenerate this document with the inventory.cjs command above. Behavioral evidence must be updated separately when integration tests run. The implemented subset can be integrated independently of full VS Code parity. Keep the remaining platform and compatibility gaps explicit; merging does not certify unsupported APIs or Windows integration.
 `);
 disposeApi(api);

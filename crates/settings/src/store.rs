@@ -261,6 +261,32 @@ pub fn set_value(
     Ok(checked)
 }
 
+/// Merges an already previewed set of settings in one atomic file replacement.
+/// Validates every value before touching the existing file.
+pub fn merge_values(
+    path: &Path,
+    imported: &Map<String, Value>,
+    workspace: bool,
+    extras: &Extras,
+) -> Result<usize, StoreError> {
+    let mut target = editable(path)?;
+    let mut checked = Vec::new();
+    for (id, value) in imported {
+        let definition = schema::find(id, extras).ok_or_else(|| StoreError::Unknown(id.clone()))?;
+        if workspace && definition.scope == SettingScope::User {
+            return Err(StoreError::Invalid(format!("{} is user-only.", definition.title)));
+        }
+        checked.push((id.clone(), schema::validate(&definition, value).map_err(StoreError::Invalid)?));
+    }
+    for (id, value) in checked {
+        target.insert(id, value);
+    }
+    if !imported.is_empty() {
+        write_atomic(path, &to_text(&target))?;
+    }
+    Ok(imported.len())
+}
+
 /// Removes one setting from the file at `path`, so the next layer (or the default) applies again.
 pub fn reset_value(path: &Path, id: &str, extras: &Extras) -> Result<(), StoreError> {
     if schema::find(id, extras).is_none() {
@@ -517,3 +543,4 @@ mod tests {
         assert!(read_layer(&path).values.contains_key("editor.tabSize"));
     }
 }
+

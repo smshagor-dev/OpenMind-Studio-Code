@@ -83,9 +83,23 @@ process.stderr.write = (chunk) => {
   return true;
 };
 
-// An extension's uncaught error is reported and attributed, never fatal for the host.
-process.on('uncaughtException', (error) => log(who(), 'error', `Uncaught exception: ${error && error.stack ? error.stack : error}`));
-process.on('unhandledRejection', (error) => log(who(), 'error', `Unhandled rejection: ${error && error.stack ? error.stack : error}`));
+// Isolate a failing extension. Keep the shared host up for the other extensions,
+// but do not silently leave its commands and providers active after a crash.
+const quarantined = new Set();
+function extensionFault(kind, error) {
+  const id = who();
+  const message = error && error.stack ? error.stack : String(error);
+  log(id, 'error', `${kind}: ${message}`);
+  if (id !== 'host' && state.running.has(id) && !quarantined.has(id)) {
+    quarantined.add(id);
+    notify('extensions/failed', { id, error: `${kind}: ${error && error.message ? error.message : String(error)}` });
+    setImmediate(() => {
+      void deactivate(id).catch((failure) => log(id, 'error', `Cleanup failed: ${failure}`));
+    });
+  }
+}
+process.on('uncaughtException', (error) => extensionFault('Uncaught exception', error));
+process.on('unhandledRejection', (error) => extensionFault('Unhandled rejection', error));
 
 // ---- state ---------------------------------------------------------------------------------------------------------
 
@@ -385,6 +399,7 @@ function activate(params, chain = []) {
 }
 
 async function activateOnce(params, chain) {
+  if (quarantined.has(params.id)) throw new Error(`Extension '${params.id}' failed in this host session. Restart the extension host to retry.`);
   {
     const descriptor = state.extensions.get(params.id);
     if (!descriptor) throw new Error(`Extension '${params.id}' is not known to the extension host.`);
@@ -679,4 +694,5 @@ process.stdin.on('data', (chunk) => {
 });
 process.stdin.on('end', () => realExit(0));
 notify('host/ready', { node: process.version, pid: process.pid });
+
 

@@ -181,6 +181,18 @@ impl HostEvents for Sink {
     }
 
     fn notification(&self, method: &str, params: Value) {
+        if method == "extensions/failed" {
+            if let (Some(id), Some(error)) = (
+                params.get("id").and_then(Value::as_str),
+                params.get("error").and_then(Value::as_str),
+            ) {
+                self.app.state::<AppState>().extensions.record_activation(
+                    id,
+                    &Err(error.to_string()),
+                );
+                crate::state::refresh_soon(&self.app, &[crate::state::Domain::Extensions]);
+            }
+        }
         if method == "log/output" {
             let text = params
                 .get("text")
@@ -545,3 +557,4 @@ mod vscode_import_tests {
         assert!(validate_vscode_extension_tree(root.path()).is_err());
     }
 }
+

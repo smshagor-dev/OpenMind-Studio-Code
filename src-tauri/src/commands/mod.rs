@@ -39,6 +39,7 @@ pub mod php;
 pub mod php_project;
 pub mod pma_config;
 pub mod preferences;
+pub mod vscode_import;
 pub mod preview;
 pub mod profiles;
 pub mod python_packages;
@@ -56,3 +57,4 @@ pub mod watch;
 pub mod watch_state;
 pub mod workloads;
 pub mod workspace;
+

@@ -62,7 +62,9 @@ export interface AgentHost {
   notify: (message: string) => void;
   openFile: (path: string) => void;
   /** Follows the editor's front file (relative to the open folder, `null` for none); returns the unsubscribe. */
-  watchActiveFile?: (listener: (relativePath: string | null) => void) => () => void;
+  watchActiveFile?: (
+    listener: (relativePath: string | null) => void,
+  ) => () => void;
   /** Files of the open folder matching what is typed after `@` (relative paths). */
   suggestFiles: (query: string) => Promise<string[]>;
   settingGet: (key: string) => Promise<string | null>;
@@ -161,10 +163,6 @@ export class AgentService {
   private streamQueue: AgentEvent[] = [];
   private streamTimer: ReturnType<typeof setTimeout> | null = null;
   private streamBytes = 0;
-  /** This session's last pick of each kind, so the Local/Cloud toggle is lossless when switching back and
-   * forth (not persisted across a restart; `modelId` itself already is, via MODEL_KEY). */
-  private lastLocalModelId: string | null = null;
-  private lastCloudModelId: string | null = null;
 
   constructor(
     private readonly ipc: AgentIpc,
@@ -230,9 +228,14 @@ export class AgentService {
   attachText(name: string, text: string): void {
     if (new TextEncoder().encode(text).length > 100000)
       throw new Error(this.host.text("agent.attach.tooLarge"));
-    const others = (this.state.attachments ?? []).filter((item) => item.name !== name);
-    if (others.length >= 6) throw new Error(this.host.text("agent.attach.tooMany"));
-    this.set({ attachments: [...others, { id: crypto.randomUUID(), name, text }] });
+    const others = (this.state.attachments ?? []).filter(
+      (item) => item.name !== name,
+    );
+    if (others.length >= 6)
+      throw new Error(this.host.text("agent.attach.tooMany"));
+    this.set({
+      attachments: [...others, { id: crypto.randomUUID(), name, text }],
+    });
   }
 
   removeAttachment(id: string): void {
@@ -413,7 +416,9 @@ export class AgentService {
     try {
       const background = await this.ipc.backgroundList();
       const before = this.state.background ?? [];
-      const same = before.length === background.length && before.every((job, i) => job.id === background[i]?.id);
+      const same =
+        before.length === background.length &&
+        before.every((job, i) => job.id === background[i]?.id);
       if (!same) this.set({ background });
     } catch {
       // The list is only a convenience; a failed read leaves it as it was.
@@ -514,7 +519,8 @@ export class AgentService {
         ? `${this.host.text(notice.key)} ${notice.message}`
         : this.host.text(notice.key);
     let transcript = this.state.transcript;
-    for (const event of pending) transcript = applyEvent(transcript, event, say);
+    for (const event of pending)
+      transcript = applyEvent(transcript, event, say);
     this.set({ transcript });
   }
 
@@ -538,7 +544,9 @@ export class AgentService {
     if (this.streamBytes >= 8 * 1024 || this.streamQueue.length >= 128) {
       this.flushStream();
     } else if (this.streamTimer === null) {
-      this.streamTimer = setTimeout(() => { this.flushStream(); }, 50);
+      this.streamTimer = setTimeout(() => {
+        this.flushStream();
+      }, 50);
     }
   }
 
@@ -595,7 +603,9 @@ export class AgentService {
       // Always open a fresh conversation on editor startup. Previous chats
       // remain in History and can be opened explicitly by the user.
       this.savedActiveId = null;
-      void this.host.settingSet(`agent.active.${this.host.taskScope ?? "main"}`, "").catch(() => undefined);
+      void this.host
+        .settingSet(`agent.active.${this.host.taskScope ?? "main"}`, "")
+        .catch(() => undefined);
       await this.refresh();
       await this.activate();
     } catch {
@@ -607,9 +617,12 @@ export class AgentService {
   /** Whether `id` names one of OpenMindAI Cloud's three published models (not a local GGUF one). Known
    * only once `loadCloudStatus()` has resolved at least once. */
   private isCloudModel(id: string | null | undefined): boolean {
-    return !!id && (
-      id === "openmindai-lite" || id === "openmindai-super" || id === "openmindai-ultra" ||
-      (this.state.cloud?.models.some((m) => m.id === id) ?? false)
+    return (
+      !!id &&
+      (id === "openmindai-lite" ||
+        id === "openmindai-super" ||
+        id === "openmindai-ultra" ||
+        (this.state.cloud?.models.some((m) => m.id === id) ?? false))
     );
   }
 
@@ -662,7 +675,10 @@ export class AgentService {
       const ready = overview.models.filter((m) => m.local.state === "ready");
       let modelId = this.state.modelId;
       const cloudSelected = this.isCloudModel(modelId);
-      if (!cloudSelected && (!modelId || !ready.some((m) => m.id === modelId))) {
+      if (
+        !cloudSelected &&
+        (!modelId || !ready.some((m) => m.id === modelId))
+      ) {
         modelId =
           ready.find((m) => m.id === overview.recommended)?.id ??
           ready[0]?.id ??
@@ -720,8 +736,7 @@ export class AgentService {
     // Do not silently discard a model selection while startup is still warming.
     if (this.isCloudModel(id)) return;
     if (this.warming) await this.warming;
-    if (this.state.transcript.busy) return;
-    this.lastLocalModelId = id;
+    if (this.getState().transcript.busy) return;
     this.set({ modelId: id });
     await this.host.settingSet(MODEL_KEY, id).catch(() => undefined);
     await this.activate();
@@ -732,8 +747,9 @@ export class AgentService {
     return "local";
   }
 
-  async toggleInference(_mode: "local" | "cloud"): Promise<void> {
+  toggleInference(mode: "local" | "cloud"): Promise<void> {
     // Cloud providers are configured and used in AI Providers, not the local coding assistant.
+    return Promise.resolve(mode).then(() => undefined);
   }
 
   async setMode(mode: AgentMode): Promise<void> {
@@ -952,7 +968,8 @@ export class AgentService {
         ),
       });
     }
-    if (event.type === "toolEnd" || event.type === "turnEnd") void this.refreshBackground();
+    if (event.type === "toolEnd" || event.type === "turnEnd")
+      void this.refreshBackground();
     if (event.type === "turnEnd") {
       this.tasks.finish(event.reason);
       void this.history?.flush();
@@ -964,9 +981,16 @@ export class AgentService {
   }
 
   /** Small conversational requests do not need a full coding-agent output budget. */
-  private isQuickConversation(message: string, attachments: AgentAttachment[], mode: AgentMode): boolean {
-    if (attachments.length || mode !== "ask" || message.length > 100) return false;
-    return /^(?:hi|hello|hey|hey there|hello there|good morning|good afternoon|good evening|thanks|thank you|how are you|হাই|হ্যালো|ধন্যবাদ|কেমন আছো|привет|здравствуй|спасибо|hola|bonjour|ciao)[!?.।\s]*$/iu.test(message.trim());
+  private isQuickConversation(
+    message: string,
+    attachments: AgentAttachment[],
+    mode: AgentMode,
+  ): boolean {
+    if (attachments.length || mode !== "ask" || message.length > 100)
+      return false;
+    return /^(?:hi|hello|hey|hey there|hello there|good morning|good afternoon|good evening|thanks|thank you|how are you|হাই|হ্যালো|ধন্যবাদ|কেমন আছো|привет|здравствуй|спасибо|hola|bonjour|ciao)[!?.।\s]*$/iu.test(
+      message.trim(),
+    );
   }
 
   async send(
@@ -1074,7 +1098,9 @@ export class AgentService {
       return false;
     }
     this.conversation.workspace = task.workspace;
-    const quickConversation = this.isQuickConversation(task.text, task.attachments ?? [], task.mode) && this.state.goal?.state !== "active";
+    const quickConversation =
+      this.isQuickConversation(task.text, task.attachments ?? [], task.mode) &&
+      this.state.goal?.state !== "active";
     try {
       if (!quickConversation) await this.connectSavedMcp();
     } catch (error) {
@@ -1139,7 +1165,9 @@ export class AgentService {
         mode: task.mode,
         taskId: task.id,
         activeFile:
-          quickConversation || this.state.includeActiveFile === false ? null : (this.state.activeFile ?? null),
+          quickConversation || this.state.includeActiveFile === false
+            ? null
+            : (this.state.activeFile ?? null),
         attachments: task.attachments ?? [],
         conversationId: this.conversation.id,
         history,

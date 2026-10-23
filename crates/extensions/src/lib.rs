@@ -17,7 +17,7 @@ pub mod views;
 pub mod vsix;
 pub mod webview;
 
-pub use activation::{extensions_for, Trigger};
+pub use activation::{activation_order, extensions_for, Trigger};
 pub use error::ExtensionError;
 pub use host::{host_descriptor, resolve_host_node, ExtensionHost, HostEvents, HostStart};
 pub use hostlog::HostLog;
@@ -28,3 +28,4 @@ pub use settings::{extras_for, theme_value};
 pub use store::{
     preview, BrokenExtension, ExtensionStore, InstalledExtension, Listing, NODE_REQUIRED,
 };
+

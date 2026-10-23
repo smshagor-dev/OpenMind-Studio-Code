@@ -48,6 +48,64 @@ pub fn extensions_for(extensions: &[InstalledExtension], trigger: &Trigger) -> V
     ids
 }
 
+/// Resolve extension dependencies in activation order. Dependencies run before their
+/// dependants even if they have no matching activation event of their own.
+/// Refuse missing/disabled dependencies and cycles rather than silently starting
+/// a partially working extension.
+pub fn activation_order(
+    extensions: &[InstalledExtension],
+    requested: &[String],
+) -> Result<Vec<String>, String> {
+    use std::collections::{HashMap, HashSet};
+
+    fn visit(
+        id: &str,
+        by_id: &HashMap<&str, &InstalledExtension>,
+        visiting: &mut HashSet<String>,
+        visited: &mut HashSet<String>,
+        ordered: &mut Vec<String>,
+    ) -> Result<(), String> {
+        if visited.contains(id) {
+            return Ok(());
+        }
+        let extension = by_id
+            .get(id)
+            .ok_or_else(|| format!("Extension dependency {id} is not installed."))?;
+        if !extension.enabled {
+            return Err(format!("Extension dependency {id} is disabled."));
+        }
+        if !crate::manifest::engine_compatible(&extension.manifest) {
+            return Err(format!(
+                "{id} requires VS Code engine {}, but OpenMind Studio supports the {} API subset.",
+                extension.manifest.engines_vscode.as_deref().unwrap_or("unknown"),
+                crate::manifest::EXTENSION_API_VERSION
+            ));
+        }
+        if !visiting.insert(id.to_string()) {
+            return Err(format!("Circular extension dependency involving {id}."));
+        }
+        for dependency in &extension.manifest.extension_dependencies {
+            visit(&dependency.to_lowercase(), by_id, visiting, visited, ordered)?;
+        }
+        visiting.remove(id);
+        visited.insert(id.to_string());
+        if extension.manifest.has_code() {
+            ordered.push(id.to_string());
+        }
+        Ok(())
+    }
+
+    let by_id: HashMap<&str, &InstalledExtension> =
+        extensions.iter().map(|extension| (extension.id.as_str(), extension)).collect();
+    let mut visiting = HashSet::new();
+    let mut visited = HashSet::new();
+    let mut ordered = Vec::new();
+    for id in requested {
+        visit(&id.to_lowercase(), &by_id, &mut visiting, &mut visited, &mut ordered)?;
+    }
+    Ok(ordered)
+}
+
 fn event_matches(event: &ActivationEvent, trigger: &Trigger) -> bool {
     match (event, trigger) {
         (ActivationEvent::Star | ActivationEvent::OnStartupFinished, Trigger::Startup) => true,
@@ -153,6 +211,84 @@ mod tests {
     }
 
     #[test]
+    fn dependencies_activate_before_their_dependants() {
+        let parent = extension(
+            r#"{"name":"parent","publisher":"acme","version":"1.0.0","main":"./p.js","extensionDependencies":["acme.middle"]}"#,
+            true,
+        );
+        let middle = extension(
+            r#"{"name":"middle","publisher":"acme","version":"1.0.0","main":"./m.js","extensionDependencies":["acme.base"]}"#,
+            true,
+        );
+        let base = extension(
+            r#"{"name":"base","publisher":"acme","version":"1.0.0","main":"./b.js"}"#,
+            true,
+        );
+        let order = activation_order(&[parent, middle, base], &["acme.parent".into()]).unwrap();
+        assert_eq!(order, ["acme.base", "acme.middle", "acme.parent"]);
+    }
+
+    #[test]
+    fn missing_disabled_and_cyclic_dependencies_are_refused() {
+        let needs = extension(
+            r#"{"name":"needs","publisher":"acme","version":"1.0.0","main":"./n.js","extensionDependencies":["acme.base"]}"#,
+            true,
+        );
+        let base = extension(
+            r#"{"name":"base","publisher":"acme","version":"1.0.0","main":"./b.js"}"#,
+            false,
+        );
+        assert!(activation_order(&[needs.clone()], &["acme.needs".into()])
+            .unwrap_err().contains("not installed"));
+        assert!(activation_order(&[needs.clone(), base], &["acme.needs".into()])
+            .unwrap_err().contains("disabled"));
+        let cycle = extension(
+            r#"{"name":"base","publisher":"acme","version":"1.0.0","main":"./b.js","extensionDependencies":["acme.needs"]}"#,
+            true,
+        );
+        assert!(activation_order(&[needs, cycle], &["acme.needs".into()])
+            .unwrap_err().contains("Circular"));
+    }
+
+    #[test]
+    fn incompatible_engine_is_not_activated() {
+        let new_api = extension(
+            r#"{"name":"newer","publisher":"acme","version":"1.0.0","main":"./main.js","engines":{"vscode":"^1.100.0"}}"#,
+            true,
+        );
+        assert!(activation_order(&[new_api], &["acme.newer".into()])
+            .unwrap_err().contains("requires VS Code engine"));
+        let supported = extension(
+            r#"{"name":"supported","publisher":"acme","version":"1.0.0","main":"./main.js","engines":{"vscode":"^1.85.0"}}"#,
+            true,
+        );
+        assert_eq!(
+            activation_order(&[supported], &["acme.supported".into()]).unwrap(),
+            ["acme.supported"]
+        );
+    }
+
+    #[test]
+    fn repeated_dependencies_activate_once() {
+        let a = extension(
+            r#"{"name":"a","publisher":"acme","version":"1.0.0","main":"./a.js","extensionDependencies":["acme.base"]}"#,
+            true,
+        );
+        let b = extension(
+            r#"{"name":"b","publisher":"acme","version":"1.0.0","main":"./b.js","extensionDependencies":["acme.base"]}"#,
+            true,
+        );
+        let base = extension(
+            r#"{"name":"base","publisher":"acme","version":"1.0.0","main":"./base.js"}"#,
+            true,
+        );
+        assert_eq!(
+            activation_order(&[a, b, base], &["acme.a".into(), "acme.b".into()]).unwrap(),
+            ["acme.base", "acme.a", "acme.b"]
+        );
+    }
+
+    #[test]
     fn globs_match_like_vs_code_patterns() {
         assert!(glob_matches("package.json", "package.json"));
         assert!(!glob_matches("package.json", "sub/package.json"));
@@ -242,3 +378,4 @@ mod tests {
         assert!(extensions_for(&all, &Trigger::View { view: "x".into() }).is_empty());
     }
 }
+

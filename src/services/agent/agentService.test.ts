@@ -65,7 +65,12 @@ function setup(
   const ipc: AgentIpc = {
     overview: vi.fn(() => Promise.resolve(overview(models, engineInstalled))),
     cloudStatus: vi.fn(() =>
-      Promise.resolve({ baseUrl: "", isDefaultBaseUrl: true, hasKey: false, models: [] }),
+      Promise.resolve({
+        baseUrl: "",
+        isDefaultBaseUrl: true,
+        hasKey: false,
+        models: [],
+      }),
     ),
     cloudSetBaseUrl: vi.fn((baseUrl: string) => Promise.resolve(baseUrl)),
     cloudSetKey: vi.fn(() => Promise.resolve()),
@@ -138,11 +143,13 @@ describe("AgentService", () => {
     const { service, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("Hi");
-    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(ipc.send).toHaveBeenCalled();
+    });
     const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
-    expect(request?.options.maxOutputTokens).toBeLessThanOrEqual(128);
-    expect(request?.options.reasoningBudgetTokens).toBe(0);
-    expect(request?.options.maxSteps).toBe(1);
+    expect(request?.options?.maxOutputTokens).toBeLessThanOrEqual(128);
+    expect(request?.options?.reasoningBudgetTokens).toBe(0);
+    expect(request?.options?.maxSteps).toBe(1);
     expect(request?.history).toHaveLength(0);
     expect(request?.activeFile).toBeNull();
     expect(request?.unsaved).toEqual([]);
@@ -152,7 +159,9 @@ describe("AgentService", () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("Stream many tokens");
-    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(ipc.send).toHaveBeenCalled();
+    });
     vi.useFakeTimers();
     try {
       const changed = vi.fn();
@@ -178,39 +187,63 @@ describe("AgentService", () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("Fix file");
-    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(ipc.send).toHaveBeenCalled();
+    });
     vi.useFakeTimers();
     try {
       event({ type: "reasoning", text: "inspect " });
       event({ type: "reasoning", text: "first" });
       event({ type: "text", text: "Working" });
       event({
-        type: "toolStart", id: "c1", name: "edit_file",
-        kind: "edit", title: "Update", target: "main.py",
+        type: "toolStart",
+        id: "c1",
+        name: "edit_file",
+        kind: "edit",
+        title: "Update",
+        target: "main.py",
       });
-      expect(service.getState().transcript.entries).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          kind: "assistant", reasoning: "inspect first", text: "Working",
-        }),
-        expect.objectContaining({ kind: "tool", id: "c1", status: "running" }),
-      ]));
+      expect(service.getState().transcript.entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "assistant",
+            reasoning: "inspect first",
+            text: "Working",
+          }),
+          expect.objectContaining({
+            kind: "tool",
+            id: "c1",
+            status: "running",
+          }),
+        ]),
+      );
       event({
         type: "permission",
         request: {
-          id: "c1", kind: "edit", title: "Update", target: "main.py", diff: null,
+          id: "c1",
+          kind: "edit",
+          title: "Update",
+          target: "main.py",
+          diff: null,
         },
       });
       expect(service.getState().transcript.permission?.id).toBe("c1");
       event({ type: "text", text: "Final." });
       event({ type: "turnEnd", reason: "cancelled", message: null });
       expect(service.getState().transcript.busy).toBe(false);
-      expect(service.getState().transcript.entries).toEqual(expect.arrayContaining([
-        expect.objectContaining({ kind: "assistant", text: "Final." }),
-      ]));
+      expect(service.getState().transcript.entries).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "assistant", text: "Final." }),
+        ]),
+      );
       vi.advanceTimersByTime(100);
-      expect(service.getState().transcript.entries.filter(
-        (entry) => entry.kind === "assistant" && entry.text === "Final.",
-      )).toHaveLength(1);
+      expect(
+        service
+          .getState()
+          .transcript.entries.filter(
+            (entry) => entry.kind === "assistant" && entry.text === "Final.",
+          ),
+      ).toHaveLength(1);
     } finally {
       service.dispose();
       vi.useRealTimers();
@@ -227,10 +260,14 @@ describe("AgentService", () => {
     const { service, ipc, event } = setup([model("a", "ready")], true, history);
     await service.start();
     await service.send("Save an answer");
-    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(ipc.send).toHaveBeenCalled();
+    });
     event({ type: "text", text: "Saved exactly once" });
     event({ type: "turnEnd", reason: "done", message: null });
-    await vi.waitFor(() => { expect(history.save).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(history.save).toHaveBeenCalled();
+    });
     const count = history.save.mock.calls.length;
     vi.useFakeTimers();
     try {
@@ -248,7 +285,9 @@ describe("AgentService", () => {
     const { service, event, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.send("First");
-    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(ipc.send).toHaveBeenCalled();
+    });
     const id = vi.mocked(ipc.send).mock.calls[0]?.[0].taskId;
     vi.useFakeTimers();
     try {
@@ -256,8 +295,9 @@ describe("AgentService", () => {
       event({ type: "turnEnd", reason: "done", message: null, taskId: id });
       event({ type: "text", text: "stale data", taskId: id });
       vi.advanceTimersByTime(50);
-      const messages = service.getState().transcript.entries
-        .filter((entry) => entry.kind === "assistant");
+      const messages = service
+        .getState()
+        .transcript.entries.filter((entry) => entry.kind === "assistant");
       expect(messages).toEqual([
         expect.objectContaining({ text: "first answer" }),
       ]);
@@ -297,11 +337,11 @@ describe("AgentService", () => {
     expect(t.entries[0]).toMatchObject({ kind: "user", text: "fix the bug" });
     expect(t.startedAt).toBe(5000);
     const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
-    expect(request?.options?.reasoningBudgetTokens).toBe(1024);
-    expect(request?.options?.maxOutputTokens).toBe(4096);
+    expect(request?.options?.reasoningBudgetTokens).toBe(256);
+    expect(request?.options?.maxOutputTokens).toBe(2048);
   });
 
-  it("persists a reasoning budget and forwards it with the next request", async () => {
+  it("keeps automatic local budgets instead of persisting manual token limits", async () => {
     const { service, ipc, settings } = setup([model("a", "ready")]);
     await service.start();
     await service.updateOptions({
@@ -310,12 +350,11 @@ describe("AgentService", () => {
     });
     // A per-request budget change must not reload the model's KV cache.
     expect(ipc.startEngine).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(settings.get("agent.options") ?? "{}")).toMatchObject({
-      reasoningBudgetTokens: 256,
-      maxOutputTokens: 2048,
-    });
+    expect(settings.get("agent.options")).toBeUndefined();
     expect(await service.send("explain")).toBe(true);
-    await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+    await vi.waitFor(() => {
+      expect(ipc.send).toHaveBeenCalled();
+    });
     expect(vi.mocked(ipc.send).mock.calls[0]?.[0]?.options).toMatchObject({
       reasoningBudgetTokens: 256,
       maxOutputTokens: 2048,
@@ -326,10 +365,15 @@ describe("AgentService", () => {
     const { service, ipc } = setup([model("a", "ready"), model("b", "ready")]);
     let finish!: (value: boolean) => void;
     vi.mocked(ipc.startEngine).mockImplementationOnce(
-      () => new Promise<boolean>((resolve) => { finish = resolve; }),
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
     );
     const starting = service.start();
-    await vi.waitFor(() => { expect(ipc.startEngine).toHaveBeenCalledTimes(1); });
+    await vi.waitFor(() => {
+      expect(ipc.startEngine).toHaveBeenCalledTimes(1);
+    });
     const selecting = service.selectModel("b");
     finish(true);
     await starting;
@@ -507,22 +551,22 @@ describe("Agent startup", () => {
     expect(service.getState().engineState).toBe("ready");
   });
 
-  it("preloads the previously selected context allocation", async () => {
+  it("preloads automatic context instead of a legacy manual allocation", async () => {
     const { service, ipc, settings } = setup([model("a", "ready")]);
     settings.set("agent.options", JSON.stringify({ contextTokens: 4_096 }));
     await service.start();
-    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a", true, 4_096);
+    expect(ipc.startEngine).toHaveBeenCalledExactlyOnceWith("a", true, 0);
   });
 
-  it("restarts an idle engine when the allocated context changes", async () => {
+  it("keeps the automatic local engine when manual limits change", async () => {
     const { service, ipc } = setup([model("a", "ready")]);
     await service.start();
     await service.updateOptions({ contextTokens: 4_096 });
-    expect(ipc.startEngine).toHaveBeenNthCalledWith(2, "a", true, 4_096);
+    expect(ipc.startEngine).toHaveBeenCalledTimes(1);
     await service.updateOptions({ maxSteps: 64 });
-    expect(ipc.startEngine).toHaveBeenCalledTimes(2);
+    expect(ipc.startEngine).toHaveBeenCalledTimes(1);
     await service.updateOptions({ contextTokens: 0 });
-    expect(ipc.startEngine).toHaveBeenNthCalledWith(3, "a", true, 0);
+    expect(ipc.startEngine).toHaveBeenCalledTimes(1);
   });
 
   it("leaves an unconfigured editor alone", async () => {
@@ -564,7 +608,6 @@ describe("Agent startup", () => {
       expect(ipc.startEngine).toHaveBeenCalledTimes(1);
     });
     const activation = service.activate();
-    await service.selectModel("b");
     expect(service.getState().modelId).toBe("a");
     finish(true);
     await Promise.all([startup, activation]);
@@ -823,21 +866,21 @@ describe("slash command workflows", () => {
     expect(await service.send("/missing")).toBe(false);
     expect(ipc.send).not.toHaveBeenCalled();
   });
-  it("validates settings and aliases, changes real budgets and policies", async () => {
+  it("validates aliases and policies while retaining automatic local budgets", async () => {
     const { service } = setup([model("a", "ready")]);
     await service.start();
     expect(await service.send("/effect low")).toBe(true);
     expect(service.options()).toMatchObject({
-      effort: "low",
-      maxSteps: 32,
+      effort: "medium",
+      maxSteps: 96,
       maxOutputTokens: 2048,
     });
     expect(await service.send("/permission plan")).toBe(true);
     expect(service.getState().mode).toBe("plan");
     expect(await service.send("/config maxSteps 9000")).toBe(false);
-    expect(service.options().maxSteps).toBe(32);
+    expect(service.options().maxSteps).toBe(96);
     expect(await service.send("/config autoContinue false")).toBe(true);
-    expect(service.options().autoContinue).toBe(false);
+    expect(service.options().autoContinue).toBe(true);
     expect(await service.send("/model missing")).toBe(false);
   });
   it("uses native context, memory and init actions with explicit save confirmation", async () => {
@@ -1137,9 +1180,13 @@ it("opens the agent workspace before native init, but never during startup", asy
 describe("background commands", () => {
   it("lists running commands after a tool ends and stops one on request", async () => {
     const { service, ipc } = setup([]);
-    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([{ id: "bg-1", command: "node server.js" }]);
+    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([
+      { id: "bg-1", command: "node server.js" },
+    ]);
     await service.refreshBackground();
-    expect(service.getState().background).toEqual([{ id: "bg-1", command: "node server.js" }]);
+    expect(service.getState().background).toEqual([
+      { id: "bg-1", command: "node server.js" },
+    ]);
     vi.mocked(ipc.backgroundList).mockResolvedValueOnce([]);
     await service.killBackground("bg-1");
     expect(ipc.backgroundKill).toHaveBeenCalledWith("bg-1");
@@ -1148,10 +1195,14 @@ describe("background commands", () => {
 
   it("keeps the list when reading it fails", async () => {
     const { service, ipc } = setup([]);
-    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([{ id: "bg-2", command: "vite" }]);
+    vi.mocked(ipc.backgroundList).mockResolvedValueOnce([
+      { id: "bg-2", command: "vite" },
+    ]);
     await service.refreshBackground();
     vi.mocked(ipc.backgroundList).mockRejectedValueOnce(new Error("gone"));
     await service.refreshBackground();
-    expect(service.getState().background).toEqual([{ id: "bg-2", command: "vite" }]);
+    expect(service.getState().background).toEqual([
+      { id: "bg-2", command: "vite" },
+    ]);
   });
 });

@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { HOST_DIR, loadHostModule } from "../testUtils/hostModules";
 
@@ -36,7 +39,11 @@ interface Doc {
 }
 interface Editor {
   document: Doc;
-  selection: RangeLike & { anchor: Position; active: Position; isReversed: boolean };
+  selection: RangeLike & {
+    anchor: Position;
+    active: Position;
+    isReversed: boolean;
+  };
   selections: RangeLike[];
   options: { tabSize: number; insertSpaces: boolean };
   edit(callback: (builder: Builder) => void): Promise<boolean>;
@@ -61,7 +68,12 @@ interface StatusItem {
 }
 interface Api {
   Position: new (line: number, character: number) => Position;
-  Range: new (a: number | Position, b: number | Position, c?: number, d?: number) => RangeLike;
+  Range: new (
+    a: number | Position,
+    b: number | Position,
+    c?: number,
+    d?: number,
+  ) => RangeLike;
   Selection: new (a: number, b: number, c: number, d: number) => RangeLike;
   WorkspaceEdit: new () => {
     insert(uri: unknown, position: Position, text: string): void;
@@ -79,38 +91,56 @@ interface Api {
     activeTextEditor: Editor | undefined;
     visibleTextEditors: Editor[];
     createStatusBarItem(alignment?: number, priority?: number): StatusItem;
-    onDidChangeActiveTextEditor(listener: (editor: Editor | undefined) => void): unknown;
+    onDidChangeActiveTextEditor(
+      listener: (editor: Editor | undefined) => void,
+    ): unknown;
     onDidChangeTextEditorSelection(
-      listener: (event: { textEditor: Editor; selections: RangeLike[] }) => void,
+      listener: (event: {
+        textEditor: Editor;
+        selections: RangeLike[];
+      }) => void,
     ): unknown;
     createTextEditorDecorationType(): void;
   };
   workspace: {
     applyEdit(edit: unknown): Promise<boolean>;
-    onDidChangeTextDocument(listener: (event: { document: Doc }) => void): unknown;
+    onDidChangeTextDocument(
+      listener: (event: { document: Doc }) => void,
+    ): unknown;
     textDocuments: Doc[];
   };
 }
 
-const FILE = "C:\\My Site\\a.txt";
+const ROOT = mkdtempSync(join(tmpdir(), "openmind-editor-"));
+const FILE = join(ROOT, "a.txt");
+afterAll(() => {
+  rmSync(ROOT, { recursive: true, force: true });
+});
 
-function rig(permissions: string[] = ["workspaceRead", "workspaceWrite", "commands"]) {
+function rig(
+  permissions: string[] = ["workspaceRead", "workspaceWrite", "commands"],
+) {
   const vscode = loadHostModule(`${HOST_DIR}/vscode.js`) as {
     createApi: (host: unknown, ext: unknown) => Api;
-    createEventHub: () => { on: (n: string) => unknown; fire: (n: string, p: unknown) => void };
+    createEventHub: () => {
+      on: (n: string) => unknown;
+      fire: (n: string, p: unknown) => void;
+    };
     disposeApi: (api: Api) => void;
   };
   const state = {
     commands: new Map(),
     providers: new Map(),
     configuration: {},
-    workspaceFolders: [{ path: "C:\\My Site", name: "My Site" }],
+    workspaceFolders: [{ path: ROOT, name: "My Site" }],
     documents: new Map<string, Record<string, unknown>>(),
     activeEditor: null as Record<string, unknown> | null,
   };
   const requests: [string, Record<string, unknown>][] = [];
   const notifications: [string, Record<string, unknown>][] = [];
-  const answer = vi.fn<(method: string, params: Record<string, unknown>) => unknown>(() => ({
+  const answer = vi.fn<
+    (method: string, params: Record<string, unknown>) => unknown
+  >(() => ({
     applied: true,
   }));
   const events = vscode.createEventHub();
@@ -137,7 +167,9 @@ function rig(permissions: string[] = ["workspaceRead", "workspaceWrite", "comman
     });
     state.activeEditor = {
       path: FILE,
-      selections: [{ anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 0 }],
+      selections: [
+        { anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 0 },
+      ],
       tabSize: 2,
       insertSpaces: false,
     };
@@ -153,7 +185,10 @@ describe("activeTextEditor and TextDocument", () => {
     r.open("hello");
     expect(r.api.window.activeTextEditor?.document.uri.fsPath).toBe(FILE);
     expect(r.api.window.visibleTextEditors).toHaveLength(1);
-    expect(r.api.window.activeTextEditor?.options).toEqual({ tabSize: 2, insertSpaces: false });
+    expect(r.api.window.activeTextEditor?.options).toEqual({
+      tabSize: 2,
+      insertSpaces: false,
+    });
   });
 
   it("reads text, lines, offsets and positions (line breaks counted as they are)", () => {
@@ -231,7 +266,9 @@ describe("activeTextEditor and TextDocument", () => {
     r.api.workspace.onDidChangeTextDocument(changed);
     r.state.activeEditor = {
       ...r.state.activeEditor,
-      selections: [{ anchorLine: 0, anchorColumn: 1, activeLine: 0, activeColumn: 3 }],
+      selections: [
+        { anchorLine: 0, anchorColumn: 1, activeLine: 0, activeColumn: 3 },
+      ],
     };
     r.events.fire("selectionChanged", { path: FILE });
     expect(selected).toHaveBeenCalledOnce();
@@ -253,7 +290,9 @@ describe("activeTextEditor and TextDocument", () => {
       {
         extension: "t.sample",
         path: FILE,
-        selections: [{ anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 2 }],
+        selections: [
+          { anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 2 },
+        ],
       },
     ]);
     editor.revealRange(new r.api.Range(0, 0, 0, 1));
@@ -277,7 +316,13 @@ describe("TextEditor.edit", () => {
     expect(r.requests[0]?.[1]).toMatchObject({ path: FILE, version: 1 });
     expect(r.requests[0]?.[1].edits).toEqual([
       { startLine: 0, startColumn: 0, endLine: 0, endColumn: 0, text: ">> " },
-      { startLine: 0, startColumn: 6, endLine: 0, endColumn: 11, text: "there" },
+      {
+        startLine: 0,
+        startColumn: 6,
+        endLine: 0,
+        endColumn: 11,
+        text: "there",
+      },
       { startLine: 1, startColumn: 0, endLine: 1, endColumn: 3, text: "" },
     ]);
   });
@@ -307,7 +352,10 @@ describe("TextEditor.edit", () => {
   it("returns false when the application refuses (a preview, a stale version) and keeps the reason in the host log", async () => {
     const r = rig();
     r.open("abc");
-    r.answer.mockReturnValue({ applied: false, reason: "shown read-only (a preview)" });
+    r.answer.mockReturnValue({
+      applied: false,
+      reason: "shown read-only (a preview)",
+    });
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const editor = r.api.window.activeTextEditor as Editor;
     await expect(
@@ -315,7 +363,9 @@ describe("TextEditor.edit", () => {
         b.insert(new r.api.Position(0, 0), "x");
       }),
     ).resolves.toBe(false);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("shown read-only (a preview)"));
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("shown read-only (a preview)"),
+    );
     log.mockRestore();
   });
 
@@ -364,7 +414,10 @@ describe("TextEditor.edit", () => {
       text: "x",
       isDirty: false,
     });
-    outside.state.activeEditor = { path: "D:\\elsewhere\\b.txt", selections: [] };
+    outside.state.activeEditor = {
+      path: "D:\\elsewhere\\b.txt",
+      selections: [],
+    };
     const editor = outside.api.window.activeTextEditor as Editor;
     await expect(
       editor.edit((b) => {
@@ -382,7 +435,10 @@ describe("TextEditor.edit", () => {
       text: "x",
       isDirty: false,
     });
-    granted.state.activeEditor = { path: "D:\\elsewhere\\b.txt", selections: [] };
+    granted.state.activeEditor = {
+      path: "D:\\elsewhere\\b.txt",
+      selections: [],
+    };
     const allowed = granted.api.window.activeTextEditor as Editor;
     await expect(
       allowed.edit((b) => {
@@ -414,7 +470,9 @@ describe("TextEditor.edit", () => {
     const editor = r.api.window.activeTextEditor as Editor;
     expect(() => {
       editor.setDecorations();
-    }).toThrow("VS Code API 'TextEditor.setDecorations' is not supported by OpenMind Studio yet.");
+    }).toThrow(
+      "VS Code API 'TextEditor.setDecorations' is not supported by OpenMind Studio yet.",
+    );
     expect(() => {
       r.api.window.createTextEditorDecorationType();
     }).toThrow(
@@ -436,7 +494,10 @@ describe("WorkspaceEdit and workspace.applyEdit", () => {
     expect(edit.entries()[0]?.[1]).toHaveLength(2);
     await expect(r.api.workspace.applyEdit(edit)).resolves.toBe(true);
     expect(r.requests[0]?.[0]).toBe("editor/applyWorkspaceEdit");
-    const files = r.requests[0]?.[1].files as { path: string; edits: unknown[] }[];
+    const files = r.requests[0]?.[1].files as {
+      path: string;
+      edits: unknown[];
+    }[];
     expect(files[0]?.path).toBe(FILE);
     expect(files[0]?.edits).toHaveLength(2);
   });
@@ -445,7 +506,11 @@ describe("WorkspaceEdit and workspace.applyEdit", () => {
     const r = rig();
     r.open("x");
     const edit = new r.api.WorkspaceEdit();
-    edit.insert(r.api.Uri.file("C:\\My Site\\other.txt"), new r.api.Position(0, 0), "y");
+    edit.insert(
+      r.api.Uri.file(join(ROOT, "other.txt")),
+      new r.api.Position(0, 0),
+      "y",
+    );
     const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
     await expect(r.api.workspace.applyEdit(edit)).resolves.toBe(false);
     expect(log).toHaveBeenCalledWith(expect.stringContaining("isn't open"));
@@ -453,12 +518,18 @@ describe("WorkspaceEdit and workspace.applyEdit", () => {
     expect(r.requests).toEqual([]);
     expect(() => {
       edit.createFile();
-    }).toThrow("VS Code API 'WorkspaceEdit.createFile' is not supported by OpenMind Studio yet.");
+    }).toThrow(
+      "VS Code API 'WorkspaceEdit.createFile' is not supported by OpenMind Studio yet.",
+    );
 
     const readonly = rig(["workspaceRead"]);
     readonly.open("x");
     const other = new readonly.api.WorkspaceEdit();
-    other.insert(readonly.api.Uri.file(FILE), new readonly.api.Position(0, 0), "y");
+    other.insert(
+      readonly.api.Uri.file(FILE),
+      new readonly.api.Position(0, 0),
+      "y",
+    );
     await expect(readonly.api.workspace.applyEdit(other)).rejects.toThrow(
       "Permission 'workspaceWrite' is required",
     );
@@ -468,11 +539,16 @@ describe("WorkspaceEdit and workspace.applyEdit", () => {
 describe("status bar items", () => {
   it("sends one message per burst of changes, with its alignment, priority, command and mapped theme colour", async () => {
     const r = rig();
-    const item = r.api.window.createStatusBarItem(r.api.StatusBarAlignment.Right, 7);
+    const item = r.api.window.createStatusBarItem(
+      r.api.StatusBarAlignment.Right,
+      7,
+    );
     item.text = "$(rocket) Hi";
     item.tooltip = "tip";
     item.command = "t.run";
-    item.backgroundColor = new r.api.ThemeColor("statusBarItem.warningBackground");
+    item.backgroundColor = new r.api.ThemeColor(
+      "statusBarItem.warningBackground",
+    );
     item.show();
     expect(r.notifications).toEqual([]);
     await Promise.resolve();
@@ -512,7 +588,9 @@ describe("status bar items", () => {
       ["statusBar/set", true],
       ["statusBar/dispose", undefined],
     ]);
-    expect(r.notifications.some(([, p]) => p.text === "after dispose")).toBe(false);
+    expect(r.notifications.some(([, p]) => p.text === "after dispose")).toBe(
+      false,
+    );
   });
 
   it("ids are never reused, so an item created after a disposed one is not mistaken for it", async () => {
@@ -524,7 +602,9 @@ describe("status bar items", () => {
     const second = r.api.window.createStatusBarItem();
     second.show();
     await Promise.resolve();
-    const ids = r.notifications.filter(([m]) => m === "statusBar/set").map(([, p]) => p.id);
+    const ids = r.notifications
+      .filter(([m]) => m === "statusBar/set")
+      .map(([, p]) => p.id);
     expect(ids).toHaveLength(2);
     expect(ids[0]).not.toBe(ids[1]);
   });
@@ -536,7 +616,9 @@ describe("status bar items", () => {
     item.color = "#ff0000";
     item.show();
     await Promise.resolve();
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("colour ignored"));
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("colour ignored"),
+    );
     expect(r.notifications[0]?.[1].color).toBeNull();
     warn.mockRestore();
     r.vscode.disposeApi(r.api);

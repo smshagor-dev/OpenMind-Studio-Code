@@ -5,6 +5,7 @@ import { commandBlockedReason, displayName } from "./extensionModel";
 import type { ExtensionHostService } from "./extensionHostService";
 import type { ExtensionRegistryService } from "./extensionRegistryService";
 import type { InstalledExtension, ExtensionLanguageContribution } from "./extensionsIpc";
+import { invoke } from "@tauri-apps/api/core";
 import { type ExtensionSnippet, parseSnippets } from "./extensionSnippets";
 import { type LoadedExtensionTheme, parseExtensionTheme } from "./extensionTheme";
 import type { IpcClient } from "./ipc";
@@ -285,6 +286,15 @@ export class ExtensionContributionService implements ExtensionThemeSource {
         }
       }
     }
+    try {
+      const imported = await invoke<{ language: string; text: string }[]>("vscode_imported_snippets");
+      for (const file of imported) {
+        const list = byLanguage.get(file.language) ?? [];
+        byLanguage.set(file.language, [...list, ...parseSnippets(file.text)]);
+      }
+    } catch {
+      // Tests and non-desktop environments may not provide the optional migration command.
+    }
     for (const [language, snippets] of byLanguage) {
       this.snippetDisposers.push(this.deps.binding.registerSnippets(language, snippets));
     }
@@ -316,3 +326,4 @@ export class ExtensionContributionService implements ExtensionThemeSource {
     return null;
   }
 }
+
