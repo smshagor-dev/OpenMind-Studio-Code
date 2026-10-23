@@ -1,6 +1,6 @@
 import * as monaco from "monaco-editor";
 
-import type { HostTextEdit } from "./hostEdits";
+import type { HostEditOptions, HostTextEdit } from "./hostEdits";
 import { minimalEdit } from "./textSync";
 
 /**
@@ -104,9 +104,12 @@ export class BufferManager {
    * Applies edits from an extension as ONE undoable step. Everything is checked first (every range inside
    * the text, no two ranges overlapping) so a bad batch changes nothing. Line/column are 0-based.
    */
-  applyHostEdits(id: string, edits: HostTextEdit[]): void {
+  private hostOperations(id: string, edits: HostTextEdit[]) {
     const model = this.requireModel(id);
     const operations = edits.map((edit) => {
+      if (edit.startLine > edit.endLine || (edit.startLine === edit.endLine && edit.startColumn > edit.endColumn)) {
+        throw new Error("An edit range is reversed.");
+      }
       const range = new monaco.Range(
         edit.startLine + 1,
         edit.startColumn + 1,
@@ -125,19 +128,35 @@ export class BufferManager {
         ],
       };
     });
-    const sorted = [...operations].sort((a, b) => (a.offsets[0] ?? 0) - (b.offsets[0] ?? 0));
+    const sorted = [...operations].sort((a, b) => (a.offsets[0] ?? 0) - (b.offsets[0] ?? 0) || (a.offsets[1] ?? 0) - (b.offsets[1] ?? 0));
     for (let i = 1; i < sorted.length; i += 1) {
       if ((sorted[i]?.offsets[0] ?? 0) < (sorted[i - 1]?.offsets[1] ?? 0)) {
         throw new Error("Overlapping ranges are not allowed!");
       }
     }
-    model.pushStackElement();
-    model.pushEditOperations(
-      [],
-      operations.map(({ range, text }) => ({ range, text })),
-      () => null,
-    );
-    model.pushStackElement();
+    return { model, operations };
+  }
+
+  /** Validate a complete batch before any of its models are changed. */
+  validateHostEdits(id: string, edits: HostTextEdit[]): void {
+    this.hostOperations(id, edits);
+  }
+
+  applyHostEdits(id: string, edits: HostTextEdit[], options: HostEditOptions = {}): void {
+    const { model, operations } = this.hostOperations(id, edits);
+    if (!operations.length && options.eol === undefined) return;
+    if (options.undoStopBefore !== false) model.pushStackElement();
+    if (operations.length) {
+      model.pushEditOperations(
+        [],
+        operations.map(({ range, text }) => ({ range, text })),
+        () => null,
+      );
+    }
+    if (options.eol !== undefined) {
+      model.pushEOL(options.eol === 1 ? monaco.editor.EndOfLineSequence.LF : monaco.editor.EndOfLineSequence.CRLF);
+    }
+    if (options.undoStopAfter !== false) model.pushStackElement();
   }
 
   /** Replaces the markers `owner` set on the buffer (an empty list clears them). */
@@ -175,3 +194,4 @@ export class BufferManager {
     return model;
   }
 }
+

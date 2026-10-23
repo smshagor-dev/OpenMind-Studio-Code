@@ -721,6 +721,10 @@ const notifications = {
     state.documents.delete(params.path);
     events.fire('documentClosed', doc || params);
   },
+  'host/editorOptionsChanged': params => {
+    if (state.activeEditor?.path === params.path) Object.assign(state.activeEditor, { tabSize: params.tabSize, insertSpaces: params.insertSpaces });
+    events.fire('editorOptionsChanged', params);
+  },
   'host/selectionChanged': (params) => {
     if (state.activeEditor && state.activeEditor.path === params.path) {
       state.activeEditor = { ...state.activeEditor, selections: params.selections || [] };

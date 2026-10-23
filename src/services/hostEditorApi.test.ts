@@ -383,7 +383,7 @@ describe("TextEditor.edit", () => {
     ).resolves.toBe(false);
   });
 
-  it("clamps ranges to the document, forbids setEndOfLine and use of the builder after the callback", async () => {
+  it("clamps ranges, carries EOL and forbids use of the builder after the callback", async () => {
     const r = rig();
     r.open("abc");
     const editor = r.api.window.activeTextEditor as Editor;
@@ -391,12 +391,10 @@ describe("TextEditor.edit", () => {
     await editor.edit((b) => {
       kept = b;
       b.replace(new r.api.Range(0, 1, 9, 9), "Z");
-      expect(() => {
-        b.setEndOfLine(1);
-      }).toThrow(
-        "VS Code API 'TextEditorEdit.setEndOfLine' is not supported by OpenMind Studio yet.",
-      );
+      b.setEndOfLine(1);
+      expect(() => { b.setEndOfLine(3); }).toThrow("Invalid end-of-line");
     });
+    expect(r.requests[0]?.[1].eol).toBe(1);
     expect(r.requests[0]?.[1].edits).toEqual([
       { startLine: 0, startColumn: 1, endLine: 0, endColumn: 3, text: "Z" },
     ]);
@@ -427,7 +425,7 @@ describe("TextEditor.edit", () => {
       "Permission 'filesystemOutsideWorkspace' is required for this extension API.",
     );
 
-    const granted = rig(["filesystemOutsideWorkspace"]);
+    const granted = rig(["workspaceWrite", "filesystemOutsideWorkspace"]);
     granted.state.documents.set("D:\\elsewhere\\b.txt", {
       path: "D:\\elsewhere\\b.txt",
       languageId: "plaintext",
@@ -446,7 +444,7 @@ describe("TextEditor.edit", () => {
       }),
     ).resolves.toBe(true);
 
-    const noFolder = rig([]);
+    const noFolder = rig(["workspaceWrite"]);
     noFolder.state.workspaceFolders = [];
     noFolder.state.documents.set("D:\\loose.txt", {
       path: "D:\\loose.txt",

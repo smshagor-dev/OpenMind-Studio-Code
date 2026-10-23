@@ -1398,6 +1398,8 @@ function createApi(host, ext) {
     },
     onDidChangeActiveTextEditor: (listener, thisArg, disposables) =>
       track(host.events.on('activeEditor')(asExtension((data) => listener(editor(data.editor))), thisArg, disposables)),
+    onDidChangeTextEditorOptions: (listener, thisArg, disposables) =>
+      track(host.events.on('editorOptionsChanged')(asExtension(data => listener.call(thisArg, { textEditor: editor({ path: data.path }), options: { tabSize: data.tabSize, insertSpaces: data.insertSpaces } })), thisArg, disposables)),
     onDidChangeTextEditorSelection: (listener, thisArg, disposables) =>
       track(editors.selectionEvent(listener, thisArg, disposables)),
     createStatusBarItem: statusBar.createStatusBarItem,

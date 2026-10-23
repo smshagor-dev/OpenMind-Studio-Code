@@ -4,7 +4,7 @@ import { assemblyIncludeLanguage } from "../editor/assemblyGrammars";
 import type { BufferManager } from "./bufferManager";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
-import type { HostTextEdit } from "./hostEdits";
+import type { HostEditOptions, HostTextEdit } from "./hostEdits";
 import type { IpcClient, LineEnding, TextEncoding } from "./ipc";
 import { pathKey, sameText } from "./textSync";
 
@@ -264,9 +264,14 @@ export class DocumentService {
   }
 
   /** Edits from an extension, applied to the open buffer only (nothing is written to disk). */
-  applyHostEdits(id: string, edits: HostTextEdit[]): void {
+  validateHostEdits(id: string, edits: HostTextEdit[]): void {
     this.requireDocument(id);
-    this.buffers.applyHostEdits(id, edits);
+    this.buffers.validateHostEdits(id, edits);
+  }
+
+  applyHostEdits(id: string, edits: HostTextEdit[], options: HostEditOptions = {}): void {
+    this.requireDocument(id);
+    this.buffers.applyHostEdits(id, edits, options);
   }
 
   /** Calls `listener` whenever the document's text changes; returns the unsubscribe function. */
@@ -293,7 +298,7 @@ export class DocumentService {
       title: doc.path ? basename(doc.path) : `Untitled-${String(doc.untitled ?? 1)}`,
       dirty: this.isDirty(id),
       encoding: doc.encoding,
-      lineEnding: doc.lineEnding,
+      lineEnding: doc.lineEnding === "mixed" && !this.isDirty(id) ? "mixed" : this.eolOf(id) === "\r\n" ? "crlf" : "lf",
       external: doc.external,
     };
   }
@@ -549,3 +554,4 @@ function languageIdForPath(path: string): string {
   const extension = path.split(".").pop()?.toLowerCase();
   return (extension && EXTENSION_LANGUAGE_MAP[extension]) || "plaintext";
 }
+

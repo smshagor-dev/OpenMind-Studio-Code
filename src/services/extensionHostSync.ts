@@ -45,6 +45,7 @@ export class HostDocumentSync {
   private activeId: string | null = null;
   private selectionTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSelectionSent = "";
+  private lastOptionsSent = "";
   private lastActiveSent = "";
 
   constructor(private readonly deps: HostSyncDeps) {}
@@ -88,6 +89,7 @@ export class HostDocumentSync {
     const editor = this.activeEditor();
     this.lastActiveSent = JSON.stringify(editor);
     this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
+    this.lastOptionsSent = JSON.stringify(editor && { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces });
   }
 
   /** Reads the active tab from the workbench (used at start and after a restart, when no event announces it). */
@@ -106,6 +108,7 @@ export class HostDocumentSync {
     if (!force && serialized === this.lastActiveSent) return;
     this.lastActiveSent = serialized;
     this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
+    this.lastOptionsSent = JSON.stringify(editor && { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces });
     this.deps.notify("host/activeEditorChanged", { editor });
   }
 
@@ -168,6 +171,12 @@ export class HostDocumentSync {
       this.selectionTimer = null;
       const editor = this.activeEditor();
       if (editor === null) return;
+      const options = { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces };
+      const serializedOptions = JSON.stringify(options);
+      if (serializedOptions !== this.lastOptionsSent) {
+        this.lastOptionsSent = serializedOptions;
+        this.deps.notify("host/editorOptionsChanged", options);
+      }
       const serialized = JSON.stringify(editor.selections);
       if (serialized === this.lastSelectionSent) return;
       this.lastSelectionSent = serialized;
@@ -188,6 +197,7 @@ export class HostDocumentSync {
       version: this.versions.get(id) ?? 1,
       text: this.deps.documents.contentOf(id),
       isDirty: dirty,
+      eol: this.deps.documents.eolOf(id) === "\r\n" ? 2 : 1,
     };
   }
 
@@ -232,3 +242,4 @@ export class HostDocumentSync {
     if (document) this.deps.notify("host/documentChanged", document);
   }
 }
+

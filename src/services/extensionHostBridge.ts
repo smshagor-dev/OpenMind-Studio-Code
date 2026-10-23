@@ -11,6 +11,7 @@ import type { OutputService } from "./outputService";
 
 /** The document as the host wants it (0-based lines are the host's business, not part of this). */
 export interface HostDocument {
+  eol?: 1 | 2;
   path: string;
   languageId: string;
   version: number;
@@ -414,6 +415,9 @@ export class HostBridge {
         return;
       case "editor/setSelections":
         this.deps.editorApi?.setSelections(p);
+        return;
+      case "editor/setOptions":
+        this.deps.editorApi?.setOptions(p);
         return;
       case "editor/revealRange":
         this.deps.editorApi?.revealRange(p);
