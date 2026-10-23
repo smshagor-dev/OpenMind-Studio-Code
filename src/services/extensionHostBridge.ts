@@ -1,3 +1,4 @@
+import { parseTextDocumentShowOptions, type TextDocumentShowOptions } from "./extensionDocumentOptions";
 import type { DynamicQuickInput } from "./extensionPromptService";
 import {
   extensionDialogOptions,
@@ -184,7 +185,9 @@ export interface BridgeDeps {
   /** Extension tasks (`tasks/execute`, `tasks/terminate`). */
   tasks?: ExtensionTaskService;
   /** Opens a file in a tab (`window.showTextDocument`). */
-  showTextDocument?: (path: string, preserveFocus: boolean) => Promise<void>;
+  showTextDocument?: (path: string, options: TextDocumentShowOptions, context: { extension: string; requestId: string }) => Promise<{ editorId: string }>;
+  cancelShowTextDocument?: (extension: string, requestId: string) => void;
+  resetDocumentOpening?: () => void;
   /** Opens a custom-scheme document read-only in a tab. */
   showVirtualDocument?: (request: VirtualDocumentRequest) => Promise<void>;
   updateVirtualDocument?: (request: VirtualDocumentRequest) => void;
@@ -334,12 +337,13 @@ export class HostBridge {
         return this.need(this.deps.terminals, "Terminals").sendText(p);
       case "tasks/execute":
         return this.need(this.deps.tasks, "Tasks").execute(p);
-      case "ui/showTextDocument":
-        await this.need(this.deps.showTextDocument, "Opening documents")(
-          text(p.path),
-          p.preserveFocus === true,
+      case "ui/showTextDocument": {
+        const result = await this.need(this.deps.showTextDocument, "Opening documents")(
+          text(p.path), parseTextDocumentShowOptions(p), { extension: text(p.extension), requestId: text(p.requestId) },
         );
-        return { ok: true };
+        this.deps.editorApi?.refreshEditorState();
+        return { ok: true, ...result };
+      }
       case "ui/showVirtualDocument":
         await this.need(
           this.deps.showVirtualDocument,
@@ -414,6 +418,9 @@ export class HostBridge {
             ? (p.diagnostics as HostDiagnostic[])
             : [],
         );
+        return;
+      case "ui/cancelShowTextDocument":
+        this.deps.cancelShowTextDocument?.(text(p.extension), text(p.requestId));
         return;
       case "editor/createDecoration":
         this.deps.editorApi?.createDecoration(p);
@@ -496,6 +503,7 @@ export class HostBridge {
     this.deps.terminals?.reset();
     this.deps.tasks?.reset();
     this.deps.editorApi?.resetDecorations();
+    this.deps.resetDocumentOpening?.();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});

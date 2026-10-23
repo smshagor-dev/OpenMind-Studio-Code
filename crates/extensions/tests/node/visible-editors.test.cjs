@@ -76,6 +76,9 @@ test('extension teardown cancels showTextDocument while the UI request remains u
  host.notify('host/editorSnapshot',{editors:[],activeId:null});
  const request=host.request('host/executeCommand',{command:'pending'});const rejected=assert.rejects(request,/stopped before its editor became visible/);
  await started;await host.request('host/deactivate',{id:'test.pending'});await rejected;
+ const show=host.messages.find(m=>m.method==='ui/showTextDocument');
+ const cancel=host.messages.find(m=>m.method==='ui/cancelShowTextDocument');
+ assert.equal(cancel.params.extension,'test.pending');assert.equal(cancel.params.requestId,show.params.requestId);
 });
 
 test('the host bundle embedded by Rust includes the new lifecycle module and runs outside the source tree',async t=>{

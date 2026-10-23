@@ -37,6 +37,8 @@ export interface OpenTabOptions {
   preview?: boolean;
   /** Make the tab (and its group) active. Default true. */
   activate?: boolean;
+  /** Select the tab without moving focus from the current group. */
+  preserveFocus?: boolean;
 }
 
 export function tabIdFor(docId: string, kind: EditorKind): string {
@@ -143,7 +145,7 @@ export class EditorGroupService {
     }
     this.replaceGroup(
       { ...group, tabs, activeTabId: activate ? tab.id : group.activeTabId },
-      activate ? group.id : undefined,
+      activate && !options.preserveFocus ? group.id : undefined,
     );
     return tab;
   }
@@ -231,7 +233,7 @@ export class EditorGroupService {
    * and focuses it. By default the source group's active tab is shown in it
    * too, like VS Code's "Split Editor Right". Returns the new group's id.
    */
-  splitRight(options: { fromGroupId?: string; copyActiveTab?: boolean } = {}): string {
+  splitRight(options: { fromGroupId?: string; copyActiveTab?: boolean; preserveFocus?: boolean } = {}): string {
     const fromId = options.fromGroupId ?? this.state.activeGroupId;
     const from = this.getGroup(fromId) ?? this.activeGroup();
     const source = from.tabs.find((tab) => tab.id === from.activeTabId);
@@ -247,7 +249,7 @@ export class EditorGroupService {
     const index = this.state.groups.findIndex((group) => group.id === from.id);
     const groups = [...this.state.groups];
     groups.splice(index + 1, 0, created);
-    this.set({ groups, activeGroupId: id, weights: equalWeights(groups.length) });
+    this.set({ groups, activeGroupId: options.preserveFocus ? this.state.activeGroupId : id, weights: equalWeights(groups.length) });
     return id;
   }
 

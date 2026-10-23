@@ -1,3 +1,6 @@
+import { ExtensionDocumentOpening } from "./extensionDocumentOpening";
+import type { EditorService } from "./editorService";
+import type { EditorGroupService } from "./editorGroupService";
 import type { CommandRegistry } from "./commandRegistry";
 import type { DocumentService } from "./documentService";
 import type { EventBus } from "./eventBus";
@@ -24,6 +27,8 @@ export interface ExtensionApiWiringDeps {
   panel: PanelService;
   workspace: WorkspaceService;
   documents: DocumentService;
+  editor: EditorService;
+  editorGroups: EditorGroupService;
   layout: LayoutService;
   output: OutputService;
   formatters: ExtensionFormatterRegistry;
@@ -128,13 +133,17 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
     log,
   });
 
+  const documentOpening = new ExtensionDocumentOpening({ documents, workspace, editor: deps.editor, groups: deps.editorGroups, revealEditors: () => { webviews.hideOverlay(); } });
   bridge.connect({
     terminals,
     tasks,
-    showTextDocument: async (path) => {
-      const opened = await workspace.openPath(path, { kind: "text" });
-      if (opened === null) throw new Error("The requested text document could not be opened.");
+    showTextDocument: (path, options, context) => {
+      const panels = webviews.getState();
+      if (options.preserveFocus && panels.overlay && panels.activeId !== null) throw new Error("Preserving webview focus while showing text editors is not supported.");
+      return documentOpening.show(path, options, context);
     },
+    cancelShowTextDocument: (extension, requestId) => { documentOpening.cancel(extension, requestId); },
+    resetDocumentOpening: () => { documentOpening.reset(); },
     showVirtualDocument: async (request) => {
       await Promise.resolve();
       workspace.openVirtualDocument({

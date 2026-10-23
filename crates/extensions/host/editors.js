@@ -7,6 +7,7 @@
 const { permissionError, within, resolvedPath } = require('./guard.js');
 
 let nextDecorationId = 1;
+let nextEditorShow = 1;
 
 const EndOfLine = Object.freeze({ LF: 1, CRLF: 2 });
 const TextEditorRevealType = Object.freeze({ Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 });
@@ -519,30 +520,31 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     }
   }));
 
-  async function showEditor(filePath, preserveFocus) {
+  async function showEditor(filePath, options) {
     if (disposed) throw new Error('The extension stopped before its editor became visible.');
+    const requestId = `${ext.id}:show:${nextEditorShow++}`;
     let cancel;
-    const stopped = new Promise((resolve, reject) => { cancel = () => reject(new Error('The extension stopped before its editor became visible.')); });
+    const stopped = new Promise((resolve, reject) => { cancel = () => { notify('ui/cancelShowTextDocument', { extension: ext.id, requestId }); reject(new Error('The extension stopped before its editor became visible.')); }; });
     pendingEditors.add(cancel);
     try {
       return await Promise.race([
-        request('ui/showTextDocument', { extension: ext.id, path: filePath, preserveFocus: !!preserveFocus }).then(() => editorForPath(filePath)),
+        request('ui/showTextDocument', { extension: ext.id, requestId, path: filePath, ...options }).then(result => editorForPath(filePath, result?.editorId)),
         stopped,
       ]);
     } finally { pendingEditors.delete(cancel); }
   }
 
-  function editorForPath(filePath) {
+  function editorForPath(filePath, editorId) {
     if (disposed) return Promise.reject(new Error('The extension stopped before its editor became visible.'));
     const canonical = value => /^[a-z]:/i.test(value) ? value.replace(/\\/g, '/').toLowerCase() : require('path').resolve(value);
     const find = () => {
       const visible = state.visibleEditors || (state.activeEditor ? [state.activeEditor] : []);
-      const target = visible.find(value => value === state.activeEditor && canonical(value.path) === canonical(filePath))
-        || visible.find(value => canonical(value.path) === canonical(filePath));
+      const candidates = visible.filter(value => (!editorId || value.id === editorId) && canonical(value.path) === canonical(filePath));
+      const target = candidates.find(value => value === state.activeEditor) || candidates[0];
       return target && editor(target);
     };
     const existing = find();
-    if (existing || state.visibleEditors === undefined) return Promise.resolve(existing || activeEditor());
+    if (existing || (!editorId && state.visibleEditors === undefined)) return Promise.resolve(existing || activeEditor());
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = (value, error) => {

@@ -493,6 +493,8 @@ const extensionApis = wireExtensionApis({
   panel,
   workspace,
   documents,
+  editor,
+  editorGroups,
   layout,
   output,
   formatters: extensionFormatters,

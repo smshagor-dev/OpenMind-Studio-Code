@@ -53,6 +53,7 @@ export class ExtensionEditorService {
   setDecorations(params: unknown): void { this.decorations.set(record(params)); }
   disposeDecoration(params: unknown): void { this.decorations.dispose(record(params)); }
   resetDecorations(): void { this.decorations.reset(); }
+  refreshEditorState(): void { this.deps.sync.refreshActive(); }
 
   /** Checks one file of an edit: the document id when it can be edited, otherwise why not. */
   private editable(file: FileEdits): { id: string } | { reason: string } {
