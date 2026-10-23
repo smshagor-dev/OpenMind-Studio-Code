@@ -521,6 +521,10 @@ describe("StatusBarItemsService", () => {
 describe("HostBridge: editor and status bar messages", () => {
   function bridge() {
     const editorApi = {
+      createDecoration: vi.fn(),
+      setDecorations: vi.fn(),
+      disposeDecoration: vi.fn(),
+      resetDecorations: vi.fn(),
       insertSnippet: vi.fn().mockReturnValue({ applied: true }),
       applyEdits: vi.fn().mockReturnValue({ applied: true }),
       applyWorkspaceEdit: vi.fn().mockReturnValue({ applied: false, reason: "no" }),
@@ -560,6 +564,12 @@ describe("HostBridge: editor and status bar messages", () => {
     });
     await expect(b.handleRequest("editor/insertSnippet", { path: FILE, snippet: "$1" })).resolves.toEqual({ applied: true });
     expect(editorApi.insertSnippet).toHaveBeenCalledWith({ path: FILE, snippet: "$1" });
+    b.handleNotification("editor/createDecoration", { key: "type" });
+    b.handleNotification("editor/setDecorations", { key: "type" });
+    b.handleNotification("editor/disposeDecoration", { key: "type" });
+    expect(editorApi.createDecoration).toHaveBeenCalledWith({ key: "type" });
+    expect(editorApi.setDecorations).toHaveBeenCalledWith({ key: "type" });
+    expect(editorApi.disposeDecoration).toHaveBeenCalledWith({ key: "type" });
     b.handleNotification("editor/setSelections", { path: FILE });
     b.handleNotification("editor/revealRange", { path: FILE });
     expect(editorApi.setSelections).toHaveBeenCalledOnce();
@@ -570,8 +580,9 @@ describe("HostBridge: editor and status bar messages", () => {
   });
 
   it("a host that went away takes its status bar items with it", () => {
-    const { b, status } = bridge();
+    const { b, status, editorApi } = bridge();
     b.reset();
+    expect(editorApi.resetDecorations).toHaveBeenCalledOnce();
     expect(status).toContainEqual(["statusBar/reset", {}]);
   });
 

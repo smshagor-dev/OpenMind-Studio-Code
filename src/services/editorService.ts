@@ -8,6 +8,8 @@ import type { IpcClient } from "./ipc";
 export type CodeEditorLike = Partial<
   Pick<
     monaco.editor.IStandaloneCodeEditor,
+    | "onDidDispose"
+    | "createDecorationsCollection"
     | "getContribution"
     | "addAction"
     | "setSelections"
@@ -424,6 +426,10 @@ export class EditorService {
       });
     }
     return result.sort((left, right) => left.viewColumn - right.viewColumn);
+  }
+
+  visibleEditorFor(uri: string, editorId?: string): CodeEditorLike | undefined {
+    return this.editorShowing(uri, editorId);
   }
 
   private editorShowing(uri: string, editorId?: string): CodeEditorLike | undefined {

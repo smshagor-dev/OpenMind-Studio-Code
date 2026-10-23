@@ -6,6 +6,8 @@
 
 const { permissionError, within, resolvedPath } = require('./guard.js');
 
+let nextDecorationId = 1;
+
 const EndOfLine = Object.freeze({ LF: 1, CRLF: 2 });
 const TextEditorRevealType = Object.freeze({ Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 });
 const TextEditorSelectionChangeKind = Object.freeze({ Keyboard: 1, Mouse: 2, Command: 3 });
@@ -291,6 +293,36 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
   const { state, request, notify } = host;
   const { Position, Range, Selection } = types;
   const editing = createEditing(types);
+  const decorationTypes = new Map();
+  function decorationOptions(raw, instance = false, themed = false) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('Decoration options must be an object.');
+    const allowed = instance ? ['before','after','light','dark'] : ['color','backgroundColor','border','borderColor','borderWidth','borderStyle','borderRadius','outline','outlineColor','outlineWidth','outlineStyle','fontStyle','fontWeight','textDecoration','cursor','opacity','letterSpacing','isWholeLine','rangeBehavior','overviewRulerColor','overviewRulerLane','before','after','light','dark'];
+    for (const key of Object.keys(raw)) if (!allowed.includes(key)) throw unsupportedError(`DecorationRenderOptions.${key}`);
+    if (raw.rangeBehavior !== undefined && ![0,1,2,3].includes(raw.rangeBehavior)) throw new TypeError('Invalid decoration range behavior.');
+    if (raw.overviewRulerLane !== undefined && ![1,2,4,7].includes(raw.overviewRulerLane)) throw new TypeError('Invalid overview ruler lane.');
+    for (const key of ['light','dark']) if (raw[key]) decorationOptions(raw[key], instance, true);
+    for (const key of ['before','after']) if (raw[key]) {
+      const attachment = raw[key];
+      const allowedAttachment = ['contentText','color','backgroundColor','border','borderColor','borderWidth','borderStyle','borderRadius','fontStyle','fontWeight','textDecoration','opacity','letterSpacing','margin','width','height'];
+      for (const name of Object.keys(attachment)) if (!allowedAttachment.includes(name)) throw unsupportedError(`DecorationAttachmentRenderOptions.${name}`);
+      if (themed && attachment.contentText !== undefined) throw unsupportedError('DecorationAttachmentRenderOptions.themed.contentText');
+      if (attachment.contentText !== undefined && (typeof attachment.contentText !== 'string' || /[\r\n]/.test(attachment.contentText))) throw new TypeError('Decoration content must be a single line.');
+    }
+    return JSON.parse(JSON.stringify(raw));
+  }
+  function createTextEditorDecorationType(options) {
+    if (disposed) throw new Error('The extension has been disposed.');
+    const renderOptions = decorationOptions(options);
+    const key = `${ext.id}:decoration:${nextDecorationId++}`;
+    const type = Object.freeze({ key, dispose() {
+      if (!decorationTypes.delete(type)) return;
+      notify('editor/disposeDecoration', { extension: ext.id, key });
+    } });
+    decorationTypes.set(type, key);
+    notify('editor/createDecoration', { extension: ext.id, key, options: renderOptions });
+    track(type);
+    return type;
+  }
   const documents = new Map();
   if (track) track(host.events.on('documentWillClose')(data => {
     const cached = documents.get(data?.path);
@@ -413,6 +445,20 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         if (edits.length === 0 && builder._eol === undefined) return true;
         for (const key of ['undoStopBefore', 'undoStopAfter']) if (options?.[key] !== undefined && typeof options[key] !== 'boolean') throw new TypeError('Undo options must be boolean.');
         return sendEdits(filePath, version, edits, { eol: builder._eol, undoStopBefore: options?.undoStopBefore, undoStopAfter: options?.undoStopAfter });
+      },
+      setDecorations(type, values) {
+        if (!decorationTypes.has(type)) throw new Error('The decoration type is disposed or belongs to another extension.');
+        if (!Array.isArray(values)) throw new TypeError('Decoration ranges must be a list.');
+        if (editorId && !state.visibleEditors?.some(value => value.id === editorId)) return;
+        const decorations = values.map(value => {
+          const range = value?.range ?? value;
+          if (![range?.start?.line,range?.start?.character,range?.end?.line,range?.end?.character].every(n => Number.isInteger(n) && n >= 0)) throw new TypeError('Invalid decoration range.');
+          const messages = value.hoverMessage === undefined ? undefined : Array.isArray(value.hoverMessage) ? value.hoverMessage : [value.hoverMessage];
+          return { range: { startLine: range.start.line, startColumn: range.start.character, endLine: range.end.line, endColumn: range.end.character },
+            hoverMessage: messages?.map(message => typeof message === 'string' ? { value: message } : { value: String(message?.value ?? '') }),
+            renderOptions: value.renderOptions ? decorationOptions(value.renderOptions, true) : undefined };
+        });
+        notify('editor/setDecorations', { extension: ext.id, key: type.key, path: filePath, ...(editorId ? { editorId } : {}), decorations });
       },
       async insertSnippet(snippet, location, options) {
         need('workspaceWrite');
@@ -553,7 +599,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       disposables,
     );
 
-  return { document, editor, activeEditor, visibleEditors, showEditor, applyEdit, selectionEvent, WorkspaceEdit: editing.WorkspaceEdit, Disposable, Position, Range };
+  return { createTextEditorDecorationType, document, editor, activeEditor, visibleEditors, showEditor, applyEdit, selectionEvent, WorkspaceEdit: editing.WorkspaceEdit, Disposable, Position, Range };
 }
 
 module.exports = { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind };

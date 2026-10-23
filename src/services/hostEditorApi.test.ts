@@ -462,19 +462,19 @@ describe("TextEditor.edit", () => {
     ).resolves.toBe(true);
   });
 
-  it("unsupported members of an editor still say so", () => {
+  it("decoration calls validate their type and options", () => {
     const r = rig();
     r.open("abc");
     const editor = r.api.window.activeTextEditor as Editor;
     expect(() => {
       editor.setDecorations();
     }).toThrow(
-      "VS Code API 'TextEditor.setDecorations' is not supported by OpenMind Studio yet.",
+      "The decoration type is disposed or belongs to another extension.",
     );
     expect(() => {
       r.api.window.createTextEditorDecorationType();
     }).toThrow(
-      "VS Code API 'window.createTextEditorDecorationType' is not supported by OpenMind Studio yet.",
+      "Decoration options must be an object.",
     );
   });
 });
