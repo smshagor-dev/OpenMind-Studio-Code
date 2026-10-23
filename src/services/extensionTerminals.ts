@@ -6,7 +6,7 @@ import { t } from "../i18n";
 export type TerminalsForExtensions = Pick<
   TerminalService,
   "createTerminal" | "closeTerminal" | "write" | "setActive" | "getState" | "subscribe" | "isShowing"
->;
+> & Partial<Pick<TerminalService, "createPseudoterminal" | "writePseudoterminal" | "exitPseudoterminal">>;
 
 export interface ExtensionTerminalDeps {
   terminals: TerminalsForExtensions;
@@ -27,6 +27,7 @@ interface Entry {
   trusted: boolean;
   /** Text the extension typed without running it yet (shown when it later asks to run). */
   typed: string;
+  pseudo?: boolean;
 }
 
 /** The confirmation's buttons in English (shown in the UI language). */
@@ -90,6 +91,16 @@ export class ExtensionTerminalService {
     if (id === "" || !id.startsWith(`${extension}#`)) throw new Error("Invalid terminal request.");
     const name = str(params.name, extension).slice(0, 80);
     const cwd = typeof params.cwd === "string" ? params.cwd : null;
+    if (params.pseudo === true) {
+      const terminals = this.deps.terminals;
+      if (!terminals.createPseudoterminal) throw new Error("Extension pseudoterminals are unavailable.");
+      const send = (event: string, fields: Record<string, unknown> = {}) => { this.deps.notifyHost("host/ptyEvent", { extension, id, event, ...fields }); };
+      const sessionId = await terminals.createPseudoterminal(`${name} (${extension})`, cwd, {
+        input: data => { send("input", { data }); }, resize: (columns, rows) => { send("resize", { columns, rows }); }, close: () => { send("close"); },
+      });
+      this.byId.set(id, { extension, name, sessionId, trusted: false, typed: "", pseudo: true }); this.known.set(sessionId, false);
+      return { pid: null };
+    }
     const sessionId = await this.deps.terminals.createTerminal(undefined, cwd, {
       // The extension holds this terminal's id: it is never restarted for new runtimes.
       refreshable: false,
@@ -101,6 +112,20 @@ export class ExtensionTerminalService {
     this.known.set(sessionId, false);
     this.deps.log?.(`[${extension}] created terminal "${name}"`);
     return { pid: null };
+  }
+
+  ptyWrite(params: Record<string, unknown>): void {
+    const entry = this.byId.get(str(params.id));
+    if (!entry || entry.extension !== params.extension) return;
+    const data = str(params.data);
+    if (data.length > 1024 * 1024) throw new Error("Extension terminal output exceeds 1 MB per message.");
+    this.deps.terminals.writePseudoterminal?.(entry.sessionId, data);
+  }
+
+  ptyExit(params: Record<string, unknown>): void {
+    const entry = this.byId.get(str(params.id));
+    if (!entry || entry.extension !== params.extension) return;
+    this.deps.terminals.exitPseudoterminal?.(entry.sessionId, typeof params.code === "number" ? params.code : null);
   }
 
   /**
@@ -178,6 +203,7 @@ export class ExtensionTerminalService {
 
   /** The host went away: its terminal objects are gone; the terminals stay as ordinary ones. */
   reset(): void {
+    for (const entry of [...this.byId.values()]) if (entry.pseudo) this.deps.terminals.exitPseudoterminal?.(entry.sessionId, null);
     this.byId.clear();
     this.known.clear();
   }

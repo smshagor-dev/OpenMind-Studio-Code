@@ -14,11 +14,16 @@ export interface ExtensionTask {
   detail: string | null;
   group: string | null;
   commandLine: string;
-  kind: "shell" | "process";
+  shellCommand?: string | null;
+  shellArgs?: string[];
+  program?: string | null;
+  args?: string[];
+  kind: "shell" | "process" | "custom";
   cwd: string | null;
   cwdInsideFolder: boolean;
   env: Record<string, string>;
   problemMatchers: string[];
+  matcherDefinitions?: unknown[];
   isBackground: boolean;
 }
 
@@ -28,11 +33,14 @@ export interface ExtensionTaskDeps {
     request: (method: string, params: unknown) => Promise<unknown>;
     needsHost: () => boolean;
   };
-  terminals: Pick<TerminalService, "createTerminal" | "write" | "getState" | "subscribe" | "closeTerminal">;
+  terminals: Pick<TerminalService, "createTerminal" | "write" | "getState" | "subscribe" | "closeTerminal"> & Partial<Pick<TerminalService, "onOutput">>;
   quickPick: (request: Omit<QuickPickPrompt, "kind" | "id">) => Promise<number | number[] | null>;
   confirm: (request: Omit<ConfirmPrompt, "kind" | "id">) => Promise<string | null>;
   notifyHost: (method: string, params: unknown) => void;
   notice: (message: string) => void;
+  startTask?: (task: ExtensionTask, onOutput: (data: Uint8Array) => void) => Promise<{ sessionId: string; pid: number | null; disposeOutput?: () => void } | null>;
+  matcherNotes?: (task: ExtensionTask) => Promise<string[]>;
+  reportProblems?: (task: ExtensionTask, output: string, isCurrent: () => boolean) => Promise<void>;
   log?: (line: string) => void;
 }
 
@@ -80,17 +88,42 @@ export function taskDetails(task: ExtensionTask): { label: string; value: string
 interface Running {
   task: ExtensionTask;
   sessionId: string;
+  capture?: (data: string) => void;
+  finish?: () => void;
 }
 
 /**
  * Tasks extensions provide (`tasks.registerTaskProvider`, Milestone 18). Nothing is asked for or run in the
  * background: Terminal > Run Task... (`tasks.run`) wakes the task providers, lists their tasks, and the chosen one is
  * shown in a confirmation (command, folder, environment, what isn't supported) before it runs in a new terminal. An
- * extension's own `tasks.executeTask` goes through the same confirmation. Problem matchers are not supported (said in
- * the confirmation). A task ends when its terminal is closed or its shell exits. UI-free.
+ * extension's own `tasks.executeTask` goes through the same confirmation. Native tasks have their own process and
+ * exit status; custom tasks use extension pseudoterminals. Output feeds the native problem matcher parser. UI-free.
  */
 export class ExtensionTaskService {
   private readonly running = new Map<string, Running>();
+  private readonly custom = new Map<string, { capture(data: string): void; finish(): void }>();
+  private readonly owners = new Map<string, number>();
+  private generation = 0;
+
+  private problems(task: ExtensionTask): { capture(data: string): void; finish(): void } {
+    let output = "", timer: ReturnType<typeof setTimeout> | undefined, revision = 0;
+    const generation = this.generation, owner = `${task.extension}:${task.name}`;
+    const version = (this.owners.get(owner) ?? 0) + 1; this.owners.set(owner, version);
+    const publish = () => {
+      const current = ++revision;
+      void this.deps.reportProblems?.(task, output, () => generation === this.generation && this.owners.get(owner) === version && revision === current).catch((error: unknown) => { this.deps.log?.(`Task problem matching failed: ${String(error)}`); });
+    };
+    if (task.problemMatchers.length) publish();
+    return {
+      capture: data => { output = (output + data).slice(-1024 * 1024); if (task.problemMatchers.length) { clearTimeout(timer); timer = setTimeout(publish, 100); } },
+      finish: () => { clearTimeout(timer); if (task.problemMatchers.length) publish(); },
+    };
+  }
+
+  customOutput(params: Record<string, unknown>): void { if (typeof params.handle === "string" && typeof params.data === "string") this.custom.get(params.handle)?.capture(params.data); }
+  customFinished(params: Record<string, unknown>): void { if (typeof params.handle !== "string") return; this.custom.get(params.handle)?.finish(); this.custom.delete(params.handle); }
+  reset(): void { this.generation++; for (const run of this.running.values()) run.finish?.(); for (const run of this.custom.values()) run.finish(); this.running.clear(); this.custom.clear(); }
+
 
   constructor(private readonly deps: ExtensionTaskDeps) {
     deps.terminals.subscribe(() => {
@@ -145,14 +178,15 @@ export class ExtensionTaskService {
 
   /** Shows the task and runs it after the user confirmed (the picker of Run Task... calls this too). */
   async confirmAndRun(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
-    if (!task.cwdInsideFolder) {
+    if (!task.cwdInsideFolder && !(task.kind === "custom" && task.cwd === null)) {
       const reason = t("extTask.outside", { folder: task.cwd ?? t("common.none") });
       this.deps.notice(reason);
       return { started: false, reason };
     }
     const notes = [
       t("extTask.note"),
-      ...(task.problemMatchers.length > 0
+      ...(await this.deps.matcherNotes?.(task) ?? []),
+      ...(task.problemMatchers.length > 0 && !this.deps.reportProblems
         ? [t("extTask.matchers", { list: task.problemMatchers.join(", ") })]
         : []),
       ...(task.isBackground ? [t("extTask.background")] : []),
@@ -169,6 +203,24 @@ export class ExtensionTaskService {
   }
 
   private async run(task: ExtensionTask): Promise<{ started: boolean; reason?: string }> {
+    if (task.kind === "custom") {
+      this.custom.set(task.handle, this.problems(task));
+      let result: unknown;
+      try { result = await this.deps.host.request("host/executeCustomTask", { handle: task.handle }); }
+      catch (error) { this.customFinished({ handle: task.handle }); throw error; }
+      if (!result || typeof result !== "object" || !("started" in result) || result.started !== true) { this.customFinished({ handle: task.handle }); return { started: false, reason: "The custom task did not start." }; }
+      return { started: true };
+    }
+    if (this.deps.startTask) {
+      const problems = this.problems(task), decoder = new TextDecoder();
+      const started = await this.deps.startTask(task, bytes => { problems.capture(decoder.decode(bytes, { stream: true })); });
+      if (!started) { problems.finish(); return { started: false, reason: "The task process could not be started." }; }
+      const off = started.disposeOutput;
+      this.running.set(task.handle, { task, sessionId: started.sessionId, finish: () => { off?.(); problems.capture(decoder.decode()); problems.finish(); } });
+      this.deps.notifyHost("host/taskStarted", { handle: task.handle, pid: started.pid });
+      this.onSessionsChanged();
+      return { started: true };
+    }
     const sessionId = await this.deps.terminals.createTerminal(undefined, task.cwd, {
       // The extension holds this terminal's id: it is never restarted for new runtimes.
       refreshable: false,
@@ -183,7 +235,9 @@ export class ExtensionTaskService {
       this.deps.notice(reason);
       return { started: false, reason };
     }
-    this.running.set(task.handle, { task, sessionId });
+    const problems = this.problems(task), decoder = new TextDecoder();
+    const off = this.deps.terminals.onOutput?.(sessionId, bytes => { problems.capture(decoder.decode(bytes, { stream: true })); });
+    this.running.set(task.handle, { task, sessionId, finish: () => { off?.(); problems.capture(decoder.decode()); problems.finish(); } });
     // The host hears "started" before the answer, so `executeTask` resolves with the execution.
     this.deps.notifyHost("host/taskStarted", { handle: task.handle });
     this.deps.terminals.write(sessionId, `${line}\r`);
@@ -202,8 +256,9 @@ export class ExtensionTaskService {
     for (const [handle, running] of [...this.running]) {
       const session = sessions.find((s) => s.id === running.sessionId);
       if (session && !session.exited) continue;
-      this.running.delete(handle);
+      this.running.delete(handle); running.finish?.();
       this.deps.notifyHost("host/taskEnded", { handle, exitCode: session?.exitCode ?? null });
     }
   }
 }
+

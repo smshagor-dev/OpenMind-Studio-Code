@@ -81,6 +81,21 @@ describe("TerminalService", () => {
     expect(failed).toBeNull();
   });
 
+  it("retains output and exit status when a task finishes before native creation returns", async () => {
+    const service = makeService(); await service.initialize();
+    const output: string[] = [];
+    const id = await service.createTaskTerminal("Fast task", () => {
+      outputHandler("fast", new TextEncoder().encode("src/a.ts(1,2): error TS1: failed"));
+      exitHandler("fast", 7);
+      return Promise.resolve(sessionInfo("fast"));
+    }, false, created => { service.onOutput(created, data => output.push(new TextDecoder().decode(data)), true); });
+    expect(id).toBe("fast");
+    expect(output).toEqual(["src/a.ts(1,2): error TS1: failed"]);
+    expect(await service.waitForExit("fast")).toBe(7);
+    expect(service.getState().sessions.find(session => session.id === "fast")).toMatchObject({ exited: true, exitCode: 7, refreshable: false });
+    service.dispose();
+  });
+
   it("only offers shells that are actually available", async () => {
     const service = makeService();
     await service.initialize();
@@ -421,4 +436,22 @@ describe("TerminalService", () => {
 
     expect(listener).toHaveBeenCalled();
   });
+  it("routes extension pseudoterminal IO through the view without invoking native PTY commands", async () => {
+    const write = vi.fn().mockResolvedValue(undefined), resize = vi.fn().mockResolvedValue(undefined), close = vi.fn().mockResolvedValue(undefined);
+    const service = makeService({ terminalWrite: write, terminalResize: resize, terminalClose: close }); await service.initialize();
+    const driver = { input: vi.fn(), resize: vi.fn(), close: vi.fn() };
+    const id = await service.createPseudoterminal("Custom task", null, driver);
+    service.writePseudoterminal(id, "Buffered output");
+    const sink = { write: vi.fn(), clear: vi.fn() }; service.attachSink(id, sink);
+    expect(new TextDecoder().decode(sink.write.mock.calls[0]?.[0] as Uint8Array)).toBe("Buffered output");
+    service.write(id, "input"); service.resize(id, 120, 40);
+    expect(driver.input).toHaveBeenCalledWith("input"); expect(driver.resize).toHaveBeenCalledWith(120, 40);
+    expect(write).not.toHaveBeenCalled(); expect(resize).not.toHaveBeenCalled();
+    const exited = service.waitForExit(id); service.exitPseudoterminal(id, 7); expect(await exited).toBe(7);
+    await service.closeTerminal(id); expect(close).not.toHaveBeenCalled(); expect(driver.close).not.toHaveBeenCalled();
+    const second = await service.createPseudoterminal("Another task", null, driver);
+    await service.closeTerminal(second); await service.closeTerminal(second); expect(driver.close).toHaveBeenCalledTimes(1);
+  });
+
 });
+

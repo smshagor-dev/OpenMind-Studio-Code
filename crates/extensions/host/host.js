@@ -161,7 +161,8 @@ host.activateByEvent = async event => {
     catch (error) { log(descriptor.id, 'error', `Reading activation events failed: ${error.message}`); continue; }
     const explicit = Array.isArray(manifest.activationEvents) && manifest.activationEvents.includes(event);
     const implicit = event.startsWith('onNotebook:') ? manifest.contributes?.notebooks?.some(value => value.type === event.slice('onNotebook:'.length))
-      : event.startsWith('onDebugResolve:') ? manifest.contributes?.debuggers?.some(value => value.type === event.slice('onDebugResolve:'.length)) : false;
+      : event.startsWith('onDebugResolve:') ? manifest.contributes?.debuggers?.some(value => value.type === event.slice('onDebugResolve:'.length))
+      : event.startsWith('onTaskType:') ? manifest.contributes?.taskDefinitions?.some(value => value.type === event.slice('onTaskType:'.length)) : false;
     if (explicit || implicit) await host.activateExtension(descriptor.id);
   }
 };
@@ -443,6 +444,8 @@ const handlers = {
 
   // Milestone 18
   'host/resolveWebviewView': async (params) => resolveWebviewView(host, params),
+  'host/validateTask': params => require('./tasks.js').validateExecution(host, params),
+  'host/executeCustomTask': params => require('./tasks.js').executeCustom(host, params),
   'host/provideTasks': async (params) => ({ tasks: await provideAll(host, params.type || null) }),
   'host/fs': async (params) => handleFsRequest(host, params, require('./vscode.js').Uri),
 
@@ -728,6 +731,7 @@ const notifications = {
   'host/webviewDisposed': (params) => events.fire('webviewDisposed', params),
   'host/webviewViewState': (params) => events.fire('webviewViewState', params),
   'host/terminalClosed': (params) => terminalClosed(host, params),
+  'host/ptyEvent': params => { const entry = state.terminals?.get(params.id); if (entry && entry.extension === params.extension) als.run(entry.extension, () => entry.ptyEvent?.(params)); },
   'host/filesChanged': (params) => events.fire('filesChanged', params),
   'host/taskStarted': (params) => taskEvent(host, 'host/taskStarted', params),
   'host/taskEnded': (params) => taskEvent(host, 'host/taskEnded', params),

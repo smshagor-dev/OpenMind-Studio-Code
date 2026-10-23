@@ -429,11 +429,23 @@ export class HostBridge {
           readonly: true,
         });
         return;
+      case "terminal/ptyWrite":
+        this.deps.terminals?.ptyWrite(p);
+        return;
+      case "terminal/ptyExit":
+        this.deps.terminals?.ptyExit(p);
+        return;
       case "terminal/show":
         this.deps.terminals?.show(p);
         return;
       case "terminal/dispose":
         void this.deps.terminals?.dispose(p);
+        return;
+      case "tasks/customOutput":
+        this.deps.tasks?.customOutput(p);
+        return;
+      case "tasks/customFinished":
+        this.deps.tasks?.customFinished(p);
         return;
       case "tasks/terminate":
         void this.deps.tasks?.terminate(p);
@@ -467,6 +479,7 @@ export class HostBridge {
     this.hostCommands.clear();
     this.deps.prompts.dismissAll();
     this.deps.terminals?.reset();
+    this.deps.tasks?.reset();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});

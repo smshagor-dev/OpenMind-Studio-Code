@@ -23,11 +23,11 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
   function optionsOf(nameOrOptions, shellPath, shellArgs) {
     if (typeof nameOrOptions === 'object' && nameOrOptions !== null) {
       const o = nameOrOptions;
-      if (o.pty) throw unsupportedError('window.createTerminal (pseudoterminal)');
+      if (o.pty && (typeof o.pty.open !== 'function' || typeof o.pty.close !== 'function' || typeof o.pty.onDidWrite !== 'function')) throw new TypeError('A pseudoterminal requires open(), close() and onDidWrite.');
       if (o.shellPath) throw unsupportedError('TerminalOptions.shellPath');
       if (o.shellArgs) throw unsupportedError('TerminalOptions.shellArgs');
       if (o.env && Object.keys(o.env).length > 0) throw unsupportedError('TerminalOptions.env');
-      return { name: o.name, cwd: o.cwd };
+      return { name: o.name, cwd: o.cwd, pty: o.pty };
     }
     if (shellPath) throw unsupportedError('window.createTerminal (shellPath)');
     if (shellArgs) throw unsupportedError('window.createTerminal (shellArgs)');
@@ -54,8 +54,18 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
     const name = String(options.name || ext.manifest.displayName || ext.manifest.name || 'Extension');
     const cwd = cwdOf(options.cwd);
     let exitStatus;
-    let closed = false;
-    const created = request('terminal/create', { extension: ext.id, id, name, cwd }).catch((error) => {
+    let closed = false, ptyOpened = false, ptyClosed = false;
+    let dimensions = { columns: 80, rows: 24 }, pendingInput = '';
+    const subscriptions = [];
+    const pty = options.pty;
+    const owned = fn => host.als.run(ext.id, fn);
+    function cleanupPty(callClose) {
+      if (ptyClosed || !pty) return; ptyClosed = true;
+      for (const subscription of subscriptions.splice(0)) { try { owned(() => subscription?.dispose()); } catch (error) { host.log(ext.id, 'error', `Pseudoterminal cleanup failed: ${error.message}`); } }
+      if (callClose && ptyOpened) { try { owned(() => pty.close()); } catch (error) { host.log(ext.id, 'error', `Pseudoterminal close failed: ${error.message}`); } }
+    }
+
+    const created = request('terminal/create', { extension: ext.id, id, name, cwd, ...(pty ? { pseudo: true } : {}) }).catch((error) => {
       closed = true;
       throw error;
     });
@@ -91,7 +101,7 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
       hide() {},
       dispose() {
         if (closed) return;
-        closed = true;
+        closed = true; cleanupPty(true);
         notify('terminal/dispose', { extension: ext.id, id });
         finish(undefined);
       },
@@ -107,14 +117,50 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
     state.terminals.set(id, {
       extension: ext.id,
       terminal,
+      ptyEvent(params) {
+        if (!pty || closed || ptyClosed) return;
+        if (params.event === 'close') { terminal.dispose(); return; }
+        if (params.event === 'resize' && Number.isInteger(params.columns) && params.columns > 0 && Number.isInteger(params.rows) && params.rows > 0) {
+          dimensions = { columns: params.columns, rows: params.rows };
+          if (ptyOpened) owned(() => pty.setDimensions?.(dimensions));
+        }
+        if (params.event === 'input' && typeof params.data === 'string') {
+          if (ptyOpened) owned(() => pty.handleInput?.(params.data));
+          else pendingInput = (pendingInput + params.data).slice(-65536);
+        }
+      },
       closed: (code) => {
-        closed = true;
+        closed = true; cleanupPty(true);
         finish(code);
       },
     });
     track(new Disposable(() => terminal.dispose()));
     created.then(
-      () => host.events.fire('terminalOpened', { terminal }),
+      asExtension(() => {
+        if (closed) return;
+        host.events.fire('terminalOpened', { terminal });
+        if (!pty) return;
+        try {
+          subscriptions.push(pty.onDidWrite(asExtension(value => {
+            if (closed || ptyClosed) return;
+            if (typeof value !== 'string') throw new TypeError('Pseudoterminal output must be text.');
+            for (let offset = 0; offset < value.length;) {
+              let end = Math.min(offset + 65536, value.length);
+              if (end < value.length && value.charCodeAt(end - 1) >= 0xD800 && value.charCodeAt(end - 1) <= 0xDBFF) end--;
+              notify('terminal/ptyWrite', { extension: ext.id, id, data: value.slice(offset, end) }); offset = end;
+            }
+          })));
+          if (pty.onDidClose) subscriptions.push(pty.onDidClose(asExtension(code => {
+            if (closed) return; closed = true; cleanupPty(false);
+            notify('terminal/ptyExit', { extension: ext.id, id, code: Number.isInteger(code) ? code : undefined }); finish(code);
+          })));
+          ptyOpened = true; pty.open(dimensions);
+          if (pendingInput && !closed) { pty.handleInput?.(pendingInput); pendingInput = ''; }
+        } catch (error) {
+          closed = true; cleanupPty(true); notify('terminal/ptyExit', { extension: ext.id, id, code: 1 }); finish(1);
+          host.log(ext.id, 'error', `Opening pseudoterminal failed: ${error.message}`);
+        }
+      }),
       (error) => {
         state.terminals.delete(id);
         host.log(ext.id, 'error', `Creating terminal '${name}' failed: ${error && error.message ? error.message : error}`);
@@ -146,3 +192,4 @@ function terminalClosed(host, params) {
 }
 
 module.exports = { createTerminalApi, terminalClosed };
+
