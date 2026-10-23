@@ -790,6 +790,14 @@ const publicEnums = Object.fromEntries(Object.entries(publicEnumValues).map(([na
 const ColorThemeKind = Object.freeze({ Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 });
 const UIKind = Object.freeze({ Desktop: 1, Web: 2 });
 
+class CallHierarchyItem {
+  constructor(kind, name, detail, uri, range, selectionRange) { Object.assign(this, { kind, name, detail, uri, range, selectionRange }); }
+}
+class CallHierarchyIncomingCall { constructor(from, fromRanges) { Object.assign(this, { from, fromRanges }); } }
+class CallHierarchyOutgoingCall { constructor(to, fromRanges) { Object.assign(this, { to, fromRanges }); } }
+class TypeHierarchyItem {
+  constructor(kind, name, detail, uri, range, selectionRange) { Object.assign(this, { kind, name, detail, uri, range, selectionRange }); }
+}
 class InlineCompletionItem {
   constructor(insertText, range, command) { this.insertText = insertText; this.range = range; this.command = command; }
 }
@@ -1206,6 +1214,31 @@ function createApi(host, ext) {
     else if (timeoutOrThenable) Promise.resolve(timeoutOrThenable).then(() => disposable.dispose(), () => disposable.dispose());
     return disposable;
   }
+  function withProgress(options, task) {
+    if (typeof task !== 'function') return Promise.reject(new TypeError('Progress requires a task callback.'));
+    const source = new CancellationTokenSource();
+    const item = statusBar.createStatusBarItem();
+    const command = `openmind.progress.cancel.${ext.id}.${Date.now()}.${Math.random()}`;
+    let percentage = 0, message = '', done = false;
+    const render = () => { item.text = `${options?.title || ext.id}${message ? ': ' + message : ''}${percentage ? ' ' + Math.round(percentage) + '%' : ''}`; };
+    const callback = asExtension(() => source.cancel());
+    if (options?.cancellable) {
+      state.commands.set(command, { id: ext.id, callback }); notify('commands/registered', { command, extension: ext.id });
+      item.command = command; item.tooltip = 'Cancel';
+    }
+    const cleanup = track(new Disposable(() => {
+      if (done) return; done = true; source.cancel(); source.dispose(); item.dispose();
+      if (state.commands.get(command)?.callback === callback) { state.commands.delete(command); notify('commands/unregistered', { command }); }
+    }));
+    render(); item.show();
+    const progress = { report(value) {
+      if (done) return;
+      if (value?.message !== undefined) message = String(value.message);
+      if (Number.isFinite(value?.increment)) percentage = Math.max(0, Math.min(100, percentage + value.increment));
+      render();
+    } };
+    return Promise.resolve().then(asExtension(() => task(progress, source.token))).finally(() => cleanup.dispose());
+  }
   function fileDialogOptions(options = {}) {
     if (options.defaultUri && options.defaultUri.scheme !== 'file') throw new Error('Native dialogs currently require a file URI.');
     return { title: options.title, defaultPath: options.defaultUri?.fsPath, canSelectFiles: options.canSelectFiles,
@@ -1224,6 +1257,8 @@ function createApi(host, ext) {
       const selected = await request('ui/showSaveDialog', { extension: ext.id, options: fileDialogOptions(options) });
       return selected == null ? undefined : Uri.file(selected);
     },
+    withProgress,
+    withScmProgress: task => withProgress({ location: publicEnums.ProgressLocation.SourceControl }, task),
     registerTreeDataProvider: trees.registerTreeDataProvider,
     createTreeView: trees.createTreeView,
     showInformationMessage: message('info'),
@@ -1333,6 +1368,11 @@ function createApi(host, ext) {
   });
 
   const env = namespace('env', {
+    clipboard: {
+      readText: async () => String(await request('clipboard/readText', { extension: ext.id }) || ''),
+      writeText: async value => { if (typeof value !== 'string') throw new TypeError('Clipboard text must be a string.'); await request('clipboard/writeText', { extension: ext.id, text: value }); },
+    },
+    asExternalUri: async uri => { if (!(uri instanceof Uri)) throw new TypeError('Expected a URI.'); return uri; },
     appName: 'OpenMind Studio',
     appHost: 'desktop',
     uiKind: UIKind.Desktop,
@@ -1420,6 +1460,7 @@ function createApi(host, ext) {
     CodeActionKind,
     SemanticTokens, SemanticTokensBuilder, SemanticTokensEdit, SemanticTokensEdits, SemanticTokensLegend,
     Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabelPart, InlayHintKind,
+    CallHierarchyItem, CallHierarchyIncomingCall, CallHierarchyOutgoingCall, TypeHierarchyItem,
     InlineCompletionItem, InlineCompletionList, InlineCompletionTriggerKind,
     ColorThemeKind, UIKind,
     CodeLens,

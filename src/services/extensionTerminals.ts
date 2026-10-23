@@ -56,6 +56,33 @@ export class ExtensionTerminalService {
     });
   }
 
+  /** Launch a DAP debuggee in a dedicated integrated terminal with literal arguments. */
+  async runDebuggee(params: Record<string, unknown>): Promise<Record<string, never>> {
+    const extension = str(params.extension), id = str(params.id);
+    if (!extension || !id.startsWith(`${extension}#debug-`)) throw new Error("Invalid debug terminal owner.");
+    const args = params.args;
+    if (!Array.isArray(args) || !args.length || args.some(value => typeof value !== "string" || /[\0\r\n]/.test(value))) throw new Error("Invalid debugger arguments.");
+    const env = params.env && typeof params.env === "object" ? params.env as Record<string, unknown> : {};
+    if (Object.entries(env).some(([key, value]) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || (value !== null && (typeof value !== "string" || /[\0\r\n]/.test(value))))) throw new Error("Invalid debugger environment.");
+    const shells = this.deps.terminals.getState().shells;
+    const shell = shells.find(value => value.kind === "powerShell")?.kind ?? shells.find(value => value.kind === "gitBash")?.kind;
+    if (!shell) throw new Error("Debug terminal requires PowerShell or Git Bash for literal argument quoting.");
+    const quote = (value: string) => shell === "powerShell" ? `'${value.replace(/'/g, "''")}'` : `'${value.replace(/'/g, "'\\''")}'`;
+    const environment = Object.entries(env).map(([key, value]) => shell === "powerShell"
+      ? value === null ? `Remove-Item Env:${key} -ErrorAction SilentlyContinue; ` : `$env:${key}=${quote(typeof value === "string" ? value : "")}; `
+      : value === null ? `unset ${key}; ` : `export ${key}=${quote(typeof value === "string" ? value : "")}; `).join("");
+    const line = environment + (shell === "powerShell" ? "& " : "") + (args as string[]).map(quote).join(" ");
+    if (line.length > MAX_TEXT) throw new Error("Debug terminal command exceeds 16 KB.");
+    const sessionId = await this.deps.terminals.createTerminal(shell, str(params.cwd) || null, { refreshable: false, title: `${str(params.name, "Debug")} (${extension})`, show: true });
+    if (sessionId === null) throw new Error("Could not start the debug terminal.");
+    this.byId.set(id, { extension, name: str(params.name, "Debug"), sessionId, trusted: true, typed: "" });
+    this.known.set(sessionId, false);
+    try { this.deps.terminals.write(sessionId, `${line}\r`); }
+    catch (error) { await this.dispose({ extension, id }); throw error; }
+    // DAP makes both process identifiers optional; the PTY backend does not expose them.
+    return {};
+  }
+
   /** `terminal/create`: a new terminal named after the extension's request, in the given folder. */
   async create(params: Record<string, unknown>): Promise<{ pid: number | null }> {
     const id = str(params.id);
@@ -177,3 +204,4 @@ export class ExtensionTerminalService {
     }
   }
 }
+

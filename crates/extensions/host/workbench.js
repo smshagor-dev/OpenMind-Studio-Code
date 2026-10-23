@@ -26,7 +26,7 @@ function snapshot(host, domain) {
     folders: host.state.workspaceFolders.map(folder => folder.path) };
 }
 function moduleFor(domain) {
-  const names = { tests: 'testing', scm: 'scm', notebooks: 'notebooks', debug: 'debug' };
+  const names = { tests: 'testing', scm: 'scm', notebooks: 'notebooks', debug: 'debug', languages: 'languages' };
   if (!Object.hasOwn(names, domain)) throw new Error(`Unknown extension workbench domain '${domain}'.`);
   return names[domain];
 }

@@ -9,7 +9,7 @@ This inventory enumerates runtime namespace exports and top-level value exports 
 
 Run: node --test crates/extensions/tests/node/*.test.cjs
 
-Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one skipped test. The 34 focused frontend tests for Monaco, native dialogs and host editor APIs passed. Full-project TypeScript and scoped ESLint passed. Full frontend regression validation is incomplete. Rust/Tauri and Windows builds were not run; Cargo is unavailable.
+Verified Linux run on 2026-10-23: 87 Node tests passed with zero failures and zero skips, including the real Python/debugpy adapter. Focused navigation, debug-terminal and workbench UI tests passed. Full-project TypeScript and scoped ESLint passed. The full frontend regression suite passed 2,693 tests across 257 files. Rust/Tauri and Windows builds were not run; Cargo is unavailable.
 
 - Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
 - File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
@@ -18,6 +18,7 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 - Notebook edits and saves: serializer inputs are copied to keep extension-owned/frozen objects from corrupting transaction state. Save As uses guarded exclusive writes and retains the original document when serialization fails or newer edits arrive.
 - Workbench: real-host tests cover test discovery/execution/cancellation, SCM commands/validation, notebook editing/execution/save, trust grants and adapter permissions. React integration renders the actual dialog against the child-process host. Frontend tests also cover stale responses, dirty notebook retention and failed-edit barriers. Native Tauri rendering remains unverified.
 - Additional provider evidence: real-host/HostBridge tests cover declaration, signature context, selection parent flattening, linked word patterns, on-type edit mapping, lazy link and completion resolution, snippet flags, incomplete results and extra edits. Monaco registrations remain mocked.
+- Workbench progress: withProgress and withScmProgress report through a status-bar item, with extension-owned cancellation commands and cleanup. Notification/window locations share this status-bar presentation; native notification progress widgets are not claimed. Clipboard uses the native frontend clipboard plugin; asExternalUri retains local URIs because this host has no remote tunneling.
 - Native ESM: actual hosts cover default/named vscode imports, guarded builtin namespaces, top-level await, ownership across awaits, package-type and typeless entrypoints, CJS dynamic imports and helper-module reload after disable/update. Synchronous module hooks provide virtual CommonJS bridges without temporary source files. Node keeps historical ESM records until the host process exits; generation tags ensure reactivation loads current code. This is not an OS sandbox.
 - Additional local integrations: inline completions map trigger/selected-suggestion context, snippets, explicit/default word ranges and acceptance commands; stale model replies are discarded. Commands run after an edit or tab closure while released result capabilities are rejected. Open/save dialog requests run through the real stdio host and HostBridge to a mocked native adapter. Native dialog rendering remains unverified. Theme events retain configuration; stacked status messages restore earlier entries and clean up on timeout, settled promises and extension teardown.
 - Advanced language providers: real host/HostBridge/Monaco-adapter tests now cover prepared multi-file rename with versioned text edits, code-action diagnostics/kind context and lazy resolution, CodeLens refresh/resolution, inlay-hint label-part commands/locations/resolution, color presentation edits and full/range semantic tokens with legends and sorted builders. Original extension objects and command arguments stay in the host. Write permissions, symlink escapes, stale/released items, disabled commands, cancellation and deactivation are covered by real-host tests. Extension diagnostic aggregation and change events retain URI identities; builtin LSP diagnostic collections are not mirrored into the host. Monaco registrations remain mocked.
@@ -27,11 +28,11 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 
 | Area | Observed implementation and remaining work |
 | --- | --- |
-| Debug | Executable, socket and inline DAP transports, configuration/factory registration, sessions, source/function breakpoints and a dedicated workbench are implemented. A real debugpy adapter launched Python, stopped at a conditional breakpoint, returned threads/frames/scopes/variables, evaluated an expression and disconnected in the Node suite. Attach/restart are not integration-tested; Tracker factories (including wildcard and multiple registrations) now observe real DAP, preserve callback owner permissions and isolate tracker exceptions/mutations. Adapter-confirmed source/function breakpoints are available through DebugSession.getDebugProtocolBreakpoint. Inline and loopback TCP transports have real host integration tests, including failure cleanup and adapter-initiated termination. Transport ownership remains tracked while disconnect is pending, so extension teardown can still close it. Reverse requests (including runInTerminal), virtual debug sources, data breakpoints and native editor gutter integration remain unsupported. |
+| Debug | Executable, socket and inline DAP transports, configuration/factory registration, sessions, source/function breakpoints and a dedicated workbench are implemented. A real debugpy adapter launched Python, stopped at a conditional breakpoint, returned threads/frames/scopes/variables, evaluated an expression and disconnected in the Node suite. Attach/restart are not integration-tested; Tracker factories (including wildcard and multiple registrations) now observe real DAP, preserve callback owner permissions and isolate tracker exceptions/mutations. Adapter-confirmed source/function breakpoints are available through DebugSession.getDebugProtocolBreakpoint. Inline and loopback TCP transports have real host integration tests, including failure cleanup and adapter-initiated termination. Transport ownership remains tracked while disconnect is pending, so extension teardown can still close it. Reverse runInTerminal requests launch a dedicated integrated terminal with literal arguments and environment values, requiring terminal/process permissions and workspace trust. PowerShell and Git Bash are supported; external terminals and shell-interpreted arguments reject explicitly. startDebugging reverse requests launch child configurations. Real-host tests verify terminal routing, permission rejection and cleanup. Virtual debug sources, data breakpoints and native editor gutter integration remain unsupported. |
 | Testing | Controllers, hierarchical discovery, run profiles, selected execution, results/diffs/output and cancellation are connected to the dedicated workbench and tested with actual extension code. Continuous testing and detailed coverage reporting remain unsupported. This is not a marketplace test-extension certification. |
-| Notebooks | Serializers, file-backed documents/cells, metadata, text edits, controller execution, textual outputs and save are connected to the dedicated workbench. Tests verify actual file persistence and dirty-cell preservation when an extension is disabled. NotebookEdit cell insertion/replacement/deletion and cell/notebook metadata updates now work through notebook-only WorkspaceEdit transactions, with validation before mutation, stable cell identities, reindexing and change events. The workbench supports New notebook, add/delete cells and Save As to a new file; exclusive creation refuses existing destinations and failures retain unsaved source text. Tests cover permissions, symlink containment, invalid/overlapping edits, serialization races and actual UI-to-file persistence. Mixed notebook/text/file WorkspaceEdit transactions, rich output renderers, native Jupyter integration and editor selections/affinity remain unsupported. No undo/redo integration is claimed. |
+| Notebooks | Serializers, file-backed documents/cells, metadata, text edits, controller execution, textual outputs and save are connected to the dedicated workbench. Tests verify actual file persistence and dirty-cell preservation when an extension is disabled. NotebookEdit cell insertion/replacement/deletion and cell/notebook metadata updates now work through notebook-only WorkspaceEdit transactions, with validation before mutation, stable cell identities, reindexing and change events. The workbench supports New notebook, add/delete cells and Save As to a new file; exclusive creation refuses existing destinations and failures retain unsaved source text. Tests cover permissions, symlink containment, invalid/overlapping edits, serialization races and actual UI-to-file persistence. Mixed notebook/text/file WorkspaceEdit transactions, rich output renderers, native Jupyter integration and editor selections/affinity remain unsupported. Workbench undo/redo now restores text, metadata and structural snapshots with monotonic versions, edit/execution barriers, permission checks and bounded history (30 snapshots, approximately 10 MB across multiple snapshots). It recreates cell document identities on restore. Mixed text/file transactions and full native notebook editor behavior remain unsupported. |
 | SCM | Providers, resource groups, input validation, selection, accept/resource commands and quick-diff URI resolution are exercised through the real host. The workbench displays groups and can compare original/current text through guarded workspace.fs. Advanced contribution menus/status commands remain incomplete; built-in Git is separate. |
-| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Declaration, signature help/context, selection ranges, linked editing, on-type formatting and document links (including lazy resolution) now connect through the real host and Monaco adapter. Completion preserves trigger context, incomplete lists, insert/replace ranges, snippets, label details, commit characters, tags and lazy resolution with additional edits. Completion acceptance commands route back through host-owned command execution and dispose with the provider. Rename, code actions, CodeLens, inlay hints, colors and document/range semantic tokens now connect through the real host and HostBridge to Monaco. Lazy object/command state remains host-owned; text edits carry document versions and require write permissions and symlink containment. Semantic tokens currently use full results rather than delta optimization. Extension diagnostics can be queried across collections with change events; builtin language-server diagnostics are not mirrored. Inline completions now connect through the host/bridge, including snippets, context, ranges, cancellation/stale-model checks and host-owned acceptance commands. Filter text is checked before returning results, but Monaco also applies its own visibility rules; complete VS Code filter behavior is not certified. Call/type hierarchy, workspace symbols, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
+| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Declaration, signature help/context, selection ranges, linked editing, on-type formatting and document links (including lazy resolution) now connect through the real host and Monaco adapter. Completion preserves trigger context, incomplete lists, insert/replace ranges, snippets, label details, commit characters, tags and lazy resolution with additional edits. Completion acceptance commands route back through host-owned command execution and dispose with the provider. Rename, code actions, CodeLens, inlay hints, colors and document/range semantic tokens now connect through the real host and HostBridge to Monaco. Lazy object/command state remains host-owned; text edits carry document versions and require write permissions and symlink containment. Semantic tokens currently use full results rather than delta optimization. Extension diagnostics can be queried across collections with change events; builtin language-server diagnostics are not mirrored. Inline completions now connect through the host/bridge, including snippets, context, ranges, cancellation/stale-model checks and host-owned acceptance commands. Filter text is checked before returning results, but Monaco also applies its own visibility rules; complete VS Code filter behavior is not certified. Call/type hierarchy and workspace symbols are available in Extension tools > Code navigation. Original extension objects remain host-owned for hierarchy follow-ups and lazy symbol resolution. Real-host tests cover identity, disposal and cancellation, including providers that ignore tokens. Searches have a 20-second cancellation limit. The panel opens local files; native Monaco hierarchy widgets, exact source-range reveal, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
 | Tasks/terminals | Existing shell/process task and terminal bridges need live workbench validation. CustomExecution and problem matchers remain unsupported. |
 | Webviews/trees | Existing host modules and UI bridge need actual rendering, restore, messaging, CSP and resource-policy validation. |
 | Lifecycle | Local tests cover the cases above. Native ESM loading, top-level await and generation-based dependency reload are now covered locally. Recovery after an OS-level host crash, activation timeouts and orphan-process cleanup still need validation or implementation. |
@@ -58,8 +59,8 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 | `env.appHost` | Present; partial or unverified |
 | `env.appName` | Present; partial or unverified |
 | `env.appRoot` | Unsupported |
-| `env.asExternalUri` | Unsupported |
-| `env.clipboard` | Unsupported |
+| `env.asExternalUri` | Present; partial or unverified |
+| `env.clipboard` | Present; partial or unverified |
 | `env.createTelemetryLogger` | Unsupported |
 | `env.isNewAppInstall` | Unsupported |
 | `env.isTelemetryEnabled` | Unsupported |
@@ -131,8 +132,8 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 | `window.terminals` | Present; partial or unverified |
 | `window.visibleNotebookEditors` | Unsupported |
 | `window.visibleTextEditors` | Present; partial or unverified |
-| `window.withProgress` | Unsupported |
-| `window.withScmProgress` | Unsupported |
+| `window.withProgress` | Present; partial or unverified |
+| `window.withScmProgress` | Present; partial or unverified |
 | `workspace.applyEdit` | Present; partial or unverified |
 | `workspace.asRelativePath` | Present; partial or unverified |
 | `workspace.createFileSystemWatcher` | Present; partial or unverified |
@@ -180,7 +181,7 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 | `languages.getLanguages` | Present; partial or unverified |
 | `languages.match` | Present; partial or unverified |
 | `languages.onDidChangeDiagnostics` | Present; partial or unverified |
-| `languages.registerCallHierarchyProvider` | Unsupported |
+| `languages.registerCallHierarchyProvider` | Present; partial or unverified |
 | `languages.registerCodeActionsProvider` | Present; partial or unverified |
 | `languages.registerCodeLensProvider` | Present; partial or unverified |
 | `languages.registerColorProvider` | Present; partial or unverified |
@@ -209,8 +210,8 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 | `languages.registerSelectionRangeProvider` | Present; partial or unverified |
 | `languages.registerSignatureHelpProvider` | Present; partial or unverified |
 | `languages.registerTypeDefinitionProvider` | Present; partial or unverified |
-| `languages.registerTypeHierarchyProvider` | Unsupported |
-| `languages.registerWorkspaceSymbolProvider` | Unsupported |
+| `languages.registerTypeHierarchyProvider` | Present; partial or unverified |
+| `languages.registerWorkspaceSymbolProvider` | Present; partial or unverified |
 | `languages.setLanguageConfiguration` | Unsupported |
 | `languages.setTextDocumentLanguage` | Unsupported |
 | `notebooks.createNotebookController` | Present; partial or unverified |
@@ -250,9 +251,9 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 | Official value | Current host status |
 | --- | --- |
 | `Breakpoint` | Unsupported |
-| `CallHierarchyIncomingCall` | Unsupported |
-| `CallHierarchyItem` | Unsupported |
-| `CallHierarchyOutgoingCall` | Unsupported |
+| `CallHierarchyIncomingCall` | Present; behavior needs per-member verification |
+| `CallHierarchyItem` | Present; behavior needs per-member verification |
+| `CallHierarchyOutgoingCall` | Present; behavior needs per-member verification |
 | `CancellationError` | Present; behavior needs per-member verification |
 | `CancellationTokenSource` | Present; behavior needs per-member verification |
 | `CodeAction` | Present; behavior needs per-member verification |
@@ -396,7 +397,7 @@ Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one sk
 | `TreeItem` | Present; behavior needs per-member verification |
 | `TreeItemCheckboxState` | Present; behavior needs per-member verification |
 | `TreeItemCollapsibleState` | Present; behavior needs per-member verification |
-| `TypeHierarchyItem` | Unsupported |
+| `TypeHierarchyItem` | Present; behavior needs per-member verification |
 | `UIKind` | Present; behavior needs per-member verification |
 | `Uri` | Present; behavior needs per-member verification |
 | `ViewColumn` | Present; behavior needs per-member verification |

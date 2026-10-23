@@ -116,6 +116,8 @@ const state = {
 };
 
 const host = { state, request, notify, log, als };
+host.provide = params => handlers['host/provide'](params);
+host.cancelProvide = params => handlers['host/cancelProvide'](params);
 setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;

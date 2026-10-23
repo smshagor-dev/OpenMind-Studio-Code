@@ -53,18 +53,20 @@ function createLanguagesApi(parts) {
         if (state.providers.delete(handle)) {
           host.cancelProviderRequests?.(handle);
           notify('languages/unregistered', { handle });
+          require('./workbench.js').changed(host, 'languages');
         }
       }
     }));
     state.providers.set(handle, { kind, extension: ext.id, invoke: params => {
       // Accepted commands and result cleanup outlive their editor document.
-      if (params.action === 'command' || params.action === 'release') return invoke(params);
+      if (kind === 'workspaceSymbol' || params.action === 'incoming' || params.action === 'outgoing' || params.action === 'supertypes' || params.action === 'subtypes' || params.action === 'command' || params.action === 'release') return invoke(params);
       const doc = document(state.documents.get(params.path));
       if (!doc) throw new Error('The document is not open.');
       if (!matchSelector(selector, doc)) return null;
       return invoke(params);
     } });
     notify('languages/registered', { handle, kind, extension: ext.id, selector: wireSelector, ...extra });
+    require('./workbench.js').changed(host, 'languages');
     return disposable;
   }
 
@@ -151,6 +153,41 @@ function createLanguagesApi(parts) {
     }, extra, changeEvent);
   }
 
+  function hierarchy(kind, selector, provider) {
+    need('languages');
+    const items = new Map(); let next = 0;
+    const store = value => {
+      const id = String(++next); items.set(id, value);
+      while (items.size > 4000) items.delete(items.keys().next().value);
+      return { id, name: value.name, detail: value.detail, kind: value.kind, tags: value.tags,
+        uri: value.uri.toString(), range: rangeOut(value.range), selectionRange: rangeOut(value.selectionRange) };
+    };
+    const methods = kind === 'callHierarchy'
+      ? { prepare: 'prepareCallHierarchy', incoming: 'provideCallHierarchyIncomingCalls', outgoing: 'provideCallHierarchyOutgoingCalls' }
+      : { prepare: 'prepareTypeHierarchy', supertypes: 'provideTypeHierarchySupertypes', subtypes: 'provideTypeHierarchySubtypes' };
+    return register(kind, selector, async params => {
+      const action = params.action || 'prepare';
+      if (action === 'release') { for (const id of params.itemIds || []) items.delete(id); return null; }
+      const token = params.token || cancelled;
+      if (!Object.hasOwn(methods, action)) throw new Error('Unknown hierarchy operation.');
+      let result;
+      if (action === 'prepare') {
+        const doc = document(state.documents.get(params.path));
+        result = await provider[methods.prepare](doc, new Position(params.position.line, params.position.character), token);
+      } else {
+        const item = items.get(params.itemId);
+        if (!item) throw new Error('Hierarchy item is stale or no longer available.');
+        result = await provider[methods[action]](item, token);
+      }
+      if (token.isCancellationRequested) return null;
+      const values = Array.isArray(result) ? result : result ? [result] : [];
+      if (action === 'incoming' || action === 'outgoing') return values.map(call => ({
+        item: store(action === 'incoming' ? call.from : call.to), ranges: (call.fromRanges || []).map(rangeOut),
+      }));
+      return values.map(store);
+    });
+  }
+
   function matchSelector(selector, doc) {
     if (Array.isArray(selector)) return Math.max(0, ...selector.map((part) => matchSelector(part, doc)));
     if (!selector || !doc || !doc.uri) return 0;
@@ -185,6 +222,29 @@ function createLanguagesApi(parts) {
 
   return namespace('languages', {
     match: matchSelector,
+    registerCallHierarchyProvider(selector, provider) { return hierarchy('callHierarchy', selector, provider); },
+    registerTypeHierarchyProvider(selector, provider) { return hierarchy('typeHierarchy', selector, provider); },
+    registerWorkspaceSymbolProvider(provider) {
+      need('languages');
+      const cache = new Map(); let counter = 0;
+      const serialize = (value, id) => ({ id, name: value.name, kind: value.kind, tags: value.tags,
+        containerName: value.containerName, uri: value.location.uri.toString(), range: rangeOut(value.location.range) });
+      return register('workspaceSymbol', '*', async params => {
+        if (params.action === 'release') { for (const id of params.itemIds || []) cache.delete(id); return null; }
+        if (params.action === 'resolve') {
+          const value = cache.get(params.itemId);
+          if (!value) throw new Error('Workspace symbol is stale or no longer available.');
+          const resolved = typeof provider.resolveWorkspaceSymbol === 'function' ? await provider.resolveWorkspaceSymbol(value, params.token) : value;
+          if (!resolved || params.token.isCancellationRequested) return null;
+          cache.set(params.itemId, resolved); return serialize(resolved, params.itemId);
+        }
+        const values = await provider.provideWorkspaceSymbols(String(params.query || ''), params.token);
+        if (params.token.isCancellationRequested) return null;
+        return (values || []).map(value => { const id = String(++counter); cache.set(id, value);
+          while (cache.size > 4000) cache.delete(cache.keys().next().value);
+          return serialize(value, id); });
+      });
+    },
     getLanguages: async () => request('workspace/getLanguages', {}),
     registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
       need('languages'); const cache = new Map(); let itemCounter = 0;
@@ -513,5 +573,25 @@ function createLanguagesApi(parts) {
   });
 }
 
-module.exports = { createLanguagesApi, TextEdit };
+function snapshot(host) {
+  return { providers: [...host.state.providers].filter(([, value]) => ['workspaceSymbol', 'callHierarchy', 'typeHierarchy'].includes(value.kind))
+    .map(([handle, value]) => ({ handle, kind: value.kind, extension: value.extension })) };
+}
+async function invoke(host, params) {
+  if (params.op === 'cancel') return host.cancelProvide({ requestId: params.requestId });
+  const entry = host.state.providers.get(params.handle);
+  if (!entry || !['workspaceSymbol', 'callHierarchy', 'typeHierarchy'].includes(entry.kind)) throw new Error('Navigation provider is no longer available.');
+  const { Uri } = require('./vscode.js');
+  if (params.op === 'open') {
+    const uri = Uri.parse(String(params.uri));
+    if (uri.scheme !== 'file') throw new Error('Navigation currently opens local files only.');
+    require('./guard.js').createGuard(host.state.extensions.get(entry.extension), () => host.state.workspaceFolders).checkPath(uri.fsPath, false);
+    return host.request('ui/showTextDocument', { extension: entry.extension, path: uri.fsPath, preserveFocus: false });
+  }
+  const requestId = typeof params.requestId === 'string' ? params.requestId : require('crypto').randomUUID();
+  const timeout = setTimeout(() => host.cancelProvide({ requestId }), 20000);
+  try { return await host.provide({ ...params, requestId, action: params.op === 'search' ? undefined : params.op }); }
+  finally { clearTimeout(timeout); }
+}
+module.exports = { createLanguagesApi, TextEdit, snapshot, invoke };
 

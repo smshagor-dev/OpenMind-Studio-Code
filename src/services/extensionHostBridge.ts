@@ -21,6 +21,9 @@ export interface HostDocument {
 export interface ProviderRegistration {
   handle: string;
   kind:
+    | "workspaceSymbol"
+    | "callHierarchy"
+    | "typeHierarchy"
     | "inlineCompletion"
     | "completion"
     | "hover"
@@ -137,6 +140,7 @@ export interface HostDiagnostic {
 
 export interface BridgeDeps {
   dialogs?: ExtensionDialogs;
+  clipboard?: { readText(): Promise<string | null>; writeText(value: string): Promise<void> };
   prompts: ExtensionPromptService;
   output: OutputService;
   /** Sends a request to the host (used to invoke a registered language feature). */
@@ -254,6 +258,11 @@ export class HostBridge {
     switch (method) {
       case "ui/showMessage":
         return this.showMessage(p);
+      case "clipboard/readText":
+        return this.need(this.deps.clipboard, "Clipboard").readText();
+      case "clipboard/writeText":
+        await this.need(this.deps.clipboard, "Clipboard").writeText(text(p.text));
+        return null;
       case "ui/showOpenDialog":
         return this.need(this.deps.dialogs, "File dialogs").open(
           extensionDialogOptions(p.options),
@@ -313,6 +322,8 @@ export class HostBridge {
         );
       case "commands/getCommands":
         return this.deps.knownCommands();
+      case "terminal/runDebuggee":
+        return this.need(this.deps.terminals, "Terminals").runDebuggee(p);
       case "terminal/create":
         return this.need(this.deps.terminals, "Terminals").create(p);
       case "terminal/sendText":

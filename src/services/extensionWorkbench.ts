@@ -1,4 +1,4 @@
-export type ExtensionDomain = "tests" | "scm" | "notebooks" | "debug";
+export type ExtensionDomain = "tests" | "scm" | "notebooks" | "debug" | "languages";
 export interface TestNode { id: string; label: string; uri?: string; children: TestNode[] }
 export interface TestSnapshot {
   controllers: { handle: string; label: string; items: TestNode[]; profiles: { id: string; label: string; kind: number }[] }[];
@@ -11,14 +11,16 @@ export interface ScmSnapshot {
 export interface NotebookSnapshot {
   serializers: string[];
   controllers: { handle: string; label: string; notebookType: string }[];
-  documents: { uri: string; notebookType: string; dirty: boolean; version: number; unavailable?: boolean;
+  documents: { uri: string; notebookType: string; dirty: boolean; version: number; unavailable?: boolean; canUndo?: boolean; canRedo?: boolean;
     cells: { id?: string; index: number; value: string; languageId: string; kind: number; running: boolean; outputs: { mime: string; text: string }[] }[] }[];
 }
 export interface DebugSnapshot {
   types: string[];
   sessions: { id: string; name: string; state: string; type: string; threadId?: number; output: string[] }[];
 }
-export interface WorkbenchSnapshot { tests: TestSnapshot; scm: ScmSnapshot; notebooks: NotebookSnapshot; debug: DebugSnapshot }
+export interface NavigationItem { id: string; name: string; detail?: string; uri: string; item?: NavigationItem }
+export interface NavigationSnapshot { providers: { handle: string; kind: string; extension: string }[] }
+export interface WorkbenchSnapshot { languages?: NavigationSnapshot; tests: TestSnapshot; scm: ScmSnapshot; notebooks: NotebookSnapshot; debug: DebugSnapshot }
 export interface WorkbenchState { visible: boolean; domain: ExtensionDomain; error: string | null; pending: number; snapshot: WorkbenchSnapshot; trusted: boolean; folders: string[] }
 const empty = (): WorkbenchSnapshot => ({ tests: { controllers: [], runs: [] }, scm: { providers: [] }, notebooks: { serializers: [], controllers: [], documents: [] }, debug: { types: [], sessions: [] } });
 
@@ -27,7 +29,7 @@ export class ExtensionWorkbenchService {
   private readonly listeners = new Set<() => void>();
   private request: ((params: Record<string, unknown>) => Promise<unknown>) | null = null;
   private generation = 0;
-  private readonly revisions: Record<ExtensionDomain, number> = { tests: 0, scm: 0, notebooks: 0, debug: 0 };
+  private readonly revisions: Record<ExtensionDomain, number> = { tests: 0, scm: 0, notebooks: 0, debug: 0, languages: 0 };
   private readonly notebookEdits = new Map<string, Set<Promise<unknown>>>();
   private readonly notebookEditErrors = new Map<string, string>();
   connect(request: (params: Record<string, unknown>) => Promise<unknown>): void { this.request = request; }
@@ -55,7 +57,7 @@ export class ExtensionWorkbenchService {
       return;
     }
     const domain = value.domain;
-    if (domain !== "tests" && domain !== "scm" && domain !== "notebooks" && domain !== "debug") return;
+    if (domain !== "tests" && domain !== "scm" && domain !== "notebooks" && domain !== "debug" && domain !== "languages") return;
     if (method === "workbench/show") { void this.show(domain); return; }
     if (method === "workbench/changed") {
       this.revisions[domain]++;
@@ -70,8 +72,9 @@ export class ExtensionWorkbenchService {
     const revision = this.revisions[domain];
     try {
       const uri = typeof params.uri === "string" ? params.uri : "";
-      if (domain === "notebooks" && ["execute", "save", "saveAs", "close", "insert", "delete"].includes(op)) {
-        await Promise.all(this.notebookEdits.get(uri) ?? []);
+      if (domain === "notebooks" && ["execute", "save", "saveAs", "close", "insert", "delete", "undo", "redo"].includes(op)) {
+        const edits = this.notebookEdits.get(uri);
+        if (edits) await Promise.all([...edits]);
         if (generation !== this.generation) return undefined;
         const editError = this.notebookEditErrors.get(uri);
         if (editError) throw new Error(`Resolve the notebook edit before ${op}: ${editError}`);
@@ -81,7 +84,7 @@ export class ExtensionWorkbenchService {
         if (!this.notebookEdits.has(uri)) this.notebookEdits.set(uri, new Set());
         const edits = this.notebookEdits.get(uri);
         edits?.add(request);
-        void request.then(() => { edits?.delete(request); if (generation === this.generation) this.notebookEditErrors.delete(uri); }, error => {
+        void request.then(() => { edits?.delete(request); if (generation === this.generation) this.notebookEditErrors.delete(uri); }, (error: unknown) => {
           edits?.delete(request); if (generation === this.generation) this.notebookEditErrors.set(uri, String(error));
         });
       }
