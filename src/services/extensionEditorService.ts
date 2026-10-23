@@ -1,3 +1,4 @@
+import { ExtensionDecorations } from "./extensionDecorations";
 import type { DocumentService } from "./documentService";
 import type { EditorService } from "./editorService";
 import type { HostDocumentSync } from "./extensionHostSync";
@@ -42,7 +43,16 @@ function record(value: unknown): Record<string, unknown> {
  * so a refused batch changes nothing. UI-free.
  */
 export class ExtensionEditorService {
-  constructor(private readonly deps: ExtensionEditorDeps) {}
+  private readonly decorations: ExtensionDecorations;
+
+  constructor(private readonly deps: ExtensionEditorDeps) {
+    this.decorations = new ExtensionDecorations(deps.editor, deps.documents);
+  }
+
+  createDecoration(params: unknown): void { this.decorations.create(record(params)); }
+  setDecorations(params: unknown): void { this.decorations.set(record(params)); }
+  disposeDecoration(params: unknown): void { this.decorations.dispose(record(params)); }
+  resetDecorations(): void { this.decorations.reset(); }
 
   /** Checks one file of an edit: the document id when it can be edited, otherwise why not. */
   private editable(file: FileEdits): { id: string } | { reason: string } {

@@ -415,6 +415,15 @@ export class HostBridge {
             : [],
         );
         return;
+      case "editor/createDecoration":
+        this.deps.editorApi?.createDecoration(p);
+        return;
+      case "editor/setDecorations":
+        this.deps.editorApi?.setDecorations(p);
+        return;
+      case "editor/disposeDecoration":
+        this.deps.editorApi?.disposeDecoration(p);
+        return;
       case "editor/setSelections":
         this.deps.editorApi?.setSelections(p);
         return;
@@ -486,6 +495,7 @@ export class HostBridge {
     this.deps.prompts.dismissAll();
     this.deps.terminals?.reset();
     this.deps.tasks?.reset();
+    this.deps.editorApi?.resetDecorations();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});
