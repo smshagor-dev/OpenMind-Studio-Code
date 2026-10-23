@@ -443,6 +443,361 @@ class CancellationTokenSource {
 
 // Value types shared by language tooling extensions. They are usable even when a
 // corresponding provider contribution is not yet implemented by the workbench.
+// Stable public enum values from the VS Code 1.85.2 declaration baseline.
+const publicEnumValues = {
+  "TextEditorSelectionChangeKind": {
+    "Keyboard": 1,
+    "Mouse": 2,
+    "Command": 3
+  },
+  "TextEditorCursorStyle": {
+    "Line": 1,
+    "Block": 2,
+    "Underline": 3,
+    "LineThin": 4,
+    "BlockOutline": 5,
+    "UnderlineThin": 6
+  },
+  "TextEditorLineNumbersStyle": {
+    "Off": 0,
+    "On": 1,
+    "Relative": 2
+  },
+  "TextEditorRevealType": {
+    "Default": 0,
+    "InCenter": 1,
+    "InCenterIfOutsideViewport": 2,
+    "AtTop": 3
+  },
+  "OverviewRulerLane": {
+    "Left": 1,
+    "Center": 2,
+    "Right": 4,
+    "Full": 7
+  },
+  "DecorationRangeBehavior": {
+    "OpenOpen": 0,
+    "ClosedClosed": 1,
+    "OpenClosed": 2,
+    "ClosedOpen": 3
+  },
+  "EndOfLine": {
+    "LF": 1,
+    "CRLF": 2
+  },
+  "QuickPickItemKind": {
+    "Separator": -1,
+    "Default": 0
+  },
+  "InputBoxValidationSeverity": {
+    "Info": 1,
+    "Warning": 2,
+    "Error": 3
+  },
+  "CodeActionTriggerKind": {
+    "Invoke": 1,
+    "Automatic": 2
+  },
+  "DocumentHighlightKind": {
+    "Text": 0,
+    "Read": 1,
+    "Write": 2
+  },
+  "SymbolKind": {
+    "File": 0,
+    "Module": 1,
+    "Namespace": 2,
+    "Package": 3,
+    "Class": 4,
+    "Method": 5,
+    "Property": 6,
+    "Field": 7,
+    "Constructor": 8,
+    "Enum": 9,
+    "Interface": 10,
+    "Function": 11,
+    "Variable": 12,
+    "Constant": 13,
+    "String": 14,
+    "Number": 15,
+    "Boolean": 16,
+    "Array": 17,
+    "Object": 18,
+    "Key": 19,
+    "Null": 20,
+    "EnumMember": 21,
+    "Struct": 22,
+    "Event": 23,
+    "Operator": 24,
+    "TypeParameter": 25
+  },
+  "SymbolTag": {
+    "Deprecated": 1
+  },
+  "SignatureHelpTriggerKind": {
+    "Invoke": 1,
+    "TriggerCharacter": 2,
+    "ContentChange": 3
+  },
+  "CompletionItemKind": {
+    "Text": 0,
+    "Method": 1,
+    "Function": 2,
+    "Constructor": 3,
+    "Field": 4,
+    "Variable": 5,
+    "Class": 6,
+    "Interface": 7,
+    "Module": 8,
+    "Property": 9,
+    "Unit": 10,
+    "Value": 11,
+    "Enum": 12,
+    "Keyword": 13,
+    "Snippet": 14,
+    "Color": 15,
+    "Reference": 17,
+    "File": 16,
+    "Folder": 18,
+    "EnumMember": 19,
+    "Constant": 20,
+    "Struct": 21,
+    "Event": 22,
+    "Operator": 23,
+    "TypeParameter": 24,
+    "User": 25,
+    "Issue": 26
+  },
+  "CompletionItemTag": {
+    "Deprecated": 1
+  },
+  "CompletionTriggerKind": {
+    "Invoke": 0,
+    "TriggerCharacter": 1,
+    "TriggerForIncompleteCompletions": 2
+  },
+  "InlineCompletionTriggerKind": {
+    "Invoke": 0,
+    "Automatic": 1
+  },
+  "InlayHintKind": {
+    "Type": 1,
+    "Parameter": 2
+  },
+  "FoldingRangeKind": {
+    "Comment": 1,
+    "Imports": 2,
+    "Region": 3
+  },
+  "IndentAction": {
+    "None": 0,
+    "Indent": 1,
+    "IndentOutdent": 2,
+    "Outdent": 3
+  },
+  "SyntaxTokenType": {
+    "Other": 0,
+    "Comment": 1,
+    "String": 2,
+    "RegEx": 3
+  },
+  "ConfigurationTarget": {
+    "Global": 1,
+    "Workspace": 2,
+    "WorkspaceFolder": 3
+  },
+  "DiagnosticSeverity": {
+    "Error": 0,
+    "Warning": 1,
+    "Information": 2,
+    "Hint": 3
+  },
+  "DiagnosticTag": {
+    "Unnecessary": 1,
+    "Deprecated": 2
+  },
+  "LanguageStatusSeverity": {
+    "Information": 0,
+    "Warning": 1,
+    "Error": 2
+  },
+  "ViewColumn": {
+    "Active": -1,
+    "Beside": -2,
+    "One": 1,
+    "Two": 2,
+    "Three": 3,
+    "Four": 4,
+    "Five": 5,
+    "Six": 6,
+    "Seven": 7,
+    "Eight": 8,
+    "Nine": 9
+  },
+  "StatusBarAlignment": {
+    "Left": 1,
+    "Right": 2
+  },
+  "TerminalLocation": {
+    "Panel": 1,
+    "Editor": 2
+  },
+  "ExtensionKind": {
+    "UI": 1,
+    "Workspace": 2
+  },
+  "ExtensionMode": {
+    "Production": 1,
+    "Development": 2,
+    "Test": 3
+  },
+  "ColorThemeKind": {
+    "Light": 1,
+    "Dark": 2,
+    "HighContrast": 3,
+    "HighContrastLight": 4
+  },
+  "TaskRevealKind": {
+    "Always": 1,
+    "Silent": 2,
+    "Never": 3
+  },
+  "TaskPanelKind": {
+    "Shared": 1,
+    "Dedicated": 2,
+    "New": 3
+  },
+  "ShellQuoting": {
+    "Escape": 1,
+    "Strong": 2,
+    "Weak": 3
+  },
+  "TaskScope": {
+    "Global": 1,
+    "Workspace": 2
+  },
+  "FileType": {
+    "Unknown": 0,
+    "File": 1,
+    "Directory": 2,
+    "SymbolicLink": 64
+  },
+  "FilePermission": {
+    "Readonly": 1
+  },
+  "FileChangeType": {
+    "Changed": 1,
+    "Created": 2,
+    "Deleted": 3
+  },
+  "UIKind": {
+    "Desktop": 1,
+    "Web": 2
+  },
+  "LogLevel": {
+    "Off": 0,
+    "Trace": 1,
+    "Debug": 2,
+    "Info": 3,
+    "Warning": 4,
+    "Error": 5
+  },
+  "TreeItemCollapsibleState": {
+    "None": 0,
+    "Collapsed": 1,
+    "Expanded": 2
+  },
+  "TreeItemCheckboxState": {
+    "Unchecked": 0,
+    "Checked": 1
+  },
+  "TerminalExitReason": {
+    "Unknown": 0,
+    "Shutdown": 1,
+    "Process": 2,
+    "User": 3,
+    "Extension": 4
+  },
+  "EnvironmentVariableMutatorType": {
+    "Replace": 1,
+    "Append": 2,
+    "Prepend": 3
+  },
+  "ProgressLocation": {
+    "SourceControl": 1,
+    "Window": 10,
+    "Notification": 15
+  },
+  "TextDocumentChangeReason": {
+    "Undo": 1,
+    "Redo": 2
+  },
+  "TextDocumentSaveReason": {
+    "Manual": 1,
+    "AfterDelay": 2,
+    "FocusOut": 3
+  },
+  "NotebookEditorRevealType": {
+    "Default": 0,
+    "InCenter": 1,
+    "InCenterIfOutsideViewport": 2,
+    "AtTop": 3
+  },
+  "NotebookCellKind": {
+    "Markup": 1,
+    "Code": 2
+  },
+  "NotebookControllerAffinity": {
+    "Default": 1,
+    "Preferred": 2
+  },
+  "NotebookCellStatusBarAlignment": {
+    "Left": 1,
+    "Right": 2
+  },
+  "DebugConsoleMode": {
+    "Separate": 0,
+    "MergeWithParent": 1
+  },
+  "DebugConfigurationProviderTriggerKind": {
+    "Initial": 1,
+    "Dynamic": 2
+  },
+  "CommentThreadCollapsibleState": {
+    "Collapsed": 0,
+    "Expanded": 1
+  },
+  "CommentMode": {
+    "Editing": 0,
+    "Preview": 1
+  },
+  "CommentThreadState": {
+    "Unresolved": 0,
+    "Resolved": 1
+  },
+  "TestRunProfileKind": {
+    "Run": 1,
+    "Debug": 2,
+    "Coverage": 3
+  }
+};
+const publicEnums = Object.fromEntries(Object.entries(publicEnumValues).map(([name, values]) => {
+  const result = { ...values };
+  for (const [key, value] of Object.entries(values)) result[value] = key;
+  return [name, Object.freeze(result)];
+}));
+
+const ColorThemeKind = Object.freeze({ Light: 1, Dark: 2, HighContrast: 3, HighContrastLight: 4 });
+const UIKind = Object.freeze({ Desktop: 1, Web: 2 });
+
+class InlineCompletionItem {
+  constructor(insertText, range, command) { this.insertText = insertText; this.range = range; this.command = command; }
+}
+class InlineCompletionList {
+  constructor(items) { this.items = items; }
+}
+const InlineCompletionTriggerKind = Object.freeze({ Invoke: 0, Automatic: 1 });
+
 class Color {
   constructor(red, green, blue, alpha) { this.red = red; this.green = green; this.blue = blue; this.alpha = alpha; }
 }
@@ -460,6 +815,9 @@ class InlayHint {
 }
 const InlayHintKind = Object.freeze({ Type: 1, Parameter: 2 });
 
+class SemanticTokensLegend {
+  constructor(tokenTypes, tokenModifiers = []) { this.tokenTypes = [...tokenTypes]; this.tokenModifiers = [...tokenModifiers]; }
+}
 class SemanticTokens {
   constructor(data, resultId) { this.data = data; this.resultId = resultId; }
 }
@@ -830,7 +1188,42 @@ function createApi(host, ext) {
   const statusBar = createStatusBarApi({ host, ext, track, Disposable });
   const webviews = createWebviewApi({ host, ext, need, track, Disposable, EventEmitter, Uri, namespace, asExtension });
   const terminals = createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, namespace, asExtension });
+  const colorTheme = () => Object.freeze({ kind: state.colorTheme === 'light' ? ColorThemeKind.Light
+    : state.colorTheme === 'high-contrast' ? ColorThemeKind.HighContrast : state.colorTheme === 'high-contrast-light' ? ColorThemeKind.HighContrastLight : ColorThemeKind.Dark });
+  function setStatusBarMessage(text, timeoutOrThenable) {
+    const messages = state.statusMessages ||= [];
+    const item = statusBar.createStatusBarItem(); item.text = String(text);
+    let disposed = false; let timer;
+    const entry = { item }; messages.at(-1)?.item.hide(); messages.push(entry); item.show();
+    const disposable = track(new Disposable(() => {
+      if (disposed) return;
+      disposed = true; clearTimeout(timer);
+      const index = messages.indexOf(entry); const last = index === messages.length - 1;
+      if (index >= 0) messages.splice(index, 1);
+      item.dispose(); if (last) messages.at(-1)?.item.show();
+    }));
+    if (typeof timeoutOrThenable === 'number') timer = setTimeout(() => disposable.dispose(), Math.max(0, timeoutOrThenable));
+    else if (timeoutOrThenable) Promise.resolve(timeoutOrThenable).then(() => disposable.dispose(), () => disposable.dispose());
+    return disposable;
+  }
+  function fileDialogOptions(options = {}) {
+    if (options.defaultUri && options.defaultUri.scheme !== 'file') throw new Error('Native dialogs currently require a file URI.');
+    return { title: options.title, defaultPath: options.defaultUri?.fsPath, canSelectFiles: options.canSelectFiles,
+      canSelectFolders: options.canSelectFolders, canSelectMany: options.canSelectMany,
+      filters: options.filters && Object.entries(options.filters).map(([name, extensions]) => ({ name, extensions })) };
+  }
   const window = namespace('window', {
+    setStatusBarMessage,
+    get activeColorTheme() { return colorTheme(); },
+    onDidChangeActiveColorTheme: (listener, thisArg, disposables) => track(host.events.on('colorTheme')(asExtension(() => listener.call(thisArg, colorTheme())), undefined, disposables)),
+    async showOpenDialog(options) {
+      const selected = await request('ui/showOpenDialog', { extension: ext.id, options: fileDialogOptions(options) });
+      return selected == null ? undefined : selected.map(file => Uri.file(file));
+    },
+    async showSaveDialog(options) {
+      const selected = await request('ui/showSaveDialog', { extension: ext.id, options: fileDialogOptions(options) });
+      return selected == null ? undefined : Uri.file(selected);
+    },
     registerTreeDataProvider: trees.registerTreeDataProvider,
     createTreeView: trees.createTreeView,
     showInformationMessage: message('info'),
@@ -942,6 +1335,8 @@ function createApi(host, ext) {
   const env = namespace('env', {
     appName: 'OpenMind Studio',
     appHost: 'desktop',
+    uiKind: UIKind.Desktop,
+    remoteName: undefined,
     language: 'en',
     uriScheme: 'openmind',
     machineId: 'openmind-studio',
@@ -1023,8 +1418,10 @@ function createApi(host, ext) {
     CompletionList,
     CodeAction,
     CodeActionKind,
-    SemanticTokens, SemanticTokensBuilder, SemanticTokensEdit, SemanticTokensEdits,
+    SemanticTokens, SemanticTokensBuilder, SemanticTokensEdit, SemanticTokensEdits, SemanticTokensLegend,
     Color, ColorInformation, ColorPresentation, InlayHint, InlayHintLabelPart, InlayHintKind,
+    InlineCompletionItem, InlineCompletionList, InlineCompletionTriggerKind,
+    ColorThemeKind, UIKind,
     CodeLens,
     DocumentLink,
     SymbolKind,
@@ -1068,6 +1465,7 @@ function createApi(host, ext) {
     TreeItemCollapsibleState,
     ThemeIcon,
   };
+  Object.assign(api, publicEnums);
   const result = namespace('', api);
   cleanups.set(result, () => {
     for (const disposable of [...tracked].reverse()) {

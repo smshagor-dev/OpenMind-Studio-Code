@@ -11,7 +11,9 @@ test('all exported numeric enums match official VS Code 1.85 declarations', () =
   const { api } = fixture();
   for (const [name, expected] of Object.entries(enums.values)) {
     assert.ok(Object.hasOwn(api, name), `${name} missing`);
-    assert.deepEqual(api[name], expected, name);
+    const runtime = { ...expected };
+    for (const [key, value] of Object.entries(expected)) runtime[value] = key;
+    assert.deepEqual(api[name], runtime, name);
   }
   disposeApi(api);
 });

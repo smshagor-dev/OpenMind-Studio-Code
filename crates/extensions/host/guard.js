@@ -20,7 +20,7 @@ function permissionError(permission) {
   return error;
 }
 
-const PROCESS_MODULES = new Set(['child_process', 'cluster']);
+const PROCESS_MODULES = new Set(['child_process', 'cluster', 'worker_threads']);
 const NETWORK_MODULES = new Set(['net', 'http', 'https', 'http2', 'tls', 'dgram', 'dns', 'dns/promises']);
 
 /** The module name without `node:`, or the same name. */

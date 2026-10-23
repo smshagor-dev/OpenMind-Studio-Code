@@ -17,6 +17,7 @@
 const Module = require('module');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL, fileURLToPath } = require('url');
 const { AsyncLocalStorage } = require('async_hooks');
 const { createApi, disposeApi, setUnsupportedReporter } = require('./vscode.js');
 const { createGuard, permissionError, modulePermission } = require('./guard.js');
@@ -165,6 +166,12 @@ host.activateByEvent = async event => {
 
 // Which extension's `require('vscode')` is this? Decided by the requiring file's location.
 const originalLoad = Module._load;
+let moduleGeneration = 0;
+let bridgeSerial = 0;
+const moduleBridges = new Map();
+const bridgeOwners = new Map();
+const bridgeSources = new Map();
+const esmOwners = new Map();
 const guards = new Map();
 const activations = new Map();
 const activationWaits = new Map();
@@ -188,8 +195,10 @@ function guardOf(id) {
 }
 function ownerOf(parent) {
   const file = parent && parent.filename ? path.resolve(parent.filename) : '';
+  const bridge = bridgeOwners.get(file);
+  if (bridge && state.running.get(bridge.id)?.generation === bridge.generation) return bridge.id;
   for (const [id] of state.running) {
-    const root = path.resolve(state.extensions.get(id).path);
+    const root = state.running.get(id).root || path.resolve(state.extensions.get(id).path);
     if (file === root || file.startsWith(root + path.sep)) return id;
   }
   return null;
@@ -207,6 +216,76 @@ Module._load = function (requested, parent, isMain) {
   }
   return originalLoad.apply(this, arguments);
 };
+
+// Synchronous native hooks cover ESM imports while the CJS shim above continues
+// to own require(). Bridge modules expose the same guarded objects, never raw fs
+// or process/network modules. Their virtual CommonJS source lives only in host memory.
+// https://nodejs.org/docs/latest-v24.x/api/module.html#moduleregisterhooksoptions
+function esmBridge(id, requested) {
+  const run = state.running.get(id);
+  const key = `${id}:${run.generation}:${requested}`;
+  if (moduleBridges.has(key)) return moduleBridges.get(key);
+  const file = `${__filename}.bridge-${++bridgeSerial}.cjs`;
+  const value = requested === 'vscode' ? run.api : originalLoad.call(Module, requested, module, false);
+  const names = Object.keys(value).filter(name => name !== 'default' && /^[A-Za-z_$][\w$]*$/.test(name));
+  // Static assignments let Node discover named exports from this CommonJS bridge.
+  const source = names.map(name => `exports.${name} = undefined;`).join('\n') + `\nconst value = require(${JSON.stringify(requested)}); module.exports = value;\n`;
+  bridgeSources.set(pathToFileURL(file).href, source);
+  bridgeOwners.set(file, { id, generation: run.generation });
+  moduleBridges.set(key, file);
+  return file;
+}
+if (typeof Module.registerHooks === 'function') Module.registerHooks({
+  resolve(specifier, context, nextResolve) {
+    // require() already passes through Module._load. Rewriting it here would
+    // recursively wrap the bridge's own require() of the guarded builtin.
+    if (!context.conditions.includes('import')) return nextResolve(specifier, context);
+    const parentOwner = esmOwners.get(context.parentURL);
+    let owner = parentOwner && state.running.get(parentOwner.id)?.generation === parentOwner.generation ? parentOwner.id : null;
+    if (!owner && context.parentURL?.startsWith('file:')) {
+      try { owner = ownerOf({ filename: fileURLToPath(context.parentURL) }); } catch { /* Not a file parent. */ }
+    }
+    if (!owner) return nextResolve(specifier, context);
+    const bare = specifier.startsWith('node:') ? specifier.slice(5) : specifier;
+    if (specifier === 'vscode' || bare === 'fs' || bare === 'fs/promises' || modulePermission(specifier)) {
+      // Refuse before loading a forbidden process/network builtin at all.
+      if (specifier !== 'vscode') guardOf(owner).moduleFor(specifier, () => originalLoad.call(Module, specifier, module, false));
+      return { url: pathToFileURL(esmBridge(owner, specifier)).href, shortCircuit: true };
+    }
+    const resolved = nextResolve(specifier, context);
+    if (resolved.url.startsWith('file:')) {
+      const url = new URL(resolved.url);
+      url.searchParams.set('__openmind_generation', String(state.running.get(owner).generation));
+      esmOwners.set(url.href, { id: owner, generation: state.running.get(owner).generation });
+      return { ...resolved, url: url.href };
+    }
+    return resolved;
+  },
+  load(url, context, nextLoad) {
+    const source = bridgeSources.get(url);
+    return source === undefined ? nextLoad(url, context) : { format: 'commonjs', source, shortCircuit: true };
+  },
+});
+
+async function extensionModule(file, run) {
+  let esm = path.extname(file) === '.mjs';
+  if (path.extname(file) === '.js') {
+    for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
+      const packageFile = path.join(dir, 'package.json');
+      if (fs.existsSync(packageFile)) { esm = JSON.parse(fs.readFileSync(packageFile, 'utf8')).type === 'module'; break; }
+      if (path.dirname(dir) === dir) break;
+    }
+  }
+  if (!esm) {
+    try { return require(file); }
+    catch (error) { if (error.code !== 'ERR_REQUIRE_ESM' && error.code !== 'ERR_REQUIRE_ASYNC_MODULE' && error.code !== 'ERR_MODULE_NOT_FOUND') throw error; }
+  }
+  if (typeof Module.registerHooks !== 'function') throw new Error('This ES module extension requires a newer Node.js runtime. Update Node.js in Runtime Manager and restart the extension host.');
+  const url = pathToFileURL(file); url.searchParams.set('__openmind_generation', String(run.generation));
+  esmOwners.set(url.href, { id: run.context.extension.id, generation: run.generation });
+  const value = await import(url.href);
+  return Object.hasOwn(value, 'module.exports') ? value.default : value;
+}
 
 // fetch and WebSocket are globals: whoever is running (see `als`) needs the 'network' permission.
 function guardGlobals() {
@@ -279,6 +358,7 @@ const handlers = {
     state.isTrusted = params.isTrusted === true;
     for (const extension of params.extensions || []) state.extensions.set(extension.id, extension);
     state.configuration = params.configuration || {};
+    state.colorTheme = params.colorTheme || state.colorTheme || "dark";
     state.workspaceFolders = params.workspaceFolders || [];
     for (const doc of params.documents || []) state.documents.set(doc.path, doc);
     state.activeEditor = params.activeEditor || null;
@@ -452,12 +532,12 @@ async function activateOnce(params, chain) {
       secrets: secretStorage(descriptor.id),
     };
     const api = createApi(host, descriptor);
-    const run = { module: null, exports: undefined, context, api, subscriptions, activating: true };
+    const run = { module: null, exports: undefined, context, api, subscriptions, activating: true, generation: ++moduleGeneration, root: fs.realpathSync(descriptor.path) };
     state.running.set(descriptor.id, run);
     try {
       fs.mkdirSync(descriptor.globalStorage, { recursive: true });
       fs.mkdirSync(descriptor.logPath, { recursive: true });
-      run.module = require(file);
+      run.module = await extensionModule(file, run);
       if (run.module && typeof run.module.activate === 'function') {
         run.exports = await run.module.activate(context);
       } else {
@@ -512,6 +592,13 @@ function secretStorage(extensionId) {
 }
 
 function purgeExtensionModules(descriptor) {
+  for (const [url, owner] of esmOwners) if (owner.id === descriptor.id) esmOwners.delete(url);
+  for (const [file, owner] of bridgeOwners) if (owner.id === descriptor.id) {
+    delete require.cache[file]; bridgeOwners.delete(file);
+    bridgeSources.delete(pathToFileURL(file).href);
+  }
+  for (const key of moduleBridges.keys()) if (key.startsWith(descriptor.id + ':')) moduleBridges.delete(key);
+
   // Node caches both the entry module and its local dependencies. Without
   // clearing them, a VSIX update keeps executing the old implementation.
   const root = fs.realpathSync(descriptor.path);
@@ -590,8 +677,14 @@ async function deactivateOnce(id) {
 
 const notifications = {
   'host/configurationChanged': (params) => {
-    state.configuration = params.values || {};
-    events.fire('configuration', { changed: params.changed || [] });
+    if (params.values) {
+      state.configuration = params.values;
+      events.fire('configuration', { changed: params.changed || [] });
+    }
+    if (typeof params.colorTheme === 'string' && params.colorTheme !== state.colorTheme) {
+      state.colorTheme = params.colorTheme;
+      events.fire('colorTheme', params.colorTheme);
+    }
   },
   'host/workspaceFoldersChanged': (params) => {
     const previous = state.workspaceFolders.map(folder => folder.path).sort();

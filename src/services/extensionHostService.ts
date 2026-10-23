@@ -24,6 +24,7 @@ export interface HostServiceDeps {
   bridge: HostBridge;
   sync: HostDocumentSync;
   settingsValues: () => Record<string, unknown>;
+  colorTheme?: () => string;
   workspaceFolders: () => { path: string; name: string }[];
   /** The "Extensions" Output channel. */
   log?: (line: string) => void;
@@ -173,6 +174,7 @@ export class ExtensionHostService {
       const initial = sync.initial();
       const status = await ipc.extHostStart({
         configuration: this.deps.settingsValues(),
+        colorTheme: this.deps.colorTheme?.(),
         workspaceFolders: this.deps.workspaceFolders(),
         documents: initial.documents,
         activeEditor: initial.activeEditor,
@@ -268,3 +270,4 @@ export class ExtensionHostService {
     }
   }
 }
+

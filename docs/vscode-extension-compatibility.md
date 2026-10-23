@@ -9,15 +9,17 @@ This inventory enumerates runtime namespace exports and top-level value exports 
 
 Run: node --test crates/extensions/tests/node/*.test.cjs
 
-Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full frontend suite passed 2,684 tests across 254 files. Full-project TypeScript validation and the Vite production bundle passed. ESLint passed for the advanced-provider adapter and HostBridge; full-project lint was not run. The packaging prebuild needs Cargo metadata and could not run without Cargo. Rust/Tauri and Windows execution remain unverified.
+Verified Linux run on 2026-10-23: 77 Node tests passed, zero failures and one skipped test. The 34 focused frontend tests for Monaco, native dialogs and host editor APIs passed. Full-project TypeScript and scoped ESLint passed. Full frontend regression validation is incomplete. Rust/Tauri and Windows builds were not run; Cargo is unavailable.
 
 - Real child-process host activation: concurrent callers, shared dependencies, dependency exports, manifest cycles, runtime activation cycles, failure rollback/retry, uninstall during activation, concurrent deactivation and command ownership permissions.
 - File operations on actual temporary files: copy, rename, overwrite rejection, missing source after rename, provider delegation and read-only rejection.
 - Permission regression cases: outside destinations, existing symlink targets, future paths under symlinks and dangling symlinks. These are regression checks, not proof of a sandbox.
-- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 23 exported numeric enum objects against the official declaration values. Parent cancellation and late-listener disposal are covered.
+- Core contracts: command thisArg and disposal, nested workspace selection, relative paths and all 58 public numeric enums, including named and reverse mappings, against the official declaration values. Parent cancellation and late-listener disposal are covered.
 - Notebook edits and saves: serializer inputs are copied to keep extension-owned/frozen objects from corrupting transaction state. Save As uses guarded exclusive writes and retains the original document when serialization fails or newer edits arrive.
 - Workbench: real-host tests cover test discovery/execution/cancellation, SCM commands/validation, notebook editing/execution/save, trust grants and adapter permissions. React integration renders the actual dialog against the child-process host. Frontend tests also cover stale responses, dirty notebook retention and failed-edit barriers. Native Tauri rendering remains unverified.
 - Additional provider evidence: real-host/HostBridge tests cover declaration, signature context, selection parent flattening, linked word patterns, on-type edit mapping, lazy link and completion resolution, snippet flags, incomplete results and extra edits. Monaco registrations remain mocked.
+- Native ESM: actual hosts cover default/named vscode imports, guarded builtin namespaces, top-level await, ownership across awaits, package-type and typeless entrypoints, CJS dynamic imports and helper-module reload after disable/update. Synchronous module hooks provide virtual CommonJS bridges without temporary source files. Node keeps historical ESM records until the host process exits; generation tags ensure reactivation loads current code. This is not an OS sandbox.
+- Additional local integrations: inline completions map trigger/selected-suggestion context, snippets, explicit/default word ranges and acceptance commands; stale model replies are discarded. Commands run after an edit or tab closure while released result capabilities are rejected. Open/save dialog requests run through the real stdio host and HostBridge to a mocked native adapter. Native dialog rendering remains unverified. Theme events retain configuration; stacked status messages restore earlier entries and clean up on timeout, settled promises and extension teardown.
 - Advanced language providers: real host/HostBridge/Monaco-adapter tests now cover prepared multi-file rename with versioned text edits, code-action diagnostics/kind context and lazy resolution, CodeLens refresh/resolution, inlay-hint label-part commands/locations/resolution, color presentation edits and full/range semantic tokens with legends and sorted builders. Original extension objects and command arguments stay in the host. Write permissions, symlink escapes, stale/released items, disabled commands, cancellation and deactivation are covered by real-host tests. Extension diagnostic aggregation and change events retain URI identities; builtin LSP diagnostic collections are not mirrored into the host. Monaco registrations remain mocked.
 - Language providers: real stdio-host tests cover references, type definitions, implementations, highlights, nested symbols, folding, selectors and cancellation/disposal. Vitest sends requests through the real host and HostBridge into mocked Monaco registrations to verify coordinate conversion, URI schemes, reference context, disposal and cancellation. This does not establish browser rendering behavior.
 
@@ -29,12 +31,13 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | Testing | Controllers, hierarchical discovery, run profiles, selected execution, results/diffs/output and cancellation are connected to the dedicated workbench and tested with actual extension code. Continuous testing and detailed coverage reporting remain unsupported. This is not a marketplace test-extension certification. |
 | Notebooks | Serializers, file-backed documents/cells, metadata, text edits, controller execution, textual outputs and save are connected to the dedicated workbench. Tests verify actual file persistence and dirty-cell preservation when an extension is disabled. NotebookEdit cell insertion/replacement/deletion and cell/notebook metadata updates now work through notebook-only WorkspaceEdit transactions, with validation before mutation, stable cell identities, reindexing and change events. The workbench supports New notebook, add/delete cells and Save As to a new file; exclusive creation refuses existing destinations and failures retain unsaved source text. Tests cover permissions, symlink containment, invalid/overlapping edits, serialization races and actual UI-to-file persistence. Mixed notebook/text/file WorkspaceEdit transactions, rich output renderers, native Jupyter integration and editor selections/affinity remain unsupported. No undo/redo integration is claimed. |
 | SCM | Providers, resource groups, input validation, selection, accept/resource commands and quick-diff URI resolution are exercised through the real host. The workbench displays groups and can compare original/current text through guarded workspace.fs. Advanced contribution menus/status commands remain incomplete; built-in Git is separate. |
-| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Declaration, signature help/context, selection ranges, linked editing, on-type formatting and document links (including lazy resolution) now connect through the real host and Monaco adapter. Completion preserves trigger context, incomplete lists, insert/replace ranges, snippets, label details, commit characters, tags and lazy resolution with additional edits. Completion acceptance commands route back through host-owned command execution and dispose with the provider. Rename, code actions, CodeLens, inlay hints, colors and document/range semantic tokens now connect through the real host and HostBridge to Monaco. Lazy object/command state remains host-owned; text edits carry document versions and require write permissions and symlink containment. Semantic tokens currently use full results rather than delta optimization. Extension diagnostics can be queried across collections with change events; builtin language-server diagnostics are not mirrored. Call/type hierarchy, inline completions, workspace symbols, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
+| Languages | Completion, hover, definition, document/range formatting and diagnostics retain their implementations. References, type definitions, implementations, document highlights, document symbols and folding are now connected through HostBridge to Monaco. Navigation links preserve URI schemes and selection ranges. Selectors retain scheme/glob/relative bases and are checked in the host. Provider cancellation reaches extension tokens; deactivation and provider disposal cancel outstanding requests. Declaration, signature help/context, selection ranges, linked editing, on-type formatting and document links (including lazy resolution) now connect through the real host and Monaco adapter. Completion preserves trigger context, incomplete lists, insert/replace ranges, snippets, label details, commit characters, tags and lazy resolution with additional edits. Completion acceptance commands route back through host-owned command execution and dispose with the provider. Rename, code actions, CodeLens, inlay hints, colors and document/range semantic tokens now connect through the real host and HostBridge to Monaco. Lazy object/command state remains host-owned; text edits carry document versions and require write permissions and symlink containment. Semantic tokens currently use full results rather than delta optimization. Extension diagnostics can be queried across collections with change events; builtin language-server diagnostics are not mirrored. Inline completions now connect through the host/bridge, including snippets, context, ranges, cancellation/stale-model checks and host-owned acceptance commands. Filter text is checked before returning results, but Monaco also applies its own visibility rules; complete VS Code filter behavior is not certified. Call/type hierarchy, workspace symbols, folding change events and full selector semantics remain incomplete. No browser rendering test was run here. |
 | Tasks/terminals | Existing shell/process task and terminal bridges need live workbench validation. CustomExecution and problem matchers remain unsupported. |
 | Webviews/trees | Existing host modules and UI bridge need actual rendering, restore, messaging, CSP and resource-policy validation. |
-| Lifecycle | Local tests cover the cases above. Recovery after an OS-level host crash, activation timeouts, ESM loading and orphan-process cleanup still need validation or implementation. |
+| Lifecycle | Local tests cover the cases above. Native ESM loading, top-level await and generation-based dependency reload are now covered locally. Recovery after an OS-level host crash, activation timeouts and orphan-process cleanup still need validation or implementation. |
 | Activation events | Rust Trigger currently covers startup, command, language, view and workspace contains. The Node host now activates onFileSystem providers, onNotebook serializers and onDebug/onDebugResolve/onDebugAdapterProtocolTracker/onDebugInitialConfigurations handlers at their actual call sites. Notebook/debug contributions provide implicit type activation, and concurrent activation is coalesced. The SCM workbench emits onView:workbench.scm. These direct Node paths do not expand the Rust Trigger enum; URI/task triggers and a comprehensive event dispatch surface still require work. No invented onTest event is claimed. |
 | Virtual documents | workspace.registerTextDocumentContentProvider now loads read-only content, coalesces concurrent opens, preserves URI query/fragment, refreshes on change with versioned full-replacement text events, cancels superseded reads and removes stale responses. Provider disposal/closure settle reads even when cancellation is ignored. Callbacks retain provider-owner permissions. The UI bridge refreshes an existing preview without switching focus or reopening a closed tab; closing its last tab releases the host mirror. Real-host and actual workspace/preview-service integration tests cover these paths. One provider per scheme is supported; multiple content-provider arbitration and fully editable virtual Monaco models remain unsupported. |
+| Window/environment | Active color theme and change events follow the real theme service. Status messages stack, restore older entries, settle timers/thenables and dispose with their extension. Desktop UIKind and the local remoteName value are exposed. Native open/save dialogs support file URIs, multiple selections and filters; mixed file/folder requests ask which native mode to use. Custom dialog button labels and virtual-scheme dialogs are not supported. Native Tauri/Windows dialogs were not executed. Dynamic quick-input objects, progress notifications, clipboard, URI handlers and broader workbench window events remain incomplete. |
 | Filesystems | Same-scheme file rename and file copy plus custom-provider delegation implemented. Cross-scheme transfers and local directory copy explicitly reject. Local rename overwrite=false has a check/rename race and needs an atomic platform implementation for a strict no-clobber guarantee. Provider file-change events still require integration work. |
 | Profiles/install/marketplace | Existing implementation has not been fully audited or executed here. VSIX install, dependencies, imports, updates, native modules and legal distribution sources require separate end-to-end evidence. |
 | Permissions/isolation | Node require guards are not a security sandbox. Native code, process.binding, alternative loaders, shared module state, file descriptors and filesystem races remain limitations. Do not run hostile extensions as though isolated by these guards. Workspace Trust defaults to untrusted; workbench execution requires an explicit session grant for the exact current roots, and manifests explicitly rejecting untrusted workspaces cannot activate there. These checks are tested; full VS Code restricted-settings semantics and an OS isolation boundary are not provided. |
@@ -67,16 +70,16 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `env.onDidChangeShell` | Unsupported |
 | `env.onDidChangeTelemetryEnabled` | Unsupported |
 | `env.openExternal` | Present; partial or unverified |
-| `env.remoteName` | Unsupported |
+| `env.remoteName` | Present; partial or unverified |
 | `env.sessionId` | Present; partial or unverified |
 | `env.shell` | Present; partial or unverified |
-| `env.uiKind` | Unsupported |
+| `env.uiKind` | Present; partial or unverified |
 | `env.uriScheme` | Present; partial or unverified |
 | `commands.executeCommand` | Present; partial or unverified |
 | `commands.getCommands` | Present; partial or unverified |
 | `commands.registerCommand` | Present; partial or unverified |
 | `commands.registerTextEditorCommand` | Present; partial or unverified |
-| `window.activeColorTheme` | Unsupported |
+| `window.activeColorTheme` | Present; partial or unverified |
 | `window.activeNotebookEditor` | Unsupported |
 | `window.activeTerminal` | Present; partial or unverified |
 | `window.activeTextEditor` | Present; partial or unverified |
@@ -88,7 +91,7 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `window.createTextEditorDecorationType` | Unsupported |
 | `window.createTreeView` | Present; partial or unverified |
 | `window.createWebviewPanel` | Present; partial or unverified |
-| `window.onDidChangeActiveColorTheme` | Unsupported |
+| `window.onDidChangeActiveColorTheme` | Present; partial or unverified |
 | `window.onDidChangeActiveNotebookEditor` | Unsupported |
 | `window.onDidChangeActiveTerminal` | Unsupported |
 | `window.onDidChangeActiveTextEditor` | Present; partial or unverified |
@@ -112,14 +115,14 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `window.registerUriHandler` | Unsupported |
 | `window.registerWebviewPanelSerializer` | Unsupported |
 | `window.registerWebviewViewProvider` | Present; partial or unverified |
-| `window.setStatusBarMessage` | Unsupported |
+| `window.setStatusBarMessage` | Present; partial or unverified |
 | `window.showErrorMessage` | Present; partial or unverified |
 | `window.showInformationMessage` | Present; partial or unverified |
 | `window.showInputBox` | Present; partial or unverified |
 | `window.showNotebookDocument` | Present; partial or unverified |
-| `window.showOpenDialog` | Unsupported |
+| `window.showOpenDialog` | Present; partial or unverified |
 | `window.showQuickPick` | Present; partial or unverified |
-| `window.showSaveDialog` | Unsupported |
+| `window.showSaveDialog` | Present; partial or unverified |
 | `window.showTextDocument` | Present; partial or unverified |
 | `window.showWarningMessage` | Present; partial or unverified |
 | `window.showWorkspaceFolderPick` | Unsupported |
@@ -197,7 +200,7 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `languages.registerHoverProvider` | Present; partial or unverified |
 | `languages.registerImplementationProvider` | Present; partial or unverified |
 | `languages.registerInlayHintsProvider` | Present; partial or unverified |
-| `languages.registerInlineCompletionItemProvider` | Unsupported |
+| `languages.registerInlineCompletionItemProvider` | Present; partial or unverified |
 | `languages.registerInlineValuesProvider` | Unsupported |
 | `languages.registerLinkedEditingRangeProvider` | Present; partial or unverified |
 | `languages.registerOnTypeFormattingEditProvider` | Present; partial or unverified |
@@ -259,13 +262,13 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `Color` | Present; behavior needs per-member verification |
 | `ColorInformation` | Present; behavior needs per-member verification |
 | `ColorPresentation` | Present; behavior needs per-member verification |
-| `ColorThemeKind` | Unsupported |
-| `CommentMode` | Unsupported |
-| `CommentThreadCollapsibleState` | Unsupported |
-| `CommentThreadState` | Unsupported |
+| `ColorThemeKind` | Present; behavior needs per-member verification |
+| `CommentMode` | Present; behavior needs per-member verification |
+| `CommentThreadCollapsibleState` | Present; behavior needs per-member verification |
+| `CommentThreadState` | Present; behavior needs per-member verification |
 | `CompletionItem` | Present; behavior needs per-member verification |
 | `CompletionItemKind` | Present; behavior needs per-member verification |
-| `CompletionItemTag` | Unsupported |
+| `CompletionItemTag` | Present; behavior needs per-member verification |
 | `CompletionList` | Present; behavior needs per-member verification |
 | `CompletionTriggerKind` | Present; behavior needs per-member verification |
 | `ConfigurationTarget` | Present; behavior needs per-member verification |
@@ -276,9 +279,9 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `DebugAdapterInlineImplementation` | Present; behavior needs per-member verification |
 | `DebugAdapterNamedPipeServer` | Unsupported |
 | `DebugAdapterServer` | Present; behavior needs per-member verification |
-| `DebugConfigurationProviderTriggerKind` | Unsupported |
-| `DebugConsoleMode` | Unsupported |
-| `DecorationRangeBehavior` | Unsupported |
+| `DebugConfigurationProviderTriggerKind` | Present; behavior needs per-member verification |
+| `DebugConsoleMode` | Present; behavior needs per-member verification |
+| `DecorationRangeBehavior` | Present; behavior needs per-member verification |
 | `Diagnostic` | Present; behavior needs per-member verification |
 | `DiagnosticRelatedInformation` | Present; behavior needs per-member verification |
 | `DiagnosticSeverity` | Present; behavior needs per-member verification |
@@ -290,54 +293,54 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `DocumentLink` | Present; behavior needs per-member verification |
 | `DocumentSymbol` | Present; behavior needs per-member verification |
 | `EndOfLine` | Present; behavior needs per-member verification |
-| `EnvironmentVariableMutatorType` | Unsupported |
+| `EnvironmentVariableMutatorType` | Present; behavior needs per-member verification |
 | `EvaluatableExpression` | Unsupported |
 | `EventEmitter` | Present; behavior needs per-member verification |
-| `ExtensionKind` | Unsupported |
-| `ExtensionMode` | Unsupported |
-| `FileChangeType` | Unsupported |
+| `ExtensionKind` | Present; behavior needs per-member verification |
+| `ExtensionMode` | Present; behavior needs per-member verification |
+| `FileChangeType` | Present; behavior needs per-member verification |
 | `FileDecoration` | Unsupported |
-| `FilePermission` | Unsupported |
+| `FilePermission` | Present; behavior needs per-member verification |
 | `FileSystemError` | Present; behavior needs per-member verification |
 | `FileType` | Present; behavior needs per-member verification |
 | `FoldingRange` | Present; behavior needs per-member verification |
 | `FoldingRangeKind` | Present; behavior needs per-member verification |
 | `FunctionBreakpoint` | Present; behavior needs per-member verification |
 | `Hover` | Present; behavior needs per-member verification |
-| `IndentAction` | Unsupported |
+| `IndentAction` | Present; behavior needs per-member verification |
 | `InlayHint` | Present; behavior needs per-member verification |
 | `InlayHintKind` | Present; behavior needs per-member verification |
 | `InlayHintLabelPart` | Present; behavior needs per-member verification |
-| `InlineCompletionItem` | Unsupported |
-| `InlineCompletionList` | Unsupported |
-| `InlineCompletionTriggerKind` | Unsupported |
+| `InlineCompletionItem` | Present; behavior needs per-member verification |
+| `InlineCompletionList` | Present; behavior needs per-member verification |
+| `InlineCompletionTriggerKind` | Present; behavior needs per-member verification |
 | `InlineValueEvaluatableExpression` | Unsupported |
 | `InlineValueText` | Unsupported |
 | `InlineValueVariableLookup` | Unsupported |
-| `InputBoxValidationSeverity` | Unsupported |
-| `LanguageStatusSeverity` | Unsupported |
+| `InputBoxValidationSeverity` | Present; behavior needs per-member verification |
+| `LanguageStatusSeverity` | Present; behavior needs per-member verification |
 | `LinkedEditingRanges` | Present; behavior needs per-member verification |
 | `Location` | Present; behavior needs per-member verification |
-| `LogLevel` | Unsupported |
+| `LogLevel` | Present; behavior needs per-member verification |
 | `MarkdownString` | Present; behavior needs per-member verification |
 | `NotebookCellData` | Present; behavior needs per-member verification |
 | `NotebookCellKind` | Present; behavior needs per-member verification |
 | `NotebookCellOutput` | Present; behavior needs per-member verification |
 | `NotebookCellOutputItem` | Present; behavior needs per-member verification |
-| `NotebookCellStatusBarAlignment` | Unsupported |
+| `NotebookCellStatusBarAlignment` | Present; behavior needs per-member verification |
 | `NotebookCellStatusBarItem` | Unsupported |
-| `NotebookControllerAffinity` | Unsupported |
+| `NotebookControllerAffinity` | Present; behavior needs per-member verification |
 | `NotebookData` | Present; behavior needs per-member verification |
 | `NotebookEdit` | Present; behavior needs per-member verification |
-| `NotebookEditorRevealType` | Unsupported |
+| `NotebookEditorRevealType` | Present; behavior needs per-member verification |
 | `NotebookRange` | Present; behavior needs per-member verification |
-| `OverviewRulerLane` | Unsupported |
+| `OverviewRulerLane` | Present; behavior needs per-member verification |
 | `ParameterInformation` | Present; behavior needs per-member verification |
 | `Position` | Present; behavior needs per-member verification |
 | `ProcessExecution` | Present; behavior needs per-member verification |
-| `ProgressLocation` | Unsupported |
+| `ProgressLocation` | Present; behavior needs per-member verification |
 | `QuickInputButtons` | Unsupported |
-| `QuickPickItemKind` | Unsupported |
+| `QuickPickItemKind` | Present; behavior needs per-member verification |
 | `Range` | Present; behavior needs per-member verification |
 | `RelativePattern` | Present; behavior needs per-member verification |
 | `Selection` | Present; behavior needs per-member verification |
@@ -346,11 +349,11 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `SemanticTokensBuilder` | Present; behavior needs per-member verification |
 | `SemanticTokensEdit` | Present; behavior needs per-member verification |
 | `SemanticTokensEdits` | Present; behavior needs per-member verification |
-| `SemanticTokensLegend` | Unsupported |
+| `SemanticTokensLegend` | Present; behavior needs per-member verification |
 | `ShellExecution` | Present; behavior needs per-member verification |
-| `ShellQuoting` | Unsupported |
+| `ShellQuoting` | Present; behavior needs per-member verification |
 | `SignatureHelp` | Present; behavior needs per-member verification |
-| `SignatureHelpTriggerKind` | Unsupported |
+| `SignatureHelpTriggerKind` | Present; behavior needs per-member verification |
 | `SignatureInformation` | Present; behavior needs per-member verification |
 | `SnippetString` | Present; behavior needs per-member verification |
 | `SnippetTextEdit` | Unsupported |
@@ -359,7 +362,7 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `SymbolInformation` | Present; behavior needs per-member verification |
 | `SymbolKind` | Present; behavior needs per-member verification |
 | `SymbolTag` | Present; behavior needs per-member verification |
-| `SyntaxTokenType` | Unsupported |
+| `SyntaxTokenType` | Present; behavior needs per-member verification |
 | `TabInputCustom` | Unsupported |
 | `TabInputNotebook` | Unsupported |
 | `TabInputNotebookDiff` | Unsupported |
@@ -373,32 +376,32 @@ Verified Linux run on 2026-10-23: 72 Node tests passed with zero skips; the full
 | `TaskRevealKind` | Present; behavior needs per-member verification |
 | `TaskScope` | Present; behavior needs per-member verification |
 | `TelemetryTrustedValue` | Unsupported |
-| `TerminalExitReason` | Unsupported |
+| `TerminalExitReason` | Present; behavior needs per-member verification |
 | `TerminalLink` | Unsupported |
-| `TerminalLocation` | Unsupported |
+| `TerminalLocation` | Present; behavior needs per-member verification |
 | `TerminalProfile` | Unsupported |
 | `TestMessage` | Present; behavior needs per-member verification |
 | `TestRunProfileKind` | Present; behavior needs per-member verification |
 | `TestRunRequest` | Present; behavior needs per-member verification |
 | `TestTag` | Present; behavior needs per-member verification |
-| `TextDocumentChangeReason` | Unsupported |
-| `TextDocumentSaveReason` | Unsupported |
+| `TextDocumentChangeReason` | Present; behavior needs per-member verification |
+| `TextDocumentSaveReason` | Present; behavior needs per-member verification |
 | `TextEdit` | Present; behavior needs per-member verification |
-| `TextEditorCursorStyle` | Unsupported |
-| `TextEditorLineNumbersStyle` | Unsupported |
+| `TextEditorCursorStyle` | Present; behavior needs per-member verification |
+| `TextEditorLineNumbersStyle` | Present; behavior needs per-member verification |
 | `TextEditorRevealType` | Present; behavior needs per-member verification |
 | `TextEditorSelectionChangeKind` | Present; behavior needs per-member verification |
 | `ThemeColor` | Present; behavior needs per-member verification |
 | `ThemeIcon` | Present; behavior needs per-member verification |
 | `TreeItem` | Present; behavior needs per-member verification |
-| `TreeItemCheckboxState` | Unsupported |
+| `TreeItemCheckboxState` | Present; behavior needs per-member verification |
 | `TreeItemCollapsibleState` | Present; behavior needs per-member verification |
 | `TypeHierarchyItem` | Unsupported |
-| `UIKind` | Unsupported |
+| `UIKind` | Present; behavior needs per-member verification |
 | `Uri` | Present; behavior needs per-member verification |
 | `ViewColumn` | Present; behavior needs per-member verification |
 | `WorkspaceEdit` | Present; behavior needs per-member verification |
 | `version` | Present; behavior needs per-member verification |
 
-Regenerate this document with the inventory.cjs command above. Behavioral evidence must be updated separately when integration tests run. The implemented subset can be integrated independently of full VS Code parity. Keep the remaining platform and compatibility gaps explicit; merging does not certify unsupported APIs or Windows integration.
+Regenerate this document with the inventory.cjs command above. Behavioral evidence must be updated separately when integration tests run. Current local work remains unpublished until the requested compatibility implementation and integration validation are complete. Keep platform and compatibility gaps explicit; exports, builds and passing tests do not certify unsupported APIs or Windows integration.
 
