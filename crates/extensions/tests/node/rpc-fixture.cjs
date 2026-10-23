@@ -5,14 +5,16 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 // Exercise the actual stdio host, loader and extension API, without a mock host.
-async function fixture(t, definitions) {
+async function fixture(t, definitions, options = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openmind-host-'));
   const extensions = Object.entries(definitions).map(([id, definition]) => {
     const dir = path.join(root, id);
     fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, 'extension.js'), definition.code);
+    fs.writeFileSync(path.join(dir, definition.main || 'extension.js'), definition.code);
+    if (definition.packageType) fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: definition.packageType }));
+    for (const [name, source] of Object.entries(definition.files || {})) { const target = path.join(dir, name); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.writeFileSync(target, source); }
     return {
-      id, path: dir, main: 'extension.js',
+      id, path: dir, main: definition.main || 'extension.js',
       globalStorage: path.join(dir, 'storage'), logPath: path.join(dir, 'logs'),
       permissions: definition.permissions || ['commands'],
       manifest: { extensionDependencies: definition.dependencies || [] },
@@ -42,7 +44,9 @@ async function fixture(t, definitions) {
       messages.push(message);
       if (message.method && message.id === undefined) for (const listener of listeners) listener(message);
       if (message.method && message.id !== undefined) {
-        send({ jsonrpc: '2.0', id: message.id, result: null });
+        Promise.resolve().then(() => options.handleRequest ? options.handleRequest(message.method, message.params) : null)
+          .then(result => send({ jsonrpc: '2.0', id: message.id, result: result ?? null }),
+            error => send({ jsonrpc: '2.0', id: message.id, error: { code: -32603, message: String(error?.message || error) } }));
       } else if (message.id !== undefined) {
         const waiting = pending.get(message.id);
         if (!waiting) continue;

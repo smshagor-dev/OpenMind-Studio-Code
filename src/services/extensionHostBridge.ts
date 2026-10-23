@@ -1,3 +1,7 @@
+import {
+  extensionDialogOptions,
+  type ExtensionDialogs,
+} from "./extensionDialogs";
 import type { ExtensionPromptService } from "./extensionPromptService";
 import type { ExtensionEditorService } from "./extensionEditorService";
 import type { ExtensionTaskService } from "./extensionTasks";
@@ -17,6 +21,7 @@ export interface HostDocument {
 export interface ProviderRegistration {
   handle: string;
   kind:
+    | "inlineCompletion"
     | "completion"
     | "hover"
     | "definition"
@@ -80,6 +85,15 @@ export type ProviderInvoke = ((
     itemIds?: string[];
     itemId?: string;
     context?: {
+      selectedCompletionInfo?: {
+        range: {
+          startLine: number;
+          startColumn: number;
+          endLine: number;
+          endColumn: number;
+        };
+        text: string;
+      };
       only?: string;
       diagnostics?: HostDiagnostic[];
       includeDeclaration?: boolean;
@@ -122,6 +136,7 @@ export interface HostDiagnostic {
 }
 
 export interface BridgeDeps {
+  dialogs?: ExtensionDialogs;
   prompts: ExtensionPromptService;
   output: OutputService;
   /** Sends a request to the host (used to invoke a registered language feature). */
@@ -239,6 +254,14 @@ export class HostBridge {
     switch (method) {
       case "ui/showMessage":
         return this.showMessage(p);
+      case "ui/showOpenDialog":
+        return this.need(this.deps.dialogs, "File dialogs").open(
+          extensionDialogOptions(p.options),
+        );
+      case "ui/showSaveDialog":
+        return this.need(this.deps.dialogs, "File dialogs").save(
+          extensionDialogOptions(p.options),
+        );
       case "ui/showQuickPick":
         return this.deps.prompts.quickPick({
           extension: text(p.extension),

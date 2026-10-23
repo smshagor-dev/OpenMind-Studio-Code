@@ -1,3 +1,4 @@
+import type { MarkerSeverity } from "monaco-editor";
 /** What the extension host returns for language features, and how it maps to Monaco (1-based positions). */
 
 export interface HostRange {
@@ -125,17 +126,10 @@ export function monacoCompletionKind(kind: number | undefined): number {
 export const INSERT_AS_SNIPPET = 4;
 
 /** VS Code's `DiagnosticSeverity` (0 Error ... 3 Hint) -> Monaco's `MarkerSeverity`. */
-export function markerSeverity(severity: number): number {
-  switch (severity) {
-    case 0:
-      return 8;
-    case 1:
-      return 4;
-    case 2:
-      return 2;
-    default:
-      return 1;
-  }
+export function markerSeverity(severity: number): MarkerSeverity {
+  // A wire-format conversion: keep this module free of the Monaco runtime.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-assignment -- Tested conversion from wire severities to the declared Monaco enum values.
+  return severity === 0 ? 8 : severity === 1 ? 4 : severity === 2 ? 2 : 1;
 }
 
 /** A host (0-based) range as Monaco's 1-based one. */
@@ -164,7 +158,7 @@ export interface MarkerInput {
   endLineNumber: number;
   endColumn: number;
   message: string;
-  severity: number;
+  severity: MarkerSeverity;
   tags?: number[];
   source?: string;
   code?: string;

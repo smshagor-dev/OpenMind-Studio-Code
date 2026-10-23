@@ -28,6 +28,8 @@ vi.mock("monaco-editor", () => {
       InlayHintKind: { Type: 1, Parameter: 2 },
       FoldingRangeKind: { Comment: "comment", Imports: "imports", Region: "region" },
       registerCompletionItemProvider: register("completion"),
+      registerInlineCompletionsProvider: register("inlineCompletion"),
+      InlineCompletionTriggerKind: { Automatic: 0, Explicit: 1 },
       registerDefinitionProvider: register("definition"),
       registerTypeDefinitionProvider: register("typeDefinition"),
       registerImplementationProvider: register("implementation"),
@@ -548,4 +550,49 @@ it("connects document colors and color presentations to actual extension classes
     label: "#ff0000",
     textEdit: { range: advancedRange, text: "#ff0000" },
   });
+});
+
+
+it("maps inline trigger/selected context, snippets, filter text and post-edit commands through the host", async () => {
+  const { host } = await integrated(`const v = require('vscode'); let accepted; let trigger;
+    exports.activate = () => {
+      v.commands.registerCommand('inline.accept', value => { accepted = value.get('answer'); });
+      v.commands.registerCommand('inline.state', () => ({ accepted, trigger }));
+      v.languages.registerInlineCompletionItemProvider('javascript', {
+        provideInlineCompletionItems(doc, pos, context) {
+          trigger = context.triggerKind;
+          if (!(context.selectedCompletionInfo.range instanceof v.Range) || context.selectedCompletionInfo.text !== 'value' || pos.character !== 9) throw Error('Inline context lost');
+          const item = new v.InlineCompletionItem(new v.SnippetString('value = $1;'), new v.Range(0,6,0,9), { command: 'inline.accept', title: 'Accept', arguments: [new Map([['answer',42]])] }); item.filterText = 'value';
+          const filtered = new v.InlineCompletionItem('other'); filtered.filterText = 'other';
+          return new v.InlineCompletionList([item, filtered]);
+        }
+      });
+    };`, ['languages', 'commands']);
+  const provider = advancedProvider<Monaco.languages.InlineCompletionsProvider>('inlineCompletion');
+  const model = { getVersionId: () => 1, isDisposed: () => false, getWordAtPosition: () => ({ word: 'val', startColumn: 7, endColumn: 10 }), getValueInRange: () => 'val' } as unknown as Monaco.editor.ITextModel;
+  const context = { triggerKind: 1, selectedSuggestionInfo: { range: { startLineNumber: 1, startColumn: 7, endLineNumber: 1, endColumn: 10 }, text: 'value' } } as Monaco.languages.InlineCompletionContext;
+  const list = await provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, context, advancedToken);
+  expect(list?.items).toHaveLength(1);
+  expect(list?.items[0]).toMatchObject({ insertText: { snippet: 'value = $1;' }, range: { startLineNumber: 1, startColumn: 7, endLineNumber: 1, endColumn: 10 } });
+  expect(await host.request('host/executeCommand', { command: 'inline.state' })).toEqual({ trigger: 0 });
+  const automatic = await provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, { ...context, triggerKind: 0 }, advancedToken);
+  expect(await host.request('host/executeCommand', { command: 'inline.state' })).toEqual({ trigger: 1 });
+  await host.request('host/init', { documents: [{ path: file, languageId: 'javascript', version: 2, text: 'const value = 2;' }] });
+  const command = list?.items[0]?.command; if (!command || !list || !automatic) throw Error('Missing inline completion');
+  await mocked.commands.get(command.id)?.({}, ...(command.arguments ?? []));
+  expect(await host.request('host/executeCommand', { command: 'inline.state' })).toEqual({ accepted: 42, trigger: 1 });
+  provider.disposeInlineCompletions(list, { kind: 'other' }); provider.disposeInlineCompletions(automatic, { kind: 'other' });
+  await host.request('host/executeCommand', { command: 'inline.state' });
+  await expect(mocked.commands.get(command.id)?.({}, ...(command.arguments ?? []))).rejects.toThrow('no longer available');
+});
+
+it("uses the current word as an omitted inline range and rejects responses after the model changes", async () => {
+  await integrated(`const v = require('vscode'); exports.activate = () => v.languages.registerInlineCompletionItemProvider('javascript', { async provideInlineCompletionItems() { await new Promise(resolve => setTimeout(resolve, 30)); return [new v.InlineCompletionItem('value')]; } });`);
+  const provider = advancedProvider<Monaco.languages.InlineCompletionsProvider>('inlineCompletion'); let version = 1;
+  const model = { getVersionId: () => version, isDisposed: () => false, getWordAtPosition: () => ({ word: 'val', startColumn: 7, endColumn: 10 }), getValueInRange: () => 'val' } as unknown as Monaco.editor.ITextModel;
+  const context = { triggerKind: 0 } as Monaco.languages.InlineCompletionContext;
+  const first = await provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, context, advancedToken);
+  expect(first?.items[0]?.range).toEqual({ startLineNumber: 1, startColumn: 7, endLineNumber: 1, endColumn: 10 });
+  const pending = provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, context, advancedToken); version++;
+  expect(await pending).toBeNull(); if (first) provider.disposeInlineCompletions(first, { kind: 'other' });
 });

@@ -1,3 +1,4 @@
+import { nativeExtensionDialogs } from "./extensionDialogs";
 import type { CommandRegistry } from "./commandRegistry";
 import type { DocumentService } from "./documentService";
 import type { EditorService } from "./editorService";
@@ -183,7 +184,11 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
   });
 
   const bridge: HostBridge = new HostBridge({
-    onWorkbenchEvent: (method, params) => extensionWorkbench.handle(method, params),
+    dialogs: nativeExtensionDialogs(async () => {
+      const selected = await prompts.quickPick({ extension: "File picker", items: [{ label: "Files" }, { label: "Folders" }], placeHolder: "Choose what to open", canPickMany: false });
+      return selected === 0 ? "files" : selected === 1 ? "folders" : null;
+    }),
+    onWorkbenchEvent: (method, params) => { extensionWorkbench.handle(method, params); },
     prompts,
     output: deps.output,
     hostRequest: (method, params) => {
@@ -250,6 +255,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     bridge,
     sync,
     settingsValues: () => settings.values(),
+    colorTheme: () => deps.theme.getTheme(),
     onRestarted: () => {
       if (startupFinished) contributions.started(deps.workspacePath());
     },
@@ -258,6 +264,10 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       const path = deps.workspacePath();
       return path === null ? [] : [{ path, name: path.split(/[\\/]/).pop() ?? path }];
     },
+  });
+
+  events.on("themeChanged", ({ theme }) => {
+    if (host.isRunning()) void ipc.extHostNotify("host/configurationChanged", { colorTheme: theme }).catch(() => undefined);
   });
 
   // Activity bar icons and tree views contributed by extensions.

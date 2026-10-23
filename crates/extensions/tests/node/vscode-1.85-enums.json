@@ -6,15 +6,49 @@
       "Mouse": 2,
       "Command": 3
     },
+    "TextEditorCursorStyle": {
+      "Line": 1,
+      "Block": 2,
+      "Underline": 3,
+      "LineThin": 4,
+      "BlockOutline": 5,
+      "UnderlineThin": 6
+    },
+    "TextEditorLineNumbersStyle": {
+      "Off": 0,
+      "On": 1,
+      "Relative": 2
+    },
     "TextEditorRevealType": {
       "Default": 0,
       "InCenter": 1,
       "InCenterIfOutsideViewport": 2,
       "AtTop": 3
     },
+    "OverviewRulerLane": {
+      "Left": 1,
+      "Center": 2,
+      "Right": 4,
+      "Full": 7
+    },
+    "DecorationRangeBehavior": {
+      "OpenOpen": 0,
+      "ClosedClosed": 1,
+      "OpenClosed": 2,
+      "ClosedOpen": 3
+    },
     "EndOfLine": {
       "LF": 1,
       "CRLF": 2
+    },
+    "QuickPickItemKind": {
+      "Separator": -1,
+      "Default": 0
+    },
+    "InputBoxValidationSeverity": {
+      "Info": 1,
+      "Warning": 2,
+      "Error": 3
     },
     "CodeActionTriggerKind": {
       "Invoke": 1,
@@ -56,6 +90,11 @@
     "SymbolTag": {
       "Deprecated": 1
     },
+    "SignatureHelpTriggerKind": {
+      "Invoke": 1,
+      "TriggerCharacter": 2,
+      "ContentChange": 3
+    },
     "CompletionItemKind": {
       "Text": 0,
       "Method": 1,
@@ -85,15 +124,38 @@
       "User": 25,
       "Issue": 26
     },
+    "CompletionItemTag": {
+      "Deprecated": 1
+    },
     "CompletionTriggerKind": {
       "Invoke": 0,
       "TriggerCharacter": 1,
       "TriggerForIncompleteCompletions": 2
     },
+    "InlineCompletionTriggerKind": {
+      "Invoke": 0,
+      "Automatic": 1
+    },
+    "InlayHintKind": {
+      "Type": 1,
+      "Parameter": 2
+    },
     "FoldingRangeKind": {
       "Comment": 1,
       "Imports": 2,
       "Region": 3
+    },
+    "IndentAction": {
+      "None": 0,
+      "Indent": 1,
+      "IndentOutdent": 2,
+      "Outdent": 3
+    },
+    "SyntaxTokenType": {
+      "Other": 0,
+      "Comment": 1,
+      "String": 2,
+      "RegEx": 3
     },
     "ConfigurationTarget": {
       "Global": 1,
@@ -109,6 +171,11 @@
     "DiagnosticTag": {
       "Unnecessary": 1,
       "Deprecated": 2
+    },
+    "LanguageStatusSeverity": {
+      "Information": 0,
+      "Warning": 1,
+      "Error": 2
     },
     "ViewColumn": {
       "Active": -1,
@@ -127,6 +194,25 @@
       "Left": 1,
       "Right": 2
     },
+    "TerminalLocation": {
+      "Panel": 1,
+      "Editor": 2
+    },
+    "ExtensionKind": {
+      "UI": 1,
+      "Workspace": 2
+    },
+    "ExtensionMode": {
+      "Production": 1,
+      "Development": 2,
+      "Test": 3
+    },
+    "ColorThemeKind": {
+      "Light": 1,
+      "Dark": 2,
+      "HighContrast": 3,
+      "HighContrastLight": 4
+    },
     "TaskRevealKind": {
       "Always": 1,
       "Silent": 2,
@@ -136,6 +222,11 @@
       "Shared": 1,
       "Dedicated": 2,
       "New": 3
+    },
+    "ShellQuoting": {
+      "Escape": 1,
+      "Strong": 2,
+      "Weak": 3
     },
     "TaskScope": {
       "Global": 1,
@@ -147,23 +238,103 @@
       "Directory": 2,
       "SymbolicLink": 64
     },
+    "FilePermission": {
+      "Readonly": 1
+    },
+    "FileChangeType": {
+      "Changed": 1,
+      "Created": 2,
+      "Deleted": 3
+    },
+    "UIKind": {
+      "Desktop": 1,
+      "Web": 2
+    },
+    "LogLevel": {
+      "Off": 0,
+      "Trace": 1,
+      "Debug": 2,
+      "Info": 3,
+      "Warning": 4,
+      "Error": 5
+    },
     "TreeItemCollapsibleState": {
       "None": 0,
       "Collapsed": 1,
       "Expanded": 2
     },
+    "TreeItemCheckboxState": {
+      "Unchecked": 0,
+      "Checked": 1
+    },
+    "TerminalExitReason": {
+      "Unknown": 0,
+      "Shutdown": 1,
+      "Process": 2,
+      "User": 3,
+      "Extension": 4
+    },
+    "EnvironmentVariableMutatorType": {
+      "Replace": 1,
+      "Append": 2,
+      "Prepend": 3
+    },
+    "ProgressLocation": {
+      "SourceControl": 1,
+      "Window": 10,
+      "Notification": 15
+    },
+    "TextDocumentChangeReason": {
+      "Undo": 1,
+      "Redo": 2
+    },
+    "TextDocumentSaveReason": {
+      "Manual": 1,
+      "AfterDelay": 2,
+      "FocusOut": 3
+    },
+    "NotebookEditorRevealType": {
+      "Default": 0,
+      "InCenter": 1,
+      "InCenterIfOutsideViewport": 2,
+      "AtTop": 3
+    },
     "NotebookCellKind": {
       "Markup": 1,
       "Code": 2
+    },
+    "NotebookControllerAffinity": {
+      "Default": 1,
+      "Preferred": 2
+    },
+    "NotebookCellStatusBarAlignment": {
+      "Left": 1,
+      "Right": 2
+    },
+    "DebugConsoleMode": {
+      "Separate": 0,
+      "MergeWithParent": 1
+    },
+    "DebugConfigurationProviderTriggerKind": {
+      "Initial": 1,
+      "Dynamic": 2
+    },
+    "CommentThreadCollapsibleState": {
+      "Collapsed": 0,
+      "Expanded": 1
+    },
+    "CommentMode": {
+      "Editing": 0,
+      "Preview": 1
+    },
+    "CommentThreadState": {
+      "Unresolved": 0,
+      "Resolved": 1
     },
     "TestRunProfileKind": {
       "Run": 1,
       "Debug": 2,
       "Coverage": 3
-    },
-    "InlayHintKind": {
-      "Type": 1,
-      "Parameter": 2
     }
   }
 }

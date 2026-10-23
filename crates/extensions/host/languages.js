@@ -57,6 +57,8 @@ function createLanguagesApi(parts) {
       }
     }));
     state.providers.set(handle, { kind, extension: ext.id, invoke: params => {
+      // Accepted commands and result cleanup outlive their editor document.
+      if (params.action === 'command' || params.action === 'release') return invoke(params);
       const doc = document(state.documents.get(params.path));
       if (!doc) throw new Error('The document is not open.');
       if (!matchSelector(selector, doc)) return null;
@@ -129,7 +131,7 @@ function createLanguagesApi(parts) {
       if (action === 'release') { for (const id of params.itemIds || []) if (cache.get(id)?.file === file) cache.delete(id); return null; }
       if (action === 'resolve' || action === 'command') {
         const item = cache.get(itemId);
-        if (!item || item.file !== file || item.version !== doc.version) throw new Error('Language item is stale or no longer available.');
+        if (!item || item.file !== file || (action === 'resolve' && item.version !== doc.version)) throw new Error('Language item is stale or no longer available.');
         if (action === 'command') {
           need('commands');
           if (item.value.disabled) throw new Error('This code action is disabled.');
@@ -218,6 +220,18 @@ function createLanguagesApi(parts) {
           return serialize(value, id, file);
         }) };
       }, { triggerCharacters });
+    },
+    registerInlineCompletionItemProvider(selector, provider) {
+      return cachedProvider('inlineCompletion', selector, async (doc, params, token) => {
+        const selected = params.context?.selectedCompletionInfo;
+        const values = await provider.provideInlineCompletionItems(doc, new Position(params.position.line, params.position.character),
+          { triggerKind: params.context?.triggerKind ?? 1, selectedCompletionInfo: selected && { range: rangeIn(selected.range), text: selected.text } }, token);
+        return Array.isArray(values) ? values : values?.items;
+      }, undefined, (value, id) => {
+        if (value.range && value.range.start.line !== value.range.end.line) throw new Error('Inline completion ranges must be single-line.');
+        return { id, insertText: value.insertText instanceof SnippetString ? { snippet: value.insertText.value } : String(value.insertText ?? ''),
+          range: rangeOut(value.range), filterText: value.filterText, hasCommand: !!value.command };
+      });
     },
     registerRenameProvider(selector, provider) {
       need('languages');

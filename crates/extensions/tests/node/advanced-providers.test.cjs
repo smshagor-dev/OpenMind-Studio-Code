@@ -48,6 +48,7 @@ test('code actions reject stale and released objects instead of running cached c
   const [action] = await host.provide('codeAction');
   assert.equal(await host.provide('codeAction', { action: 'command', itemId: action.id }), 42);
   host.notify('host/documentChanged', { path: host.file, text: 'let changed = 2;', version: 2 });
+  assert.equal(await host.provide('codeAction', { action: 'command', itemId: action.id }), 42);
   await assert.rejects(host.provide('codeAction', { action: 'resolve', itemId: action.id }), /stale/);
   const [fresh] = await host.provide('codeAction');
   await host.provide('codeAction', { action: 'release', itemIds: [fresh.id] });

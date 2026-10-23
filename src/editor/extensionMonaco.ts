@@ -1,3 +1,4 @@
+import { registerInlineHostProvider } from "./extensionInlineCompletions";
 import { registerAdvancedHostProvider } from "./extensionAdvancedProviders";
 import * as monaco from "monaco-editor";
 
@@ -82,6 +83,8 @@ export function registerHostProvider(
   invoke: ProviderInvoke,
   pathOf: (model: monaco.editor.ITextModel) => string | null,
 ): () => void {
+  const inline = registerInlineHostProvider(registration, invoke, pathOf);
+  if (inline) return inline;
   const advanced = registerAdvancedHostProvider(registration, invoke, pathOf);
   if (advanced) return advanced;
   const selector: monaco.languages.LanguageSelector = registration.selector;
