@@ -95,6 +95,8 @@ export function createFakeExtensionsIpc(): ExtensionsIpc & FakeExtensionReads {
     extList: vi.fn().mockResolvedValue(emptyExtensionsSnapshot()),
     extInspectVsix: vi.fn().mockResolvedValue(testExtension()),
     extInstall: vi.fn().mockResolvedValue(testExtension()),
+    extDetectVscode: vi.fn().mockResolvedValue([]),
+    extImportVscode: vi.fn().mockResolvedValue(testExtension()),
     extSetEnabled: vi.fn().mockResolvedValue(testExtension()),
     extUninstall: vi.fn().mockResolvedValue(undefined),
     extGrantPermission: vi.fn().mockResolvedValue(testExtension()),
@@ -123,3 +125,4 @@ export function createFakeExtensionsIpc(): ExtensionsIpc & FakeExtensionReads {
     onExtHostState: vi.fn().mockResolvedValue(() => undefined),
   };
 }
+

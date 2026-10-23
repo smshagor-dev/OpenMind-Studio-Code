@@ -80,6 +80,7 @@ function createWorkspaceApi(parts) {
   const { host, ext, need, track, asExtension, Disposable, EventEmitter, Uri, editors, namespace, toPath } = parts;
   const { state, request } = host;
   const { document } = editors;
+  const contents = require('./contentproviders.js').create({ host, ext, need, track, Disposable, editors, guessLanguage });
   const files = createFileSystemApi({ host, ext, need, track, Disposable, Uri });
 
   const event = (name) => (listener, thisArg, disposables) =>
@@ -91,7 +92,7 @@ function createWorkspaceApi(parts) {
         asExtension((data) =>
           listener(
             name === 'documentChanged'
-              ? { document: document(state.documents.get(data.path) || data), contentChanges: [] }
+              ? { document: document(state.documents.get(data.path) || data), contentChanges: data.contentChanges || [] }
               : document(state.documents.get(data.path) || data),
           ),
         ),
@@ -150,7 +151,9 @@ function createWorkspaceApi(parts) {
   /** A document of a custom scheme, read through its provider (read-only in the editor). */
   async function openSchemeDocument(uri) {
     need('workspaceRead');
+    if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);
     await host.activateByEvent?.(`onFileSystem:${uri.scheme}`);
+    if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);
     const entry = state.fileSystems && state.fileSystems.get(uri.scheme);
     if (!entry) throw new Error(`No file system provider for '${uri.scheme}:' (openTextDocument).`);
     const normalized = normalizeProviderPath(uri.path);
@@ -295,6 +298,7 @@ function createWorkspaceApi(parts) {
     },
     fs: files.fs,
     registerFileSystemProvider: files.registerFileSystemProvider,
+    registerTextDocumentContentProvider: contents.register,
     applyEdit: (edit) => editors.applyEdit(edit),
     onDidOpenTextDocument: documentEvent('documentOpened'),
     onDidCloseTextDocument: documentEvent('documentClosed'),

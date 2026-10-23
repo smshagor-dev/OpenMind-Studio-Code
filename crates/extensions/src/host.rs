@@ -33,6 +33,7 @@ const TERMINALS_JS: &str = include_str!("../host/terminals.js");
 const UNSUPPORTED_JS: &str = include_str!("../host/unsupported.js");
 const TASKS_JS: &str = include_str!("../host/tasks.js");
 const FSPROVIDER_JS: &str = include_str!("../host/fsprovider.js");
+const CONTENTPROVIDERS_JS: &str = include_str!("../host/contentproviders.js");
 const WORKSPACE_JS: &str = include_str!("../host/workspace.js");
 const LANGUAGES_JS: &str = include_str!("../host/languages.js");
 const WORKBENCH_JS: &str = include_str!("../host/workbench.js");
@@ -334,6 +335,7 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
         ("tasks.js", TASKS_JS),
         ("fsprovider.js", FSPROVIDER_JS),
         ("workspace.js", WORKSPACE_JS),
+        ("contentproviders.js", CONTENTPROVIDERS_JS),
         ("languages.js", LANGUAGES_JS),
         ("workbench.js", WORKBENCH_JS),
         ("testing.js", TESTING_JS),

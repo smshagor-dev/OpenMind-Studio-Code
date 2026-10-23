@@ -99,6 +99,7 @@ export interface BridgeDeps {
   showTextDocument?: (path: string, preserveFocus: boolean) => Promise<void>;
   /** Opens a custom-scheme document read-only in a tab. */
   showVirtualDocument?: (request: VirtualDocumentRequest) => Promise<void>;
+  updateVirtualDocument?: (request: VirtualDocumentRequest) => void;
   /** Saves an open document / every open document (`TextDocument.save`, `workspace.saveAll`). */
   saveDocument?: (path: string) => Promise<boolean>;
   saveAll?: () => Promise<boolean>;
@@ -278,6 +279,10 @@ export class HostBridge {
         return;
       case "editor/revealRange":
         this.deps.editorApi?.revealRange(p);
+        return;
+      case "workspace/virtualDocumentChanged":
+        this.deps.updateVirtualDocument?.({ extension: text(p.extension), uri: text(p.uri), scheme: text(p.scheme), path: text(p.path),
+          text: text(p.text), languageId: text(p.languageId) || "plaintext", readonly: true });
         return;
       case "terminal/show":
         this.deps.terminals?.show(p);

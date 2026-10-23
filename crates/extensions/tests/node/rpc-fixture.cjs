@@ -80,7 +80,7 @@ async function fixture(t, definitions) {
     fs.rmSync(root, { recursive: true, force: true });
   });
   await request('host/init', { extensions });
-  return { request, messages, extensions, onNotification(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
+  return { request, messages, extensions, notify(method, params = {}) { send({ jsonrpc: '2.0', method, params }); }, onNotification(listener) { listeners.add(listener); return () => listeners.delete(listener); } };
 }
 
 module.exports = { fixture };

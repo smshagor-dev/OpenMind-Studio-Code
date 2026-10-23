@@ -219,6 +219,13 @@ export class WorkspaceService {
     return this.showDocument(docId, "filePreview", {}).id;
   }
 
+  /** Refreshes an existing virtual preview without opening a tab or changing focus. */
+  updateVirtualDocument(request: Parameters<FilePreviewService["openVirtual"]>[0]): boolean {
+    if (this.filePreviews.virtualId(request.uri) === null) return false;
+    this.filePreviews.openVirtual(request);
+    return true;
+  }
+
   /** Why the text document `docId` has no file preview (or Markdown preview), or null when it has one. */
   filePreviewUnavailableReason(docId: string | null): string | null {
     if (docId === null) return "There is no editor open.";
@@ -774,5 +781,3 @@ export function parentFolder(path: string): string | null {
   if (folder === "") return path.slice(0, 1);
   return /^[A-Za-z]:$/.test(folder) ? `${folder}${path[cut]}` : folder;
 }
-
-

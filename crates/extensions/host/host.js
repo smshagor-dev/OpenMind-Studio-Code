@@ -598,6 +598,7 @@ const notifications = {
   },
   'host/documentClosed': (params) => {
     const doc = state.documents.get(params.path);
+    require('./contentproviders.js').close(host, doc);
     state.documents.delete(params.path);
     events.fire('documentClosed', doc || params);
   },
