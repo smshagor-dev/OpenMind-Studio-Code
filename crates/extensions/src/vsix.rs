@@ -215,6 +215,23 @@ fn add_dir(
     entries.sort_by_key(fs::DirEntry::file_name);
     for entry in entries {
         let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|err| ExtensionError::io("Couldn't inspect extension file", err))?;
+        if metadata.file_type().is_symlink() {
+            return Err(ExtensionError::Refused(format!(
+                "Extension packages cannot contain symlinks: {}",
+                path.display()
+            )));
+        }
+        let canonical_base = base.canonicalize()
+            .map_err(|err| ExtensionError::io("Couldn't resolve extension folder", err))?;
+        let canonical = path.canonicalize()
+            .map_err(|err| ExtensionError::io("Couldn't resolve extension file", err))?;
+        if !canonical.starts_with(&canonical_base) || canonical == canonical_base {
+            return Err(ExtensionError::Refused(
+                "An extension file points outside its folder.".into()
+            ));
+        }
         let relative = path.strip_prefix(base).map_err(|_| {
             ExtensionError::Refused("A file is outside the folder being packed.".into())
         })?;

@@ -83,9 +83,23 @@ process.stderr.write = (chunk) => {
   return true;
 };
 
-// An extension's uncaught error is reported and attributed, never fatal for the host.
-process.on('uncaughtException', (error) => log(who(), 'error', `Uncaught exception: ${error && error.stack ? error.stack : error}`));
-process.on('unhandledRejection', (error) => log(who(), 'error', `Unhandled rejection: ${error && error.stack ? error.stack : error}`));
+// Isolate a failing extension. Keep the shared host up for the other extensions,
+// but do not silently leave its commands and providers active after a crash.
+const quarantined = new Set();
+function extensionFault(kind, error) {
+  const id = who();
+  const message = error && error.stack ? error.stack : String(error);
+  log(id, 'error', `${kind}: ${message}`);
+  if (id !== 'host' && state.running.has(id) && !quarantined.has(id)) {
+    quarantined.add(id);
+    notify('extensions/failed', { id, error: `${kind}: ${error && error.message ? error.message : String(error)}` });
+    setImmediate(() => {
+      void deactivate(id).catch((failure) => log(id, 'error', `Cleanup failed: ${failure}`));
+    });
+  }
+}
+process.on('uncaughtException', (error) => extensionFault('Uncaught exception', error));
+process.on('unhandledRejection', (error) => extensionFault('Unhandled rejection', error));
 
 // ---- state ---------------------------------------------------------------------------------------------------------
 
@@ -101,6 +115,7 @@ const state = {
 };
 
 const host = { state, request, notify, log, als };
+host.activateExtension = (id) => activateWithDependencies(id);
 setUnsupportedReporter((message) => log(who(), 'error', message));
 const events = require('./vscode.js').createEventHub();
 host.events = events;
@@ -157,9 +172,13 @@ function guardGlobals() {
 guardGlobals();
 
 function insideExtension(descriptor, file) {
-  const root = path.resolve(descriptor.path);
-  const resolved = path.resolve(file);
-  return resolved === root || resolved.startsWith(root + path.sep);
+  // A junction or symlink may escape the installed extension directory even
+  // when the lexical path looks safe. Resolve both locations before activating.
+  const root = fs.realpathSync(descriptor.path);
+  const resolved = fs.realpathSync(file);
+  const relative = path.relative(root, resolved);
+  return relative !== '' && relative !== '..' &&
+    !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
 
 function memento(file) {
@@ -210,7 +229,7 @@ const handlers = {
     return { ok: true };
   },
 
-  'host/activate': (params) => als.run(params.id, () => activate(params)),
+  'host/activate': (params) => activateWithDependencies(params.id),
 
   'host/deactivate': async (params) => deactivate(params.id),
 
@@ -250,10 +269,24 @@ const handlers = {
   },
 };
 
+async function activateWithDependencies(id, chain = new Set()) {
+  if (state.running.has(id)) return { activated: false };
+  const descriptor = state.extensions.get(id);
+  if (!descriptor) throw new Error("Extension '" + id + "' is not enabled or registered.");
+  if (chain.has(id)) throw new Error("Circular extension dependency involving " + id);
+  chain.add(id);
+  for (const dependency of descriptor.manifest?.extensionDependencies || []) {
+    await activateWithDependencies(dependency.toLowerCase(), chain);
+  }
+  chain.delete(id);
+  return als.run(id, () => activate({ id }));
+}
+
 async function activate(params) {
   {
     const descriptor = state.extensions.get(params.id);
     if (!descriptor) throw new Error(`Extension '${params.id}' is not known to the extension host.`);
+    if (quarantined.has(params.id)) throw new Error(`Extension '${params.id}' failed in this host session. Restart the extension host to retry.`);
     if (state.running.has(params.id)) return { activated: false };
     if (!descriptor.main) return { activated: false, note: 'This extension has no code to run.' };
     const mainFile = path.resolve(descriptor.path, descriptor.main);
@@ -284,11 +317,13 @@ async function activate(params) {
       fs.mkdirSync(descriptor.logPath, { recursive: true });
       run.module = require(file);
       if (run.module && typeof run.module.activate === 'function') {
-        await run.module.activate(context);
+        run.exports = await run.module.activate(context);
+      } else {
+        run.exports = run.module;
       }
     } catch (error) {
-      cleanup(run);
-      state.running.delete(descriptor.id);
+      // Also unregister commands/providers created before activation failed.
+      await deactivate(descriptor.id);
       const message = error && error.message ? error.message : String(error);
       log(descriptor.id, 'error', `Activation failed: ${error && error.stack ? error.stack : message}`);
       throw new Error(`Activating ${descriptor.id} failed: ${message}`);

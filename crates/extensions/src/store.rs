@@ -58,6 +58,13 @@ fn describe(
     enabled: bool,
 ) -> InstalledExtension {
     let mut warnings = Vec::new();
+    if !crate::manifest::engine_compatible(&manifest) {
+        warnings.push(format!(
+            "Requires VS Code engine {}, but OpenMind Studio currently exposes a {} API subset.",
+            manifest.engines_vscode.as_deref().unwrap_or("unknown"),
+            crate::manifest::EXTENSION_API_VERSION
+        ));
+    }
     if manifest.activation_events.contains(&ActivationEvent::Star) {
         warnings
             .push("Activates at every start-up (\"*\"), which can slow the app down.".to_string());
@@ -241,13 +248,21 @@ impl ExtensionStore {
                 tracing::warn!(%err, "an extension folder couldn't be listed");
             }
         }
-        let ids: Vec<String> = listing.extensions.iter().map(|e| e.id.clone()).collect();
+        let dependencies: std::collections::HashMap<String, bool> = listing
+            .extensions
+            .iter()
+            .map(|extension| (extension.id.clone(), extension.enabled))
+            .collect();
         for extension in &mut listing.extensions {
             for dependency in &extension.manifest.extension_dependencies {
-                if !ids.contains(&dependency.to_lowercase()) {
-                    extension
-                        .warnings
-                        .push(format!("Requires {dependency}, which isn't installed."));
+                match dependencies.get(&dependency.to_lowercase()) {
+                    None => extension.warnings.push(format!(
+                        "Requires {dependency}, which isn't installed."
+                    )),
+                    Some(false) => extension.warnings.push(format!(
+                        "Requires {dependency}, which is disabled."
+                    )),
+                    Some(true) => {}
                 }
             }
         }
@@ -355,15 +370,40 @@ impl ExtensionStore {
             let _ = fs::remove_dir_all(&staging);
             return Err(error);
         }
+        let backup = self.paths.staging.join(format!(
+            "{folder}-backup-{}-{unique}", std::process::id()
+        ));
         if let Some(existing) = &previous {
-            self.remove_folder(existing)?;
+            let base = if existing.enabled {
+                &self.paths.installed
+            } else {
+                &self.paths.disabled
+            };
+            let source = ensure_inside(base, &existing.path)?;
+            if let Err(err) = fs::rename(&source, &backup) {
+                let _ = fs::remove_dir_all(&staging);
+                return Err(ExtensionError::io("Couldn't back up the installed extension", err));
+            }
         }
         if let Err(err) = fs::rename(&staging, &target) {
+            if previous.is_some() {
+                if let Err(restore_error) = fs::rename(&backup, &target) {
+                    return Err(ExtensionError::Refused(format!(
+                        "Extension replacement failed: {err}; restoring the previous version also failed: {restore_error}. Backup remains at {}",
+                        backup.display()
+                    )));
+                }
+            }
             let _ = fs::remove_dir_all(&staging);
             return Err(ExtensionError::io(
                 format!("Couldn't move the extension into {}", target.display()),
                 err,
             ));
+        }
+        if previous.is_some() {
+            if let Err(err) = fs::remove_dir_all(&backup) {
+                tracing::warn!(path = %backup.display(), %err, "couldn't remove extension backup");
+            }
         }
         self.find(&manifest.id())
     }

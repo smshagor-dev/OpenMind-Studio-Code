@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use openmind_extensions::host::HostStart;
 use openmind_extensions::{
-    extensions_for, host_descriptor, resolve_host_node, ExtensionError, ExtensionHost, Trigger,
+    activation_order, extensions_for, host_descriptor, resolve_host_node, ExtensionError, ExtensionHost, Trigger,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -214,26 +214,30 @@ pub async fn ext_host_request(
 }
 
 async fn activate(state: &AppState, host: &Arc<ExtensionHost>, id: &str) -> Result<Value, String> {
-    let enabled = state
-        .extensions
-        .store
-        .find(id)
-        .map(|extension| extension.enabled)
-        .unwrap_or(false);
-    if !enabled {
-        return Err(format!("{id} is not enabled."));
+    let installed = state.extensions.store.list().extensions;
+    let order = activation_order(&installed, &[id.to_string()])?;
+    let mut result = Value::Null;
+    for extension_id in order {
+        // A dependency can be shared by several requested extensions.
+        if lock(&state.extensions.activity)
+            .get(&extension_id)
+            .is_some_and(|activity| activity.active)
+        {
+            continue;
+        }
+        let requested_id = extension_id.clone();
+        let host = Arc::clone(host);
+        let outcome = tokio::task::spawn_blocking(move || {
+            host.request("host/activate", json!({ "id": requested_id }), ACTIVATE_TIMEOUT)
+        })
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(|err| err.to_string());
+        let recorded = outcome.as_ref().map(|_| ()).map_err(Clone::clone);
+        state.extensions.record_activation(&extension_id, &recorded);
+        result = outcome.map_err(|error| format!("{extension_id}: {error}"))?;
     }
-    let host = Arc::clone(host);
-    let id_owned = id.to_string();
-    let result = tokio::task::spawn_blocking(move || {
-        host.request("host/activate", json!({ "id": id_owned }), ACTIVATE_TIMEOUT)
-    })
-    .await
-    .map_err(|err| err.to_string())?
-    .map_err(|err| err.to_string());
-    let recorded = result.as_ref().map(|_| ()).map_err(Clone::clone);
-    state.extensions.record_activation(id, &recorded);
-    result
+    Ok(result)
 }
 
 #[tauri::command]

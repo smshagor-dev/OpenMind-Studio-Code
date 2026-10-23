@@ -35,6 +35,21 @@ pub struct Manifest {
 /// Publisher used when a package has none (allowed by `vsce` for local packages).
 pub const NO_PUBLISHER: &str = "local";
 
+/// The compatibility surface exposed by the current extension host. This
+/// checks the manifest's minimum VS Code engine, not API parity.
+pub const EXTENSION_API_VERSION: &str = "1.85.0";
+
+pub fn engine_compatible(manifest: &Manifest) -> bool {
+    let Some(range) = manifest.engines_vscode.as_deref() else {
+        return true;
+    };
+    let Ok(request) = semver::VersionReq::parse(range) else {
+        return false;
+    };
+    request.matches(&semver::Version::new(1, 85, 0))
+}
+
+
 /// The command the app activates task providers with when the user opens Terminal > Run Task... (VS Code's name).
 pub const RUN_TASK_COMMAND: &str = "workbench.action.tasks.runTask";
 
