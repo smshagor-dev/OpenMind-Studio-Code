@@ -15,6 +15,8 @@ export type CodeEditorLike = Partial<
     | "revealRangeInCenterIfOutsideViewport"
     | "executeEdits"
     | "getRawOptions"
+    | "getVisibleRanges"
+    | "onDidScrollChange"
   >
 > &
   Pick<
@@ -32,6 +34,27 @@ export type CodeEditorLike = Partial<
     | "onDidChangeModelLanguage"
     | "onDidChangeModelOptions"
   >;
+
+export interface VisibleEditorState {
+  id: string;
+  uri: string;
+  groupId?: string;
+  viewColumn: number;
+  active: boolean;
+  selections: HostSelection[];
+  tabSize: number;
+  insertSpaces: boolean;
+  visibleRanges: HostRange[];
+  selectionKind: number;
+}
+
+interface EditorIdentity {
+  id: string;
+  uri: string;
+  groupId?: string;
+  viewColumn?: () => number;
+  selectionKind: number;
+}
 
 /** User-toggleable editor view options (VS Code's View / Selection menu toggles). */
 export interface EditorViewOptions {
@@ -127,6 +150,8 @@ export interface RevealRequest {
 export class EditorService {
   private editor: CodeEditorLike | null = null;
   private readonly editors = new Set<CodeEditorLike>();
+  private readonly identities = new Map<CodeEditorLike, EditorIdentity>();
+  private nextEditorId = 0;
   private extensionActions: ExtensionEditorAction[] = [];
   private aiActions: ExtensionEditorAction[] = [];
   private formatActions: ExtensionEditorAction[] = [];
@@ -282,17 +307,24 @@ export class EditorService {
   }
 
   /** Registers `editor` (and makes it current); returns the matching detach function. */
-  attach(editor: CodeEditorLike): () => void {
+  attach(editor: CodeEditorLike, location: { groupId?: string; viewColumn?: () => number } = {}): () => void {
     this.editors.add(editor);
+    this.identities.set(editor, { id: "", uri: "", selectionKind: 3, ...location });
     this.editor = editor;
     this.applyOptions();
     this.applyActions(editor);
     for (const listener of this.attachListeners) this.addCleanup(editor, listener(editor));
     const refresh = () => {
+      this.identityOf(editor);
       if (this.editor === editor) this.refreshStatus();
+      else this.notify();
     };
     const disposables = [
-      editor.onDidChangeCursorSelection(refresh),
+      editor.onDidChangeCursorSelection((event?: { source?: string }) => {
+        const identity = this.identityOf(editor);
+        if (identity) identity.selectionKind = event?.source === "keyboard" ? 1 : event?.source === "mouse" ? 2 : 3;
+        refresh();
+      }),
       editor.onDidChangeModel(() => {
         refresh();
         this.applyPendingReveal();
@@ -304,6 +336,9 @@ export class EditorService {
         this.refreshStatus();
       }),
     ];
+    const scroll = editor.onDidScrollChange?.(() => { this.notify(); });
+    if (scroll) disposables.push(scroll);
+    this.identityOf(editor);
     this.refreshStatus();
     this.applyPendingReveal();
     return () => {
@@ -311,13 +346,14 @@ export class EditorService {
         disposable.dispose();
       }
       this.editors.delete(editor);
+      this.identities.delete(editor);
       this.disposeActions(editor);
       for (const cleanup of this.cleanups.get(editor) ?? []) cleanup();
       this.cleanups.delete(editor);
       if (this.editor === editor) {
         this.editor = [...this.editors].pop() ?? null;
         this.refreshStatus();
-      }
+      } else this.notify();
     };
   }
 
@@ -357,9 +393,41 @@ export class EditorService {
 
   // --- What extensions see and do in an editor (selections, options, reveal), by the model's URI ---
 
-  private editorShowing(uri: string): CodeEditorLike | undefined {
+  private identityOf(editor: CodeEditorLike): EditorIdentity | undefined {
+    const identity = this.identities.get(editor);
+    const uri = editor.getModel()?.uri.toString() ?? "";
+    if (identity && identity.uri !== uri) {
+      identity.uri = uri;
+      identity.id = `text-editor-${++this.nextEditorId}`;
+      identity.selectionKind = 3;
+    }
+    return identity;
+  }
+
+  snapshotEditors(): VisibleEditorState[] {
+    const result: VisibleEditorState[] = [];
+    for (const editor of this.editors) {
+      const identity = this.identityOf(editor), model = editor.getModel();
+      if (!identity || !model || model.isDisposed()) continue;
+      const options = model.getOptions();
+      const viewColumn = identity.viewColumn?.() ?? [...this.editors].indexOf(editor) + 1;
+      if (viewColumn < 1) continue;
+      result.push({
+        id: identity.id, uri: identity.uri, groupId: identity.groupId,
+        viewColumn,
+        active: editor === this.editor,
+        selections: (editor.getSelections() ?? []).map(s => ({ anchorLine: s.selectionStartLineNumber - 1, anchorColumn: s.selectionStartColumn - 1, activeLine: s.positionLineNumber - 1, activeColumn: s.positionColumn - 1 })),
+        tabSize: options.tabSize, insertSpaces: options.insertSpaces,
+        visibleRanges: (editor.getVisibleRanges?.() ?? []).map(range => ({ startLine: range.startLineNumber - 1, startColumn: range.startColumn - 1, endLine: range.endLineNumber - 1, endColumn: range.endColumn - 1 })),
+        selectionKind: identity.selectionKind,
+      });
+    }
+    return result.sort((left, right) => left.viewColumn - right.viewColumn);
+  }
+
+  private editorShowing(uri: string, editorId?: string): CodeEditorLike | undefined {
     const candidates = this.editor ? [this.editor, ...this.editors] : [...this.editors];
-    return candidates.find((editor) => editor.getModel()?.uri.toString() === uri);
+    return candidates.find(editor => editor.getModel()?.uri.toString() === uri && (editorId === undefined || this.identityOf(editor)?.id === editorId));
   }
 
   /** The selections of the editor showing this model (host coordinates, 0-based), or `null` if none shows it. */
@@ -380,8 +448,8 @@ export class EditorService {
     return options ? { tabSize: options.tabSize, insertSpaces: options.insertSpaces } : null;
   }
 
-  setSelectionsFor(uri: string, selections: HostSelection[]): boolean {
-    const editor = this.editorShowing(uri);
+  setSelectionsFor(uri: string, selections: HostSelection[], editorId?: string): boolean {
+    const editor = this.editorShowing(uri, editorId);
     if (!editor?.setSelections) return false;
     editor.setSelections(
       selections.map((s) => ({
@@ -394,8 +462,8 @@ export class EditorService {
     return true;
   }
 
-  setOptionsFor(uri: string, options: { tabSize?: number | "auto"; insertSpaces?: boolean | "auto" }): boolean {
-    const model = this.editorShowing(uri)?.getModel();
+  setOptionsFor(uri: string, options: { tabSize?: number | "auto"; insertSpaces?: boolean | "auto" }, editorId?: string): boolean {
+    const model = this.editorShowing(uri, editorId)?.getModel();
     if (!model) return false;
     if (options.tabSize === "auto" || options.insertSpaces === "auto") {
       const current = model.getOptions();
@@ -409,8 +477,8 @@ export class EditorService {
     return true;
   }
 
-  revealRangeFor(uri: string, range: HostRange, type = 0): boolean {
-    const editor = this.editorShowing(uri);
+  revealRangeFor(uri: string, range: HostRange, type = 0, editorId?: string): boolean {
+    const editor = this.editorShowing(uri, editorId);
     if (!editor) return false;
     const target = {
       startLineNumber: range.startLine + 1,

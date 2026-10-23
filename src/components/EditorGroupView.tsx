@@ -134,7 +134,10 @@ function GroupContent({
         model={container.buffers.get(docId) ?? null}
         theme={MONACO_THEME_MAP[themeKind] ?? "openmind-dark"}
         onEditorMounted={(editor) => {
-          const detach = container.editor.attach(editor);
+          const detach = container.editor.attach(editor, {
+            groupId: group.id,
+            viewColumn: () => container.editorGroups.getState().groups.findIndex(value => value.id === group.id) + 1,
+          });
           const focus = editor.onDidFocusEditorWidget(() => {
             container.workspace.setActiveGroup(group.id);
           });
@@ -153,4 +156,5 @@ function EmptyFirstGroup({ recents }: { recents: Recents }) {
   const welcome = useWelcome();
   return welcome.open ? <WelcomeContent recents={recents} /> : <EditorWatermark />;
 }
+
 

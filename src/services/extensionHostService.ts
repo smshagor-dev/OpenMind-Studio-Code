@@ -178,6 +178,7 @@ export class ExtensionHostService {
         workspaceFolders: this.deps.workspaceFolders(),
         documents: initial.documents,
         activeEditor: initial.activeEditor,
+        ...(initial.visibleEditors ? { visibleEditors: initial.visibleEditors } : {}),
       });
       this.startedAt = Date.now();
       this.setStatus(status);

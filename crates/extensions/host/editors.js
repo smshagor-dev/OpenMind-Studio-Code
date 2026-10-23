@@ -287,12 +287,23 @@ function createEditing(types) {
  * The editor/edit part of one extension's `vscode` API. `host` is the host's shared state, `ext` the extension,
  * `parts` what vscode.js already has (`need`, `track`, `namespace`, the value classes).
  */
-function createEditorApi({ host, ext, need, namespace, types, asExtension, Disposable }) {
+function createEditorApi({ host, ext, need, namespace, types, asExtension, Disposable, track }) {
   const { state, request, notify } = host;
   const { Position, Range, Selection } = types;
   const editing = createEditing(types);
   const documents = new Map();
+  if (track) track(host.events.on('documentWillClose')(data => {
+    const cached = documents.get(data?.path);
+    if (cached) void cached.version;
+  }));
   const editors = new Map();
+  const hiddenEditors = new Map();
+  const collectedEditors = new FinalizationRegistry(({ key, reference }) => {
+    if (hiddenEditors.get(key) === reference) hiddenEditors.delete(key);
+  });
+  const pendingEditors = new Set();
+  let disposed = false;
+  if (track) track(new Disposable(() => { disposed = true; for (const cancel of [...pendingEditors]) cancel(); }));
 
   function document(data) {
     if (!data) return undefined;
@@ -329,8 +340,15 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     return true;
   }
 
-  function makeEditor(filePath) {
-    const active = () => (state.activeEditor && state.activeEditor.path === filePath ? state.activeEditor : null);
+  function makeEditor(filePath, editorId, initial) {
+    let previous = initial;
+    const retainedDocument = document(state.documents.get(filePath));
+    const active = () => {
+      const current = editorId ? state.visibleEditors?.find(value => value.id === editorId) || (state.activeEditor?.id === editorId ? state.activeEditor : null)
+        : state.activeEditor?.path === filePath ? state.activeEditor : null;
+      if (current) previous = current;
+      return current || previous;
+    };
     const wireSelections = () => {
       const now = active();
       return now && Array.isArray(now.selections) && now.selections.length ? now.selections : [{ anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 0 }];
@@ -339,7 +357,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       const selections = list.map((selection) => (selection instanceof Selection ? selection : new Selection(selection.start, selection.end)));
       const now = active();
       if (now) now.selections = selections.map(editing.selectionToWire);
-      notify('editor/setSelections', { extension: ext.id, path: filePath, selections: selections.map(editing.selectionToWire) });
+      notify('editor/setSelections', { extension: ext.id, path: filePath, ...(editorId ? { editorId } : {}), selections: selections.map(editing.selectionToWire) });
     };
     function setOptions(value) {
       if (!value || typeof value !== 'object') throw new TypeError('Editor options must be an object.');
@@ -347,7 +365,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       const { tabSize, insertSpaces } = value;
       if (tabSize !== undefined && tabSize !== 'auto' && (!Number.isInteger(tabSize) || tabSize < 1 || tabSize > 1000)) throw new TypeError('Invalid editor tab size.');
       if (insertSpaces !== undefined && insertSpaces !== 'auto' && typeof insertSpaces !== 'boolean') throw new TypeError('Invalid editor indentation option.');
-      notify('editor/setOptions', { extension: ext.id, path: filePath, options: { tabSize, insertSpaces } });
+      notify('editor/setOptions', { extension: ext.id, path: filePath, ...(editorId ? { editorId } : {}), options: { tabSize, insertSpaces } });
     }
     const editorOptions = {};
     for (const key of ['tabSize', 'insertSpaces']) Object.defineProperty(editorOptions, key, {
@@ -357,7 +375,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     });
     const target = {
       get document() {
-        return document(state.documents.get(filePath));
+        return document(state.documents.get(filePath)) || retainedDocument;
       },
       get selection() {
         return editing.selectionFromWire(wireSelections()[0]);
@@ -375,11 +393,15 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         return editorOptions;
       },
       set options(value) { setOptions(value); },
+      get visibleRanges() {
+        return (active()?.visibleRanges || []).map(range => new Range(range.startLine, range.startColumn, range.endLine, range.endColumn));
+      },
       get viewColumn() {
-        return 1;
+        return active()?.viewColumn ?? 1;
       },
       async edit(callback, options) {
         need('workspaceWrite');
+        if (editorId && !state.visibleEditors?.some(value => value.id === editorId)) return false;
         const doc = state.documents.get(filePath);
         if (!doc) return false;
         checkEditable(filePath);
@@ -396,6 +418,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         notify('editor/revealRange', {
           extension: ext.id,
           path: filePath,
+          ...(editorId ? { editorId } : {}),
           range: { startLine: range.start.line, startColumn: range.start.character, endLine: range.end.line, endColumn: range.end.character },
           type: revealType || 0,
         });
@@ -406,11 +429,64 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   function editor(data) {
     if (!data) return undefined;
-    if (!editors.has(data.path)) editors.set(data.path, makeEditor(data.path));
-    return editors.get(data.path);
+    const key = data.id || data.path;
+    if (!editors.has(key)) {
+      const retained = hiddenEditors.get(key)?.deref();
+      if (retained) collectedEditors.unregister(retained);
+      hiddenEditors.delete(key);
+      editors.set(key, retained || makeEditor(data.path, data.id, data));
+    }
+    return editors.get(key);
   }
 
   const activeEditor = () => editor(state.activeEditor);
+  const visibleEditors = () => (state.visibleEditors || (state.activeEditor ? [state.activeEditor] : [])).map(editor);
+  if (track) track(host.events.on('visibleEditors')(() => {
+    const visible = new Set((state.visibleEditors || []).map(value => value.id || value.path));
+    for (const [key, value] of editors) if (!visible.has(key)) {
+      const reference = new WeakRef(value);
+      hiddenEditors.set(key, reference);
+      collectedEditors.register(value, { key, reference }, value);
+      editors.delete(key);
+    }
+  }));
+
+  async function showEditor(filePath, preserveFocus) {
+    if (disposed) throw new Error('The extension stopped before its editor became visible.');
+    let cancel;
+    const stopped = new Promise((resolve, reject) => { cancel = () => reject(new Error('The extension stopped before its editor became visible.')); });
+    pendingEditors.add(cancel);
+    try {
+      return await Promise.race([
+        request('ui/showTextDocument', { extension: ext.id, path: filePath, preserveFocus: !!preserveFocus }).then(() => editorForPath(filePath)),
+        stopped,
+      ]);
+    } finally { pendingEditors.delete(cancel); }
+  }
+
+  function editorForPath(filePath) {
+    if (disposed) return Promise.reject(new Error('The extension stopped before its editor became visible.'));
+    const canonical = value => /^[a-z]:/i.test(value) ? value.replace(/\\/g, '/').toLowerCase() : require('path').resolve(value);
+    const find = () => {
+      const visible = state.visibleEditors || (state.activeEditor ? [state.activeEditor] : []);
+      const target = visible.find(value => value === state.activeEditor && canonical(value.path) === canonical(filePath))
+        || visible.find(value => canonical(value.path) === canonical(filePath));
+      return target && editor(target);
+    };
+    const existing = find();
+    if (existing || state.visibleEditors === undefined) return Promise.resolve(existing || activeEditor());
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (value, error) => {
+        if (settled) return; settled = true; clearTimeout(timer); listener.dispose(); pendingEditors.delete(cancel);
+        if (error) reject(error); else resolve(value);
+      };
+      const cancel = () => finish(undefined, new Error('The extension stopped before its editor became visible.'));
+      const listener = host.events.on('visibleEditors')(() => { const target = find(); if (target) finish(target); });
+      const timer = setTimeout(() => finish(undefined, new Error('The requested text editor did not become visible.')), 10000);
+      pendingEditors.add(cancel);
+    });
+  }
 
   async function applyEdit(edit) {
     need('workspaceWrite');
@@ -448,14 +524,14 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
   const selectionEvent = (listener, thisArg, disposables) =>
     host.events.on('selectionChanged')(
       asExtension((data) => {
-        const target = editor({ path: data.path });
-        if (target) listener({ textEditor: target, selections: target.selections, kind: TextEditorSelectionChangeKind.Command });
+        const target = editor(data);
+        if (target) listener.call(thisArg, { textEditor: target, selections: target.selections, kind: data.kind || TextEditorSelectionChangeKind.Command });
       }),
       thisArg,
       disposables,
     );
 
-  return { document, editor, activeEditor, applyEdit, selectionEvent, WorkspaceEdit: editing.WorkspaceEdit, Disposable, Position, Range };
+  return { document, editor, activeEditor, visibleEditors, showEditor, applyEdit, selectionEvent, WorkspaceEdit: editing.WorkspaceEdit, Disposable, Position, Range };
 }
 
 module.exports = { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind };
