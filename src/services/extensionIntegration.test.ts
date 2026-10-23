@@ -226,7 +226,8 @@ describe("HostDocumentSync", () => {
     const texts = new Map<string, string>([["doc-1", "one"]]);
     const listeners = new Map<string, () => void>();
     const documents = {
-      fileBackedIds: () => [...texts.keys()],
+      allIds: () => [...texts.keys()],
+      hostPath: (id: string) => `C:/My Site/${id}.txt`,
       has: (id: string) => texts.has(id),
       snapshot: (id: string) => ({ id, path: `C:/My Site/${id}.txt`, dirty: false }),
       languageOf: () => "plaintext",

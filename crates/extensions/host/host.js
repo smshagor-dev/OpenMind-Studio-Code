@@ -713,6 +713,8 @@ const notifications = {
     events.fire('documentChanged', params);
   },
   'host/documentSaved': (params) => {
+    const current = state.documents.get(params.path);
+    if (current) state.documents.set(params.path, { ...current, ...params, isDirty: false });
     events.fire('documentSaved', params);
   },
   'host/documentClosed': (params) => {

@@ -102,7 +102,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
   const pendingDiagnostics = new Map<string, Map<string, MarkerInput[]>>();
 
   const applyDiagnostics = (owner: string, path: string, markers: MarkerInput[]) => {
-    const id = documents.idForPath(path);
+    const id = documents.idForHostPath(path);
     if (id !== null) documents.setMarkers(id, owner, markers);
   };
   const setDiagnostics = (collection: string, path: string, list: HostDiagnostic[]) => {
@@ -115,8 +115,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     applyDiagnostics(owner, path, markers);
   };
   events.on("documentOpened", ({ id }) => {
-    const path = documents.snapshot(id).path;
-    if (path === null) return;
+    const path = documents.hostPath(id);
     for (const [owner, byPath] of pendingDiagnostics) {
       const markers = byPath.get(path);
       if (markers) documents.setMarkers(id, owner, markers);
@@ -132,8 +131,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     visibleEditors: () => deps.editor.snapshotEditors().flatMap(value => {
       const docId = documents.idForModelUri(value.uri);
       if (!docId || !documents.has(docId)) return [];
-      const path = documents.snapshot(docId).path;
-      if (!path) return [];
+      const path = documents.hostPath(docId);
       const activeGroup = deps.activeEditorGroup?.();
       return [{ ...value, path, active: activeGroup ? value.groupId === activeGroup : value.active }];
     }),
@@ -210,6 +208,12 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       readText: async () => (await import("@tauri-apps/plugin-clipboard-manager")).readText(),
       writeText: async value => (await import("@tauri-apps/plugin-clipboard-manager")).writeText(value),
     },
+    createUntitled: (content, language) => {
+      const id = documents.createUntitled(content, language);
+      const data = sync.describe(id);
+      if (!data) throw new Error("The untitled document could not be created.");
+      return data;
+    },
     readDocument: async (path) => {
       const read = await ipc.documentRead(path);
       if (read.state !== "file") return null;
@@ -232,7 +236,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     registerProvider: (registration, invoke) =>
       deps.registerProvider(registration, invoke, (modelUri) => {
         const id = documents.idForModelUri(modelUri);
-        return id === undefined ? null : documents.snapshot(id).path;
+        return id === undefined ? null : documents.hostPath(id);
       }),
     setDiagnostics,
     runCommand: (command, args) => runAnyCommand(command, args),

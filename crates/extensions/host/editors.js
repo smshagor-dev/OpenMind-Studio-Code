@@ -85,7 +85,7 @@ function createEditing(types) {
         return /^[a-z][a-z0-9+.-]+:\/\//.test(filePath) ? Uri.parse(filePath) : Uri.file(filePath);
       },
       get fileName() {
-        return filePath;
+        return data().isUntitled ? Uri.parse(filePath).fsPath : filePath;
       },
       get languageId() {
         return data().languageId;
@@ -96,7 +96,7 @@ function createEditing(types) {
       get isDirty() {
         return !!data().isDirty;
       },
-      isUntitled: false,
+      get isUntitled() { return data().isUntitled === true; },
       get isClosed() {
         return !current();
       },
@@ -358,6 +358,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   /** With a folder open, an open file outside it is the outside-workspace permission's business. */
   function checkEditable(filePath) {
+    if (state.documents.get(filePath)?.isUntitled === true && filePath.startsWith('untitled://')) return;
     const target = resolvedPath(filePath);
     if (state.workspaceFolders.length > 0 && !state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), target))) {
       if (!(ext.permissions || []).includes('filesystemOutsideWorkspace')) throw permissionError('filesystemOutsideWorkspace');
@@ -375,11 +376,11 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   function makeEditor(filePath, editorId, initial) {
     let previous = initial;
-    const retainedDocument = document(state.documents.get(filePath));
+    let retainedDocument = document(state.documents.get(filePath));
     const active = () => {
       const current = editorId ? state.visibleEditors?.find(value => value.id === editorId) || (state.activeEditor?.id === editorId ? state.activeEditor : null)
         : state.activeEditor?.path === filePath ? state.activeEditor : null;
-      if (current) previous = current;
+      if (current) { previous = current; filePath = current.path; retainedDocument = document(state.documents.get(filePath)) || retainedDocument; }
       return current || previous;
     };
     const wireSelections = () => {
@@ -393,6 +394,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       notify('editor/setSelections', { extension: ext.id, path: filePath, ...(editorId ? { editorId } : {}), selections: selections.map(editing.selectionToWire) });
     };
     function setOptions(value) {
+      active();
       if (!value || typeof value !== 'object') throw new TypeError('Editor options must be an object.');
       for (const key of Object.keys(value)) if (!['tabSize', 'insertSpaces'].includes(key)) throw unsupportedError(`TextEditorOptions.${key}`);
       const { tabSize, insertSpaces } = value;
@@ -408,6 +410,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     });
     const target = {
       get document() {
+        active();
         return document(state.documents.get(filePath)) || retainedDocument;
       },
       get selection() {
@@ -433,6 +436,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         return active()?.viewColumn ?? 1;
       },
       async edit(callback, options) {
+        active();
         need('workspaceWrite');
         if (editorId && !state.visibleEditors?.some(value => value.id === editorId)) return false;
         const doc = state.documents.get(filePath);
@@ -448,6 +452,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         return sendEdits(filePath, version, edits, { eol: builder._eol, undoStopBefore: options?.undoStopBefore, undoStopAfter: options?.undoStopAfter });
       },
       setDecorations(type, values) {
+        active();
         if (!decorationTypes.has(type)) throw new Error('The decoration type is disposed or belongs to another extension.');
         if (!Array.isArray(values)) throw new TypeError('Decoration ranges must be a list.');
         if (editorId && !state.visibleEditors?.some(value => value.id === editorId)) return;
@@ -462,6 +467,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         notify('editor/setDecorations', { extension: ext.id, key: type.key, path: filePath, ...(editorId ? { editorId } : {}), decorations });
       },
       async insertSnippet(snippet, location, options) {
+        active();
         need('workspaceWrite');
         if (editorId && !state.visibleEditors?.some(value => value.id === editorId)) return false;
         const doc = state.documents.get(filePath);
@@ -484,6 +490,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         return result?.applied === true;
       },
       revealRange(range, revealType) {
+        active();
         notify('editor/revealRange', {
           extension: ext.id,
           path: filePath,
@@ -566,7 +573,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     }
     const files = [];
     for (const [uri, list] of edit.entries()) {
-      const filePath = uri.fsPath;
+      const filePath = uri.scheme === 'untitled' ? uri.toString() : uri.fsPath;
       const doc = state.documents.get(filePath);
       if (!doc) {
         console.error(`workspace.applyEdit: ${filePath} isn't open, and only open documents can be edited for now.`);
