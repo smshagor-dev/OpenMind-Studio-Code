@@ -88,7 +88,7 @@ function documentsRig(hasTextTab = true) {
     editorsCovered: () => current.covered,
   });
   const tab = { value: hasTextTab };
-  const editor = { insertSnippetFor: vi.fn(() => true) };
+  const editor = { insertSnippetFor: vi.fn<EditorService["insertSnippetFor"]>().mockResolvedValue(true) };
   const service = new ExtensionEditorService({
     documents,
     editor: editor as unknown as EditorService,
@@ -106,21 +106,46 @@ describe("ExtensionEditorService", () => {
     const range = { startLine: 0, startColumn: 0, endLine: 0, endColumn: 5 };
     const request = { path: FILE, version: 1, editorId: "pane", snippet: "${1:hello}",
       ranges: [range], undoStopBefore: false };
-    expect(r.service.insertSnippet({ ...request, version: 99 }).applied).toBe(false);
+    expect((await r.service.insertSnippet({ ...request, version: 99 })).applied).toBe(false);
     r.tab.value = false;
-    expect(r.service.insertSnippet(request).applied).toBe(false);
+    expect((await r.service.insertSnippet(request)).applied).toBe(false);
     r.tab.value = true;
-    expect(r.service.insertSnippet({ ...request, ranges: [{ ...range, endColumn: 999 }] }).applied).toBe(false);
-    expect(r.service.insertSnippet({ ...request, ranges: [range, range] }).applied).toBe(false);
+    expect((await r.service.insertSnippet({ ...request, ranges: [{ ...range, endColumn: 999 }] })).applied).toBe(false);
+    expect((await r.service.insertSnippet({ ...request, ranges: [range, range] })).applied).toBe(false);
     expect(r.editor.insertSnippetFor).not.toHaveBeenCalled();
     r.editor.insertSnippetFor.mockImplementation(() => {
       r.documents.applyHostEdits(id, [{ ...range, text: "hello" }]);
-      return true;
+      return Promise.resolve(true);
     });
-    expect(r.service.insertSnippet(request)).toEqual({ applied: true });
+    expect(await r.service.insertSnippet(request)).toEqual({ applied: true });
     expect(r.editor.insertSnippetFor).toHaveBeenCalledWith(r.documents.modelUri(id), request.snippet,
-      [{ ...range, text: "" }], { undoStopBefore: false }, "pane");
+      [{ ...range, text: "" }], { undoStopBefore: false }, "pane", expect.any(Function));
     expect(r.sent.at(-1)).toMatchObject(["host/documentChanged", { version: 2 }]);
+    r.sync.stop(); r.buffers.disposeAll();
+  });
+
+  it("cancels pending snippet work when the host resets", async () => {
+    const r = documentsRig();
+    await r.documents.openFromPath(FILE); r.sync.start();
+    let resume: () => void = () => {};
+    const ready = new Promise<void>(resolve => { resume = resolve; });
+    r.editor.insertSnippetFor.mockImplementation(async (_uri, _snippet, _ranges, _options, _id, current) => {
+      await ready; return current?.() !== false;
+    });
+    const pending = r.service.insertSnippet({ path: FILE, version: 1, snippet: "$CLIPBOARD" });
+    r.service.cancelPendingEdits(); resume();
+    expect(await pending).toEqual({ applied: false });
+    expect(r.sync.versionOf(r.documents.idForPath(FILE) ?? "")).toBe(1);
+    r.sync.stop(); r.buffers.disposeAll();
+  });
+
+  it("reports clipboard failures without changing text or inventing a document version", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE); r.sync.start();
+    r.editor.insertSnippetFor.mockRejectedValueOnce(Error("Clipboard unavailable"));
+    expect(await r.service.insertSnippet({ path: FILE, version: 1, snippet: "$CLIPBOARD" })).toEqual({ applied: false, reason: "Clipboard unavailable" });
+    expect(r.documents.contentOf(id)).toBe("hello world\nsecond");
+    expect(r.sync.versionOf(id)).toBe(1);
     r.sync.stop(); r.buffers.disposeAll();
   });
 
@@ -526,6 +551,7 @@ describe("HostBridge: editor and status bar messages", () => {
       disposeDecoration: vi.fn(),
       resetDecorations: vi.fn(),
       refreshEditorState: vi.fn(),
+      cancelPendingEdits: vi.fn(),
       insertSnippet: vi.fn().mockReturnValue({ applied: true }),
       applyEdits: vi.fn().mockReturnValue({ applied: true }),
       applyWorkspaceEdit: vi.fn().mockReturnValue({ applied: false, reason: "no" }),
@@ -602,6 +628,7 @@ describe("HostBridge: editor and status bar messages", () => {
     const { b, status, editorApi } = bridge();
     b.reset();
     expect(editorApi.resetDecorations).toHaveBeenCalledOnce();
+    expect(editorApi.cancelPendingEdits).toHaveBeenCalledOnce();
     expect(status).toContainEqual(["statusBar/reset", {}]);
   });
 

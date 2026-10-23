@@ -44,6 +44,7 @@ function record(value: unknown): Record<string, unknown> {
  */
 export class ExtensionEditorService {
   private readonly decorations: ExtensionDecorations;
+  private editGeneration = 0;
 
   constructor(private readonly deps: ExtensionEditorDeps) {
     this.decorations = new ExtensionDecorations(deps.editor, deps.documents);
@@ -54,6 +55,7 @@ export class ExtensionEditorService {
   disposeDecoration(params: unknown): void { this.decorations.dispose(record(params)); }
   resetDecorations(): void { this.decorations.reset(); }
   refreshEditorState(): void { this.deps.sync.refreshActive(); }
+  cancelPendingEdits(): void { this.editGeneration++; }
 
   /** Checks one file of an edit: the document id when it can be edited, otherwise why not. */
   private editable(file: FileEdits): { id: string } | { reason: string } {
@@ -79,7 +81,7 @@ export class ExtensionEditorService {
     ]);
   }
 
-  insertSnippet(params: unknown): EditResult {
+  async insertSnippet(params: unknown): Promise<EditResult> {
     const p = record(params);
     if (typeof p.snippet !== "string") throw new Error("A snippet string is required.");
     const options = parseEditOptions(p);
@@ -94,8 +96,10 @@ export class ExtensionEditorService {
       this.deps.documents.validateHostEdits(found.id, ranges ?? []);
       const uri = this.deps.documents.modelUri(found.id);
       if (!uri) return { applied: false, reason: "The editor model is unavailable." };
-      const applied = this.deps.editor.insertSnippetFor(uri, p.snippet, ranges, options,
-        typeof p.editorId === "string" ? p.editorId : undefined);
+      const generation = this.editGeneration;
+      const applied = await this.deps.editor.insertSnippetFor(uri, p.snippet, ranges, options,
+        typeof p.editorId === "string" ? p.editorId : undefined,
+        () => generation === this.editGeneration && !("reason" in this.editable(file)));
       if (applied && this.deps.sync.hasPending(found.id)) this.deps.sync.commitChange(found.id);
       return { applied };
     } catch (error) {
