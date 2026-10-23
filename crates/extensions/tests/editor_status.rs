@@ -447,8 +447,8 @@ fn apis_that_stay_unsupported_still_fail_with_the_clear_message() {
     for (label, api) in [
         ("inputBox", "window.createInputBox"),
         ("decorations", "window.createTextEditorDecorationType"),
-        ("debug", "debug.startDebugging"),
-        ("notebook", "notebooks.createNotebookController"),
+        ("debug", "debug.asDebugSourceUri"),
+        ("notebook", "notebooks.registerNotebookCellStatusBarItemProvider"),
         ("createFile", "WorkspaceEdit.createFile"),
     ] {
         let expected =
@@ -457,3 +457,4 @@ fn apis_that_stay_unsupported_still_fail_with_the_clear_message() {
     }
     host.stop();
 }
+

@@ -14,6 +14,7 @@ import { ChevronIcon, EllipsisIcon, FilterIcon } from "./icons";
 import { MenuPopup, type PopupItem } from "./MenuPopup";
 import { useDismissOnOutside } from "./useDismissOnOutside";
 import { t } from "../i18n";
+import { extensionWorkbench } from "../services/extensionWorkbench";
 
 const INSTALLED_FILTER = "@installed";
 
@@ -394,6 +395,7 @@ export function ExtensionsView() {
 
   return (
     <div className="ext-view ext-view--market">
+      <button type="button" className="ext-button" onClick={() => { void extensionWorkbench.show(); }}>Tests, Debug, Notebooks &amp; Source Control</button>
       <div className="ext-searchbar">
         <input
           type="search"
@@ -518,3 +520,4 @@ export function ExtensionsView() {
     </div>
   );
 }
+

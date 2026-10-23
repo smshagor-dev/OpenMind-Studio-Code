@@ -378,3 +378,4 @@ mod tests {
         assert!(extensions_for(&all, &Trigger::View { view: "x".into() }).is_empty());
     }
 }
+

@@ -1,0 +1,165 @@
+{
+  "source": "https://github.com/microsoft/vscode/blob/1.85.2/src/vscode-dts/vscode.d.ts",
+  "values": {
+    "TextEditorSelectionChangeKind": {
+      "Keyboard": 1,
+      "Mouse": 2,
+      "Command": 3
+    },
+    "TextEditorRevealType": {
+      "Default": 0,
+      "InCenter": 1,
+      "InCenterIfOutsideViewport": 2,
+      "AtTop": 3
+    },
+    "EndOfLine": {
+      "LF": 1,
+      "CRLF": 2
+    },
+    "CodeActionTriggerKind": {
+      "Invoke": 1,
+      "Automatic": 2
+    },
+    "DocumentHighlightKind": {
+      "Text": 0,
+      "Read": 1,
+      "Write": 2
+    },
+    "SymbolKind": {
+      "File": 0,
+      "Module": 1,
+      "Namespace": 2,
+      "Package": 3,
+      "Class": 4,
+      "Method": 5,
+      "Property": 6,
+      "Field": 7,
+      "Constructor": 8,
+      "Enum": 9,
+      "Interface": 10,
+      "Function": 11,
+      "Variable": 12,
+      "Constant": 13,
+      "String": 14,
+      "Number": 15,
+      "Boolean": 16,
+      "Array": 17,
+      "Object": 18,
+      "Key": 19,
+      "Null": 20,
+      "EnumMember": 21,
+      "Struct": 22,
+      "Event": 23,
+      "Operator": 24,
+      "TypeParameter": 25
+    },
+    "SymbolTag": {
+      "Deprecated": 1
+    },
+    "CompletionItemKind": {
+      "Text": 0,
+      "Method": 1,
+      "Function": 2,
+      "Constructor": 3,
+      "Field": 4,
+      "Variable": 5,
+      "Class": 6,
+      "Interface": 7,
+      "Module": 8,
+      "Property": 9,
+      "Unit": 10,
+      "Value": 11,
+      "Enum": 12,
+      "Keyword": 13,
+      "Snippet": 14,
+      "Color": 15,
+      "Reference": 17,
+      "File": 16,
+      "Folder": 18,
+      "EnumMember": 19,
+      "Constant": 20,
+      "Struct": 21,
+      "Event": 22,
+      "Operator": 23,
+      "TypeParameter": 24,
+      "User": 25,
+      "Issue": 26
+    },
+    "CompletionTriggerKind": {
+      "Invoke": 0,
+      "TriggerCharacter": 1,
+      "TriggerForIncompleteCompletions": 2
+    },
+    "FoldingRangeKind": {
+      "Comment": 1,
+      "Imports": 2,
+      "Region": 3
+    },
+    "ConfigurationTarget": {
+      "Global": 1,
+      "Workspace": 2,
+      "WorkspaceFolder": 3
+    },
+    "DiagnosticSeverity": {
+      "Error": 0,
+      "Warning": 1,
+      "Information": 2,
+      "Hint": 3
+    },
+    "DiagnosticTag": {
+      "Unnecessary": 1,
+      "Deprecated": 2
+    },
+    "ViewColumn": {
+      "Active": -1,
+      "Beside": -2,
+      "One": 1,
+      "Two": 2,
+      "Three": 3,
+      "Four": 4,
+      "Five": 5,
+      "Six": 6,
+      "Seven": 7,
+      "Eight": 8,
+      "Nine": 9
+    },
+    "StatusBarAlignment": {
+      "Left": 1,
+      "Right": 2
+    },
+    "TaskRevealKind": {
+      "Always": 1,
+      "Silent": 2,
+      "Never": 3
+    },
+    "TaskPanelKind": {
+      "Shared": 1,
+      "Dedicated": 2,
+      "New": 3
+    },
+    "TaskScope": {
+      "Global": 1,
+      "Workspace": 2
+    },
+    "FileType": {
+      "Unknown": 0,
+      "File": 1,
+      "Directory": 2,
+      "SymbolicLink": 64
+    },
+    "TreeItemCollapsibleState": {
+      "None": 0,
+      "Collapsed": 1,
+      "Expanded": 2
+    },
+    "NotebookCellKind": {
+      "Markup": 1,
+      "Code": 2
+    },
+    "TestRunProfileKind": {
+      "Run": 1,
+      "Debug": 2,
+      "Coverage": 3
+    }
+  }
+}

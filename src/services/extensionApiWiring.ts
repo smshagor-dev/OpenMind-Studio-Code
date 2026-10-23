@@ -111,6 +111,9 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
         readonly: request.readonly,
       });
     },
+    updateVirtualDocument: request => {
+      workspace.updateVirtualDocument({ uri: request.uri, text: request.text, language: request.languageId, extension: request.extension, readonly: true });
+    },
     saveDocument: async (path) => {
       const id = documents.idForPath(path);
       if (id === null) return false;
@@ -122,6 +125,11 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
       return true;
     },
     registerFormatter: (registration, invoke) => deps.formatters.register(registration, invoke),
+  });
+
+  // The last virtual preview tab closed: release the host mirror and pending content reads.
+  workspace.filePreviews.onRelease(document => {
+    if (document.model?.type === "virtualText") notifyHost("host/documentClosed", { path: document.path });
   });
 
   // `WebviewView.show()`: the side bar shows the view's container.

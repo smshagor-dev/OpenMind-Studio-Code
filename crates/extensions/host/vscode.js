@@ -14,6 +14,10 @@ const tasksModule = require('./tasks.js');
 const { createWorkspaceApi, RelativePattern } = require('./workspace.js');
 const { createLanguagesApi, TextEdit } = require('./languages.js');
 const { FileType, FileSystemError } = require('./fsprovider.js');
+const testingModule = require('./testing.js');
+const scmModule = require('./scm.js');
+const notebookModule = require('./notebooks.js');
+const debugModule = require('./debug.js');
 
 // Called with the message whenever an unsupported API is used (the host logs it, attributed to the extension).
 const { setReporter: setUnsupportedReporter, unsupportedError } = require('./unsupported.js');
@@ -66,24 +70,35 @@ class Disposable {
 class EventEmitter {
   constructor() {
     this._listeners = new Set();
+    this._disposed = false;
     this.event = (listener, thisArg, disposables) => {
-      const bound = thisArg ? listener.bind(thisArg) : listener;
-      this._listeners.add(bound);
-      const disposable = new Disposable(() => this._listeners.delete(bound));
+      if (typeof listener !== 'function') throw new TypeError('Event listener must be a function');
+      if (this._disposed) return new Disposable(() => {});
+      const subscription = { listener, thisArg, active: true };
+      this._listeners.add(subscription);
+      const disposable = new Disposable(() => {
+        subscription.active = false;
+        this._listeners.delete(subscription);
+      });
       if (Array.isArray(disposables)) disposables.push(disposable);
       return disposable;
     };
   }
   fire(data) {
-    for (const listener of [...this._listeners]) {
+    if (this._disposed) return;
+    for (const subscription of [...this._listeners]) {
+      if (!subscription.active) continue;
       try {
-        listener(data);
+        subscription.listener.call(subscription.thisArg, data);
       } catch (error) {
         console.error(`Error in an event listener: ${error && error.stack ? error.stack : error}`);
       }
     }
   }
   dispose() {
+    if (this._disposed) return;
+    this._disposed = true;
+    for (const subscription of this._listeners) subscription.active = false;
     this._listeners.clear();
   }
 }
@@ -109,12 +124,33 @@ class Uri {
   static file(fsPath) {
     let normalized = String(fsPath).replace(/\\/g, '/');
     if (/^[a-zA-Z]:/.test(normalized)) normalized = `/${normalized}`;
+    if (normalized.startsWith('//')) {
+      const parts = normalized.slice(2).split('/');
+      const authority = parts.shift();
+      if (authority) return new Uri('file', authority, '/' + parts.join('/'), '', '');
+    }
     return new Uri('file', '', normalized, '', '');
   }
-  static parse(value) {
+  static parse(value, strict = false) {
     const match = /^([a-zA-Z][a-zA-Z0-9+.-]*):(?:\/\/([^/?#]*))?([^?#]*)(?:\?([^#]*))?(?:#(.*))?$/.exec(String(value));
-    if (!match) return Uri.file(value);
-    return new Uri(match[1], match[2], decodeURIComponent(match[3]), match[4], match[5]);
+    if (!match) {
+      if (strict) throw new Error('Invalid URI: ' + String(value));
+      return Uri.file(value);
+    }
+    const decode = (value) => decodeURIComponent(value || '');
+    return new Uri(match[1], decode(match[2]), decode(match[3]), decode(match[4]), decode(match[5]));
+  }
+  static from(components) {
+    if (!components || typeof components !== 'object' || !components.scheme) {
+      throw new TypeError('Uri.from requires a scheme.');
+    }
+    return new Uri(
+      String(components.scheme),
+      String(components.authority || ''),
+      String(components.path || ''),
+      String(components.query || ''),
+      String(components.fragment || ''),
+    );
   }
   static joinPath(base, ...segments) {
     return base.with({ path: path.posix.join(base.path, ...segments) });
@@ -122,6 +158,9 @@ class Uri {
   get fsPath() {
     let value = this.path;
     if (/^\/[a-zA-Z]:/.test(value)) value = value.slice(1);
+    if (this.scheme === 'file' && this.authority) {
+      value = '//' + this.authority + (this.path.startsWith('/') ? this.path : '/' + this.path);
+    }
     return process.platform === 'win32' ? value.replace(/\//g, '\\') : value;
   }
   with(change) {
@@ -133,8 +172,13 @@ class Uri {
       change.fragment ?? this.fragment,
     );
   }
-  toString() {
-    const encoded = encodeURI(this.path).replace(/^\/([a-zA-Z]):/, '/$1%3A');
+  toString(skipEncoding = false) {
+    if (skipEncoding) {
+      return `${this.scheme}://${this.authority}${this.path}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
+    }
+    const encoded = encodeURI(this.path)
+      .replace(/[?#]/g, (char) => encodeURIComponent(char))
+      .replace(/^\/([a-zA-Z]):/, '/$1%3A');
     return `${this.scheme}://${this.authority}${encoded}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
   }
   toJSON() {
@@ -166,9 +210,18 @@ class Position {
     return this.isBefore(other) ? -1 : this.isAfter(other) ? 1 : 0;
   }
   translate(lineDelta = 0, characterDelta = 0) {
+    if (typeof lineDelta === 'object' && lineDelta !== null) {
+      characterDelta = lineDelta.characterDelta ?? 0;
+      lineDelta = lineDelta.lineDelta ?? 0;
+    }
     return new Position(this.line + lineDelta, this.character + characterDelta);
   }
   with(line = this.line, character = this.character) {
+    if (typeof line === 'object' && line !== null) {
+      character = line.character ?? this.character;
+      line = line.line ?? this.line;
+    }
+    if (line === this.line && character === this.character) return this;
     return new Position(line, character);
   }
 }
@@ -209,6 +262,11 @@ class Range {
     return new Range(this.start.isBefore(other.start) ? this.start : other.start, this.end.isAfter(other.end) ? this.end : other.end);
   }
   with(start = this.start, end = this.end) {
+    if (start && !(start instanceof Position) && typeof start === 'object') {
+      end = start.end ?? this.end;
+      start = start.start ?? this.start;
+    }
+    if (start === this.start && end === this.end) return this;
     return new Range(start, end);
   }
 }
@@ -244,20 +302,45 @@ class Diagnostic {
   }
 }
 
+// VS Code diagnostic metadata used by linter and refactoring extensions.
+const DiagnosticTag = Object.freeze({ Unnecessary: 1, Deprecated: 2 });
+class DiagnosticRelatedInformation {
+  constructor(location, message) {
+    this.location = location;
+    this.message = message;
+  }
+}
+const CompletionTriggerKind = Object.freeze({ Invoke: 0, TriggerCharacter: 1, TriggerForIncompleteCompletions: 2 });
+const CodeActionTriggerKind = Object.freeze({ Invoke: 1, Automatic: 2 });
+const SymbolTag = Object.freeze({ Deprecated: 1 });
+
 class MarkdownString {
-  constructor(value = '') {
-    this.value = value;
+  constructor(value = '', supportThemeIcons = false) {
+    this.value = String(value);
+    this.isTrusted = false;
+    this.supportHtml = false;
+    this.supportThemeIcons = !!supportThemeIcons;
+    this.baseUri = undefined;
   }
   appendText(text) {
-    this.value += text;
+    // Text is literal: escape Markdown punctuation and prevent injecting links.
+    const punctuation = new Set([92, 96, 42, 95, 123, 125, 91, 93, 40, 41, 35, 43, 45, 46, 33, 62, 124]);
+    this.value += [...String(text)].map((char) =>
+      punctuation.has(char.charCodeAt(0)) ? String.fromCharCode(92) + char : char
+    ).join('');
     return this;
   }
   appendMarkdown(text) {
-    this.value += text;
+    this.value += String(text);
     return this;
   }
   appendCodeblock(code, language = '') {
-    this.value += `\n\`\`\`${language}\n${code}\n\`\`\`\n`;
+    const raw = String(code);
+    const fences = raw.match(/`+/g) || [];
+    const size = Math.max(3, ...fences.map((fence) => fence.length + 1));
+    const fence = '`'.repeat(size);
+    const safeLanguage = String(language).replace(/[^a-zA-Z0-9_+#-]/g, '');
+    this.value += '\n' + fence + safeLanguage + '\n' + raw + '\n' + fence + '\n';
     return this;
   }
 }
@@ -272,7 +355,7 @@ class Hover {
 const CompletionItemKind = {
   Text: 0, Method: 1, Function: 2, Constructor: 3, Field: 4, Variable: 5, Class: 6, Interface: 7, Module: 8, Property: 9,
   Unit: 10, Value: 11, Enum: 12, Keyword: 13, Snippet: 14, Color: 15, File: 16, Reference: 17, Folder: 18, EnumMember: 19,
-  Constant: 20, Struct: 21, Event: 22, Operator: 23, TypeParameter: 24,
+  Constant: 20, Struct: 21, Event: 22, Operator: 23, TypeParameter: 24, User: 25, Issue: 26,
 };
 
 class CompletionItem {
@@ -290,28 +373,223 @@ class CompletionList {
 }
 
 class SnippetString {
-  constructor(value = '') {
-    this.value = value;
+  constructor(value = '') { this.value = String(value); this._tabstop = 1; }
+  static escape(value, special = [92, 36, 125]) {
+    return [...String(value)].map((char) =>
+      special.includes(char.charCodeAt(0)) ? String.fromCharCode(92) + char : char
+    ).join('');
+  }
+  static index(number) {
+    if (!Number.isInteger(number) || number < 0) throw new TypeError('Invalid snippet tabstop');
+    return number;
+  }
+  appendText(value) {
+    this.value += SnippetString.escape(value);
+    return this;
+  }
+  appendTabstop(number = this._tabstop++) {
+    this.value += String.fromCharCode(36) + SnippetString.index(number);
+    return this;
+  }
+  appendPlaceholder(value, number = this._tabstop++) {
+    const text = typeof value === 'function' ? value(new SnippetString()).value : SnippetString.escape(value);
+    this.value += String.fromCharCode(36, 123) + SnippetString.index(number) + ':' + text + '}';
+    return this;
+  }
+  appendChoice(values, number = this._tabstop++) {
+    if (!Array.isArray(values) || values.length === 0) throw new TypeError('Snippet choices required');
+    const choices = values.map((value) => SnippetString.escape(value, [92, 124, 44, 125]));
+    this.value += String.fromCharCode(36, 123) + SnippetString.index(number) + '|' + choices.join(',') + '|}';
+    return this;
+  }
+  appendVariable(name, defaultValue) {
+    if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new TypeError('Invalid snippet variable');
+    }
+    this.value += defaultValue === undefined
+      ? String.fromCharCode(36) + name
+      : String.fromCharCode(36, 123) + name + ':' + SnippetString.escape(defaultValue) + '}';
+    return this;
   }
 }
 
 class CancellationTokenSource {
-  constructor() {
+  constructor(parent) {
     const emitter = new EventEmitter();
-    this.token = { isCancellationRequested: false, onCancellationRequested: emitter.event };
+    this.token = { isCancellationRequested: false, onCancellationRequested: (listener, thisArg, disposables) => {
+      if (!this.token.isCancellationRequested) return emitter.event(listener, thisArg, disposables);
+      const subscription = CancellationToken.Cancelled.onCancellationRequested(listener, thisArg);
+      if (Array.isArray(disposables)) disposables.push(subscription);
+      return subscription;
+    } };
     this._emitter = emitter;
+    this._disposed = false;
+    this._parent = parent?.onCancellationRequested(() => this.cancel());
+    if (parent?.isCancellationRequested) this.cancel();
   }
   cancel() {
+    if (this.token.isCancellationRequested) return;
     this.token.isCancellationRequested = true;
     this._emitter.fire();
   }
-  dispose() {
+  dispose(cancel = false) {
+    if (this._disposed) return;
+    if (cancel) this.cancel();
+    this._disposed = true;
+    this._parent?.dispose();
     this._emitter.dispose();
   }
 }
 
+// Value types shared by language tooling extensions. They are usable even when a
+// corresponding provider contribution is not yet implemented by the workbench.
+class CodeActionKind {
+  constructor(value = '') { this.value = value; }
+  append(part) { return new CodeActionKind(this.value ? this.value + '.' + part : part); }
+  contains(other) {
+    const value = other instanceof CodeActionKind ? other.value : String(other);
+    return !this.value || value === this.value || value.startsWith(this.value + '.');
+  }
+  intersects(other) {
+    const value = other instanceof CodeActionKind ? other.value : String(other);
+    return this.contains(value) || new CodeActionKind(value).contains(this);
+  }
+}
+CodeActionKind.Empty = new CodeActionKind('');
+CodeActionKind.QuickFix = new CodeActionKind('quickfix');
+CodeActionKind.Refactor = new CodeActionKind('refactor');
+CodeActionKind.RefactorExtract = new CodeActionKind('refactor.extract');
+CodeActionKind.RefactorInline = new CodeActionKind('refactor.inline');
+CodeActionKind.RefactorRewrite = new CodeActionKind('refactor.rewrite');
+CodeActionKind.Source = new CodeActionKind('source');
+CodeActionKind.SourceOrganizeImports = new CodeActionKind('source.organizeImports');
+CodeActionKind.SourceFixAll = new CodeActionKind('source.fixAll');
+
+class CodeAction {
+  constructor(title, kind) {
+    this.title = title;
+    this.kind = kind;
+  }
+}
+
+class CodeLens {
+  constructor(range, command) {
+    this.range = range;
+    this.command = command;
+    this.isResolved = command !== undefined;
+  }
+}
+
+class DocumentLink {
+  constructor(range, target) {
+    this.range = range;
+    this.target = target;
+  }
+}
+
+const SymbolKind = {
+  File: 0, Module: 1, Namespace: 2, Package: 3, Class: 4, Method: 5,
+  Property: 6, Field: 7, Constructor: 8, Enum: 9, Interface: 10,
+  Function: 11, Variable: 12, Constant: 13, String: 14, Number: 15,
+  Boolean: 16, Array: 17, Object: 18, Key: 19, Null: 20, EnumMember: 21,
+  Struct: 22, Event: 23, Operator: 24, TypeParameter: 25,
+};
+
+class DocumentSymbol {
+  constructor(name, detail, kind, range, selectionRange) {
+    this.name = name;
+    this.detail = detail;
+    this.kind = kind;
+    this.range = range;
+    this.selectionRange = selectionRange;
+    this.children = [];
+  }
+}
+
+class SymbolInformation {
+  constructor(name, kind, containerName, location) {
+    this.name = name;
+    this.kind = kind;
+    if (typeof containerName === 'string') {
+      this.containerName = containerName;
+      this.location = location;
+    } else {
+      this.containerName = '';
+      this.location = containerName;
+    }
+  }
+}
+
+class FoldingRange {
+  constructor(start, end, kind) {
+    this.start = start;
+    this.end = end;
+    this.kind = kind;
+  }
+}
+const FoldingRangeKind = { Comment: 1, Imports: 2, Region: 3 };
+
+const DocumentHighlightKind = { Text: 0, Read: 1, Write: 2 };
+class DocumentHighlight {
+  constructor(range, kind = DocumentHighlightKind.Text) {
+    this.range = range;
+    this.kind = kind;
+  }
+}
+
+class SelectionRange {
+  constructor(range, parent) {
+    if (parent && !parent.range.contains(range)) throw new Error('A selection range parent must contain its child.');
+    this.range = range; this.parent = parent;
+  }
+}
+class LinkedEditingRanges { constructor(ranges, wordPattern) { this.ranges = ranges; this.wordPattern = wordPattern; } }
+class ParameterInformation {
+  constructor(label, documentation) {
+    this.label = label;
+    this.documentation = documentation;
+  }
+}
+class SignatureInformation {
+  constructor(label, documentation) {
+    this.label = label;
+    this.documentation = documentation;
+    this.parameters = [];
+    this.activeParameter = 0;
+  }
+}
+class SignatureHelp {
+  constructor() {
+    this.signatures = [];
+    this.activeSignature = 0;
+    this.activeParameter = 0;
+  }
+}
+
+class CancellationError extends Error {
+  constructor() {
+    super('Canceled');
+    this.name = 'Canceled';
+  }
+}
+
+const CancellationToken = Object.freeze({
+  None: Object.freeze({ isCancellationRequested: false, onCancellationRequested: () => new Disposable(() => {}) }),
+  Cancelled: Object.freeze({
+    isCancellationRequested: true,
+    onCancellationRequested: (listener, thisArg) => {
+      // Already cancelled: notify asynchronously unless the subscription is disposed.
+      let disposed = false;
+      queueMicrotask(() => {
+        if (!disposed) listener.call(thisArg);
+      });
+      return new Disposable(() => { disposed = true; });
+    },
+  }),
+});
+
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
-const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3 };
+const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3, Four: 4, Five: 5, Six: 6, Seven: 7, Eight: 8, Nine: 9 };
 
 // ---- the API for one extension ----------------------------------------------------------------------------------
 
@@ -351,8 +629,12 @@ function createApi(host, ext) {
 
   // -- commands
   const commands = namespace('commands', {
-    registerCommand(command, callback) {
+    registerCommand(command, callback, thisArg) {
       need('commands');
+      if (typeof command !== 'string' || !command || typeof callback !== 'function') {
+        throw new TypeError('A command needs a non-empty identifier and a callback.');
+      }
+      const invoke = (...args) => callback.apply(thisArg, args);
       const existing = state.commands.get(command);
       if (existing) {
         throw new Error(
@@ -361,17 +643,17 @@ function createApi(host, ext) {
             : `Command '${command}' is already registered by ${existing.id}; an extension can't replace another extension's command.`,
         );
       }
-      state.commands.set(command, { id: ext.id, callback });
+      state.commands.set(command, { id: ext.id, callback: invoke });
       notify('commands/registered', { command, extension: ext.id });
       return track(new Disposable(() => {
-        if (state.commands.get(command) && state.commands.get(command).callback === callback) {
+        if (state.commands.get(command) && state.commands.get(command).callback === invoke) {
           state.commands.delete(command);
           notify('commands/unregistered', { command });
         }
       }));
     },
     /** Runs with the active text editor and an edit builder; the edits are one undoable change. */
-    registerTextEditorCommand(command, callback) {
+    registerTextEditorCommand(command, callback, thisArg) {
       return commands.registerCommand(command, async (...args) => {
         const active = editors.activeEditor();
         if (!active) {
@@ -380,7 +662,7 @@ function createApi(host, ext) {
         }
         let result;
         await active.edit((builder) => {
-          result = callback(active, builder, ...args);
+          result = callback.call(thisArg, active, builder, ...args);
         });
         return result;
       });
@@ -388,7 +670,9 @@ function createApi(host, ext) {
     async executeCommand(command, ...args) {
       need('commands');
       const local = state.commands.get(command);
-      if (local) return local.callback(...args);
+      if (local) return host.als
+        ? host.als.run(local.id, () => local.callback(...args))
+        : local.callback(...args);
       return request('commands/execute', { command, args });
     },
     async getCommands(filterInternal) {
@@ -460,6 +744,12 @@ function createApi(host, ext) {
 
   // -- workspace and languages (their own modules)
   const workspace = createWorkspaceApi({ host, ext, need, track, asExtension, Disposable, EventEmitter, Uri, editors, namespace, toPath });
+  const workbenchParts = { host, ext, need, track, Disposable, EventEmitter, CancellationTokenSource, Uri, workspace, editors };
+  const notebookApi = notebookModule.create(workbenchParts);
+  Object.defineProperties(workspace, Object.getOwnPropertyDescriptors(notebookApi.workspace));
+  const tests = namespace('tests', testingModule.create(workbenchParts));
+  const scm = namespace('scm', scmModule.create(workbenchParts));
+  const debug = namespace('debug', debugModule.create(workbenchParts));
   const languages = createLanguagesApi({
     host,
     ext,
@@ -561,14 +851,35 @@ function createApi(host, ext) {
     createWebviewPanel: webviews.createWebviewPanel,
   });
 
+  Object.defineProperties(window, Object.getOwnPropertyDescriptors(notebookApi.window));
+
+  const extensionObject = (found) => {
+    if (!found) return undefined;
+    const extension = {
+      id: found.id,
+      extensionPath: found.path,
+      extensionUri: Uri.file(found.path),
+      packageJSON: found.packageJSON || found.manifest,
+      get isActive() { const run = state.running.get(found.id); return !!run && !run.activating; },
+      get exports() { return state.running.get(found.id)?.exports; },
+      async activate() {
+        if (!state.extensions.has(found.id)) throw new Error(`Extension '${found.id}' was uninstalled.`);
+        return host.activateExtension(found.id);
+      },
+    };
+    return extension;
+  };
   const extensions = namespace('extensions', {
+    onDidChange: (listener, thisArg, disposables) =>
+      track(host.events.on('extensions')(asExtension(listener), thisArg, disposables)),
     getExtension(id) {
-      const found = state.extensions.get(id) || [...state.extensions.values()].find((item) => item.id.toLowerCase() === String(id).toLowerCase());
-      if (!found) return undefined;
-      return { id: found.id, extensionPath: found.path, packageJSON: found.manifest, isActive: state.running.has(found.id), exports: undefined };
+      const normalized = String(id).toLowerCase();
+      const found = state.extensions.get(normalized) ||
+        [...state.extensions.values()].find((item) => item.id.toLowerCase() === normalized);
+      return extensionObject(found);
     },
     get all() {
-      return [...state.extensions.values()].map((found) => ({ id: found.id, extensionPath: found.path, packageJSON: found.manifest, isActive: state.running.has(found.id) }));
+      return [...state.extensions.values()].map(extensionObject);
     },
   });
 
@@ -613,6 +924,26 @@ function createApi(host, ext) {
     window,
     workspace,
     languages,
+    tests,
+    scm,
+    debug,
+    notebooks: namespace('notebooks', notebookApi.notebooks),
+    TestRunRequest: testingModule.TestRunRequest,
+    TestRunProfileKind: testingModule.TestRunProfileKind,
+    TestMessage: testingModule.TestMessage,
+    TestTag: testingModule.TestTag,
+    NotebookRange: notebookModule.NotebookRange,
+    NotebookEdit: notebookModule.NotebookEdit,
+    NotebookCellKind: notebookModule.NotebookCellKind,
+    NotebookCellData: notebookModule.NotebookCellData,
+    NotebookData: notebookModule.NotebookData,
+    NotebookCellOutput: notebookModule.NotebookCellOutput,
+    NotebookCellOutputItem: notebookModule.NotebookCellOutputItem,
+    DebugAdapterExecutable: debugModule.DebugAdapterExecutable,
+    DebugAdapterServer: debugModule.DebugAdapterServer,
+    DebugAdapterInlineImplementation: debugModule.DebugAdapterInlineImplementation,
+    SourceBreakpoint: debugModule.SourceBreakpoint,
+    FunctionBreakpoint: debugModule.FunctionBreakpoint,
     extensions,
     env,
     Disposable,
@@ -624,13 +955,36 @@ function createApi(host, ext) {
     Location,
     Diagnostic,
     DiagnosticSeverity,
+    DiagnosticTag,
+    DiagnosticRelatedInformation,
+    CompletionTriggerKind,
+    CodeActionTriggerKind,
+    SymbolTag,
     MarkdownString,
     Hover,
     CompletionItem,
     CompletionItemKind,
     CompletionList,
+    CodeAction,
+    CodeActionKind,
+    CodeLens,
+    DocumentLink,
+    SymbolKind,
+    DocumentSymbol,
+    SymbolInformation,
+    FoldingRange,
+    FoldingRangeKind,
+    DocumentHighlight,
+    DocumentHighlightKind,
+    SelectionRange,
+    LinkedEditingRanges,
+    ParameterInformation,
+    SignatureInformation,
+    SignatureHelp,
     SnippetString,
     CancellationTokenSource,
+    CancellationToken,
+    CancellationError,
     ConfigurationTarget,
     ViewColumn,
     EndOfLine,
@@ -678,4 +1032,5 @@ function disposeApi(api) {
   if (cleanup) cleanup();
 }
 
-module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, unsupported };
+module.exports = { createApi, createEventHub, disposeApi, setUnsupportedReporter, Uri, Disposable, EventEmitter, CancellationTokenSource, CancellationToken, unsupported };
+

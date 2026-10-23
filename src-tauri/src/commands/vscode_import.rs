@@ -325,3 +325,4 @@ mod tests {
         assert_eq!(fs::read_to_string(&file).unwrap(), "old");
     }
 }
+

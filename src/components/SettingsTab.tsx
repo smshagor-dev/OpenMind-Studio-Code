@@ -7,14 +7,27 @@ import { SettingRow } from "./SettingRow";
 import { categoryLabel } from "../i18n/settingsText";
 import { t } from "../i18n";
 
-function IssueList({ issues, label }: { issues: SettingsIssue[]; label: string }) {
+function IssueList({
+  issues,
+  label,
+}: {
+  issues: SettingsIssue[];
+  label: string;
+}) {
   if (issues.length === 0) return null;
   return (
-    <ul className="prefs-issues" aria-label={t("settings.tab.problemsIn", { label })}>
+    <ul
+      className="prefs-issues"
+      aria-label={t("settings.tab.problemsIn", { label })}
+    >
       {issues.map((issue, index) => (
         <li
           key={`${issue.key ?? "file"}-${String(index)}`}
-          className={issue.severity === "error" ? "prefs-issue prefs-issue--error" : "prefs-issue"}
+          className={
+            issue.severity === "error"
+              ? "prefs-issue prefs-issue--error"
+              : "prefs-issue"
+          }
         >
           {issue.message}
         </li>
@@ -53,7 +66,8 @@ function VscodeImportPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [extensionNotice, setExtensionNotice] = useState<string | null>(null);
-  const choose = (source: VscodeSource) => source.edition + ":" + source.profile;
+  const choose = (source: VscodeSource) =>
+    source.edition + ":" + source.profile;
   const selectedSource = sources.find((source) => choose(source) === selected);
 
   const load = async () => {
@@ -68,7 +82,9 @@ function VscodeImportPanel() {
       setResult(null);
     } catch (failure) {
       setError(String(failure));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const inspect = async () => {
@@ -77,11 +93,17 @@ function VscodeImportPanel() {
     setError(null);
     setResult(null);
     try {
-      setPreview(await invoke<VscodePreview>("vscode_import_preview", {
-        edition: selectedSource.edition, profile: selectedSource.profile,
-      }));
-    } catch (failure) { setError(String(failure)); }
-    finally { setBusy(false); }
+      setPreview(
+        await invoke<VscodePreview>("vscode_import_preview", {
+          edition: selectedSource.edition,
+          profile: selectedSource.profile,
+        }),
+      );
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const apply = async () => {
@@ -90,13 +112,18 @@ function VscodeImportPanel() {
     setError(null);
     try {
       const applied = await invoke<VscodeImportResult>("vscode_import_apply", {
-        edition: selectedSource.edition, profile: selectedSource.profile,
-        importSettings: settings, importShortcuts: shortcuts,
+        edition: selectedSource.edition,
+        profile: selectedSource.profile,
+        importSettings: settings,
+        importShortcuts: shortcuts,
       });
       setResult(applied);
       await container.settings.reload();
-    } catch (failure) { setError(String(failure)); }
-    finally { setBusy(false); }
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const importSnippets = async () => {
@@ -105,12 +132,18 @@ function VscodeImportPanel() {
     setError(null);
     try {
       const count = await invoke<number>("vscode_import_snippets", {
-        edition: selectedSource.edition, profile: selectedSource.profile,
+        edition: selectedSource.edition,
+        profile: selectedSource.profile,
       });
       container.extensions.contributions.apply();
-      setExtensionNotice("Imported " + count + " VS Code snippet files into OpenMind completion.");
-    } catch (failure) { setError(String(failure)); }
-    finally { setBusy(false); }
+      setExtensionNotice(
+        `Imported ${count} VS Code snippet files into OpenMind completion.`,
+      );
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const importProfile = async () => {
@@ -119,12 +152,18 @@ function VscodeImportPanel() {
     setError(null);
     try {
       await invoke("vscode_import_profile", {
-        edition: selectedSource.edition, profile: selectedSource.profile,
+        edition: selectedSource.edition,
+        profile: selectedSource.profile,
       });
       await container.profiles.load();
-      setExtensionNotice("VS Code profile imported to OpenMind Profiles. Switch to it from the Profiles menu.");
-    } catch (failure) { setError(String(failure)); }
-    finally { setBusy(false); }
+      setExtensionNotice(
+        "VS Code profile imported to OpenMind Profiles. Switch to it from the Profiles menu.",
+      );
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const importExtension = async (folder: string) => {
@@ -134,65 +173,187 @@ function VscodeImportPanel() {
     setExtensionNotice(null);
     try {
       const imported = await invoke<{ id: string }>("vscode_import_extension", {
-        edition: selectedSource.edition, folder,
+        edition: selectedSource.edition,
+        folder,
       });
-      setExtensionNotice("Imported " + imported.id + " (disabled). Review its compatibility and permissions in Extensions before enabling.");
+      setExtensionNotice(
+        "Imported " +
+          imported.id +
+          " (disabled). Review its compatibility and permissions in Extensions before enabling.",
+      );
       await container.extensions.registry.refresh();
-    } catch (failure) { setError(String(failure)); }
-    finally { setBusy(false); }
+    } catch (failure) {
+      setError(String(failure));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <section className="prefs-import" aria-label="Import settings from VS Code">
-      <button className="prefs-json" type="button" onClick={() => {
-        if (expanded) { setExpanded(false); } else { void load(); }
-      }}>
+      <button
+        className="prefs-json"
+        type="button"
+        onClick={() => {
+          if (expanded) {
+            setExpanded(false);
+          } else {
+            void load();
+          }
+        }}
+      >
         {expanded ? "Hide VS Code import" : "Import from VS Code"}
       </button>
       {expanded ? (
         <div className="prefs-import__details">
-          <p>Import compatible settings and shortcuts from a local VS Code profile. Existing OpenMind files are backed up. Credentials and extensions are never executed or copied.</p>
-          {sources.length === 0 ? <p role="status">No VS Code user profiles detected on this computer.</p> : (
+          <p>
+            Import compatible settings and shortcuts from a local VS Code
+            profile. Existing OpenMind files are backed up. Credentials and
+            extensions are never executed or copied.
+          </p>
+          {sources.length === 0 ? (
+            <p role="status">
+              No VS Code user profiles detected on this computer.
+            </p>
+          ) : (
             <>
               <label htmlFor="vscode-import-source">VS Code profile </label>
-              <select id="vscode-import-source" value={selected} disabled={busy}
-                onChange={(event) => { setSelected(event.target.value); setPreview(null); setResult(null); }}>
-                {sources.map((source) => <option key={choose(source)} value={choose(source)}>{source.label}</option>)}
+              <select
+                id="vscode-import-source"
+                value={selected}
+                disabled={busy}
+                onChange={(event) => {
+                  setSelected(event.target.value);
+                  setPreview(null);
+                  setResult(null);
+                }}
+              >
+                {sources.map((source) => (
+                  <option key={choose(source)} value={choose(source)}>
+                    {source.label}
+                  </option>
+                ))}
               </select>
-              <button className="prefs-json" type="button" disabled={busy} onClick={() => void inspect()}>
+              <button
+                className="prefs-json"
+                type="button"
+                disabled={busy}
+                onClick={() => void inspect()}
+              >
                 Preview compatible items
               </button>
             </>
           )}
           {preview ? (
             <div aria-live="polite">
-              <p>{preview.settings.length} supported settings · {preview.keybindings.length} shortcuts · {preview.snippets.length} snippet files · {preview.extensions.length} installed extensions found.</p>
-              <label><input type="checkbox" checked={settings} onChange={(event) => setSettings(event.target.checked)} /> Import compatible settings</label>{" "}
-              <label><input type="checkbox" checked={shortcuts} onChange={(event) => setShortcuts(event.target.checked)} /> Import unconditional shortcuts</label>
-              {preview.skipped.length > 0 ? <details><summary>{preview.skipped.length} unsupported or skipped settings and shortcuts</summary>
-                <ul>{preview.skipped.map((value, index) => <li key={value + index}>{value}</li>)}</ul>
-              </details> : null}
-              {preview.extensions.length > 0 ? <details><summary>Detected VS Code extensions (review required)</summary>
-                <ul>{preview.extensions.map((name) => <li key={name}>{name}{" "}
-                  <button type="button" className="prefs-json" disabled={busy}
-                    onClick={() => void importExtension(name)}>Import disabled</button>
-                </li>)}</ul>
-              </details> : null}
-              {preview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
-              <button type="button" className="prefs-json" disabled={busy || (!settings && !shortcuts)}
-                onClick={() => void apply()}>Import selected items</button>{" "}
-              <button type="button" className="prefs-json" disabled={busy}
-                onClick={() => void importProfile()}>Save as an OpenMind profile</button>{" "}
-              <button type="button" className="prefs-json" disabled={busy || preview.snippets.length === 0}
-                onClick={() => void importSnippets()}>Import snippets</button>
+              <p>
+                {preview.settings.length} supported settings ·{" "}
+                {preview.keybindings.length} shortcuts ·{" "}
+                {preview.snippets.length} snippet files ·{" "}
+                {preview.extensions.length} installed extensions found.
+              </p>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={settings}
+                  onChange={(event) => {
+                    setSettings(event.target.checked);
+                  }}
+                />{" "}
+                Import compatible settings
+              </label>{" "}
+              <label>
+                <input
+                  type="checkbox"
+                  checked={shortcuts}
+                  onChange={(event) => {
+                    setShortcuts(event.target.checked);
+                  }}
+                />{" "}
+                Import unconditional shortcuts
+              </label>
+              {preview.skipped.length > 0 ? (
+                <details>
+                  <summary>
+                    {preview.skipped.length} unsupported or skipped settings and
+                    shortcuts
+                  </summary>
+                  <ul>
+                    {preview.skipped.map((value, index) => (
+                      <li key={value + String(index)}>{value}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              {preview.extensions.length > 0 ? (
+                <details>
+                  <summary>
+                    Detected VS Code extensions (review required)
+                  </summary>
+                  <ul>
+                    {preview.extensions.map((name) => (
+                      <li key={name}>
+                        {name}{" "}
+                        <button
+                          type="button"
+                          className="prefs-json"
+                          disabled={busy}
+                          onClick={() => void importExtension(name)}
+                        >
+                          Import disabled
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              {preview.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+              <button
+                type="button"
+                className="prefs-json"
+                disabled={busy || (!settings && !shortcuts)}
+                onClick={() => void apply()}
+              >
+                Import selected items
+              </button>{" "}
+              <button
+                type="button"
+                className="prefs-json"
+                disabled={busy}
+                onClick={() => void importProfile()}
+              >
+                Save as an OpenMind profile
+              </button>{" "}
+              <button
+                type="button"
+                className="prefs-json"
+                disabled={busy || preview.snippets.length === 0}
+                onClick={() => void importSnippets()}
+              >
+                Import snippets
+              </button>
             </div>
           ) : null}
           {extensionNotice ? <p role="status">{extensionNotice}</p> : null}
-          {result ? <p role="status">Imported {result.settingsImported} settings and {result.shortcutsImported} shortcuts.
-            {result.settingsBackup ? " Settings backup: " + result.settingsBackup + "." : ""}
-            {result.shortcutsBackup ? " Shortcuts backup: " + result.shortcutsBackup + "." : ""}
-          </p> : null}
-          {error ? <p role="alert" className="prefs-banner prefs-banner--error">{error}</p> : null}
+          {result ? (
+            <p role="status">
+              Imported {result.settingsImported} settings and{" "}
+              {result.shortcutsImported} shortcuts.
+              {result.settingsBackup
+                ? " Settings backup: " + result.settingsBackup + "."
+                : ""}
+              {result.shortcutsBackup
+                ? " Shortcuts backup: " + result.shortcutsBackup + "."
+                : ""}
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="prefs-banner prefs-banner--error">
+              {error}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -216,14 +377,17 @@ export function SettingsTab() {
     page.scope === "workspace" && workspace.enabled ? "workspace" : "user";
   const groups = settings.search(page.query);
   const visible =
-    page.category === null ? groups : groups.filter((group) => group.category === page.category);
+    page.category === null
+      ? groups
+      : groups.filter((group) => group.category === page.category);
   const total = groups.reduce((sum, group) => sum + group.settings.length, 0);
   const jsonCommand =
     scope === "workspace"
       ? "preferences.openWorkspaceSettingsJson"
       : "preferences.openSettingsJson";
   const jsonEnabled = container.commands.isEnabled(jsonCommand);
-  const folderName = snapshot?.workspace?.split(/[\\/]/).filter(Boolean).pop() ?? null;
+  const folderName =
+    snapshot?.workspace?.split(/[\\/]/).filter(Boolean).pop() ?? null;
 
   if (snapshot === null) {
     return (
@@ -233,8 +397,10 @@ export function SettingsTab() {
     );
   }
 
-  const fileError = scope === "user" ? snapshot.userError : snapshot.workspaceError;
-  const issues = scope === "user" ? snapshot.userIssues : snapshot.workspaceIssues;
+  const fileError =
+    scope === "user" ? snapshot.userError : snapshot.workspaceError;
+  const issues =
+    scope === "user" ? snapshot.userIssues : snapshot.workspaceIssues;
   const jsonTitle = jsonEnabled
     ? scope === "workspace"
       ? (snapshot.workspaceFile ?? "")
@@ -254,13 +420,19 @@ export function SettingsTab() {
             container.preferencesPage.setQuery(event.target.value);
           }}
         />
-        <div className="prefs-scope" role="tablist" aria-label={t("settings.tab.scope")}>
+        <div
+          className="prefs-scope"
+          role="tablist"
+          aria-label={t("settings.tab.scope")}
+        >
           <button
             type="button"
             role="tab"
             aria-selected={scope === "user"}
             className={
-              scope === "user" ? "prefs-scope__tab prefs-scope__tab--active" : "prefs-scope__tab"
+              scope === "user"
+                ? "prefs-scope__tab prefs-scope__tab--active"
+                : "prefs-scope__tab"
             }
             onClick={() => {
               container.preferencesPage.setScope("user");
@@ -275,7 +447,9 @@ export function SettingsTab() {
             disabled={!workspace.enabled}
             title={
               workspace.reason ??
-              t("settings.tab.workspaceTitle", { folder: folderName ?? t("settings.tab.theOpenFolder") })
+              t("settings.tab.workspaceTitle", {
+                folder: folderName ?? t("settings.tab.theOpenFolder"),
+              })
             }
             className={
               scope === "workspace"
@@ -286,7 +460,9 @@ export function SettingsTab() {
               container.preferencesPage.setScope("workspace");
             }}
           >
-            {folderName ? t("settings.tab.workspaceNamed", { folder: folderName }) : t("settings.scope.workspace")}
+            {folderName
+              ? t("settings.tab.workspaceNamed", { folder: folderName })
+              : t("settings.scope.workspace")}
           </button>
         </div>
         <button
@@ -303,25 +479,37 @@ export function SettingsTab() {
       </div>
       {fileError ? (
         <p className="prefs-banner prefs-banner--error" role="alert">
-          {t(scope === "user" ? "settings.tab.userFileProblem" : "settings.tab.workspaceFileProblem", { error: fileError })}
+          {t(
+            scope === "user"
+              ? "settings.tab.userFileProblem"
+              : "settings.tab.workspaceFileProblem",
+            { error: fileError },
+          )}
         </p>
       ) : null}
       <IssueList
         issues={issues}
-        label={scope === "user" ? t("settings.tab.userSettings") : t("settings.tab.workspaceSettings")}
+        label={
+          scope === "user"
+            ? t("settings.tab.userSettings")
+            : t("settings.tab.workspaceSettings")
+        }
       />
       <div className="prefs-body">
         <nav className="prefs-nav" aria-label={t("settings.tab.categories")}>
           <button
             type="button"
             className={
-              page.category === null ? "prefs-nav__item prefs-nav__item--active" : "prefs-nav__item"
+              page.category === null
+                ? "prefs-nav__item prefs-nav__item--active"
+                : "prefs-nav__item"
             }
             onClick={() => {
               container.preferencesPage.setCategory(null);
             }}
           >
-            {t("settings.tab.all")} <span className="prefs-nav__count">{total}</span>
+            {t("settings.tab.all")}{" "}
+            <span className="prefs-nav__count">{total}</span>
           </button>
           {groups.map((group) => (
             <button
@@ -336,18 +524,26 @@ export function SettingsTab() {
                 container.preferencesPage.setCategory(group.category);
               }}
             >
-              {categoryLabel(group.category)} <span className="prefs-nav__count">{group.settings.length}</span>
+              {categoryLabel(group.category)}{" "}
+              <span className="prefs-nav__count">{group.settings.length}</span>
             </button>
           ))}
         </nav>
-        <div className="prefs-list" role="region" aria-label={t("settings.tab.region")}>
+        <div
+          className="prefs-list"
+          role="region"
+          aria-label={t("settings.tab.region")}
+        >
           {visible.length === 0 ? (
             <p className="prefs-empty" role="status">
               {t("settings.tab.noMatch", { query: page.query })}
             </p>
           ) : (
             visible.map((group) => (
-              <section key={group.category} aria-label={categoryLabel(group.category)}>
+              <section
+                key={group.category}
+                aria-label={categoryLabel(group.category)}
+              >
                 <h2 className="prefs-group">{categoryLabel(group.category)}</h2>
                 {group.settings.map((def) => (
                   <SettingRow
@@ -355,7 +551,8 @@ export function SettingsTab() {
                     def={def}
                     scope={scope}
                     value={
-                      snapshot.values.find((entry) => entry.id === def.id)?.value ?? def.default
+                      snapshot.values.find((entry) => entry.id === def.id)
+                        ?.value ?? def.default
                     }
                   />
                 ))}

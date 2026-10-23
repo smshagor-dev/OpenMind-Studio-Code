@@ -53,3 +53,4 @@ pnpm build
 ```
 
 Real third-party extensions need separate installation and interactive testing on Windows, including extension activation, API calls, themes, terminals, reload, update, and uninstall. Until those checks pass, do not describe compatibility as universal.
+

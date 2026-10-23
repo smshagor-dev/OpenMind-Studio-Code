@@ -70,30 +70,68 @@ beforeEach(() => {
 
 it("shows the editor's file as a chip that leaves it out of the message when clicked", () => {
   controlsState.activeFile = "src/stats.js";
-  const view = render(<AgentPrompt mode="ask" busy={false} disabledReason={null} contextShare={null} />);
+  const view = render(
+    <AgentPrompt
+      mode="ask"
+      busy={false}
+      disabledReason={null}
+      contextShare={null}
+    />,
+  );
   const chip = screen.getByRole("button", { name: "stats.js" });
   expect(chip).toHaveAttribute("aria-pressed", "true");
   fireEvent.click(chip);
   expect(agent.toggleActiveFile).toHaveBeenCalledOnce();
   controlsState.includeActiveFile = false;
-  view.rerender(<AgentPrompt mode="plan" busy={false} disabledReason={null} contextShare={null} />);
-  expect(screen.getByRole("button", { name: "stats.js" })).toHaveAttribute("aria-pressed", "false");
+  view.rerender(
+    <AgentPrompt
+      mode="plan"
+      busy={false}
+      disabledReason={null}
+      contextShare={null}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "stats.js" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
 });
 
 it("has no context row without a file or attachments, and one send button while idle", () => {
-  const { container } = render(<AgentPrompt mode="ask" busy={false} disabledReason={null} contextShare={null} />);
+  const { container } = render(
+    <AgentPrompt
+      mode="ask"
+      busy={false}
+      disabledReason={null}
+      contextShare={null}
+    />,
+  );
   expect(container.querySelector(".agent-composer__context")).toBeNull();
-  expect(screen.getByRole("button", { name: "agent.tasks.send" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "agent.tasks.send" }),
+  ).toBeDisabled();
   expect(screen.queryByRole("button", { name: "agent.tasks.stop" })).toBeNull();
-  expect(screen.getByRole("button", { name: /agent\.mode\.ask/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: /agent\.mode\.ask/ }),
+  ).toBeInTheDocument();
 });
 
 it("while the agent works the send button becomes Stop until something is typed", () => {
-  render(<AgentPrompt mode="ask" busy disabledReason={null} contextShare={null} />);
-  expect(screen.queryByRole("button", { name: "agent.tasks.queue" })).toBeNull();
-  expect(screen.getByRole("button", { name: "agent.tasks.stop" })).toBeEnabled();
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: "and then the docs" } });
-  expect(screen.getByRole("button", { name: "agent.tasks.queue" })).toBeEnabled();
+  render(
+    <AgentPrompt mode="ask" busy disabledReason={null} contextShare={null} />,
+  );
+  expect(
+    screen.queryByRole("button", { name: "agent.tasks.queue" }),
+  ).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "agent.tasks.stop" }),
+  ).toBeEnabled();
+  fireEvent.change(screen.getByRole("textbox"), {
+    target: { value: "and then the docs" },
+  });
+  expect(
+    screen.getByRole("button", { name: "agent.tasks.queue" }),
+  ).toBeEnabled();
 });
 it("queues a prompt while the agent is busy and keeps Stop available", async () => {
   render(
@@ -124,22 +162,13 @@ it("keeps a rejected queue submission in the composer", async () => {
   });
   expect(input).toHaveValue("Keep this goal");
 });
-it("applies permission and execution settings only on explicit Apply", async () => {
+it("explains automatic local performance and keeps cloud setup separate", () => {
   render(<AgentSettings />);
-  fireEvent.change(screen.getByLabelText("agent.settings.permissions"), {
-    target: { value: "auto" },
-  });
-  fireEvent.change(screen.getByLabelText("agent.settings.maxSteps"), {
-    target: { value: "200" },
-  });
+  expect(
+    screen.getByText(/Performance settings are automatic/),
+  ).toBeInTheDocument();
+  expect(screen.queryByLabelText("agent.settings.maxSteps")).toBeNull();
   expect(agent.updateOptions).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "agent.settings.apply" }));
-  await waitFor(() => {
-    expect(agent.setMode).toHaveBeenCalledWith("auto");
-  });
-  expect(agent.updateOptions).toHaveBeenCalledWith(
-    expect.objectContaining({ maxSteps: 200 }),
-  );
 });
 
 it("shows the preparing goal and offers Continue even with later prompts pending", () => {
@@ -163,7 +192,9 @@ it("shows the preparing goal and offers Continue even with later prompts pending
   const view = render(<AgentQueue state={state} />);
   // The running task is the transcript's last message; with nothing waiting there is no strip.
   expect(screen.queryByText("Preparing goal")).toBeNull();
-  expect(screen.queryByRole("region", { name: "agent.tasks.title" })).toBeNull();
+  expect(
+    screen.queryByRole("region", { name: "agent.tasks.title" }),
+  ).toBeNull();
   const first = state.tasks[0];
   if (!first) throw new Error("missing task");
   view.rerender(

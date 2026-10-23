@@ -98,6 +98,10 @@ export class ExtensionHostService {
   }
 
   dispose(): void {
+    if (this.restartTimer !== null) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
     for (const off of this.offs.splice(0)) off();
   }
 
@@ -111,7 +115,6 @@ export class ExtensionHostService {
   }
 
   private setStatus(status: ExtensionHostStatus): void {
-    const wasRunning = this.status().state === "running";
     this.localStatus = status;
     if (status.state !== "running") {
       this.deps.sync.stop();
@@ -119,7 +122,9 @@ export class ExtensionHostService {
       this.starting = null;
     }
     this.deps.events.emit("extensionsChanged", undefined);
-    if (wasRunning && status.state === "crashed") this.crashed(status);
+    // Startup failures can arrive before the host has reached "running".
+    // They also need recovery; otherwise startup crashes leave extensions inert.
+    if (status.state === "crashed" && !this.restartTimer && !this.starting) this.crashed(status);
   }
 
   /** The host died by itself: say so, and start it again a limited number of times. */
@@ -127,7 +132,7 @@ export class ExtensionHostService {
     const reason = status.error ?? "The extension host stopped unexpectedly.";
     this.log(`Extension host crashed: ${reason}`);
     this.deps.events.emit("appError", { message: `Extension host: ${reason}` });
-    if (Date.now() - this.startedAt > STABLE_MS) this.autoRestarts = 0;
+    if (this.startedAt > 0 && Date.now() - this.startedAt > STABLE_MS) this.autoRestarts = 0;
     if (!this.needsHost()) return;
     if (this.autoRestarts >= MAX_AUTO_RESTARTS) {
       this.log(
@@ -143,8 +148,14 @@ export class ExtensionHostService {
       this.restartTimer = null;
       void this.start().then((started) => {
         if (started) this.deps.onRestarted?.();
+        else this.scheduleRecovery("Extension host restart failed.");
       });
     }, this.deps.restartDelayMs ?? 1000);
+  }
+
+  private scheduleRecovery(reason: string): void {
+    if (this.restartTimer !== null || !this.needsHost() || this.autoRestarts >= MAX_AUTO_RESTARTS) return;
+    this.crashed({ state: "crashed", pid: null, node: null, error: reason });
   }
 
   /** Starts the host if it isn't running. Resolves `false` (after telling the user why) when it can't. */

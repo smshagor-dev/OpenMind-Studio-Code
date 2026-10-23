@@ -155,7 +155,195 @@ function activate(context) {
     return true;
   });
   reg('sampleV2.watched', () => watcherEvents);
+  reg('sampleV2.activateExtension', async () => {
+    const extension = vscode.extensions.getExtension('openmind-samples.sample-api-v2');
+    const exports = await extension.activate();
+    return {
+      active: extension.isActive,
+      ready: exports?.ready === true,
+      listed: vscode.extensions.all.some((entry) => entry.id === extension.id),
+    };
+  });
+  let extensionChanges = 0;
+  context.subscriptions.push(vscode.extensions.onDidChange(() => { extensionChanges += 1; }));
+  reg('sampleV2.extensionChangeCount', () => extensionChanges);
+  reg('sampleV2.diagnosticTags', () => {
+    const collection = vscode.languages.createDiagnosticCollection('sampleV2-tagged');
+    const diag = new vscode.Diagnostic(new vscode.Range(0, 0, 0, 4), 'unused variable');
+    diag.tags = [vscode.DiagnosticTag.Unnecessary, vscode.DiagnosticTag.Deprecated, 900];
+    diag.relatedInformation = [
+      new vscode.DiagnosticRelatedInformation(
+        new vscode.Location(vscode.Uri.file('C:/workspace/test.ts'), diag.range), 'declared here',
+      ),
+    ];
+    collection.set(vscode.Uri.file('C:/workspace/test.ts'), [diag]);
+    const result = {
+      first: diag.tags[0],
+      second: diag.tags[1],
+      related: diag.relatedInformation[0].message,
+      trigger: vscode.CompletionTriggerKind.Invoke,
+      actionTrigger: vscode.CodeActionTriggerKind.Automatic,
+    };
+    collection.dispose();
+    return result;
+  });
+  reg('sampleV2.diagnosticCollection', () => {
+    const collection = vscode.languages.createDiagnosticCollection('sampleV2-check');
+    const uri = vscode.Uri.file('C:/workspace/example.ts');
+    collection.set(uri, [new vscode.Diagnostic(new vscode.Range(0, 0, 0, 4), 'sample')]);
+    let received = null;
+    const receiver = { hits: 0 };
+    collection.forEach(function (item, diagnostics, owner) {
+      this.hits += 1;
+      received = { scheme: item.scheme, count: diagnostics.length, same: owner === collection };
+    }, receiver);
+    const present = collection.has(uri);
+    collection.dispose();
+    return { received, hits: receiver.hits, present, removed: collection.has(uri) === false };
+  });
+  reg('sampleV2.positionOverloads', () => {
+    const position = new vscode.Position(3, 4);
+    const changed = position.with({ character: 8 });
+    const moved = position.translate({ lineDelta: 2, characterDelta: 1 });
+    const range = new vscode.Range(position, moved);
+    const altered = range.with({ end: changed });
+    return {
+      original: position.character,
+      changed: changed.character,
+      movedLine: moved.line,
+      movedColumn: moved.character,
+      changedEnd: altered.end.character,
+      samePosition: position.with({}) === position,
+      sameRange: range.with({}) === range,
+    };
+  });
+  reg('sampleV2.eventDisposal', () => {
+    const emitter = new vscode.EventEmitter();
+    const receiver = { count: 0 };
+    let skipped = 0;
+    let disposed;
+    emitter.event(function (value) {
+      this.count += value;
+      disposed.dispose();
+    }, receiver);
+    disposed = emitter.event(() => { skipped += 1; });
+    emitter.fire(2);
+    emitter.dispose();
+    emitter.fire(9);
+    return { count: receiver.count, skipped };
+  });
+  reg('sampleV2.cancellationStatics', async () => {
+    let notified = false;
+    vscode.CancellationToken.Cancelled.onCancellationRequested(() => { notified = true; });
+    await Promise.resolve();
+    const error = new vscode.CancellationError();
+    return {
+      none: vscode.CancellationToken.None.isCancellationRequested,
+      cancelled: vscode.CancellationToken.Cancelled.isCancellationRequested,
+      notified,
+      errorName: error.name,
+    };
+  });
+  reg('sampleV2.cancellationToken', () => {
+    const source = new vscode.CancellationTokenSource();
+    let events = 0;
+    source.token.onCancellationRequested(() => { events += 1; });
+    source.cancel();
+    source.cancel();
+    source.dispose(true);
+    return { events, cancelled: source.token.isCancellationRequested };
+  });
+  reg('sampleV2.markdownSafety', () => {
+    const markdown = new vscode.MarkdownString();
+    markdown.appendText('[unsafe](https://example.org)');
+    markdown.appendCodeblock('backticks: ```', 'js');
+    return {
+      trusted: markdown.isTrusted,
+      html: markdown.supportHtml,
+      escaped: markdown.value.startsWith(String.fromCharCode(92) + '[unsafe' + String.fromCharCode(92) + ']'),
+      codeFence: markdown.value.includes('````js'),
+    };
+  });
+  reg('sampleV2.snippetEscaping', () => {
+    const snippet = new vscode.SnippetString();
+    snippet.appendText('price $10}');
+    snippet.appendChoice(['red,blue', 'a|b']);
+    snippet.appendVariable('TM_FILENAME', 'a$b');
+    return snippet.value;
+  });
+  reg('sampleV2.snippetBuilders', () => {
+    const snippet = new vscode.SnippetString('start ');
+    snippet.appendTabstop().appendPlaceholder('name');
+    return snippet.value;
+  });
+  reg('sampleV2.languageValues', () => {
+    const range = new vscode.Range(0, 0, 0, 3);
+    const action = new vscode.CodeAction('Apply correction', vscode.CodeActionKind.QuickFix);
+    const child = new vscode.DocumentSymbol('run', 'function', vscode.SymbolKind.Function, range, range);
+    const signature = new vscode.SignatureInformation('run(value)', 'A function');
+    signature.parameters.push(new vscode.ParameterInformation('value'));
+    return {
+      action: action.title,
+      quickfixContains: vscode.CodeActionKind.QuickFix.contains(new vscode.CodeActionKind('quickfix.rewrite')),
+      sourceVsRefactor: vscode.CodeActionKind.Source.intersects(vscode.CodeActionKind.Refactor),
+      lensResolved: new vscode.CodeLens(range, { title: 'Run', command: 'run' }).isResolved,
+      linkTarget: new vscode.DocumentLink(range, vscode.Uri.parse('https://example.org')).target.scheme,
+      childKind: child.kind,
+      foldingKind: new vscode.FoldingRange(0, 3, vscode.FoldingRangeKind.Region).kind,
+      signatureParameters: signature.parameters.length,
+    };
+  });
+  reg('sampleV2.uriFactory', () => {
+    const uri = vscode.Uri.from({ scheme: 'memfs', authority: 'local', path: '/folder/space name' });
+    let strictFailed = false;
+    try { vscode.Uri.parse('not-a-uri', true); }
+    catch { strictFailed = true; }
+    return {
+      formatted: uri.toString(),
+      unencoded: uri.toString(true),
+      strictFailed,
+      changed: uri.with({ path: '/other' }).toString(),
+    };
+  });
+  reg('sampleV2.uriRoundtrip', () => {
+    const file = vscode.Uri.parse('file:///C:/My%20Files/hello.ts?mode=read%20only#anchor%20one');
+    const share = vscode.Uri.file('\\\\server\\share\\hello.ts');
+    return {
+      path: file.path,
+      query: file.query,
+      fragment: file.fragment,
+      shareAuthority: share.authority,
+      sharePath: share.path,
+      shareFsPath: share.fsPath.replaceAll(String.fromCharCode(92), '/'),
+      escapedPath: vscode.Uri.file('C:/workspace/what?#.ts').toString().includes('what%3F%23.ts'),
+    };
+  });
+  reg('sampleV2.languageMatch', () => {
+    const document = { languageId: 'typescript', uri: vscode.Uri.file('C:/workspace/index.ts') };
+    return {
+      exact: vscode.languages.match('typescript', document),
+      wildcard: vscode.languages.match('*', document),
+      mismatch: vscode.languages.match('python', document),
+      glob: vscode.languages.match({ language: 'typescript', pattern: '**/*.ts' }, document),
+      brace: vscode.languages.match({ language: 'typescript', pattern: '**/*.{ts,tsx}' }, document),
+      otherFile: vscode.languages.match({ language: 'typescript', pattern: '**/*.py' }, document),
+      relative: vscode.languages.match({
+        language: 'typescript',
+        pattern: new vscode.RelativePattern('C:/workspace', '**/*.ts'),
+      }, document),
+    };
+  });
+  reg('sampleV2.extensionState', () => {
+    const extension = vscode.extensions.getExtension('openmind-samples.sample-api-v2');
+    return {
+      found: !!extension,
+      active: extension?.isActive,
+      exportsReady: extension?.exports?.ready === true,
+      uri: extension?.extensionUri?.scheme,
+    };
+  });
   reg('sampleV2.events', () => seen);
+  return { ready: true };
 }
 
 module.exports = { activate };

@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { contributedLists } from "../components/extensionContributesModel";
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
 import { testExtension } from "../testUtils/fakeExtensionsIpc";
 import { filesChanged } from "./extensionApiWiring";
 import { ExtensionPromptService } from "./extensionPromptService";
+import { HostBridge } from "./extensionHostBridge";
 import { FilePreviewService } from "./filePreviewService";
 
 describe("file watcher events for extensions", () => {
@@ -73,5 +74,31 @@ describe("extension details lists", () => {
     expect(lists.Commands).toEqual(["Run A (a.run)"]);
     expect(lists["File icon themes"]).toEqual(["icons"]);
     expect(lists["Task types"]).toEqual(["samplev2"]);
+  });
+});
+
+describe("language provider replacement", () => {
+  it("disposes the previous binding before replacing a reused host handle", () => {
+    const disposeFirst = vi.fn();
+    const disposeSecond = vi.fn();
+    const registerProvider = vi.fn()
+      .mockReturnValueOnce(disposeFirst)
+      .mockReturnValueOnce(disposeSecond);
+    const bridge = new HostBridge({
+      registerProvider,
+      prompts: new ExtensionPromptService(),
+    } as unknown as ConstructorParameters<typeof HostBridge>[0]);
+    const registration = {
+      handle: "publisher.extension:completion:1",
+      kind: "completion",
+      extension: "publisher.extension",
+      selector: [{ language: "typescript" }],
+    };
+    bridge.handleNotification("languages/registered", registration);
+    bridge.handleNotification("languages/registered", registration);
+    expect(disposeFirst).toHaveBeenCalledTimes(1);
+    expect(registerProvider).toHaveBeenCalledTimes(2);
+    bridge.handleNotification("languages/unregistered", { handle: registration.handle });
+    expect(disposeSecond).toHaveBeenCalledTimes(1);
   });
 });

@@ -10,10 +10,9 @@
 // `workspace.fs` works on `file:` Uris inside the open folder (read: `workspaceRead`; write/delete: `workspaceWrite`;
 // anywhere else: `filesystemOutsideWorkspace`) and on registered custom schemes (through their provider).
 
-const { unsupportedError } = require('./unsupported.js');
 const fs = require('fs');
 const path = require('path');
-const { within } = require('./guard.js');
+const { within, resolvedPath } = require('./guard.js');
 
 const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 };
 const RESERVED = /^(file|untitled|https?|data|mailto|javascript|about|blob|vscode.*|openmind.*|git|output|debug|walkthrough)$/i;
@@ -103,7 +102,8 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
 
   /** The permission a `file:` path needs for `write` or read. */
   function filePermission(file, write) {
-    const inside = state.workspaceFolders.some((folder) => within(folder.path, file));
+    const target = resolvedPath(file);
+    const inside = state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), target));
     if (!inside) return 'filesystemOutsideWorkspace';
     return write ? 'workspaceWrite' : 'workspaceRead';
   }
@@ -116,6 +116,7 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
 
   async function onProvider(uri, op, ...args) {
     const scheme = uri.scheme;
+    await host.activateByEvent?.(`onFileSystem:${scheme}`);
     const entry = state.fileSystems.get(scheme);
     if (!entry) throw FileSystemError.Unavailable(`No file system provider for '${scheme}:'.`);
     return providerCall(host, entry, op, uri.with({ path: normalizeProviderPath(uri.path) ?? '' }), ...args);
@@ -151,10 +152,11 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
         throw toError(error);
       }
     },
-    async writeFile(uri, content) {
-      if (uri.scheme !== 'file') return onProvider(uri, 'writeFile', content, { create: true, overwrite: true });
+    async writeFile(uri, content, options) {
+      const overwrite = options?.overwrite !== false;
+      if (uri.scheme !== 'file') return onProvider(uri, 'writeFile', content, { create: true, overwrite });
       try {
-        await fs.promises.writeFile(fileOf(uri, true), Buffer.from(content));
+        await fs.promises.writeFile(fileOf(uri, true), Buffer.from(content), { flag: overwrite ? 'w' : 'wx' });
       } catch (error) {
         throw toError(error);
       }
@@ -175,11 +177,39 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
         throw toError(error);
       }
     },
-    async rename() {
-      throw unsupportedError('workspace.fs.rename');
+    async rename(source, target, options) {
+      if (source.scheme !== target.scheme) {
+        throw FileSystemError.Unavailable('Renaming across file system schemes is not supported.');
+      }
+      if (source.scheme !== 'file') {
+        if (normalizeProviderPath(target.path) === null) throw FileSystemError.NoPermissions('That path leaves the file system provider (..).');
+        return onProvider(source, 'rename', target.with({ path: normalizeProviderPath(target.path) }), { overwrite: !!options?.overwrite });
+      }
+      try {
+        const from = fileOf(source, true);
+        const to = fileOf(target, true);
+        if (from === to) return;
+        if (!options?.overwrite) {
+          try { await fs.promises.lstat(to); throw FileSystemError.FileExists(target); }
+          catch (error) { if (error.code !== 'ENOENT') throw error; }
+        }
+        await fs.promises.rename(from, to);
+      } catch (error) { throw toError(error); }
     },
-    async copy() {
-      throw unsupportedError('workspace.fs.copy');
+    async copy(source, target, options) {
+      if (source.scheme !== target.scheme) throw FileSystemError.Unavailable('Copying across file system schemes is not supported.');
+      if (source.scheme !== 'file') {
+        if (normalizeProviderPath(target.path) === null) throw FileSystemError.NoPermissions('That path leaves the file system provider (..).');
+        return onProvider(source, 'copy', target.with({ path: normalizeProviderPath(target.path) }), { overwrite: !!options?.overwrite });
+      }
+      try {
+        const from = fileOf(source, false);
+        const to = fileOf(target, true);
+        // Directory traversal needs per-entry permission checks, particularly
+        // around symlinks. Refuse it until that implementation is available.
+        if ((await fs.promises.stat(from)).isDirectory()) throw FileSystemError.Unavailable('Directory copying is not supported yet.');
+        await fs.promises.copyFile(from, to, options?.overwrite ? 0 : fs.constants.COPYFILE_EXCL);
+      } catch (error) { throw toError(error); }
     },
     isWritableFileSystem(scheme) {
       if (scheme === 'file') return true;
@@ -190,7 +220,7 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
   return { registerFileSystemProvider, fs: fsApi, Uri };
 }
 
-const WRITES = new Set(['writeFile', 'delete', 'createDirectory', 'rename']);
+const WRITES = new Set(['writeFile', 'delete', 'createDirectory', 'rename', 'copy']);
 
 /** Calls `op` on the provider as its extension; a write to a read-only provider never reaches it. */
 async function providerCall(host, entry, op, uri, ...args) {
@@ -247,3 +277,4 @@ async function handleFsRequest(host, params, Uri) {
 }
 
 module.exports = { createFileSystemApi, handleFsRequest, normalizeProviderPath, providerCall, FileType, FileSystemError };
+

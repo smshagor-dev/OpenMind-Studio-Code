@@ -68,7 +68,7 @@ pub fn register_close_handler(window: &WebviewWindow, service: WindowStateServic
 
 /// The last editor window on screen is closing: hide to the tray while a PHP
 /// stack server runs (if the user wants that), otherwise quit.
-pub async fn close_last_editor_window(app: AppHandle, window: WebviewWindow) {
+pub async fn close_last_editor_window(app: AppHandle, _window: WebviewWindow) {
     // Closing the final editor window means exiting the application, even if
     // PHP servers are running. Never leave local AI, cloud requests, terminals
     // or other managed sessions active in the system tray.

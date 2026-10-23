@@ -14,7 +14,6 @@ mod state;
 mod sync;
 #[cfg(all(test, windows))]
 mod test_paths;
-mod tray;
 mod updates;
 mod window_events;
 mod windows;
@@ -244,6 +243,8 @@ fn main() {
             commands::lsp::lsp_set_verbose,
             commands::extensions::ext_inspect_vsix,
             commands::extensions::ext_install,
+            commands::extensions::ext_detect_vscode,
+            commands::extensions::ext_import_vscode,
             commands::extension_manage::ext_read_icon,
             commands::marketplace::ext_market_search,
             commands::marketplace::ext_market_details,
@@ -423,6 +424,9 @@ fn main() {
             commands::profiles::profile_delete,
             commands::profiles::profile_export,
             commands::profiles::profile_import,
+            commands::profiles::profile_import_vscode,
+            commands::profiles::profile_detect_vscode,
+            commands::profiles::profile_import_detected_vscode,
             commands::format::format_options,
             commands::format::format_run,
             commands::about::about_info,
@@ -629,3 +633,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

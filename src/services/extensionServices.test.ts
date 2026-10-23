@@ -182,7 +182,7 @@ describe("ExtensionHostService", () => {
     });
   });
 
-  it("shows a crashed host as stopped and drops what it registered", async () => {
+  it("drops crashed host registrations immediately while scheduling recovery", async () => {
     const r = await started([command]);
     let state: (status: ExtensionHostStatus) => void = () => undefined;
     vi.mocked(r.ipc.onExtHostState).mockImplementation((handler) => {
@@ -193,8 +193,10 @@ describe("ExtensionHostService", () => {
     r.bridge.handleNotification("commands/registered", { command: "x.y" });
     expect(r.bridge.registeredCommands().has("x.y")).toBe(true);
     state({ state: "crashed", pid: null, node: null, error: "The extension host stopped unexpectedly." });
-    expect(r.host.status().state).toBe("crashed");
+    expect(r.host.status().state).toBe("restarting");
+    expect(r.host.isRunning()).toBe(false);
     expect(r.bridge.registeredCommands().size).toBe(0);
+    r.host.dispose();
   });
 });
 
@@ -408,3 +410,4 @@ describe("ExtensionContributionService", () => {
     });
   });
 });
+

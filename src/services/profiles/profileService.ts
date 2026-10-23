@@ -1,7 +1,8 @@
 import type { EventBus } from "../eventBus";
+import type { VsCodeExtensionSource } from "../extensionsIpc";
 import type { AppEvents } from "../events";
 import type { IpcClient } from "../ipc";
-import type { ProfileList, ProfileSummary } from "./profilesIpc";
+import type { ProfileList, ProfileSummary, VsCodeProfileSource } from "./profilesIpc";
 
 export interface ProfileState {
   list: ProfileList | null;
@@ -9,6 +10,8 @@ export interface ProfileState {
   busy: boolean;
   /** The Profiles window is open. */
   open: boolean;
+  vscodeProfiles: VsCodeProfileSource[];
+  vscodeExtensions: VsCodeExtensionSource[];
 }
 
 /**
@@ -18,7 +21,7 @@ export interface ProfileState {
  * dialogs and never contain keys, passwords or local paths (the backend guarantees it).
  */
 export class ProfileService {
-  private state: ProfileState = { list: null, busy: false, open: false };
+  private state: ProfileState = { list: null, busy: false, open: false, vscodeProfiles: [], vscodeExtensions: [] };
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -58,6 +61,47 @@ export class ProfileService {
   async openWindow(): Promise<void> {
     this.set({ open: true });
     await this.load();
+    await this.detectVsCodeProfiles();
+    await this.detectVsCodeExtensions();
+  }
+
+  async detectVsCodeProfiles(): Promise<void> {
+    try {
+      this.set({ vscodeProfiles: await this.ipc.profileDetectVscode() });
+    } catch (error) {
+      this.fail("detect VS Code profiles", error);
+      this.set({ vscodeProfiles: [] });
+    }
+  }
+
+  async importDetectedVsCode(sourceId: string): Promise<boolean> {
+    return this.run("import VS Code profile", () => this.ipc.profileImportDetectedVscode(sourceId));
+  }
+
+  async detectVsCodeExtensions(): Promise<void> {
+    try {
+      this.set({ vscodeExtensions: await this.ipc.extDetectVscode() });
+    } catch (error) {
+      this.fail("detect VS Code extensions", error);
+      this.set({ vscodeExtensions: [] });
+    }
+  }
+
+  async importVsCodeExtension(sourceId: string): Promise<boolean> {
+    this.set({ busy: true });
+    try {
+      const extension = await this.ipc.extImportVscode(sourceId);
+      this.events.emit("appNotice", {
+        message: `Imported ${extension.id} as disabled. Review its permissions before enabling it in Extensions.`,
+      });
+      await this.detectVsCodeExtensions();
+      return true;
+    } catch (error) {
+      this.fail("import VS Code extension", error);
+      return false;
+    } finally {
+      this.set({ busy: false });
+    }
   }
 
   closeWindow(): void {
@@ -138,6 +182,36 @@ export class ProfileService {
       return true;
     } catch (error) {
       this.fail("export the profile", error);
+      return false;
+    }
+  }
+
+  /** Import compatible VS Code settings and optional keybindings as an inactive profile.
+   * Nothing is applied to the current workspace or existing OpenMind profile.
+   */
+  async importFromVsCode(): Promise<boolean> {
+    try {
+      const settingsPath = await this.ipc.openDocumentDialog();
+      if (settingsPath === null) return false;
+      const settings = await this.ipc.documentRead(settingsPath);
+      if (settings.state !== "file") throw new Error("Cannot read VS Code settings.json.");
+      const shortcutsPath = await this.ipc.openDocumentDialog();
+      let shortcuts: string | null = null;
+      if (shortcutsPath !== null) {
+        const read = await this.ipc.documentRead(shortcutsPath);
+        if (read.state !== "file") throw new Error("Cannot read VS Code keybindings.json.");
+        shortcuts = read.content;
+      }
+      const done = await this.run(
+        "import VS Code preferences",
+        () => this.ipc.profileImportVscode("Imported VS Code", settings.content, shortcuts),
+      );
+      if (done) this.events.emit("appNotice", {
+        message: "VS Code settings imported into a new profile. Switch to it to apply compatible preferences.",
+      });
+      return done;
+    } catch (error) {
+      this.fail("import VS Code settings", error);
       return false;
     }
   }

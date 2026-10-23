@@ -3,10 +3,11 @@ const vscode = require('vscode');
 function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sampleUnsupported.run', () => {
-      // Not part of the supported subset: this throws "VS Code API 'debug.startDebugging' is not supported ...".
-      vscode.debug.startDebugging(undefined, 'sample');
+      // Virtual debug source URIs remain outside the supported debug subset.
+      vscode.debug.asDebugSourceUri({ sourceReference: 1 });
     }),
   );
 }
 
 module.exports = { activate };
+

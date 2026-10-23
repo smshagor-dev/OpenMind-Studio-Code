@@ -143,6 +143,9 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
     profileDelete: vi.fn(),
     profileExport: vi.fn(),
     profileImport: vi.fn(),
+    profileImportVscode: vi.fn().mockResolvedValue({ profiles: [], active: "default", problems: [], covers: [] }),
+    profileDetectVscode: vi.fn().mockResolvedValue([]),
+    profileImportDetectedVscode: vi.fn().mockResolvedValue({ profiles: [], active: "default", problems: [], covers: [] }),
     languageTerminalLine: vi
       .fn()
       .mockImplementation((argv: string[]) => Promise.resolve(argv.join(" "))),
@@ -448,3 +451,4 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
     ...overrides,
   };
 }
+

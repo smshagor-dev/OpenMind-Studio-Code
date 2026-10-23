@@ -13,15 +13,22 @@ export interface HostDocument {
   isDirty: boolean;
 }
 
-/** A language feature an extension registered (completion, hover, definition, formatting). */
+/** A language feature an extension registered with the host. */
 export interface ProviderRegistration {
   handle: string;
-  kind: "completion" | "hover" | "definition" | "formatting" | "rangeFormatting";
+  kind: "completion" | "hover" | "definition" | "typeDefinition" | "implementation" |
+    "declaration" | "signatureHelp" | "selectionRange" | "linkedEditing" | "onTypeFormatting" | "documentLink" | "reference" | "highlight" | "documentSymbol" | "folding" | "formatting" | "rangeFormatting";
   extension: string;
-  selector: { language?: string; scheme?: string; pattern?: string }[];
+  selector: { language?: string; scheme?: string; pattern?: string | { base: string; pattern: string } }[];
   triggerCharacters?: string[];
+  retriggerCharacters?: string[];
   /** The extension's name, for a formatter ("Format Document With..."). */
   displayName?: string;
+}
+
+export interface ProviderCancellation {
+  readonly isCancellationRequested: boolean;
+  onCancellationRequested: (listener: () => void) => { dispose(): void };
 }
 
 export type ProviderInvoke = (payload: {
@@ -29,7 +36,12 @@ export type ProviderInvoke = (payload: {
   position?: { line: number; character: number };
   range?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
   options?: { tabSize: number; insertSpaces: boolean };
-}) => Promise<unknown>;
+  positions?: { line: number; character: number }[];
+  character?: string;
+  action?: "resolve" | "command";
+  itemId?: string;
+  context?: { includeDeclaration?: boolean; triggerKind?: number; triggerCharacter?: string; isRetrigger?: boolean; activeSignatureHelp?: unknown };
+}, token?: ProviderCancellation) => Promise<unknown>;
 
 /** A custom-scheme document an extension opens (`window.showTextDocument`, read-only in the app). */
 export interface VirtualDocumentRequest {
@@ -47,6 +59,8 @@ export interface HostDiagnostic {
   range: { startLine: number; startColumn: number; endLine: number; endColumn: number };
   message: string;
   severity: number;
+  /** VS Code DiagnosticTag: 1 = unnecessary, 2 = deprecated. */
+  tags?: number[];
   source?: string;
   code?: string;
 }
@@ -76,6 +90,7 @@ export interface BridgeDeps {
   onStatusBarEvent?: (method: string, params: Record<string, unknown>) => void;
   /** `webview/*` notifications (panels), and `webview/reset` when the host went away. */
   onWebviewEvent?: (method: string, params: Record<string, unknown>) => void;
+  onWorkbenchEvent?: (method: string, params: Record<string, unknown>) => void;
   /** Extension terminals (`terminal/*`, Milestone 18). */
   terminals?: ExtensionTerminalService;
   /** Extension tasks (`tasks/execute`, `tasks/terminate`). */
@@ -84,6 +99,7 @@ export interface BridgeDeps {
   showTextDocument?: (path: string, preserveFocus: boolean) => Promise<void>;
   /** Opens a custom-scheme document read-only in a tab. */
   showVirtualDocument?: (request: VirtualDocumentRequest) => Promise<void>;
+  updateVirtualDocument?: (request: VirtualDocumentRequest) => void;
   /** Saves an open document / every open document (`TextDocument.save`, `workspace.saveAll`). */
   saveDocument?: (path: string) => Promise<boolean>;
   saveAll?: () => Promise<boolean>;
@@ -131,6 +147,7 @@ export class HostBridge {
   /** Commands extensions registered in the host (not necessarily contributed in a manifest). */
   private readonly hostCommands = new Set<string>();
   private readonly providers = new Map<string, () => void>();
+  private nextProviderRequest = 0;
 
   constructor(private deps: BridgeDeps) {}
 
@@ -263,6 +280,10 @@ export class HostBridge {
       case "editor/revealRange":
         this.deps.editorApi?.revealRange(p);
         return;
+      case "workspace/virtualDocumentChanged":
+        this.deps.updateVirtualDocument?.({ extension: text(p.extension), uri: text(p.uri), scheme: text(p.scheme), path: text(p.path),
+          text: text(p.text), languageId: text(p.languageId) || "plaintext", readonly: true });
+        return;
       case "terminal/show":
         this.deps.terminals?.show(p);
         return;
@@ -276,6 +297,7 @@ export class HostBridge {
         if (method.startsWith("views/")) this.deps.onViewEvent?.(method, p);
         else if (method.startsWith("statusBar/")) this.deps.onStatusBarEvent?.(method, p);
         else if (method.startsWith("webview/")) this.deps.onWebviewEvent?.(method, p);
+        else if (method.startsWith("workbench/")) this.deps.onWorkbenchEvent?.(method, p);
     }
   }
 
@@ -300,6 +322,7 @@ export class HostBridge {
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});
     this.deps.onWebviewEvent?.("webview/reset", {});
+    this.deps.onWorkbenchEvent?.("workbench/reset", {});
   }
 
   private log(extension: string, channel: string, line: string): void {
@@ -319,8 +342,26 @@ export class HostBridge {
   }
 
   private registerProvider(registration: ProviderRegistration): void {
-    const invoke: ProviderInvoke = (payload) =>
-      this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload });
+    // A host restart or duplicate registration can reuse a handle. Dispose the
+    // previous Monaco/formatter binding before installing its replacement.
+    this.providers.get(registration.handle)?.();
+    this.providers.delete(registration.handle);
+    const invoke: ProviderInvoke = async (payload, token) => {
+      if (token?.isCancellationRequested) return null;
+      const requestId = `${registration.handle}:${++this.nextProviderRequest}`;
+      const pending = this.deps.hostRequest("host/provide", { handle: registration.handle, ...payload, requestId });
+      const cancel = () => {
+        void this.deps.hostRequest("host/cancelProvide", { requestId }).catch(() => undefined);
+      };
+      const subscription = token?.onCancellationRequested(cancel);
+      if (token?.isCancellationRequested) cancel();
+      try {
+        const result = await pending;
+        return token?.isCancellationRequested ? null : result;
+      } finally {
+        subscription?.dispose();
+      }
+    };
     const formatting = registration.kind === "formatting" || registration.kind === "rangeFormatting";
     if (formatting && !this.deps.registerFormatter) return;
     const dispose =
@@ -330,3 +371,4 @@ export class HostBridge {
     this.providers.set(registration.handle, dispose);
   }
 }
+

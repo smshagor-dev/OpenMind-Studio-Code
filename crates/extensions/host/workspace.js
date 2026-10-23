@@ -6,7 +6,7 @@
 
 const { unsupportedError } = require('./unsupported.js');
 const path = require('path');
-const { within } = require('./guard.js');
+const { within, resolvedPath } = require('./guard.js');
 const { createFileSystemApi, providerCall, normalizeProviderPath } = require('./fsprovider.js');
 
 const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 };
@@ -80,6 +80,7 @@ function createWorkspaceApi(parts) {
   const { host, ext, need, track, asExtension, Disposable, EventEmitter, Uri, editors, namespace, toPath } = parts;
   const { state, request } = host;
   const { document } = editors;
+  const contents = require('./contentproviders.js').create({ host, ext, need, track, Disposable, editors, guessLanguage });
   const files = createFileSystemApi({ host, ext, need, track, Disposable, Uri });
 
   const event = (name) => (listener, thisArg, disposables) =>
@@ -91,7 +92,7 @@ function createWorkspaceApi(parts) {
         asExtension((data) =>
           listener(
             name === 'documentChanged'
-              ? { document: document(state.documents.get(data.path) || data), contentChanges: [] }
+              ? { document: document(state.documents.get(data.path) || data), contentChanges: data.contentChanges || [] }
               : document(state.documents.get(data.path) || data),
           ),
         ),
@@ -149,6 +150,10 @@ function createWorkspaceApi(parts) {
 
   /** A document of a custom scheme, read through its provider (read-only in the editor). */
   async function openSchemeDocument(uri) {
+    need('workspaceRead');
+    if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);
+    await host.activateByEvent?.(`onFileSystem:${uri.scheme}`);
+    if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);
     const entry = state.fileSystems && state.fileSystems.get(uri.scheme);
     if (!entry) throw new Error(`No file system provider for '${uri.scheme}:' (openTextDocument).`);
     const normalized = normalizeProviderPath(uri.path);
@@ -163,7 +168,18 @@ function createWorkspaceApi(parts) {
 
   const watchers = new Set();
 
+  function folderFor(value) {
+    if (value && value.scheme && value.scheme !== 'file') return undefined;
+    const target = toPath(value);
+    if (!target) return undefined;
+    // Nested workspace roots belong to the most specific folder.
+    return state.workspaceFolders.filter((folder) => within(folder.path, target))
+      .sort((a, b) => path.resolve(b.path).length - path.resolve(a.path).length)[0];
+  }
+
   const workspace = namespace('workspace', {
+    get isTrusted() { return state.isTrusted === true; },
+    onDidGrantWorkspaceTrust: event('workspaceTrusted'),
     get workspaceFolders() {
       const folders = state.workspaceFolders;
       if (!folders.length) return undefined;
@@ -176,14 +192,16 @@ function createWorkspaceApi(parts) {
       return state.workspaceFolders[0] ? state.workspaceFolders[0].path : undefined;
     },
     getWorkspaceFolder(uri) {
-      const target = toPath(uri);
-      const folder = state.workspaceFolders.find((item) => target && (target === item.path || target.startsWith(item.path + path.sep)));
+      const folder = folderFor(uri);
       return folder ? { uri: Uri.file(folder.path), name: folder.name, index: state.workspaceFolders.indexOf(folder) } : undefined;
     },
-    asRelativePath(value) {
+    asRelativePath(value, includeWorkspaceFolder) {
       const target = toPath(value);
-      const folder = state.workspaceFolders.find((item) => target && target.startsWith(item.path + path.sep));
-      return folder ? target.slice(folder.path.length + 1).replace(/\\/g, '/') : target;
+      const folder = folderFor(value);
+      if (!folder) return target;
+      const relative = path.relative(folder.path, target).replace(/\\/g, '/');
+      const include = includeWorkspaceFolder ?? state.workspaceFolders.length > 1;
+      return include ? (relative ? `${folder.name}/${relative}` : folder.name) : relative;
     },
     getConfiguration(section) {
       need('settings');
@@ -212,7 +230,8 @@ function createWorkspaceApi(parts) {
       }
       const file = toPath(target);
       if (!file) throw new Error('openTextDocument needs a file path or a file Uri.');
-      need(state.workspaceFolders.some((folder) => within(folder.path, file)) ? 'workspaceRead' : 'filesystemOutsideWorkspace');
+      const resolved = resolvedPath(file);
+      need(state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), resolved)) ? 'workspaceRead' : 'filesystemOutsideWorkspace');
       const known = state.documents.get(file);
       if (known) return document(known);
       const data = await request('workspace/openTextDocument', { path: file });
@@ -279,6 +298,7 @@ function createWorkspaceApi(parts) {
     },
     fs: files.fs,
     registerFileSystemProvider: files.registerFileSystemProvider,
+    registerTextDocumentContentProvider: contents.register,
     applyEdit: (edit) => editors.applyEdit(edit),
     onDidOpenTextDocument: documentEvent('documentOpened'),
     onDidCloseTextDocument: documentEvent('documentClosed'),
@@ -289,3 +309,4 @@ function createWorkspaceApi(parts) {
 }
 
 module.exports = { createWorkspaceApi, globToRegExp, matcherOf, RelativePattern, ConfigurationTarget, guessLanguage };
+

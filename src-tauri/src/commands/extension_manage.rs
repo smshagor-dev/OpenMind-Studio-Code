@@ -13,7 +13,7 @@ fn changed(app: &AppHandle) {
 }
 
 /// Asks the host to deactivate an extension (best effort: a host that is gone has nothing to deactivate).
-async fn deactivate_in_host(state: &AppState, id: &str) {
+pub(crate) async fn deactivate_in_host(state: &AppState, id: &str) {
     let Some(host) = state.extensions.running_host() else {
         return;
     };
@@ -27,6 +27,22 @@ async fn deactivate_in_host(state: &AppState, id: &str) {
     })
     .await;
     lock(&state.extensions.activity).remove(id);
+}
+
+/// Removes an extension descriptor as well as its runtime instance.
+async fn unregister_from_host(state: &AppState, id: &str) {
+    let Some(host) = state.extensions.running_host() else {
+        return;
+    };
+    let id_owned = id.to_string();
+    let _ = tokio::task::spawn_blocking(move || {
+        host.request(
+            "host/unregister",
+            json!({ "id": id_owned }),
+            ACTIVATE_TIMEOUT,
+        )
+    })
+    .await;
 }
 
 #[tauri::command]
@@ -46,6 +62,8 @@ pub async fn ext_set_enabled(
         .map_err(|err| err.to_string())?;
     if enabled {
         register_with_host(&state, &extension).await;
+    } else {
+        unregister_from_host(&state, &id).await;
     }
     changed(&app);
     crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
@@ -84,6 +102,7 @@ pub async fn ext_uninstall(
         .store
         .uninstall(&id)
         .map_err(|err| err.to_string())?;
+    unregister_from_host(&state, &id).await;
     lock(&state.extensions.activity).remove(&id);
     // Its secrets go with it (unlike its storage folder, which VS Code keeps too).
     if let Err(err) = crate::commands::extension_api::clear_secrets(&state, &id).await {

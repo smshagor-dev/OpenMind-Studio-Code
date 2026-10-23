@@ -8,7 +8,16 @@ export interface HostRange {
 }
 
 export interface HostCompletionItem {
+  id?: string;
+  hasCommand?: boolean;
   label: string;
+  labelDetails?: { detail?: string; description?: string };
+  preselect?: boolean;
+  commitCharacters?: string[];
+  tags?: number[];
+  keepWhitespace?: boolean;
+  range?: HostRange | { insert: HostRange; replace: HostRange };
+  additionalTextEdits?: { range: HostRange; newText: string }[];
   /** VS Code's `CompletionItemKind`. */
   kind?: number;
   detail?: string;
@@ -25,7 +34,21 @@ export interface HostHover {
 
 export interface HostLocation {
   path: string;
+  uri?: string;
   range: HostRange;
+  targetSelectionRange?: HostRange;
+  originSelectionRange?: HostRange;
+}
+
+export interface HostDocumentSymbol {
+  name: string;
+  detail: string;
+  kind: number;
+  tags?: number[];
+  range: HostRange;
+  selectionRange: HostRange;
+  children?: HostDocumentSymbol[];
+  containerName?: string;
 }
 
 /**
@@ -142,6 +165,7 @@ export interface MarkerInput {
   endColumn: number;
   message: string;
   severity: number;
+  tags?: number[];
   source?: string;
   code?: string;
 }
@@ -151,6 +175,7 @@ export function toMarkers(
     range: HostRange;
     message: string;
     severity: number;
+    tags?: number[];
     source?: string;
     code?: string;
   }[],
@@ -159,7 +184,11 @@ export function toMarkers(
     ...toMonacoRange(diagnostic.range),
     message: diagnostic.message,
     severity: markerSeverity(diagnostic.severity),
+    ...(diagnostic.tags === undefined ? {} : {
+      tags: diagnostic.tags.filter((tag) => tag === 1 || tag === 2),
+    }),
     ...(diagnostic.source === undefined ? {} : { source: diagnostic.source }),
     ...(diagnostic.code === undefined ? {} : { code: diagnostic.code }),
   }));
 }
+

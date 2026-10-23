@@ -1,4 +1,6 @@
 'use strict';
+const path = require('path');
+const { globToRegExp } = require('./workspace.js');
 // The `languages` namespace of OpenMind Studio's extension host (a VS Code API subset, written for this app). Moved out
 // of vscode.js in Milestone 18, which added document and range formatting providers and `TextEdit`. Providers only
 // answer the app's requests (`host/provide`); the app keeps its bundled language servers and formatters first and
@@ -32,18 +34,27 @@ function createLanguagesApi(parts) {
     return list.map((item) =>
       typeof item === 'string'
         ? { language: item }
-        : { language: item.language, scheme: item.scheme, pattern: typeof item.pattern === 'string' ? item.pattern : undefined },
+        : { language: item.language, scheme: item.scheme, pattern: typeof item.pattern === 'string'
+          ? item.pattern : item.pattern && { base: item.pattern.base, pattern: item.pattern.pattern } },
     );
   }
 
   function register(kind, selector, invoke, extra) {
     handleCounter += 1;
     const handle = `${ext.id}:${kind}:${handleCounter}`;
-    state.providers.set(handle, { kind, extension: ext.id, invoke });
+    state.providers.set(handle, { kind, extension: ext.id, invoke: (params) => {
+      const doc = document(state.documents.get(params.path));
+      if (!doc) throw new Error('The document is not open.');
+      if (!matchSelector(selector, doc)) return null;
+      return invoke(params);
+    } });
     notify('languages/registered', { handle, kind, extension: ext.id, selector: selectors(selector), ...extra });
     return track(
       new Disposable(() => {
-        if (state.providers.delete(handle)) notify('languages/unregistered', { handle });
+        if (state.providers.delete(handle)) {
+          host.cancelProviderRequests?.(handle);
+          notify('languages/unregistered', { handle });
+        }
       }),
     );
   }
@@ -63,62 +74,217 @@ function createLanguagesApi(parts) {
   const editsOut = (result) =>
     (Array.isArray(result) ? result : []).filter((edit) => edit && edit.range).map((edit) => ({ range: rangeOut(edit.range), newText: String(edit.newText ?? '') }));
   const formattingOptions = (options) => ({ tabSize: (options && options.tabSize) || 4, insertSpaces: !options || options.insertSpaces !== false });
+  const locationsOut = (result) => (Array.isArray(result) ? result : result ? [result] : []).map((item) => ({
+    uri: (item.uri || item.targetUri).toString(),
+    path: toPath(item.uri || item.targetUri),
+    range: rangeOut(item.range || item.targetRange),
+    targetSelectionRange: rangeOut(item.targetSelectionRange),
+    originSelectionRange: rangeOut(item.originSelectionRange),
+  }));
+  function locationProvider(kind, selector, provider, method) {
+    need('languages');
+    return register(kind, selector, async ({ path: file, position, token = cancelled }) =>
+      locationsOut(await provider[method](document(state.documents.get(file)), new Position(position.line, position.character), token)));
+  }
+
+  function matchSelector(selector, doc) {
+    if (Array.isArray(selector)) return Math.max(0, ...selector.map((part) => matchSelector(part, doc)));
+    if (!selector || !doc || !doc.uri) return 0;
+    const entry = typeof selector === 'string' ? { language: selector } : selector;
+    const language = entry.language || '*';
+    const scheme = entry.scheme || '*';
+    if (language !== '*' && language !== doc.languageId) return 0;
+    if (scheme !== '*' && scheme !== doc.uri.scheme) return 0;
+    // A matching pattern filters the document; it doesn't raise wildcard scores.
+    if (entry.pattern !== undefined) {
+      const pattern = typeof entry.pattern === 'string' ? entry.pattern : entry.pattern?.pattern;
+      if (typeof pattern !== 'string' || !pattern) return 0;
+      // Uri.file() represents Windows drive paths as /C:/...; RelativePattern
+      // may receive C:/... from the VS Code user profile. Normalize both.
+      const normalizedPath = (value) => String(value).replace(/\\/g, '/').replace(/^\/([A-Za-z]:\/)/, '$1');
+      const uriPath = normalizedPath(doc.uri.fsPath || doc.uri.path || '');
+      let candidate = uriPath;
+      if (typeof entry.pattern === 'object' && entry.pattern.base) {
+        const base = normalizedPath(entry.pattern.base?.fsPath || entry.pattern.base);
+        const relative = path.posix.relative(base, uriPath);
+        if (relative === '..' || relative.startsWith('../') || path.posix.isAbsolute(relative)) return 0;
+        candidate = relative;
+      }
+      try {
+        if (!globToRegExp(pattern).test(candidate)) return 0;
+      } catch {
+        return 0;
+      }
+     }
+    return language === '*' ? 5 : 10;
+  }
 
   return namespace('languages', {
+    match: matchSelector,
     getLanguages: async () => request('workspace/getLanguages', {}),
     registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
-      need('languages');
-      return register(
-        'completion',
-        selector,
-        async ({ path: file, position }) => {
-          const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), cancelled, { triggerKind: 0 });
-          const items = Array.isArray(result) ? result : result ? result.items : [];
-          return (items || []).map((item) => ({
-            label: typeof item.label === 'string' ? item.label : item.label.label,
-            kind: item.kind,
-            detail: item.detail,
-            documentation: text(item.documentation),
-            insertText: item.insertText instanceof SnippetString ? { snippet: item.insertText.value } : item.insertText === undefined ? undefined : String(item.insertText),
-            sortText: item.sortText,
-            filterText: item.filterText,
-          }));
-        },
-        { triggerCharacters },
-      );
+      need('languages'); const cache = new Map(); let itemCounter = 0;
+      const serialize = (item, id) => ({
+        id, hasCommand: !!item.command, label: typeof item.label === 'string' ? item.label : item.label.label,
+        labelDetails: typeof item.label === 'object' ? { detail: item.label.detail, description: item.label.description } : undefined,
+        kind: item.kind, detail: item.detail, documentation: text(item.documentation),
+        insertText: item.textEdit ? item.textEdit.newText : item.insertText instanceof SnippetString ? { snippet: item.insertText.value } : item.insertText === undefined ? undefined : String(item.insertText),
+        sortText: item.sortText, filterText: item.filterText, preselect: item.preselect, commitCharacters: item.commitCharacters, tags: item.tags,
+        keepWhitespace: item.keepWhitespace,
+        range: item.textEdit ? rangeOut(item.textEdit.range) : item.range?.inserting
+          ? { insert: rangeOut(item.range.inserting), replace: rangeOut(item.range.replacing) } : rangeOut(item.range),
+        additionalTextEdits: editsOut(item.additionalTextEdits),
+      });
+      return register('completion', selector, async ({ path: file, position, action, itemId, context, token = cancelled }) => {
+        if (action === 'command') {
+          need('commands');
+          const cached = cache.get(itemId); if (!cached || cached.path !== file || !cached.value.command) throw new Error('Completion command is no longer available.');
+          return host.runWorkbenchCommand(cached.value.command);
+        }
+        if (action === 'resolve') {
+          const cached = cache.get(itemId); if (!cached || cached.path !== file) throw new Error('Completion item is no longer available.');
+          const result = typeof provider.resolveCompletionItem === 'function' ? await provider.resolveCompletionItem(cached.value, token) : cached.value;
+          if (result) cached.value = result;
+          return serialize(cached.value, itemId);
+        }
+        const result = await provider.provideCompletionItems(document(state.documents.get(file)), new Position(position.line, position.character), token,
+          { triggerKind: context?.triggerKind ?? 0, triggerCharacter: context?.triggerCharacter });
+        const items = Array.isArray(result) ? result : result?.items || [];
+        return { isIncomplete: !!result?.isIncomplete, items: items.map(value => {
+          const id = String(++itemCounter); cache.set(id, { path: file, value });
+          while (cache.size > 5000) cache.delete(cache.keys().next().value);
+          return serialize(value, id);
+        }) };
+      }, { triggerCharacters });
     },
     registerHoverProvider(selector, provider) {
       need('languages');
-      return register('hover', selector, async ({ path: file, position }) => {
-        const result = await provider.provideHover(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
+      return register('hover', selector, async ({ path: file, position, token = cancelled }) => {
+        const result = await provider.provideHover(document(state.documents.get(file)), new Position(position.line, position.character), token);
         if (!result) return null;
         return { contents: result.contents.map(text).filter((entry) => entry !== undefined), range: rangeOut(result.range) };
       });
     },
     registerDefinitionProvider(selector, provider) {
+      return locationProvider('definition', selector, provider, 'provideDefinition');
+    },
+    registerTypeDefinitionProvider(selector, provider) {
+      return locationProvider('typeDefinition', selector, provider, 'provideTypeDefinition');
+    },
+    registerImplementationProvider(selector, provider) {
+      return locationProvider('implementation', selector, provider, 'provideImplementation');
+    },
+    registerDeclarationProvider(selector, provider) {
+      return locationProvider('declaration', selector, provider, 'provideDeclaration');
+    },
+    registerSignatureHelpProvider(selector, provider, ...metadata) {
       need('languages');
-      return register('definition', selector, async ({ path: file, position }) => {
-        const result = await provider.provideDefinition(document(state.documents.get(file)), new Position(position.line, position.character), cancelled);
-        const list = Array.isArray(result) ? result : result ? [result] : [];
-        return list.map((item) => ({ path: toPath(item.uri || item.targetUri), range: rangeOut(item.range || item.targetRange) }));
+      const options = typeof metadata[0] === 'object' ? metadata[0] : { triggerCharacters: metadata };
+      return register('signatureHelp', selector, async ({ path: file, position, context, token = cancelled }) => {
+        const value = await provider.provideSignatureHelp(document(state.documents.get(file)), new Position(position.line, position.character), token,
+          { triggerKind: context?.triggerKind ?? 1, triggerCharacter: context?.triggerCharacter, isRetrigger: !!context?.isRetrigger, activeSignatureHelp: context?.activeSignatureHelp });
+        if (!value) return null;
+        return { activeSignature: value.activeSignature, activeParameter: value.activeParameter,
+          signatures: value.signatures.map(signature => ({ label: signature.label, documentation: text(signature.documentation), activeParameter: signature.activeParameter,
+            parameters: signature.parameters.map(parameter => ({ label: parameter.label, documentation: text(parameter.documentation) })) })) };
+      }, { triggerCharacters: options.triggerCharacters || [], retriggerCharacters: options.retriggerCharacters || [] });
+    },
+    registerSelectionRangeProvider(selector, provider) {
+      need('languages');
+      return register('selectionRange', selector, async ({ path: file, positions, token = cancelled }) => {
+        const result = await provider.provideSelectionRanges(document(state.documents.get(file)), positions.map(value => new Position(value.line, value.character)), token);
+        const convert = (value, visited = new Set()) => {
+          if (!value) return undefined;
+          if (visited.has(value) || visited.size >= 100) throw new Error('Selection range parents contain a cycle or exceed the depth limit.');
+          visited.add(value); return { range: rangeOut(value.range), parent: convert(value.parent, visited) };
+        };
+        if (result && result.length !== positions.length) throw new Error('Selection range count must match requested positions.');
+        return result?.map(value => convert(value)) || null;
+      });
+    },
+    registerLinkedEditingRangeProvider(selector, provider) {
+      need('languages');
+      return register('linkedEditing', selector, async ({ path: file, position, token = cancelled }) => {
+        const result = await provider.provideLinkedEditingRanges(document(state.documents.get(file)), new Position(position.line, position.character), token);
+        return result ? { ranges: result.ranges.map(rangeOut), wordPattern: result.wordPattern && { source: result.wordPattern.source, flags: result.wordPattern.flags } } : null;
+      });
+    },
+    registerOnTypeFormattingEditProvider(selector, provider, firstTriggerCharacter, ...moreTriggerCharacters) {
+      need('languages');
+      if (typeof firstTriggerCharacter !== 'string' || !firstTriggerCharacter) throw new Error('On-type formatting requires a trigger character.');
+      return register('onTypeFormatting', selector, async ({ path: file, position, character, options, token = cancelled }) =>
+        editsOut(await provider.provideOnTypeFormattingEdits(document(state.documents.get(file)), new Position(position.line, position.character), character, formattingOptions(options), token)),
+        { triggerCharacters: [firstTriggerCharacter, ...moreTriggerCharacters] });
+    },
+    registerDocumentLinkProvider(selector, provider) {
+      need('languages'); const cache = new Map(); let itemCounter = 0;
+      const serialize = (value, id) => ({ id, range: rangeOut(value.range), target: value.target?.toString(), tooltip: value.tooltip });
+      return register('documentLink', selector, async ({ path: file, action, itemId, token = cancelled }) => {
+        if (action === 'resolve') {
+          const cached = cache.get(itemId); if (!cached || cached.path !== file) throw new Error('Document link is no longer available.');
+          if (typeof provider.resolveDocumentLink !== 'function') return serialize(cached.value, itemId);
+          const value = await provider.resolveDocumentLink(cached.value, token);
+          if (!value) return null;
+          cached.value = value; return serialize(value, itemId);
+        }
+        const values = await provider.provideDocumentLinks(document(state.documents.get(file)), token);
+        return (values || []).map(value => {
+          const id = String(++itemCounter); cache.set(id, { path: file, value });
+          while (cache.size > 1000) cache.delete(cache.keys().next().value);
+          return serialize(value, id);
+        });
+      });
+    },
+    registerReferenceProvider(selector, provider) {
+      need('languages');
+      return register('reference', selector, async ({ path: file, position, context, token = cancelled }) =>
+        locationsOut(await provider.provideReferences(document(state.documents.get(file)), new Position(position.line, position.character),
+          { includeDeclaration: !!context?.includeDeclaration }, token)));
+    },
+    registerDocumentHighlightProvider(selector, provider) {
+      need('languages');
+      return register('highlight', selector, async ({ path: file, position, token = cancelled }) => {
+        const result = await provider.provideDocumentHighlights(document(state.documents.get(file)), new Position(position.line, position.character), token);
+        return (result || []).map((item) => ({ range: rangeOut(item.range), kind: item.kind }));
+      });
+    },
+    registerDocumentSymbolProvider(selector, provider, metadata) {
+      need('languages');
+      return register('documentSymbol', selector, async ({ path: file, token = cancelled }) => {
+        const result = await provider.provideDocumentSymbols(document(state.documents.get(file)), token);
+        const convert = (item) => ({
+          name: item.name, detail: item.detail || '', kind: item.kind, tags: item.tags,
+          range: rangeOut(item.range || item.location.range),
+          selectionRange: rangeOut(item.selectionRange || item.location.range),
+          children: (item.children || []).map(convert),
+          containerName: item.containerName,
+        });
+        return (result || []).map(convert);
+      }, { displayName: metadata?.label });
+    },
+    registerFoldingRangeProvider(selector, provider) {
+      need('languages');
+      return register('folding', selector, async ({ path: file, token = cancelled }) => {
+        const result = await provider.provideFoldingRanges(document(state.documents.get(file)), {}, token);
+        return (result || []).map((item) => ({ start: item.start, end: item.end, kind: item.kind }));
       });
     },
     /** Format Document With...: the edits for the whole document. */
     registerDocumentFormattingEditProvider(selector, provider) {
       need('languages');
-      return register('formatting', selector, async ({ path: file, options }) => {
+      return register('formatting', selector, async ({ path: file, options, token = cancelled }) => {
         const doc = document(state.documents.get(file));
         if (!doc) throw new Error('The document is not open.');
-        return editsOut(await provider.provideDocumentFormattingEdits(doc, formattingOptions(options), cancelled));
+        return editsOut(await provider.provideDocumentFormattingEdits(doc, formattingOptions(options), token));
       }, { displayName: (ext.manifest && (ext.manifest.displayName || ext.manifest.name)) || ext.id });
     },
     /** Format Selection: the edits for one range. */
     registerDocumentRangeFormattingEditProvider(selector, provider) {
       need('languages');
-      return register('rangeFormatting', selector, async ({ path: file, range, options }) => {
+      return register('rangeFormatting', selector, async ({ path: file, range, options, token = cancelled }) => {
         const doc = document(state.documents.get(file));
         if (!doc) throw new Error('The document is not open.');
-        return editsOut(await provider.provideDocumentRangeFormattingEdits(doc, rangeIn(range), formattingOptions(options), cancelled));
+        return editsOut(await provider.provideDocumentRangeFormattingEdits(doc, rangeIn(range), formattingOptions(options), token));
       }, { displayName: (ext.manifest && (ext.manifest.displayName || ext.manifest.name)) || ext.id });
     },
     createDiagnosticCollection(name = `collection-${(handleCounter += 1)}`) {
@@ -133,11 +299,12 @@ function createLanguagesApi(parts) {
             range: rangeOut(item.range),
             message: item.message,
             severity: item.severity,
+            tags: Array.isArray(item.tags) ? item.tags.filter((tag) => tag === 1 || tag === 2) : undefined,
             source: item.source,
             code: item.code === undefined ? undefined : String(item.code && item.code.value !== undefined ? item.code.value : item.code),
           })),
         });
-      return track({
+      const collectionApi = {
         name,
         set(target, diagnostics) {
           if (Array.isArray(target)) {
@@ -159,15 +326,17 @@ function createLanguagesApi(parts) {
           for (const file of stored.keys()) push(file, []);
           stored.clear();
         },
-        forEach(callback) {
-          for (const [file, list] of stored) callback(Uri.file(file), list, this);
+        forEach(callback, thisArg) {
+          for (const [file, list] of stored) callback.call(thisArg, Uri.file(file), list, collectionApi);
         },
         dispose() {
-          this.clear();
+          collectionApi.clear();
         },
-      });
+      };
+      return track(collectionApi);
     },
   });
 }
 
 module.exports = { createLanguagesApi, TextEdit };
+

@@ -490,3 +490,4 @@ mod tests {
         assert!(events.contains(&ActivationEvent::OnLanguage("alang".into())));
     }
 }
+

@@ -543,3 +543,4 @@ mod tests {
         assert!(read_layer(&path).values.contains_key("editor.tabSize"));
     }
 }
+

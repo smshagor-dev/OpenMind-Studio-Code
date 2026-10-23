@@ -247,7 +247,14 @@ export interface HostNotification {
 }
 
 /** The extension slice of the IPC client. */
+export interface VsCodeExtensionSource {
+  id: string;
+  label: string;
+}
+
 export interface ExtensionsIpc {
+  extDetectVscode: () => Promise<VsCodeExtensionSource[]>;
+  extImportVscode: (sourceId: string) => Promise<InstalledExtension>;
   extInspectVsix: (path: string) => Promise<InstalledExtension>;
   extInstall: (path: string, replace: boolean) => Promise<InstalledExtension>;
   extSetEnabled: (id: string, enabled: boolean) => Promise<InstalledExtension>;
@@ -277,6 +284,8 @@ export interface ExtensionsIpc {
 }
 
 export const tauriExtensionsIpc: ExtensionsIpc = {
+  extDetectVscode: () => invoke<VsCodeExtensionSource[]>("ext_detect_vscode"),
+  extImportVscode: (sourceId) => invoke<InstalledExtension>("ext_import_vscode", { sourceId }),
   extInspectVsix: (path) => invoke<InstalledExtension>("ext_inspect_vsix", { path }),
   extInstall: (path, replace) => invoke<InstalledExtension>("ext_install", { path, replace }),
   extSetEnabled: (id, enabled) => invoke<InstalledExtension>("ext_set_enabled", { id, enabled }),

@@ -514,3 +514,184 @@ fn workspace_files_watchers_editor_commands_and_formatters() {
     assert_eq!(edits[0]["edits"][0]["text"], "HELLO");
     fixture.host.stop();
 }
+
+#[test]
+fn extension_api_exposes_activation_exports_only_after_activation_finishes() {
+    let Some(fixture) = setup() else { return; };
+    let state = run(&fixture, "sampleV2.extensionState", json!([]));
+    assert_eq!(state["found"], true);
+    assert_eq!(state["active"], true);
+    assert_eq!(state["exportsReady"], true);
+    assert_eq!(state["uri"], "file");
+    let activated = run(&fixture, "sampleV2.activateExtension", json!([]));
+    assert_eq!(activated["active"], true);
+    assert_eq!(activated["ready"], true);
+    assert_eq!(activated["listed"], true);
+    fixture.host.stop();
+}
+
+#[test]
+fn extension_list_change_event_fires_when_host_reregisters_a_package() {
+    let Some(fixture) = setup() else { return; };
+    assert_eq!(run(&fixture, "sampleV2.extensionChangeCount", json!([])), json!(0));
+    fixture.host.request(
+        "host/register",
+        json!({ "extension": host_descriptor(&fixture.paths, &fixture.extension, Some("test")) }),
+        WAIT,
+    ).expect("register");
+    assert_eq!(run(&fixture, "sampleV2.extensionChangeCount", json!([])), json!(1));
+    fixture.host.stop();
+}
+
+#[test]
+fn language_selector_matching_uses_vscode_style_scores() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.languageMatch", json!([]));
+    assert_eq!(result["exact"], 10);
+    assert_eq!(result["wildcard"], 5);
+    assert_eq!(result["mismatch"], 0);
+    assert_eq!(result["glob"], 10);
+    assert_eq!(result["brace"], 10);
+    assert_eq!(result["otherFile"], 0);
+    assert_eq!(result["relative"], 10);
+    fixture.host.stop();
+}
+
+#[test]
+fn language_tooling_value_types_are_available_to_extensions() {
+    let Some(fixture) = setup() else { return; };
+    let values = run(&fixture, "sampleV2.languageValues", json!([]));
+    assert_eq!(values["action"], "Apply correction");
+    assert_eq!(values["quickfixContains"], true);
+    assert_eq!(values["sourceVsRefactor"], false);
+    assert_eq!(values["lensResolved"], true);
+    assert_eq!(values["linkTarget"], "https");
+    assert_eq!(values["childKind"], 11);
+    assert_eq!(values["foldingKind"], "region");
+    assert_eq!(values["signatureParameters"], 1);
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_snippet_builders_append_tabstops_and_placeholders() {
+    let Some(fixture) = setup() else { return; };
+    let snippet = run(&fixture, "sampleV2.snippetBuilders", json!([]));
+    assert_eq!(snippet, json!("start $1${2:name}"));
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_snippet_builders_escape_literal_text_choices_and_variables() {
+    let Some(fixture) = setup() else { return; };
+    let value = run(&fixture, "sampleV2.snippetEscaping", json!([]));
+    assert_eq!(value, json!(r"price \$10\}${1|red\,blue,a\|b|}${TM_FILENAME:a\$b}"));
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_markdown_literal_text_is_escaped_and_code_fences_are_safe() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.markdownSafety", json!([]));
+    assert_eq!(result["trusted"], false);
+    assert_eq!(result["html"], false);
+    assert_eq!(result["escaped"], true);
+    assert_eq!(result["codeFence"], true);
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_cancellation_token_notifies_only_once() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.cancellationToken", json!([]));
+    assert_eq!(result["events"], 1);
+    assert_eq!(result["cancelled"], true);
+    fixture.host.stop();
+}
+
+#[test]
+fn diagnostic_collection_foreach_receives_uri_diagnostics_and_collection() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.diagnosticCollection", json!([]));
+    assert_eq!(result["received"]["scheme"], "file");
+    assert_eq!(result["received"]["count"], 1);
+    assert_eq!(result["received"]["same"], true);
+    assert_eq!(result["hits"], 1);
+    assert_eq!(result["present"], true);
+    assert_eq!(result["removed"], true);
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_file_uri_decodes_query_and_unc_network_share() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.uriRoundtrip", json!([]));
+    assert_eq!(result["path"], "/C:/My Files/hello.ts");
+    assert_eq!(result["query"], "mode=read only");
+    assert_eq!(result["fragment"], "anchor one");
+    assert_eq!(result["shareAuthority"], "server");
+    assert_eq!(result["sharePath"], "/share/hello.ts");
+    assert_eq!(result["shareFsPath"], "//server/share/hello.ts");
+    assert_eq!(result["escapedPath"], true);
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_uri_factory_strict_parse_and_formatting_are_available() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.uriFactory", json!([]));
+    assert_eq!(result["formatted"], "memfs://local/folder/space%20name");
+    assert_eq!(result["unencoded"], "memfs://local/folder/space name");
+    assert_eq!(result["strictFailed"], true);
+    assert_eq!(result["changed"], "memfs://local/other");
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_cancellation_constants_and_error_are_available() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.cancellationStatics", json!([]));
+    assert_eq!(result["none"], false);
+    assert_eq!(result["cancelled"], true);
+    assert_eq!(result["notified"], true);
+    assert_eq!(result["errorName"], "Canceled");
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_event_emitter_disposal_during_dispatch_is_respected() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.eventDisposal", json!([]));
+    assert_eq!(result["count"], 2);
+    assert_eq!(result["skipped"], 0);
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_position_and_range_option_overloads_preserve_originals() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.positionOverloads", json!([]));
+    assert_eq!(result["original"], 4);
+    assert_eq!(result["changed"], 8);
+    assert_eq!(result["movedLine"], 5);
+    assert_eq!(result["movedColumn"], 5);
+    assert_eq!(result["changedEnd"], 8);
+    assert_eq!(result["samePosition"], true);
+    assert_eq!(result["sameRange"], true);
+    fixture.host.stop();
+}
+
+#[test]
+fn vscode_diagnostic_tags_and_trigger_constants_reach_extension_host() {
+    let Some(fixture) = setup() else { return; };
+    let result = run(&fixture, "sampleV2.diagnosticTags", json!([]));
+    assert_eq!(result["first"], 1);
+    assert_eq!(result["second"], 2);
+    assert_eq!(result["related"], "declared here");
+    assert_eq!(result["trigger"], 0);
+    assert_eq!(result["actionTrigger"], 2);
+    let notifications = fixture.app.notifications_named("diagnostics/set");
+    assert!(notifications.iter().any(|notice|
+        notice["diagnostics"][0]["tags"] == json!([1, 2])
+    ));
+    fixture.host.stop();
+}

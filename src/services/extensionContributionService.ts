@@ -326,3 +326,4 @@ export class ExtensionContributionService implements ExtensionThemeSource {
     return null;
   }
 }
+

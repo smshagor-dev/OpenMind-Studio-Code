@@ -10,7 +10,10 @@ export default defineConfig({
     alias: [
       // y-monaco imports Monaco by its pre-0.50 path; monaco-editor's package exports now map every "*.js" subpath under
       // esm/vs, so that path no longer resolves. Point it at the same entry the app imports (one Monaco instance).
-      { find: /^monaco-editor\/esm\/vs\/editor\/editor\.api(\.js)?$/, replacement: "monaco-editor" },
+      {
+        find: /^monaco-editor\/esm\/vs\/editor\/editor\.api(\.js)?$/,
+        replacement: "monaco-editor",
+      },
     ],
   },
 
@@ -23,6 +26,7 @@ export default defineConfig({
   },
 
   test: {
+    include: ["src/**/*.{test,spec}.{ts,tsx,js,jsx}"],
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     // Through Vite (not Node) so the Monaco alias above applies to it in tests too.
