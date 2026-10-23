@@ -310,10 +310,10 @@ export class EditorService {
   }
 
   /** Registers `editor` (and makes it current); returns the matching detach function. */
-  attach(editor: CodeEditorLike, location: { groupId?: string; viewColumn?: () => number } = {}): () => void {
+  attach(editor: CodeEditorLike, location: { groupId?: string; viewColumn?: () => number; active?: () => boolean } = {}): () => void {
     this.editors.add(editor);
     this.identities.set(editor, { id: "", uri: "", selectionKind: 3, ...location });
-    this.editor = editor;
+    if (!this.editor || location.active?.() !== false) this.editor = editor;
     this.applyOptions();
     this.applyActions(editor);
     for (const listener of this.attachListeners) this.addCleanup(editor, listener(editor));

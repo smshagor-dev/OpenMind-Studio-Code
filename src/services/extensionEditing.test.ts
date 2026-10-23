@@ -525,6 +525,7 @@ describe("HostBridge: editor and status bar messages", () => {
       setDecorations: vi.fn(),
       disposeDecoration: vi.fn(),
       resetDecorations: vi.fn(),
+      refreshEditorState: vi.fn(),
       insertSnippet: vi.fn().mockReturnValue({ applied: true }),
       applyEdits: vi.fn().mockReturnValue({ applied: true }),
       applyWorkspaceEdit: vi.fn().mockReturnValue({ applied: false, reason: "no" }),
@@ -533,6 +534,7 @@ describe("HostBridge: editor and status bar messages", () => {
       revealRange: vi.fn(),
     };
     const status: [string, unknown][] = [];
+    const opening = { show: vi.fn().mockResolvedValue({ editorId: "chosen" }), cancel: vi.fn(), reset: vi.fn() };
     const b = new HostBridge({
       prompts: new ExtensionPromptService(),
       output: new OutputService(),
@@ -548,10 +550,27 @@ describe("HostBridge: editor and status bar messages", () => {
       knownCommands: () => [],
       onHostCommandsChanged: () => undefined,
       editorApi: editorApi as unknown as ExtensionEditorService,
+      showTextDocument: opening.show,
+      cancelShowTextDocument: opening.cancel,
+      resetDocumentOpening: opening.reset,
       onStatusBarEvent: (method, params) => status.push([method, params]),
     });
-    return { b, editorApi, status };
+    return { b, editorApi, status, opening };
   }
+
+  it("validates show options, returns the requested pane and flushes its snapshot before replying", async () => {
+    const { b, editorApi, opening } = bridge();
+    const options = { viewColumn: -2, preserveFocus: true, preview: false,
+      selection: { startLine: 0, startColumn: 1, endLine: 0, endColumn: 3 } };
+    await expect(b.handleRequest("ui/showTextDocument", { path: FILE, extension: "test", requestId: "one", ...options })).resolves.toEqual({ ok: true, editorId: "chosen" });
+    expect(opening.show).toHaveBeenCalledWith(FILE, options, { extension: "test", requestId: "one" });
+    expect(editorApi.refreshEditorState).toHaveBeenCalledOnce();
+    await expect(b.handleRequest("ui/showTextDocument", { path: FILE, viewColumn: 0 })).rejects.toThrow("view column");
+    expect(opening.show).toHaveBeenCalledOnce();
+    b.handleNotification("ui/cancelShowTextDocument", { extension: "test", requestId: "one" });
+    expect(opening.cancel).toHaveBeenCalledWith("test", "one");
+    b.reset(); expect(opening.reset).toHaveBeenCalledOnce();
+  });
 
   it("routes edit requests and selection notifications to the editor service, status bar events to the items", async () => {
     const { b, editorApi, status } = bridge();

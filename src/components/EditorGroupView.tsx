@@ -136,6 +136,7 @@ function GroupContent({
         onEditorMounted={(editor) => {
           const detach = container.editor.attach(editor, {
             groupId: group.id,
+            active: () => container.workspace.getState().activeGroupId === group.id,
             viewColumn: () => container.editorGroups.getState().groups.findIndex(value => value.id === group.id) + 1,
           });
           const focus = editor.onDidFocusEditorWidget(() => {

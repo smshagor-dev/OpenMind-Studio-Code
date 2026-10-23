@@ -46,6 +46,7 @@ export interface OpenPathOptions {
   /** Open as a provisional tab (honored only while "Enable Preview Editors" is on). */
   preview?: boolean;
   groupId?: string;
+  preserveFocus?: boolean;
   /** Force an editor kind instead of the file type's default. */
   kind?: EditorKind;
 }
@@ -299,6 +300,7 @@ export class WorkspaceService {
     return this.tracking(() =>
       this.groups.openTab(docId, kind, {
         groupId: options.groupId,
+        preserveFocus: options.preserveFocus,
         preview: this.previews.shouldOpenAsPreview(options.preview === true),
       }),
     );

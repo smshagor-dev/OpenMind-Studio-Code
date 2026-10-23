@@ -1362,12 +1362,26 @@ function createApi(host, ext) {
     onDidCloseTerminal: terminals.onDidCloseTerminal,
     registerWebviewViewProvider: webviews.registerWebviewViewProvider,
     /** Opens a document in an editor tab: a file (`workspaceRead`) or a custom-scheme document (read-only). */
-    async showTextDocument(target, options) {
+    async showTextDocument(target, options, preserveFocus) {
+      if (typeof options === 'number' || options === undefined) options = { viewColumn: options, preserveFocus };
+      if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Invalid document show options.');
+      for (const key of Object.keys(options)) if (!['viewColumn','preserveFocus','preview','selection'].includes(key)) throw unsupportedError(`TextDocumentShowOptions.${key}`);
+      const column = options.viewColumn;
+      if (column !== undefined && (!Number.isInteger(column) || ![-1,-2,1,2,3,4,5,6,7,8,9].includes(column))) throw new TypeError('Invalid editor view column.');
+      for (const key of ['preserveFocus','preview']) if (options[key] !== undefined && typeof options[key] !== 'boolean') throw new TypeError('Editor show flags must be boolean.');
+      let selection;
+      if (options.selection !== undefined) {
+        const range = options.selection;
+        if (![range?.start?.line,range?.start?.character,range?.end?.line,range?.end?.character].every(n => Number.isInteger(n) && n >= 0)) throw new TypeError('Invalid editor selection.');
+        selection = { startLine: range.start.line, startColumn: range.start.character, endLine: range.end.line, endColumn: range.end.character };
+      }
+      const showOptions = { viewColumn: column, preserveFocus: !!options.preserveFocus, preview: options.preview, selection };
       const doc = target && target.getText ? target : await workspace.openTextDocument(target);
       const uri = doc.uri;
       if (uri.scheme === 'file') {
-        return editors.showEditor(uri.fsPath, !!(options && options.preserveFocus));
+        return editors.showEditor(uri.fsPath, showOptions);
       }
+      if (column !== undefined || options.preserveFocus || options.preview !== undefined || selection) throw unsupportedError('window.showTextDocument.virtualOptions');
       const data = state.documents.get(uri.toString());
       await request('ui/showVirtualDocument', {
         extension: ext.id,
