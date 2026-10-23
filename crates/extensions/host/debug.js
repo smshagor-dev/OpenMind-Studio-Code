@@ -158,6 +158,7 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
   async function stopDebugging(session) {
     const entries = session ? [state.sessions.get(session.id)] : [...state.sessions.values()];
     for (const entry of entries.filter(Boolean)) {
+      entry.stopping = true;
       try { await entry.client.request('disconnect', { terminateDebuggee: true }, 2000); }
       finally { entry.client.close(); }
     }
@@ -255,9 +256,17 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
               else entry.protocolBreakpoints.set(key, { ...value, ...body.breakpoint });
             }
           }
-          if (event === 'terminated' || event === 'clientClosed') finish();
+          if (event === 'clientClosed') state.debugClients.delete(id);
+          if (event === 'terminated' || event === 'clientClosed') {
+            finish();
+            if (event === 'terminated' && !entry.stopping) {
+              entry.stopping = true;
+              void entry.client.request('disconnect', { terminateDebuggee: false }, 2000).catch(() => {}).finally(() => entry.client.close());
+            }
+          }
           else if (!['initialized', 'output', 'stopped', 'continued', 'breakpoint', 'thread', 'exited', 'process', 'module', 'loadedSource', 'capabilities', 'progressStart', 'progressUpdate', 'progressEnd', 'invalidated', 'memory'].includes(event)) fire('custom', { session, event, body }); update();
         }), value => { entry.output = limit([...entry.output, value], 200); update(); }, observe, fn => owned(host, factory.extension, fn));
+        if (!entry.client.closed) state.debugClients.set(id, entry);
         state.sessions.set(id, entry); state.activeDebugSession = entry; update();
         const initialized = entry.client.wait('initialized'); initialized.catch(() => {});
         try {
@@ -274,7 +283,7 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
     stopDebugging,
   };
   track(new Disposable(() => {
-    for (const entry of [...state.sessions.values()]) if (entry.extension === ext.id) entry.client.close();
+    for (const entry of [...state.debugClients.values()]) if (entry.extension === ext.id) entry.client.close();
     for (const [type, value] of state.configurations) if (value.extension === ext.id) state.configurations.delete(type);
     for (const [type, value] of state.factories) if (value.extension === ext.id) state.factories.delete(type);
     update();
@@ -300,6 +309,7 @@ async function invoke(host, params) {
   const entry = state.sessions.get(params.session); if (!entry) failure('Debug session not found.');
   return owned(host, entry.extension, async () => {
     if (params.op === 'stop') {
+      entry.stopping = true;
       try { await entry.client.request('disconnect', { terminateDebuggee: true }, 2000); } finally { entry.client.close(); } return true;
     }
     const allowed = ['threads', 'stackTrace', 'scopes', 'variables', 'evaluate', 'continue', 'pause', 'next', 'stepIn', 'stepOut', 'restart', 'setBreakpoints'];

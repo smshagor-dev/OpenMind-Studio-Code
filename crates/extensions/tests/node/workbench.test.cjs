@@ -475,3 +475,32 @@ test('debug trackers receive adapter spawn errors and sessions clean up', async 
   const log = await h.request('host/executeCommand', { command: 'debug.spawnLog' });
   assert.equal(log[0], 'start'); assert.ok(log.some(value => value.startsWith('error:'))); assert.equal(log.at(-1), 'stop');
 });
+
+test('adapter-initiated termination disconnects and disposes its transport', async t => {
+  const code = inlineDebugExtension.replace('dispose: () => emitter.dispose()', 'dispose: () => { globalThis.inlineDisposed = true; emitter.dispose(); }')
+    .replace("if (message.command === 'launch')", "if (message.command === 'finish') emitter.fire({ seq: ++sequence, type: 'event', event: 'terminated' });\n        if (message.command === 'launch')") + `
+    const original = exports.activate; exports.activate = () => { original();
+      v.commands.registerCommand('debug.finishTarget', () => v.debug.activeDebugSession.customRequest('finish'));
+      v.commands.registerCommand('debug.transportDisposed', () => globalThis.inlineDisposed === true);
+    };`;
+  const h = await setup(t, code, ['commands', 'workspaceRead', 'processExecution']); await h.activate();
+  await h.call('debug', 'start', { configuration: { type: 'inline-test', request: 'launch' } });
+  await h.request('host/executeCommand', { command: 'debug.finishTarget' });
+  await until(() => h.request('host/executeCommand', { command: 'debug.transportDisposed' }), value => value === true);
+  assert.equal((await h.call('debug', 'snapshot')).sessions.length, 0);
+});
+
+test('extension teardown closes a terminated adapter even when disconnect is unanswered', async t => {
+  const code = inlineDebugExtension
+    .replace('dispose: () => emitter.dispose()', "dispose: () => { require('fs').writeFileSync(__dirname + '/adapter-disposed', 'yes'); emitter.dispose(); }")
+    .replace('let body = {};', "if (message.command === 'disconnect') return; let body = {};")
+    .replace("if (message.command === 'launch')", "if (message.command === 'finish') emitter.fire({ seq: ++sequence, type: 'event', event: 'terminated' });\n        if (message.command === 'launch')") + `
+    const original = exports.activate; exports.activate = () => { original();
+      v.commands.registerCommand('debug.finishTarget', () => v.debug.activeDebugSession.customRequest('finish'));
+    };`;
+  const h = await setup(t, code, ['commands', 'workspaceRead', 'workspaceWrite', 'processExecution']); await h.activate();
+  await h.call('debug', 'start', { configuration: { type: 'inline-test', request: 'launch' } });
+  await h.request('host/executeCommand', { command: 'debug.finishTarget' });
+  await h.request('host/deactivate', { id: 'test.workbench' });
+  assert.equal(fs.readFileSync(path.join(h.root, 'adapter-disposed'), 'utf8'), 'yes');
+});

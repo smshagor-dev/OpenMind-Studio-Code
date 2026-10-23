@@ -5,7 +5,7 @@ function registry(host) {
   if (!host.state.extensionWorkbench) host.state.extensionWorkbench = {
     tests: new Map(), runs: new Map(), scm: new Map(), serializers: new Map(),
     controllers: new Map(), notebooks: new Map(), factories: new Map(), configurations: new Map(),
-    sessions: new Map(), trackers: new Map(), breakpoints: [], pending: new Set(), counter: 0,
+    sessions: new Map(), debugClients: new Map(), trackers: new Map(), breakpoints: [], pending: new Set(), counter: 0,
   };
   return host.state.extensionWorkbench;
 }
