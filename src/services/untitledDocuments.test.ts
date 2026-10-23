@@ -63,15 +63,16 @@ function rig() {
 it("runs untitled creation, show, edits, snippets, decorations and Save As through a real stdio extension host", async () => {
   const r = rig();
   const bridge = new HostBridge({
-    createUntitled: (content, language) => { const id = r.documents.createUntitled(content, language); const data = r.sync.describe(id); if (!data) throw Error("missing document"); return data; },
+    createUntitled: (content, language, named) => { const id = r.documents.createUntitled(content, language, named); const data = r.sync.describe(id); if (!data) throw Error("missing document"); return data; },
     showTextDocument: (path, options, context) => r.opening.show(path, options, context),
     editorApi: r.api,
     saveDocument: async path => { const id = r.documents.idForHostPath(path); if (!id) return false; await r.documents.save(id); return r.documents.snapshot(id).path !== null && !r.documents.isDirty(id); },
   } as BridgeDeps);
-  const host = await fixture({ after: fn => cleanups.push(fn) }, { "test.untitled": { permissions: ["commands", "workspaceRead", "workspaceWrite"], code: `
+  const host = await fixture({ after: fn => cleanups.push(fn) }, { "test.untitled": { permissions: ["commands", "workspaceRead", "workspaceWrite", "filesystemOutsideWorkspace"], code: `
     const v=require('vscode');let doc,editor,type;exports.activate=()=>{
       v.commands.registerCommand('newUnsaved',async()=>{doc=await v.workspace.openTextDocument({content:'hello',language:'markdown'});editor=await v.window.showTextDocument(doc,{viewColumn:2});await editor.edit(b=>b.insert(new v.Position(0,5),'!'));await editor.insertSnippet(new v.SnippetString(' world'),new v.Position(0,6));type=v.window.createTextEditorDecorationType({color:'red'});editor.setDecorations(type,[new v.Range(0,0,0,5)]);return{uri:doc.uri.toString(),scheme:doc.uri.scheme,untitled:doc.isUntitled,dirty:doc.isDirty,text:doc.getText(),column:editor.viewColumn}});
       v.commands.registerCommand('saveUnsaved',async()=>{const saved=await doc.save();return{saved,oldClosed:doc.isClosed,oldText:doc.getText(),untitled:editor.document.isUntitled,file:editor.document.fileName,text:editor.document.getText(),dirty:editor.document.isDirty}});
+      v.commands.registerCommand('namedUnsaved',async()=>{const named=await v.workspace.openTextDocument(v.Uri.file('/tmp/named.ts').with({scheme:'untitled'}));const pane=await v.window.showTextDocument(named);await pane.edit(b=>b.insert(new v.Position(0,0),'let a=1;'));const language=named.languageId;const saved=await named.save();return{language,saved,oldClosed:named.isClosed,oldText:named.getText(),path:pane.document.fileName,untitled:pane.document.isUntitled}});
       v.commands.registerCommand('editSaved',async()=>({applied:await editor.edit(b=>b.insert(new v.Position(0,0),'>')),text:editor.document.getText()}));
     };` } }, { handleRequest: (method, params) => bridge.handleRequest(method, params) });
   cleanups.push(host.onNotification(value => { if (value.method.startsWith("editor/")) bridge.handleNotification(value.method, value.params); }));
@@ -88,6 +89,9 @@ it("runs untitled creation, show, edits, snippets, decorations and Save As throu
   expect(await host.request("host/executeCommand", { command: "saveUnsaved" })).toEqual({ saved: true, oldClosed: true, oldText: "hello! world", untitled: false, file: "/tmp/saved.md", text: "hello! world", dirty: false });
   expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/saved.md", "hello! world", "utf8");
   expect(await host.request("host/executeCommand", { command: "editSaved" })).toEqual({ applied: true, text: ">hello! world" });
+  expect(await host.request("host/executeCommand", { command: "namedUnsaved" })).toEqual({ language: "typescript", saved: true, oldClosed: true, oldText: "let a=1;", path: "/tmp/named.ts", untitled: false });
+  expect(r.ipc.saveDocumentDialog).toHaveBeenCalledTimes(1);
+  expect(r.ipc.documentSave).toHaveBeenLastCalledWith("/tmp/named.ts", "let a=1;", "utf8");
 });
 
 it("keeps cancelled and failed saves untitled and dirty, and rejects collisions with another open document", async () => {
@@ -122,4 +126,45 @@ it("allows workspace edits on an unshown untitled buffer without filesystem acce
   expect(r.documents.contentOf(id)).toBe("changed");
   expect(r.ipc.documentOpen).not.toHaveBeenCalled();
   expect(r.ipc.documentSave).not.toHaveBeenCalled();
+});
+
+it("keeps associated untitled URI identity through pending edits and saves directly to its inferred-language path", async () => {
+  const r = rig(); r.sync.start();
+  const uri = "untitled:///tmp/named%20document.ts";
+  const id = r.documents.createUntitled("", "plaintext", { uri, associatedPath: "/tmp/named document.ts" });
+  expect(r.documents.createUntitled("", "plaintext", { uri, associatedPath: "/tmp/named document.ts" })).toBe(id);
+  expect(r.documents.snapshot(id)).toMatchObject({ path: null, title: "named document.ts", dirty: true });
+  expect(r.documents.languageOf(id)).toBe("typescript");
+  expect(r.documents.hostPath(id)).toBe(uri);
+  r.buffers.setValue(id, "const answer = 42;");
+  await r.documents.save(id);
+  expect(r.ipc.documentOpen).not.toHaveBeenCalled();
+  expect(r.ipc.saveDocumentDialog).not.toHaveBeenCalled();
+  expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/named document.ts", "const answer = 42;", "utf8");
+  const closed = r.notifications.findIndex(value => value.method === "host/documentClosed");
+  expect(r.notifications[closed - 1]).toMatchObject({ method: "host/documentChanged", params: { path: uri, text: "const answer = 42;", isUntitled: true } });
+  expect(r.notifications[closed]).toMatchObject({ params: { path: uri } });
+  expect(r.notifications[closed + 1]).toMatchObject({ method: "host/documentOpened", params: { path: "/tmp/named document.ts" } });
+  expect(r.documents.snapshot(id)).toMatchObject({ path: "/tmp/named document.ts", dirty: false });
+  expect(r.documents.idForHostPath(uri)).toBeNull();
+});
+
+it("preserves named untitled identity on initial sync, failed save, and close, without assigning relative names to disk", async () => {
+  const r = rig();
+  const uri = "untitled:///tmp/broken.py";
+  const id = r.documents.createUntitled("", "plaintext", { uri, associatedPath: "/tmp/broken.py" });
+  expect(r.sync.initial().documents).toContainEqual(expect.objectContaining({ path: uri, isUntitled: true, languageId: "python", isDirty: true }));
+  r.sync.start();
+  vi.mocked(r.ipc.documentSave).mockRejectedValueOnce(Error("disk full"));
+  await expect(r.documents.save(id)).rejects.toThrow("disk full");
+  expect(r.documents.hostPath(id)).toBe(uri);
+  r.documents.close(id);
+  expect(r.notifications.at(-1)).toMatchObject({ method: "host/documentClosed", params: { path: uri } });
+  const relative = r.documents.createUntitled("draft", "plaintext", { uri: "untitled:Draft.md" });
+  expect(r.documents.languageOf(relative)).toBe("markdown");
+  expect(r.documents.snapshot(relative).title).toBe("Draft.md");
+  vi.mocked(r.ipc.saveDocumentDialog).mockResolvedValueOnce(null);
+  await r.documents.save(relative);
+  expect(r.documents.snapshot(relative)).toMatchObject({ path: null, dirty: true });
+  expect(r.ipc.saveDocumentDialog).toHaveBeenCalledWith(undefined);
 });

@@ -47,6 +47,7 @@ export class HostDocumentSync {
   private offs: (() => void)[] = [];
   private readonly watchers = new Map<string, () => void>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly paths = new Map<string, string>();
   private readonly versions = new Map<string, number>();
   private activeId: string | null = null;
   private selectionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -78,7 +79,7 @@ export class HostDocumentSync {
         this.closed(id, path);
       }),
       events.on("documentPathChanged", ({ id, from }) => {
-        const old = from ?? `untitled://openmind/${id}`;
+        const old = this.paths.get(id) ?? from ?? `untitled://openmind/${id}`;
         const pending = this.timers.get(id);
         if (pending !== undefined) {
           clearTimeout(pending); this.timers.delete(id);
@@ -103,7 +104,7 @@ export class HostDocumentSync {
       this.scheduleSelection();
     });
     if (offSelection) this.offs.push(offSelection);
-    for (const id of documents.allIds()) this.watch(id);
+    for (const id of documents.allIds()) { this.paths.set(id, documents.hostPath(id)); this.watch(id); }
     // The tab that is active now is known to the host from the start, without waiting for a tab change.
     this.hydrate();
     const editor = this.activeEditor();
@@ -152,6 +153,7 @@ export class HostDocumentSync {
     for (const off of this.offs.splice(0)) off();
     for (const off of this.watchers.values()) off();
     this.watchers.clear();
+    this.paths.clear();
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
     if (this.selectionTimer !== null) clearTimeout(this.selectionTimer);
@@ -229,6 +231,7 @@ export class HostDocumentSync {
     const snapshot = this.deps.documents.snapshot(id);
     const { dirty } = snapshot;
     const path = this.deps.documents.hostPath(id);
+    this.paths.set(id, path);
     return {
       path,
       ...(snapshot.path === null ? { isUntitled: true } : {}),
@@ -243,6 +246,7 @@ export class HostDocumentSync {
   private opened(id: string): void {
     const document = this.describe(id);
     if (document === null) return;
+    this.paths.set(id, document.path);
     this.watch(id);
     this.deps.notify("host/documentOpened", document);
   }
@@ -254,7 +258,8 @@ export class HostDocumentSync {
     if (timer !== undefined) { clearTimeout(timer); this.sendChange(id); }
     this.timers.delete(id);
     this.versions.delete(id);
-    const key = path ?? `untitled://openmind/${id}`;
+    const key = this.paths.get(id) ?? path ?? this.deps.documents.hostPath(id);
+    this.paths.delete(id);
     this.deps.notify("host/documentClosed", { path: key });
   }
 

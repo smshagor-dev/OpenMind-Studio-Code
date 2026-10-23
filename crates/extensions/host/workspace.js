@@ -227,8 +227,19 @@ function createWorkspaceApi(parts) {
     async openTextDocument(target) {
       if (target?.scheme === 'untitled') {
         const known = state.documents.get(target.toString());
-        if (!known?.isUntitled) throw new Error('The untitled document is closed or unknown.');
-        return document(known);
+        if (known?.isUntitled) return document(known);
+        need('workspaceWrite');
+        if (!target.path || target.query || target.fragment || target.authority === 'openmind') throw new Error('Invalid or closed untitled URI.');
+        const fileUri = target.with({ scheme: 'file' });
+        const associatedPath = target.path.startsWith('/') ? fileUri.fsPath : undefined;
+        if (associatedPath) {
+          const resolved = resolvedPath(associatedPath);
+          if (!state.workspaceFolders.some(folder => within(resolvedPath(folder.path), resolved))) need('filesystemOutsideWorkspace');
+        }
+        const data = await request('workspace/createUntitled', { extension: ext.id, content: '', language: 'plaintext', uri: target.toString(), ...(associatedPath ? { associatedPath } : {}) });
+        if (!data?.isUntitled || data.path !== target.toString()) throw new Error('Invalid untitled document response.');
+        state.documents.set(data.path, data);
+        return document(data);
       }
       if (target === undefined || (target && typeof target === 'object' && !target.scheme && !target.fsPath && !target.uri)) {
         need('workspaceWrite');

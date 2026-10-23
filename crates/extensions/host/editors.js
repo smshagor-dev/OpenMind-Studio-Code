@@ -82,7 +82,7 @@ function createEditing(types) {
     const doc = {
       get uri() {
         // A custom-scheme document (a file system provider's) is keyed by its Uri text.
-        return /^[a-z][a-z0-9+.-]+:\/\//.test(filePath) ? Uri.parse(filePath) : Uri.file(filePath);
+        return data().isUntitled || /^[a-z][a-z0-9+.-]+:\/\//.test(filePath) ? Uri.parse(filePath) : Uri.file(filePath);
       },
       get fileName() {
         return data().isUntitled ? Uri.parse(filePath).fsPath : filePath;
@@ -358,7 +358,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   /** With a folder open, an open file outside it is the outside-workspace permission's business. */
   function checkEditable(filePath) {
-    if (state.documents.get(filePath)?.isUntitled === true && filePath.startsWith('untitled://')) return;
+    if (state.documents.get(filePath)?.isUntitled === true && filePath.startsWith('untitled:')) return;
     const target = resolvedPath(filePath);
     if (state.workspaceFolders.length > 0 && !state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), target))) {
       if (!(ext.permissions || []).includes('filesystemOutsideWorkspace')) throw permissionError('filesystemOutsideWorkspace');

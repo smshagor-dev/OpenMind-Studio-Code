@@ -25,6 +25,9 @@ export type ExternalState = "none" | "changed" | "deleted";
 export type DiskCheck = "same" | "reloaded" | "conflict" | "deleted" | "unavailable";
 
 interface DocumentRecord {
+  untitledUri?: string;
+  untitledName?: string;
+  associatedPath?: string;
   path: string | null;
   /** An untitled document's number (VS Code: Untitled-1, Untitled-2 ...); `null` once it has a file. */
   untitled: number | null;
@@ -65,11 +68,22 @@ export class DocumentService {
     this.languageResolver = resolver;
   }
 
-  createUntitled(content = "", language = "plaintext"): string {
+  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }): string {
+    let namedPath: string | undefined;
+    if (named) {
+      const resource = new URL(named.uri);
+      if (resource.protocol !== "untitled:" || resource.search || resource.hash) throw new Error("Invalid untitled URI.");
+      namedPath = decodeURIComponent(resource.pathname);
+      if (!namedPath) throw new Error("An untitled URI needs a name.");
+      const existing = this.idForHostPath(named.uri);
+      if (existing !== null) return existing;
+      language = this.languageFor(named.associatedPath ?? namedPath);
+    }
     const id = `untitled-${++this.nextId}`;
     this.documents.set(id, {
       path: null,
       untitled: this.freeUntitledNumber(),
+      ...(named ? { untitledUri: named.uri, untitledName: basename(namedPath ?? ""), associatedPath: named.associatedPath } : {}),
       encoding: "utf8",
       lineEnding: "lf",
       savedContent: "",
@@ -120,7 +134,7 @@ export class DocumentService {
   private movePath(id: string, doc: DocumentRecord, newPath: string): void {
     const from = doc.path;
     if (from !== null && from === newPath) return;
-    const automatic = from === null ? "plaintext" : this.languageFor(from);
+    const automatic = from === null ? (doc.associatedPath ? this.languageFor(doc.associatedPath) : "plaintext") : this.languageFor(from);
     doc.path = newPath;
     doc.untitled = null;
     if (this.buffers.getLanguage(id) === automatic) {
@@ -161,6 +175,7 @@ export class DocumentService {
   async save(id: string, options: { format?: boolean } = {}): Promise<void> {
     const doc = this.requireDocument(id);
     if (doc.path === null) {
+      if (doc.associatedPath) { await this.writeAndMarkClean(id, doc, doc.associatedPath); return; }
       await this.saveAs(id);
       return;
     }
@@ -177,7 +192,7 @@ export class DocumentService {
   /** Prompts for a path via the native save dialog, then saves there. */
   async saveAs(id: string): Promise<void> {
     const doc = this.requireDocument(id);
-    const chosenPath = await this.ipc.saveDocumentDialog(doc.path ?? undefined);
+    const chosenPath = await this.ipc.saveDocumentDialog(doc.path ?? doc.associatedPath);
     if (chosenPath === null) {
       return;
     }
@@ -283,7 +298,7 @@ export class DocumentService {
 
   isDirty(id: string): boolean {
     const doc = this.requireDocument(id);
-    return this.buffers.getValue(id) !== doc.savedContent;
+    return (doc.path === null && !!doc.associatedPath) || this.buffers.getValue(id) !== doc.savedContent;
   }
 
   /** The text the buffer was last saved as (or opened from): what its unsaved edits are relative to. */
@@ -296,7 +311,7 @@ export class DocumentService {
     return {
       id,
       path: doc.path,
-      title: doc.path ? basename(doc.path) : `Untitled-${String(doc.untitled ?? 1)}`,
+      title: doc.path ? basename(doc.path) : doc.untitledName ?? `Untitled-${String(doc.untitled ?? 1)}`,
       dirty: this.isDirty(id),
       encoding: doc.encoding,
       lineEnding: doc.lineEnding === "mixed" && !this.isDirty(id) ? "mixed" : this.eolOf(id) === "\r\n" ? "crlf" : "lf",
@@ -316,7 +331,7 @@ export class DocumentService {
   }
 
   /** Stable extension-host identity; untitled URIs never enter filesystem APIs. */
-  hostPath(id: string): string { return this.requireDocument(id).path ?? `untitled://openmind/${id}`; }
+  hostPath(id: string): string { const doc = this.requireDocument(id); return doc.path ?? doc.untitledUri ?? `untitled://openmind/${id}`; }
 
   idForHostPath(path: string): string | null {
     if (path.startsWith("untitled:")) {
