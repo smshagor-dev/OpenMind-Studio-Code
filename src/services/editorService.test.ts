@@ -54,6 +54,30 @@ describe("EditorService", () => {
     for (const created of models.splice(0)) created.dispose();
   });
 
+  it("updates only the target model options and detects indentation when auto is requested", () => {
+    const service = new EditorService(createFakeIpc());
+    const target = model("top\n  one\n  two\n  three\n  four"), other = model("other");
+    service.attach(createFakeEditor(target).asEditor); service.attach(createFakeEditor(other).asEditor);
+    const before = other.getOptions().tabSize;
+    expect(service.setOptionsFor(target.uri.toString(), { tabSize: 8, insertSpaces: false })).toBe(true);
+    expect(target.getOptions()).toMatchObject({ tabSize: 8, insertSpaces: false });
+    expect(other.getOptions().tabSize).toBe(before);
+    expect(service.setOptionsFor(target.uri.toString(), { tabSize: "auto", insertSpaces: "auto" })).toBe(true);
+    expect(target.getOptions()).toMatchObject({ tabSize: 2, insertSpaces: true });
+    expect(service.setOptionsFor("missing", { tabSize: 2 })).toBe(false);
+  });
+
+  it("honors all four extension reveal modes without changing selections", () => {
+    const service = new EditorService(createFakeIpc()); const target = model("one\ntwo");
+    const fake = createFakeEditor(target), revealRange = vi.fn(), revealRangeAtTop = vi.fn(), revealRangeInCenterIfOutsideViewport = vi.fn();
+    service.attach({ ...fake.asEditor, revealRange, revealRangeAtTop, revealRangeInCenterIfOutsideViewport });
+    const range = { startLine: 1, startColumn: 0, endLine: 1, endColumn: 3 };
+    for (const type of [0, 1, 2, 3]) expect(service.revealRangeFor(target.uri.toString(), range, type)).toBe(true);
+    const expected = { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 4 };
+    for (const reveal of [revealRange, fake.editor.revealRangeInCenter, revealRangeInCenterIfOutsideViewport, revealRangeAtTop]) expect(reveal).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(fake.editor.setSelection).not.toHaveBeenCalled();
+  });
+
   it("run focuses the attached editor and triggers the action", () => {
     const service = new EditorService(createFakeIpc());
     const fake = createFakeEditor(model("hello"));
@@ -352,3 +376,4 @@ describe("EditorService", () => {
     });
   });
 });
+

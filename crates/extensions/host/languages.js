@@ -11,6 +11,12 @@ class TextEdit {
     this.range = range;
     this.newText = newText;
   }
+  static setEndOfLine(eol) {
+    if (eol !== 1 && eol !== 2) throw new TypeError('Invalid end-of-line value.');
+    const edit = new TextEdit({ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }, '');
+    edit.newEol = eol;
+    return edit;
+  }
   static replace(range, newText) {
     return new TextEdit(range, newText);
   }

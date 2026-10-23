@@ -6,6 +6,8 @@ import {
   type HostRange,
   type HostSelection,
   type HostTextEdit,
+  type HostEditOptions,
+  parseEditOptions,
   parseEdits,
   parseSelections,
 } from "./hostEdits";
@@ -19,7 +21,7 @@ export interface ExtensionEditorDeps {
 }
 
 /** One file of an edit as the host sends it. */
-export interface FileEdits {
+export interface FileEdits extends HostEditOptions {
   path: string;
   version: number;
   edits: HostTextEdit[];
@@ -62,7 +64,7 @@ export class ExtensionEditorService {
   applyEdits(params: unknown): EditResult {
     const p = record(params);
     return this.applyFiles([
-      { path: str(p.path), version: Number(p.version), edits: parseEdits(p.edits) },
+      { path: str(p.path), version: Number(p.version), edits: parseEdits(p.edits), ...parseEditOptions(p) },
     ]);
   }
 
@@ -77,6 +79,7 @@ export class ExtensionEditorService {
           path: str(file.path),
           version: Number(file.version),
           edits: parseEdits(file.edits),
+          ...parseEditOptions(file),
         };
       }),
     );
@@ -84,16 +87,26 @@ export class ExtensionEditorService {
 
   private applyFiles(files: FileEdits[]): EditResult {
     const { documents, sync } = this.deps;
-    const targets: { id: string; edits: HostTextEdit[] }[] = [];
+    const targets: { id: string; edits: HostTextEdit[]; options: HostEditOptions }[] = [];
+    const seen = new Set<string>();
     for (const file of files) {
       const found = this.editable(file);
       if ("reason" in found) return { applied: false, reason: found.reason };
-      targets.push({ id: found.id, edits: file.edits });
+      if (seen.has(found.id)) {
+        return { applied: false, reason: "A workspace edit targets the same document more than once." };
+      }
+      seen.add(found.id);
+      try {
+        documents.validateHostEdits(found.id, file.edits);
+      } catch (error) {
+        return { applied: false, reason: error instanceof Error ? error.message : String(error) };
+      }
+      targets.push({ id: found.id, edits: file.edits, options: parseEditOptions({ ...file }) });
     }
     const applied: string[] = [];
     try {
       for (const target of targets) {
-        documents.applyHostEdits(target.id, target.edits);
+        documents.applyHostEdits(target.id, target.edits, target.options);
         applied.push(target.id);
       }
     } catch (error) {
@@ -113,11 +126,24 @@ export class ExtensionEditorService {
     this.deps.editor.setSelectionsFor(uri, selections);
   }
 
+  setOptions(params: unknown): void {
+    const p = record(params);
+    const options = record(p.options);
+    const uri = this.modelUriOf(str(p.path));
+    if (uri === null) return;
+    const tabSize = options.tabSize;
+    const insertSpaces = options.insertSpaces;
+    if (tabSize !== undefined && tabSize !== "auto" && (typeof tabSize !== "number" || !Number.isInteger(tabSize) || tabSize < 1 || tabSize > 1000)) throw new Error("Invalid editor tab size.");
+    if (insertSpaces !== undefined && insertSpaces !== "auto" && typeof insertSpaces !== "boolean") throw new Error("Invalid editor indentation option.");
+    this.deps.editor.setOptionsFor(uri, { tabSize: tabSize, insertSpaces: insertSpaces });
+  }
+
   revealRange(params: unknown): void {
     const p = record(params);
     const uri = this.modelUriOf(str(p.path));
     if (uri === null) return;
-    this.deps.editor.revealRangeFor(uri, record(p.range) as unknown as HostRange);
+    const type = p.type === 1 || p.type === 2 || p.type === 3 ? p.type : 0;
+    this.deps.editor.revealRangeFor(uri, record(p.range) as unknown as HostRange, type);
   }
 
   private modelUriOf(path: string): string | null {
@@ -125,3 +151,4 @@ export class ExtensionEditorService {
     return id === null ? null : this.deps.documents.modelUri(id);
   }
 }
+

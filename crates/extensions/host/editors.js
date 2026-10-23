@@ -101,7 +101,7 @@ function createEditing(types) {
         return view().lines.length;
       },
       get eol() {
-        return view().text.includes('\r\n') ? EndOfLine.CRLF : EndOfLine.LF;
+        return data().eol === EndOfLine.CRLF || (data().eol === undefined && view().text.includes('\r\n')) ? EndOfLine.CRLF : EndOfLine.LF;
       },
       getText(range) {
         const { text, lines } = view();
@@ -163,6 +163,7 @@ function createEditing(types) {
       this._document = document;
       this._edits = [];
       this._closed = false;
+      this._eol = undefined;
     }
     _add(range, text) {
       if (this._closed) throw new Error('TextEditorEdit is only valid inside the edit callback.');
@@ -178,8 +179,10 @@ function createEditing(types) {
     delete(location) {
       this._add(location, '');
     }
-    setEndOfLine() {
-      throw unsupportedError('TextEditorEdit.setEndOfLine');
+    setEndOfLine(eol) {
+      if (this._closed) throw new Error('TextEditorEdit is only valid inside the edit callback.');
+      if (eol !== EndOfLine.LF && eol !== EndOfLine.CRLF) throw new TypeError('Invalid end-of-line value.');
+      this._eol = eol;
     }
     _finish() {
       this._closed = true;
@@ -229,7 +232,7 @@ function createEditing(types) {
     }
     get(uri) {
       const bucket = this._files.get(uri.toString());
-      return bucket ? bucket.edits.map((edit) => ({ range: edit.range, newText: edit.newText })) : [];
+      return bucket ? bucket.edits.map((edit) => ({ range: edit.range, newText: edit.newText, ...(edit.newEol !== undefined ? { newEol: edit.newEol } : {}) })) : [];
     }
     set(uri, edits) {
       const values = [...(edits || [])].map(value => {
@@ -244,7 +247,7 @@ function createEditing(types) {
       }
       this._notebooks.delete(uri.toString());
       const bucket = this._bucket(uri);
-      bucket.edits = values.map(edit => ({ range: edit.range, newText: String(edit.newText) }));
+      bucket.edits = values.map(edit => ({ range: edit.range, newText: String(edit.newText), ...(edit.newEol !== undefined ? { newEol: edit.newEol } : {}) }));
     }
 
     entries() {
@@ -317,8 +320,8 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     }
   }
 
-  async function sendEdits(filePath, version, edits) {
-    const result = await request('editor/applyEdits', { extension: ext.id, path: filePath, version, edits });
+  async function sendEdits(filePath, version, edits, options) {
+    const result = await request('editor/applyEdits', { extension: ext.id, path: filePath, version, edits, ...options });
     if (!result || result.applied !== true) {
       console.error(`Edit not applied to ${filePath}: ${(result && result.reason) || 'the application refused it'}`);
       return false;
@@ -338,6 +341,20 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       if (now) now.selections = selections.map(editing.selectionToWire);
       notify('editor/setSelections', { extension: ext.id, path: filePath, selections: selections.map(editing.selectionToWire) });
     };
+    function setOptions(value) {
+      if (!value || typeof value !== 'object') throw new TypeError('Editor options must be an object.');
+      for (const key of Object.keys(value)) if (!['tabSize', 'insertSpaces'].includes(key)) throw unsupportedError(`TextEditorOptions.${key}`);
+      const { tabSize, insertSpaces } = value;
+      if (tabSize !== undefined && tabSize !== 'auto' && (!Number.isInteger(tabSize) || tabSize < 1 || tabSize > 1000)) throw new TypeError('Invalid editor tab size.');
+      if (insertSpaces !== undefined && insertSpaces !== 'auto' && typeof insertSpaces !== 'boolean') throw new TypeError('Invalid editor indentation option.');
+      notify('editor/setOptions', { extension: ext.id, path: filePath, options: { tabSize, insertSpaces } });
+    }
+    const editorOptions = {};
+    for (const key of ['tabSize', 'insertSpaces']) Object.defineProperty(editorOptions, key, {
+      enumerable: true,
+      get() { return active()?.[key] ?? (key === 'tabSize' ? 4 : true); },
+      set(value) { setOptions({ [key]: value }); },
+    });
     const target = {
       get document() {
         return document(state.documents.get(filePath));
@@ -355,23 +372,25 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
         setSelections(value);
       },
       get options() {
-        const now = active();
-        return { tabSize: (now && now.tabSize) || 4, insertSpaces: now ? now.insertSpaces !== false : true };
+        return editorOptions;
       },
+      set options(value) { setOptions(value); },
       get viewColumn() {
         return 1;
       },
       async edit(callback, options) {
+        need('workspaceWrite');
         const doc = state.documents.get(filePath);
         if (!doc) return false;
         checkEditable(filePath);
         const view = document(doc);
         const builder = new editing.TextEditorEdit(view);
-        callback(builder);
+        const version = doc.version;
+        try { callback(builder); } finally { builder._closed = true; }
         const edits = builder._finish();
-        if (edits.length === 0) return true;
-        void options;
-        return sendEdits(filePath, doc.version, edits);
+        if (edits.length === 0 && builder._eol === undefined) return true;
+        for (const key of ['undoStopBefore', 'undoStopAfter']) if (options?.[key] !== undefined && typeof options[key] !== 'boolean') throw new TypeError('Undo options must be boolean.');
+        return sendEdits(filePath, version, edits, { eol: builder._eol, undoStopBefore: options?.undoStopBefore, undoStopAfter: options?.undoStopAfter });
       },
       revealRange(range, revealType) {
         notify('editor/revealRange', {
@@ -411,9 +430,11 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       const view = document(doc);
       const edits = editing.normalizeEdits(
         view,
-        list.map((item) => ({ range: view.validateRange(item.range), text: item.newText })),
+        list.filter(item => item.newEol === undefined).map((item) => ({ range: view.validateRange(item.range), text: item.newText })),
       );
-      files.push({ path: filePath, version: doc.version, edits });
+      const eol = list.filter(item => item.newEol !== undefined).at(-1)?.newEol;
+      if (eol !== undefined && eol !== EndOfLine.LF && eol !== EndOfLine.CRLF) throw new TypeError('Invalid end-of-line value.');
+      files.push({ path: filePath, version: doc.version, edits, ...(eol !== undefined ? { eol } : {}) });
     }
     if (files.length === 0) return true;
     const result = await request('editor/applyWorkspaceEdit', { extension: ext.id, files });

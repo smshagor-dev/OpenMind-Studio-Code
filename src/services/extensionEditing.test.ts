@@ -72,13 +72,14 @@ function documentsRig(hasTextTab = true) {
   const selections: HostSelection[] = [
     { anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 5 },
   ];
+  const editorOptions = { tabSize: 2, insertSpaces: false };
   const listeners = new Set<() => void>();
   const current: { id: string | null; covered: boolean } = { id: null, covered: false };
   const sync = new HostDocumentSync({
     documents,
     events,
     notify: (method, params) => sent.push([method, params]),
-    editorState: () => ({ selections, tabSize: 2, insertSpaces: false }),
+    editorState: () => ({ selections, ...editorOptions }),
     onSelectionChange: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -93,7 +94,7 @@ function documentsRig(hasTextTab = true) {
     sync,
     hasTextTab: () => tab.value,
   });
-  return { buffers, events, documents, sent, sync, service, tab, selections, listeners, current };
+  return { buffers, events, documents, sent, sync, service, tab, selections, listeners, current, editorOptions };
 }
 
 describe("ExtensionEditorService", () => {
@@ -116,6 +117,44 @@ describe("ExtensionEditorService", () => {
     // Nothing was saved: the disk is untouched.
     expect(r.documents.snapshot(id).dirty).toBe(true);
     r.sync.stop();
+  });
+
+  it("validates every file before changing any buffer and rejects duplicate model targets", async () => {
+    const r = documentsRig();
+    const first = await r.documents.openFromPath(FILE), secondPath = "C:/My Site/b.txt";
+    const second = await r.documents.openFromPath(secondPath); r.sync.start();
+    const edit = { startLine: 0, startColumn: 0, endLine: 0, endColumn: 5, text: "HELLO" };
+    const result = r.service.applyWorkspaceEdit({ files: [
+      { path: FILE, version: 1, edits: [edit] },
+      { path: secondPath, version: 1, edits: [{ ...edit, endColumn: 999 }] },
+    ] });
+    expect(result).toEqual({ applied: false, reason: "An edit is outside the document." });
+    expect(r.documents.contentOf(first)).toBe("hello world\nsecond");
+    expect(r.documents.contentOf(second)).toBe("hello world\nsecond");
+    expect(r.documents.isDirty(first)).toBe(false);
+    expect(r.sync.hasPending(first)).toBe(false); expect(r.sync.versionOf(first)).toBe(1);
+    expect(r.service.applyWorkspaceEdit({ files: [
+      { path: FILE, version: 1, edits: [edit] }, { path: "c:\\my site\\a.txt", version: 1, edits: [edit] },
+    ] })).toMatchObject({ applied: false, reason: "A workspace edit targets the same document more than once." });
+    expect(r.documents.isDirty(first)).toBe(false); r.sync.stop(); r.buffers.disposeAll();
+  });
+
+  it("applies text and EOL in one undo group, synchronizes EOL and honors joined undo stops", async () => {
+    const r = documentsRig(); const id = await r.documents.openFromPath(FILE); r.sync.start();
+    expect(r.service.applyEdits({ path: FILE, version: 1, edits: [{ startLine: 0, startColumn: 0, endLine: 0, endColumn: 5, text: "HELLO" }], eol: 2 })).toEqual({ applied: true });
+    expect(r.documents.contentOf(id)).toBe("HELLO world\r\nsecond");
+    expect(r.documents.snapshot(id).lineEnding).toBe("crlf");
+    expect(r.sent.at(-1)).toMatchObject(["host/documentChanged", { eol: 2, version: 2 }]);
+    await r.buffers.get(id)?.undo();
+    expect(r.documents.contentOf(id)).toBe("hello world\nsecond");
+    expect(r.documents.snapshot(id).lineEnding).toBe("lf");
+    r.sync.commitChange(id);
+    expect(r.service.applyEdits({ path: FILE, version: r.sync.versionOf(id), edits: [], eol: 2, undoStopAfter: false })).toEqual({ applied: true });
+    expect(r.service.applyEdits({ path: FILE, version: r.sync.versionOf(id), edits: [{ startLine: 1, startColumn: 0, endLine: 1, endColumn: 6, text: "joined" }], undoStopBefore: false })).toEqual({ applied: true });
+    await r.buffers.get(id)?.undo();
+    expect(r.documents.contentOf(id)).toBe("hello world\nsecond");
+    expect(() => r.service.applyEdits({ path: FILE, version: r.sync.versionOf(id), edits: [], eol: 3 })).toThrow("Invalid end-of-line");
+    r.sync.stop(); r.buffers.disposeAll();
   });
 
   it("refuses a stale version, typing the host hasn't seen yet, a preview-only document and a file that isn't open", async () => {
@@ -186,6 +225,20 @@ describe("ExtensionEditorService", () => {
 });
 
 describe("HostDocumentSync: the active editor and its selection", () => {
+  it("publishes resolved option changes even when the cursor has not moved", async () => {
+    vi.useFakeTimers(); const r = documentsRig();
+    try {
+      const id = await r.documents.openFromPath(FILE); r.current.id = id; r.sync.start();
+      r.editorOptions.tabSize = 8; r.editorOptions.insertSpaces = true;
+      for (const listener of r.listeners) listener();
+      vi.advanceTimersByTime(SELECTION_DELAY_MS + 1);
+      expect(r.sent.at(-1)).toEqual(["host/editorOptionsChanged", { path: FILE, tabSize: 8, insertSpaces: true }]);
+      const count = r.sent.length;
+      for (const listener of r.listeners) listener();
+      vi.advanceTimersByTime(SELECTION_DELAY_MS + 1); expect(r.sent).toHaveLength(count);
+    } finally { r.sync.stop(); r.buffers.disposeAll(); vi.useRealTimers(); }
+  });
+
   it("sends the editor with its selections, is null for a preview tab, and debounces selection changes", async () => {
     vi.useFakeTimers();
     try {
@@ -445,6 +498,7 @@ describe("HostBridge: editor and status bar messages", () => {
       applyEdits: vi.fn().mockReturnValue({ applied: true }),
       applyWorkspaceEdit: vi.fn().mockReturnValue({ applied: false, reason: "no" }),
       setSelections: vi.fn(),
+      setOptions: vi.fn(),
       revealRange: vi.fn(),
     };
     const status: [string, unknown][] = [];
@@ -499,3 +553,4 @@ describe("HostBridge: editor and status bar messages", () => {
     );
   });
 });
+

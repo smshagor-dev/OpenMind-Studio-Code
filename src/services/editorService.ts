@@ -10,6 +10,8 @@ export type CodeEditorLike = Partial<
     monaco.editor.IStandaloneCodeEditor,
     | "addAction"
     | "setSelections"
+    | "revealRange"
+    | "revealRangeAtTop"
     | "revealRangeInCenterIfOutsideViewport"
     | "executeEdits"
     | "getRawOptions"
@@ -392,15 +394,34 @@ export class EditorService {
     return true;
   }
 
-  revealRangeFor(uri: string, range: HostRange): boolean {
+  setOptionsFor(uri: string, options: { tabSize?: number | "auto"; insertSpaces?: boolean | "auto" }): boolean {
+    const model = this.editorShowing(uri)?.getModel();
+    if (!model) return false;
+    if (options.tabSize === "auto" || options.insertSpaces === "auto") {
+      const current = model.getOptions();
+      model.detectIndentation(typeof options.insertSpaces === "boolean" ? options.insertSpaces : current.insertSpaces, typeof options.tabSize === "number" ? options.tabSize : current.tabSize);
+    }
+    model.updateOptions({
+      ...(typeof options.tabSize === "number" ? { tabSize: options.tabSize, indentSize: options.tabSize } : {}),
+      ...(typeof options.insertSpaces === "boolean" ? { insertSpaces: options.insertSpaces } : {}),
+    });
+    this.refreshStatus();
+    return true;
+  }
+
+  revealRangeFor(uri: string, range: HostRange, type = 0): boolean {
     const editor = this.editorShowing(uri);
     if (!editor) return false;
-    editor.revealRangeInCenter({
+    const target = {
       startLineNumber: range.startLine + 1,
       startColumn: range.startColumn + 1,
       endLineNumber: range.endLine + 1,
       endColumn: range.endColumn + 1,
-    });
+    };
+    if (type === 0 && editor.revealRange) editor.revealRange(target);
+    else if (type === 2 && editor.revealRangeInCenterIfOutsideViewport) editor.revealRangeInCenterIfOutsideViewport(target);
+    else if (type === 3 && editor.revealRangeAtTop) editor.revealRangeAtTop(target);
+    else editor.revealRangeInCenter(target);
     return true;
   }
 
@@ -629,3 +650,4 @@ function pickBooleans(value: Partial<EditorViewOptions>): Partial<EditorViewOpti
   }
   return result;
 }
+

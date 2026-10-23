@@ -230,6 +230,7 @@ describe("HostDocumentSync", () => {
       has: (id: string) => texts.has(id),
       snapshot: (id: string) => ({ id, path: `C:/My Site/${id}.txt`, dirty: false }),
       languageOf: () => "plaintext",
+      eolOf: () => "\n",
       contentOf: (id: string) => texts.get(id) ?? "",
       onDidChangeContent: (id: string, listener: () => void) => {
         listeners.set(id, listener);
@@ -247,7 +248,7 @@ describe("HostDocumentSync", () => {
     try {
       const { texts, listeners, events, sent, sync } = documentsRig();
       expect(sync.initial().documents).toEqual([
-        { path: "C:/My Site/doc-1.txt", languageId: "plaintext", version: 1, text: "one", isDirty: false },
+        { path: "C:/My Site/doc-1.txt", languageId: "plaintext", version: 1, text: "one", isDirty: false, eol: 1 },
       ]);
       sync.start();
       texts.set("doc-1", "one two");
@@ -292,3 +293,4 @@ describe("HostDocumentSync", () => {
     }
   });
 });
+

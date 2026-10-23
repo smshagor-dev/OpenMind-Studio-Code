@@ -7,6 +7,27 @@ export interface HostTextEdit {
   text: string;
 }
 
+/** Host EOL values match vscode.EndOfLine; undo stops default to true. */
+export interface HostEditOptions {
+  eol?: 1 | 2;
+  undoStopBefore?: boolean;
+  undoStopAfter?: boolean;
+}
+
+export function parseEditOptions(value: Record<string, unknown>): HostEditOptions {
+  const result: HostEditOptions = {};
+  if (value.eol !== undefined) {
+    if (value.eol !== 1 && value.eol !== 2) throw new Error("Invalid end-of-line value.");
+    result.eol = value.eol;
+  }
+  for (const key of ["undoStopBefore", "undoStopAfter"] as const) {
+    if (value[key] === undefined) continue;
+    if (typeof value[key] !== "boolean") throw new Error("Undo options must be boolean.");
+    result[key] = value[key];
+  }
+  return result;
+}
+
 /** A selection in host coordinates (0-based); the anchor is where it started, the active end is the cursor. */
 export interface HostSelection {
   anchorLine: number;
@@ -67,3 +88,4 @@ export function parseSelections(value: unknown): HostSelection[] {
     return { anchorLine, anchorColumn, activeLine, activeColumn };
   });
 }
+
