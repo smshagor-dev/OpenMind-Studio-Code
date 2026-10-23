@@ -208,8 +208,8 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
       readText: async () => (await import("@tauri-apps/plugin-clipboard-manager")).readText(),
       writeText: async value => (await import("@tauri-apps/plugin-clipboard-manager")).writeText(value),
     },
-    createUntitled: (content, language) => {
-      const id = documents.createUntitled(content, language);
+    createUntitled: (content, language, named) => {
+      const id = documents.createUntitled(content, language, named);
       const data = sync.describe(id);
       if (!data) throw new Error("The untitled document could not be created.");
       return data;

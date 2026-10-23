@@ -174,12 +174,12 @@ class Uri {
   }
   toString(skipEncoding = false) {
     if (skipEncoding) {
-      return `${this.scheme}://${this.authority}${this.path}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
+      return `${this.scheme}:${this.scheme === 'untitled' && !this.authority && !this.path.startsWith('/') ? '' : '//'}${this.authority}${this.path}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
     }
     const encoded = encodeURI(this.path)
       .replace(/[?#]/g, (char) => encodeURIComponent(char))
       .replace(/^\/([a-zA-Z]):/, '/$1%3A');
-    return `${this.scheme}://${this.authority}${encoded}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
+    return `${this.scheme}:${this.scheme === 'untitled' && !this.authority && !this.path.startsWith('/') ? '' : '//'}${this.authority}${encoded}${this.query ? `?${this.query}` : ''}${this.fragment ? `#${this.fragment}` : ''}`;
   }
   toJSON() {
     return { scheme: this.scheme, authority: this.authority, path: this.path, query: this.query, fragment: this.fragment, fsPath: this.fsPath };

@@ -151,7 +151,7 @@ export interface BridgeDeps {
   hostRequest: (method: string, params: unknown) => Promise<unknown>;
   showOutput: (channel: string) => void;
   openExternal: (url: string) => Promise<void>;
-  createUntitled?: (content: string, language: string) => HostDocument;
+  createUntitled?: (content: string, language: string, named?: { uri: string; associatedPath?: string }) => HostDocument;
   readDocument: (path: string) => Promise<HostDocument | null>;
   languageIds: () => string[];
   updateConfiguration: (
@@ -306,7 +306,10 @@ export class HostBridge {
       case "workspace/createUntitled": {
         if (p.content !== undefined && typeof p.content !== "string") throw new Error("Untitled content must be text.");
         if (p.language !== undefined && (typeof p.language !== "string" || !p.language)) throw new Error("Invalid untitled language.");
-        return this.need(this.deps.createUntitled, "Untitled documents")(text(p.content), text(p.language) || "plaintext");
+        if (p.uri !== undefined && (typeof p.uri !== "string" || !p.uri.startsWith("untitled:"))) throw new Error("Invalid untitled URI.");
+        if (p.associatedPath !== undefined && (typeof p.associatedPath !== "string" || !p.associatedPath)) throw new Error("Invalid associated path.");
+        return this.need(this.deps.createUntitled, "Untitled documents")(text(p.content), text(p.language) || "plaintext",
+          typeof p.uri === "string" ? { uri: p.uri, ...(typeof p.associatedPath === "string" ? { associatedPath: p.associatedPath } : {}) } : undefined);
       }
       case "workspace/openTextDocument": {
         const document = await this.deps.readDocument(text(p.path));
