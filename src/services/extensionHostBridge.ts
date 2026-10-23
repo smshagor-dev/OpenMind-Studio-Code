@@ -503,6 +503,7 @@ export class HostBridge {
     this.deps.terminals?.reset();
     this.deps.tasks?.reset();
     this.deps.editorApi?.resetDecorations();
+    this.deps.editorApi?.cancelPendingEdits();
     this.deps.resetDocumentOpening?.();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});

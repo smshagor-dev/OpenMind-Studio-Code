@@ -3,6 +3,7 @@ import * as monaco from "monaco-editor";
 import type { ExtensionEditorAction } from "./extensionContributionService";
 import type { HostRange, HostSelection } from "./hostEdits";
 import type { IpcClient } from "./ipc";
+import { snippetUsesClipboard } from "./snippetClipboard";
 
 /** The slice of Monaco's editor API this service uses — structural, so tests can pass a fake. */
 export type CodeEditorLike = Partial<
@@ -456,19 +457,29 @@ export class EditorService {
   }
 
   /** Uses Monaco's snippet session so placeholders and Tab navigation stay native. */
-  insertSnippetFor(uri: string, snippet: string, ranges: HostRange[] | undefined,
-    options: { undoStopBefore?: boolean; undoStopAfter?: boolean }, editorId?: string): boolean {
+  async insertSnippetFor(uri: string, snippet: string, ranges: HostRange[] | undefined,
+    options: { undoStopBefore?: boolean; undoStopAfter?: boolean }, editorId?: string,
+    isCurrent?: () => boolean): Promise<boolean> {
     const editor = this.editorShowing(uri, editorId);
     if (!editor || editor.getRawOptions?.().readOnly) return false;
+    const identity = this.identityOf(editor)?.id;
+    const model = editor.getModel();
+    if (!identity || !model || model.isDisposed()) return false;
+    const version = model.getVersionId();
+    const selections = JSON.stringify(editor.getSelections());
     const controller = editor.getContribution?.("snippetController2") as
-      | { insert(template: string | { range: monaco.Range; template: string }[], options: { undoStopBefore?: boolean; undoStopAfter?: boolean }): void }
+      | { insert(template: string | { range: monaco.Range; template: string }[], options: { undoStopBefore?: boolean; undoStopAfter?: boolean; clipboardText?: string }): void }
       | null | undefined;
     if (!controller) return false;
     if (ranges?.length === 0) return true;
+    const clipboardText = snippetUsesClipboard(snippet) ? await this.ipc.clipboardReadText() : undefined;
+    if (this.editorShowing(uri, identity) !== editor || editor.getModel() !== model || model.isDisposed()
+      || model.getVersionId() !== version || editor.getRawOptions?.().readOnly || isCurrent?.() === false
+      || (ranges === undefined && JSON.stringify(editor.getSelections()) !== selections)) return false;
     controller.insert(ranges ? ranges.map(range => ({
       range: new monaco.Range(range.startLine + 1, range.startColumn + 1, range.endLine + 1, range.endColumn + 1),
       template: snippet,
-    })) : snippet, options);
+    })) : snippet, { ...options, ...(clipboardText === undefined ? {} : { clipboardText }) });
     return true;
   }
 
