@@ -80,7 +80,8 @@ function Notebooks({ value }: { value: WorkbenchSnapshot["notebooks"] }) {
   return <>
     <form onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); act("notebooks", "open", { type: data.get("type"), path: data.get("path") }); }}>
       <label>Notebook format<select name="type" required>{value.serializers.map(type => <option key={type}>{type}</option>)}</select></label>
-      <label>File path<input name="path" required placeholder="Path to your notebook" /></label><button type="submit" disabled={!value.serializers.length}>Open notebook</button>
+      <label>File path<input name="path" placeholder="Path to your notebook" /></label><button type="submit" disabled={!value.serializers.length}>Open notebook</button>
+      <button type="button" disabled={!value.serializers.length} onClick={event => { const form = event.currentTarget.form; if (form) act("notebooks", "new", { type: new FormData(form).get("type") }); }}>New notebook</button>
     </form>
     {!value.serializers.length ? <p>No active extension has registered a notebook serializer. Existing Jupyter notebooks remain available through the normal editor.</p> : null}
     {value.documents.map(document => <section key={document.uri}><h3>{document.uri}{document.dirty ? " · Unsaved" : ""}</h3>
@@ -89,12 +90,18 @@ function Notebooks({ value }: { value: WorkbenchSnapshot["notebooks"] }) {
         {value.controllers.filter(c => c.notebookType === document.notebookType).map(c => <option key={c.handle} value={c.handle}>{c.label}</option>)}</select></label>
       <button type="button" disabled={!controller} onClick={() => act("notebooks", "execute", { uri: document.uri, controller })}>Run all</button>
       <button type="button" onClick={() => act("notebooks", "cancel", { uri: document.uri })}>Cancel execution</button>
-      <button type="button" onClick={() => act("notebooks", "save", { uri: document.uri })}>Save notebook</button>
+      <button type="button" disabled={document.unavailable || document.uri.startsWith("untitled:")} onClick={() => act("notebooks", "save", { uri: document.uri })}>Save notebook</button>
+      <form onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); act("notebooks", "saveAs", { uri: document.uri, path: data.get("destination") }); }}>
+        <label>Save to a new file<input name="destination" required placeholder="New notebook file path" /></label>
+        <button type="submit" disabled={document.unavailable || document.cells.some(cell => cell.running)}>Save as</button>
+      </form>
       <button type="button" onClick={() => act("notebooks", "close", { uri: document.uri })}>Close notebook</button>
-      {document.cells.map(cell => <article key={cell.index}><label>Cell {cell.index + 1} · {cell.languageId}
-        <textarea key={`${document.uri}/${cell.index}`} defaultValue={cell.value} spellCheck={false} disabled={cell.running || document.unavailable}
+      <button type="button" disabled={document.unavailable || document.cells.some(cell => cell.running)} onClick={() => act("notebooks", "insert", { uri: document.uri, version: document.version, index: document.cells.length, cellIds: document.cells.map(cell => cell.id), languageId: document.cells.at(-1)?.languageId })}>Add code cell</button>
+      {document.cells.map(cell => <article key={cell.id || cell.index}><label>Cell {cell.index + 1} · {cell.languageId}
+        <textarea key={cell.id || `${document.uri}/${cell.index}`} defaultValue={cell.value} spellCheck={false} disabled={cell.running || document.unavailable}
           onBlur={event => { if (event.target.value !== cell.value) act("notebooks", "edit", { uri: document.uri, index: cell.index, version: document.version, previousValue: cell.value, value: event.target.value }); }} /></label>
         {cell.kind === 2 ? <button type="button" disabled={!controller || cell.running} onClick={() => act("notebooks", "execute", { uri: document.uri, controller, indices: [cell.index] })}>{cell.running ? "Running…" : "Run cell"}</button> : null}
+        <button type="button" disabled={document.unavailable || document.cells.some(value => value.running)} onClick={() => act("notebooks", "delete", { uri: document.uri, version: document.version, index: cell.index, cellIds: document.cells.map(value => value.id) })}>Delete cell {cell.index + 1}</button>
         {cell.outputs.map((output, i) => <pre key={i} aria-label={output.mime}>{output.text}</pre>)}
       </article>)}
     </section>)}

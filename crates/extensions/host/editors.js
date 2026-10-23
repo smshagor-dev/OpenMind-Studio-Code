@@ -4,7 +4,7 @@
 // application owns the text; the host keeps a mirror (`state.documents`, `state.activeEditor`) and sends edits back
 // as requests. Edits change the open buffer only — nothing here writes a file.
 
-const { permissionError, within } = require('./guard.js');
+const { permissionError, within, resolvedPath } = require('./guard.js');
 
 const EndOfLine = Object.freeze({ LF: 1, CRLF: 2 });
 const TextEditorRevealType = Object.freeze({ Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 });
@@ -208,6 +208,7 @@ function createEditing(types) {
   class WorkspaceEdit {
     constructor() {
       this._files = new Map();
+      this._notebooks = new Map();
     }
     _bucket(uri) {
       const key = uri.toString();
@@ -231,15 +232,26 @@ function createEditing(types) {
       return bucket ? bucket.edits.map((edit) => ({ range: edit.range, newText: edit.newText })) : [];
     }
     set(uri, edits) {
+      const values = [...(edits || [])].map(value => {
+        if (!Array.isArray(value)) return value;
+        if (value[1]?.needsConfirmation) throw unsupportedError('WorkspaceEditEntryMetadata.needsConfirmation');
+        return value[0];
+      });
+      const isNotebook = value => value instanceof require('./notebooks.js').NotebookEdit;
+      if (values.some(isNotebook)) {
+        if (!values.every(isNotebook)) throw new TypeError('Cannot mix text and notebook edits for one URI.');
+        this._notebooks.set(uri.toString(), { uri, edits: values }); this._files.delete(uri.toString()); return;
+      }
+      this._notebooks.delete(uri.toString());
       const bucket = this._bucket(uri);
-      bucket.edits = [];
-      for (const edit of edits || []) bucket.edits.push({ range: edit.range, newText: String(edit.newText) });
+      bucket.edits = values.map(edit => ({ range: edit.range, newText: String(edit.newText) }));
     }
+
     entries() {
       return [...this._files.values()].map((bucket) => [bucket.uri, this.get(bucket.uri)]);
     }
     get size() {
-      return this._files.size;
+      return new Set([...this._files.keys(), ...this._notebooks.keys()]).size;
     }
     createFile() {
       throw unsupportedError('WorkspaceEdit.createFile');
@@ -299,7 +311,8 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   /** With a folder open, an open file outside it is the outside-workspace permission's business. */
   function checkEditable(filePath) {
-    if (state.workspaceFolders.length > 0 && !state.workspaceFolders.some((folder) => within(folder.path, filePath))) {
+    const target = resolvedPath(filePath);
+    if (state.workspaceFolders.length > 0 && !state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), target))) {
       if (!(ext.permissions || []).includes('filesystemOutsideWorkspace')) throw permissionError('filesystemOutsideWorkspace');
     }
   }
@@ -382,6 +395,10 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 
   async function applyEdit(edit) {
     need('workspaceWrite');
+    if (edit._notebooks?.size) {
+      if (edit.entries().some(([, edits]) => edits.length)) throw unsupportedError('workspace.applyEdit.mixedNotebookAndText');
+      return require('./notebooks.js').applyEdits(host, [...edit._notebooks.values()], checkEditable);
+    }
     const files = [];
     for (const [uri, list] of edit.entries()) {
       const filePath = uri.fsPath;
@@ -421,3 +438,4 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
 }
 
 module.exports = { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind };
+

@@ -926,6 +926,7 @@ function createApi(host, ext) {
     TestMessage: testingModule.TestMessage,
     TestTag: testingModule.TestTag,
     NotebookRange: notebookModule.NotebookRange,
+    NotebookEdit: notebookModule.NotebookEdit,
     NotebookCellKind: notebookModule.NotebookCellKind,
     NotebookCellData: notebookModule.NotebookCellData,
     NotebookData: notebookModule.NotebookData,

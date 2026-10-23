@@ -151,10 +151,11 @@ function createFileSystemApi({ host, ext, need, track, Disposable, Uri }) {
         throw toError(error);
       }
     },
-    async writeFile(uri, content) {
-      if (uri.scheme !== 'file') return onProvider(uri, 'writeFile', content, { create: true, overwrite: true });
+    async writeFile(uri, content, options) {
+      const overwrite = options?.overwrite !== false;
+      if (uri.scheme !== 'file') return onProvider(uri, 'writeFile', content, { create: true, overwrite });
       try {
-        await fs.promises.writeFile(fileOf(uri, true), Buffer.from(content));
+        await fs.promises.writeFile(fileOf(uri, true), Buffer.from(content), { flag: overwrite ? 'w' : 'wx' });
       } catch (error) {
         throw toError(error);
       }

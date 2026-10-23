@@ -12,7 +12,7 @@ export interface NotebookSnapshot {
   serializers: string[];
   controllers: { handle: string; label: string; notebookType: string }[];
   documents: { uri: string; notebookType: string; dirty: boolean; version: number; unavailable?: boolean;
-    cells: { index: number; value: string; languageId: string; kind: number; running: boolean; outputs: { mime: string; text: string }[] }[] }[];
+    cells: { id?: string; index: number; value: string; languageId: string; kind: number; running: boolean; outputs: { mime: string; text: string }[] }[] }[];
 }
 export interface DebugSnapshot {
   types: string[];
@@ -70,7 +70,7 @@ export class ExtensionWorkbenchService {
     const revision = this.revisions[domain];
     try {
       const uri = typeof params.uri === "string" ? params.uri : "";
-      if (domain === "notebooks" && ["execute", "save", "close"].includes(op)) {
+      if (domain === "notebooks" && ["execute", "save", "saveAs", "close", "insert", "delete"].includes(op)) {
         await Promise.all(this.notebookEdits.get(uri) ?? []);
         if (generation !== this.generation) return undefined;
         const editError = this.notebookEditErrors.get(uri);

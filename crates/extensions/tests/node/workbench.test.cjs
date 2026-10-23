@@ -197,3 +197,140 @@ test('real debugpy adapter launches a Python target and exposes frames, scopes a
   const evaluated = await h.call('debug', 'evaluate', { ...args, arguments: { expression: 'value', frameId: frame.id, context: 'repl' } }); assert.equal(evaluated.result, '42');
   await h.call('debug', 'stop', args); assert.equal((await h.call('debug', 'snapshot')).sessions.length, 0);
 });
+
+test('NotebookEdit inserts, replaces and deletes cells transactionally and preserves live cell identities', async t => {
+  const h = await setup(t, notebookExtension + `
+  const original = exports.activate;
+  exports.activate = () => { original();
+    v.commands.registerCommand('notebook.structure', async () => {
+      const document = v.workspace.notebookDocuments[0]; const first = document.cellAt(0), second = document.cellAt(1);
+      const events = []; const subscription = v.workspace.onDidChangeNotebookDocument(event => events.push({
+        version: event.notebook.version, content: event.contentChanges.map(change => ({ start: change.range.start, end: change.range.end, added: change.addedCells.length, removed: change.removedCells.length })),
+        metadata: event.metadata, cells: event.cellChanges.map(change => change.metadata)
+      }));
+      const edit = new v.WorkspaceEdit(); const added = new v.NotebookCellData(1, '# Added', 'markdown'); added.metadata = { inserted: true };
+      edit.set(document.uri, [v.NotebookEdit.insertCells(1, [added]), v.NotebookEdit.updateCellMetadata(0, { replaced: 42 }), v.NotebookEdit.updateNotebookMetadata({ title: 'Updated' })]);
+      const applied = await v.workspace.applyEdit(edit);
+      const inserted = document.cellAt(1); const reindex = second.index;
+      const replace = new v.WorkspaceEdit(); replace.set(document.uri, [new v.NotebookEdit(new v.NotebookRange(2, 3), [new v.NotebookCellData(2, '30', 'javascript')])]);
+      await v.workspace.applyEdit(replace);
+      const deletion = new v.WorkspaceEdit(); deletion.set(document.uri, [v.NotebookEdit.deleteCells(new v.NotebookRange(1, 2))]); await v.workspace.applyEdit(deletion);
+      subscription.dispose(); await document.save();
+      return { applied, firstStable: document.cellAt(0) === first, reindex, removedIndex: second.index,
+        removedClosed: second.document.isClosed, insertedClosed: inserted.document.isClosed,
+        texts: document.getCells().map(cell => cell.document.getText()), events, size: edit.size, textEntries: edit.entries().length };
+    });
+  };`);
+  const file = path.join(h.root, 'structure.omnb'); fs.writeFileSync(file, JSON.stringify({ cells: [{ value: '10' }, { value: '20' }] }));
+  await h.activate(); await h.call('notebooks', 'open', { type: 'example', path: file });
+  const result = await h.request('host/executeCommand', { command: 'notebook.structure' });
+  assert.equal(result.applied, true); assert.equal(result.firstStable, true); assert.equal(result.reindex, 2);
+  assert.equal(result.removedIndex, -1); assert.equal(result.removedClosed, true); assert.equal(result.insertedClosed, true);
+  assert.deepEqual(result.texts, ['10', '30']); assert.equal(result.events.length, 3);
+  assert.deepEqual(result.events[0].content, [{ start: 1, end: 1, added: 1, removed: 0 }]);
+  assert.deepEqual(result.events[0].metadata, { title: 'Updated' }); assert.deepEqual(result.events[0].cells, [{ replaced: 42 }]);
+  assert.equal(result.size, 1); assert.equal(result.textEntries, 0);
+  const saved = JSON.parse(fs.readFileSync(file)); assert.deepEqual(saved.metadata, { title: 'Updated' });
+  assert.deepEqual(saved.cells.map(cell => cell.value), ['10', '30']); assert.deepEqual(saved.cells[0].metadata, { replaced: 42 });
+});
+
+test('invalid notebook edit transactions do not mutate any document or emit changes', async t => {
+  const h = await setup(t, notebookExtension + `
+  const original = exports.activate;
+  exports.activate = () => { original(); v.commands.registerCommand('notebook.invalid', async () => {
+    const [first, second] = v.workspace.notebookDocuments; const before = first.version; let changes = 0;
+    const subscription = v.workspace.onDidChangeNotebookDocument(() => changes++); const errors = [];
+    const edit = new v.WorkspaceEdit();
+    edit.set(first.uri, [v.NotebookEdit.deleteCells(new v.NotebookRange(0, 1))]);
+    edit.set(second.uri, [v.NotebookEdit.deleteCells(new v.NotebookRange(0, 100))]);
+    try { await v.workspace.applyEdit(edit); } catch (error) { errors.push(error.message); }
+    const overlapping = new v.WorkspaceEdit(); overlapping.set(first.uri, [v.NotebookEdit.deleteCells(new v.NotebookRange(0, 1)), v.NotebookEdit.insertCells(0, [new v.NotebookCellData(2, 'x', 'text')])]);
+    try { await v.workspace.applyEdit(overlapping); } catch (error) { errors.push(error.message); }
+    const mixed = new v.WorkspaceEdit(); mixed.set(first.uri, [v.NotebookEdit.deleteCells(new v.NotebookRange(0, 1))]);
+    mixed.insert(v.Uri.file('other.txt'), new v.Position(0, 0), 'text');
+    try { await v.workspace.applyEdit(mixed); } catch (error) { errors.push(error.message); }
+    const confirmation = new v.WorkspaceEdit();
+    try { confirmation.set(first.uri, [[v.NotebookEdit.deleteCells(new v.NotebookRange(0, 1)), { needsConfirmation: true }]]); } catch (error) { errors.push(error.message); }
+    subscription.dispose(); return { errors, changes, unchanged: before === first.version, cells: first.cellCount, dirty: first.isDirty };
+  }); };`);
+  await h.activate(); for (const name of ['one', 'two']) { const file = path.join(h.root, name + '.omnb'); fs.writeFileSync(file, JSON.stringify({ cells: [{ value: name }] })); await h.call('notebooks', 'open', { type: 'example', path: file }); }
+  const result = await h.request('host/executeCommand', { command: 'notebook.invalid' });
+  assert.equal(result.errors.length, 4); assert.match(result.errors[0], /range/); assert.match(result.errors[1], /Overlapping/);
+  assert.match(result.errors[2], /mixedNotebookAndText/); assert.match(result.errors[3], /needsConfirmation/);
+  assert.equal(result.changes, 0); assert.equal(result.unchanged, true); assert.equal(result.cells, 1); assert.equal(result.dirty, false);
+});
+
+test('workbench cell insertion and deletion use versions and refuse active executions', async t => {
+  const h = await setup(t, notebookExtension + `
+  const original = exports.activate;
+  exports.activate = () => { original(); const controller = v.notebooks.createNotebookController('hold', 'example', 'Hold');
+    controller.executeHandler = cells => { for (const cell of cells) controller.createNotebookCellExecution(cell).start(); };
+  };`);
+  const file = path.join(h.root, 'ui.omnb'); fs.writeFileSync(file, JSON.stringify({ cells: [{ value: '1' }] }));
+  await h.activate(); const uri = await h.call('notebooks', 'open', { type: 'example', path: file });
+  let state = await h.call('notebooks', 'snapshot'); const original = state.documents[0].cells[0].id;
+  await h.call('notebooks', 'insert', { uri, version: state.documents[0].version, index: 0, languageId: 'javascript' });
+  state = await h.call('notebooks', 'snapshot'); assert.equal(state.documents[0].cells[1].id, original);
+  await assert.rejects(h.call('notebooks', 'delete', { uri, version: 1, index: 1 }), /changed/);
+  await h.call('notebooks', 'execute', { uri, controller: state.controllers.find(value => value.id === 'hold').handle });
+  state = await h.call('notebooks', 'snapshot');
+  await assert.rejects(h.call('notebooks', 'delete', { uri, version: state.documents[0].version, index: 0 }), /Stop notebook execution/);
+  await h.call('notebooks', 'cancel', { uri }); state = await h.call('notebooks', 'snapshot');
+  await h.call('notebooks', 'delete', { uri, version: state.documents[0].version, index: 0 });
+  state = await h.call('notebooks', 'snapshot'); assert.equal(state.documents[0].cells.length, 1); assert.equal(state.documents[0].cells[0].id, original);
+});
+
+test('untitled notebooks save to a new file without overwriting existing files or losing edits on failure', async t => {
+  const h = await setup(t, notebookExtension); await h.activate();
+  const uri = await h.call('notebooks', 'new', { type: 'example', languageId: 'javascript' });
+  let snapshot = await h.call('notebooks', 'snapshot'); assert.equal(snapshot.documents[0].dirty, true);
+  await h.call('notebooks', 'edit', { uri, index: 0, version: snapshot.documents[0].version, value: 'saved from untitled' });
+  const existing = path.join(h.root, 'existing.omnb'); fs.writeFileSync(existing, 'do not overwrite');
+  await assert.rejects(h.call('notebooks', 'saveAs', { uri, path: existing }), /exists/i);
+  assert.equal(fs.readFileSync(existing, 'utf8'), 'do not overwrite');
+  await assert.rejects(h.call('notebooks', 'saveAs', { uri, path: path.join(h.root, '../denied-save.omnb') }), /permission/i);
+  snapshot = await h.call('notebooks', 'snapshot'); assert.equal(snapshot.documents[0].uri, uri); assert.equal(snapshot.documents[0].cells[0].value, 'saved from untitled');
+  const target = path.join(h.root, 'new.omnb'); const saved = await h.call('notebooks', 'saveAs', { uri, path: target });
+  assert.match(saved, /^file:/); assert.equal(JSON.parse(fs.readFileSync(target)).cells[0].value, 'saved from untitled');
+  snapshot = await h.call('notebooks', 'snapshot'); assert.equal(snapshot.documents.length, 1); assert.equal(snapshot.documents[0].uri, saved); assert.equal(snapshot.documents[0].dirty, false);
+});
+
+test('notebook Save As detects changes during serialization and retains the unsaved source', async t => {
+  const h = await setup(t, `const v = require('vscode'); let release;
+    exports.activate = () => {
+      v.workspace.registerNotebookSerializer('slow', {
+        deserializeNotebook: bytes => new v.NotebookData(JSON.parse(Buffer.from(bytes).toString()).cells),
+        serializeNotebook: data => new Promise(resolve => { release = () => resolve(Buffer.from(JSON.stringify(data))); })
+      });
+      v.commands.registerCommand('slow.release', () => { if (!release) throw new Error('not serializing'); release(); });
+    };`);
+  await h.activate(); const uri = await h.call('notebooks', 'new', { type: 'slow' });
+  const target = path.join(h.root, 'race.omnb');
+  const saving = h.call('notebooks', 'saveAs', { uri, path: target });
+  // This host request follows Save As on the same stdio channel; serialization has yielded.
+  const snapshot = await h.call('notebooks', 'snapshot');
+  await h.call('notebooks', 'edit', { uri, index: 0, version: snapshot.documents[0].version, value: 'newer source' });
+  await h.request('host/executeCommand', { command: 'slow.release' });
+  await assert.rejects(saving, /changed during serialization/); assert.equal(fs.existsSync(target), false);
+  assert.equal((await h.call('notebooks', 'snapshot')).documents[0].cells[0].value, 'newer source');
+});
+
+test('notebook structural edits require write permission and recheck symlink containment', async t => {
+  const extension = notebookExtension + `
+    const original = exports.activate;
+    exports.activate = () => { original(); v.commands.registerCommand('notebook.modify', async () => {
+      const document = v.workspace.notebookDocuments[0]; const edit = new v.WorkspaceEdit();
+      edit.set(document.uri, [v.NotebookEdit.updateNotebookMetadata({ changed: true })]); return v.workspace.applyEdit(edit);
+    }); };`;
+  const readonly = await setup(t, extension, ['commands', 'workspaceRead']);
+  const file = path.join(readonly.root, 'readonly.omnb'); fs.writeFileSync(file, JSON.stringify({ cells: [] }));
+  await readonly.activate(); await readonly.call('notebooks', 'open', { type: 'example', path: file });
+  await assert.rejects(readonly.request('host/executeCommand', { command: 'notebook.modify' }), /workspaceWrite/);
+  assert.equal((await readonly.call('notebooks', 'snapshot')).documents[0].dirty, false);
+  const writer = await setup(t, extension); const inside = path.join(writer.root, 'inside.omnb'); const outside = path.join(writer.root, '../outside.omnb');
+  fs.writeFileSync(inside, JSON.stringify({ cells: [] })); fs.writeFileSync(outside, 'outside');
+  await writer.activate(); await writer.call('notebooks', 'open', { type: 'example', path: inside });
+  fs.unlinkSync(inside); fs.symlinkSync(outside, inside);
+  await assert.rejects(writer.request('host/executeCommand', { command: 'notebook.modify' }), /filesystemOutsideWorkspace/);
+  assert.equal((await writer.call('notebooks', 'snapshot')).documents[0].dirty, false); assert.equal(fs.readFileSync(outside, 'utf8'), 'outside');
+});
