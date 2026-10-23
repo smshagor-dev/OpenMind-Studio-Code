@@ -2,7 +2,7 @@ import type { DocumentService } from "./documentService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { HostDocument } from "./extensionHostBridge";
-import type { HostSelection } from "./hostEdits";
+import type { HostRange, HostSelection } from "./hostEdits";
 
 /** How long typing waits before the host is told the new text. */
 export const CHANGE_DELAY_MS = 200;
@@ -11,6 +11,11 @@ export const SELECTION_DELAY_MS = 60;
 
 /** The active text editor as the host sees it. */
 export interface HostEditorInfo {
+  id?: string;
+  viewColumn?: number;
+  active?: boolean;
+  visibleRanges?: HostRange[];
+  selectionKind?: number;
   path: string;
   selections: HostSelection[];
   tabSize: number;
@@ -22,6 +27,7 @@ export interface HostSyncDeps {
   events: EventBus<AppEvents>;
   notify: (method: string, params: unknown) => void;
   /** Selections and options of the editor showing a document (by document id), when one does. */
+  visibleEditors?: () => HostEditorInfo[];
   editorState?: (
     id: string,
   ) => { selections: HostSelection[]; tabSize: number; insertSpaces: boolean } | null;
@@ -47,17 +53,18 @@ export class HostDocumentSync {
   private lastSelectionSent = "";
   private lastOptionsSent = "";
   private lastActiveSent = "";
+  private lastEditorSnapshot = "";
 
   constructor(private readonly deps: HostSyncDeps) {}
 
   /** What `host/init` starts from. */
-  initial(): { documents: HostDocument[]; activeEditor: HostEditorInfo | null } {
+  initial(): { documents: HostDocument[]; activeEditor: HostEditorInfo | null; visibleEditors?: HostEditorInfo[] } {
     this.hydrate();
     const documents = this.deps.documents
       .fileBackedIds()
       .map((id) => this.describe(id))
       .filter((document): document is HostDocument => document !== null);
-    return { documents, activeEditor: this.activeEditor() };
+    return { documents, activeEditor: this.activeEditor(), ...(this.deps.visibleEditors ? { visibleEditors: this.visibleEditors() } : {}) };
   }
 
   start(): void {
@@ -90,6 +97,7 @@ export class HostDocumentSync {
     this.lastActiveSent = JSON.stringify(editor);
     this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
     this.lastOptionsSent = JSON.stringify(editor && { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces });
+    if (this.deps.visibleEditors) { this.lastEditorSnapshot = ""; this.announceEditors(); }
   }
 
   /** Reads the active tab from the workbench (used at start and after a restart, when no event announces it). */
@@ -102,7 +110,22 @@ export class HostDocumentSync {
     this.announceActive(false);
   }
 
+  private visibleEditors(): HostEditorInfo[] {
+    return this.deps.editorsCovered?.() === true ? [] : this.deps.visibleEditors?.() ?? [];
+  }
+
+  private announceEditors(): void {
+    const editors = this.visibleEditors();
+    const active = this.activeEditor(editors);
+    const snapshot = { editors, activeId: active?.id ?? active?.path ?? null };
+    const serialized = JSON.stringify(snapshot);
+    if (serialized === this.lastEditorSnapshot) return;
+    this.lastEditorSnapshot = serialized;
+    this.deps.notify("host/editorSnapshot", snapshot);
+  }
+
   private announceActive(force: boolean): void {
+    if (this.deps.visibleEditors) { this.announceEditors(); return; }
     const editor = this.activeEditor();
     const serialized = JSON.stringify(editor);
     if (!force && serialized === this.lastActiveSent) return;
@@ -149,7 +172,8 @@ export class HostDocumentSync {
     this.sendChange(id);
   }
 
-  private activeEditor(): HostEditorInfo | null {
+  private activeEditor(visible?: HostEditorInfo[]): HostEditorInfo | null {
+    if (this.deps.visibleEditors) return (visible ?? this.visibleEditors()).find(editor => editor.active) ?? null;
     if (this.deps.editorsCovered?.() === true) return null;
     if (this.activeId === null || !this.deps.documents.has(this.activeId)) return null;
     const path = this.deps.documents.snapshot(this.activeId).path;
@@ -169,6 +193,7 @@ export class HostDocumentSync {
     if (this.selectionTimer !== null) clearTimeout(this.selectionTimer);
     this.selectionTimer = setTimeout(() => {
       this.selectionTimer = null;
+      if (this.deps.visibleEditors) { this.announceEditors(); return; }
       const editor = this.activeEditor();
       if (editor === null) return;
       const options = { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces };

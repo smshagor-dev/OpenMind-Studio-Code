@@ -54,6 +54,26 @@ describe("EditorService", () => {
     for (const created of models.splice(0)) created.dispose();
   });
 
+  it("gives split views independent identities and rejects stale pane requests after a model switch", () => {
+    const service = new EditorService(createFakeIpc()); const shared = model("first\nsecond"), replacement = model("other");
+    const left = createFakeEditor(shared), right = createFakeEditor(shared);
+    const setLeft = vi.fn(), setRight = vi.fn(); let column = 1;
+    const detachLeft = service.attach({ ...left.asEditor, setSelections: setLeft, getVisibleRanges: () => [new monaco.Range(1, 1, 2, 1)] }, { groupId: "left", viewColumn: () => column });
+    service.attach({ ...right.asEditor, setSelections: setRight }, { groupId: "right", viewColumn: () => 2 });
+    const before = service.snapshotEditors(), first = before[0], second = before[1];
+    expect(first?.id).not.toBe(second?.id); expect(first?.uri).toBe(second?.uri);
+    expect(first?.visibleRanges).toEqual([{ startLine: 0, startColumn: 0, endLine: 1, endColumn: 0 }]);
+    const selection = [{ anchorLine: 0, anchorColumn: 0, activeLine: 0, activeColumn: 2 }];
+    expect(service.setSelectionsFor(shared.uri.toString(), selection, first?.id)).toBe(true);
+    expect(setLeft).toHaveBeenCalledOnce(); expect(setRight).not.toHaveBeenCalled();
+    column = 3; expect(service.snapshotEditors().map(editor => editor.groupId)).toEqual(["right", "left"]);
+    left.editor.getModel.mockReturnValue(replacement); left.editor.onDidChangeModel.mock.calls[0]?.[0]();
+    const changed = service.snapshotEditors().find(editor => editor.groupId === "left"); expect(changed?.id).not.toBe(first?.id);
+    expect(service.setSelectionsFor(shared.uri.toString(), selection, first?.id)).toBe(false);
+    expect(setRight).not.toHaveBeenCalled(); detachLeft();
+    expect(service.snapshotEditors().map(editor => editor.groupId)).toEqual(["right"]);
+  });
+
   it("updates only the target model options and detects indentation when auto is requested", () => {
     const service = new EditorService(createFakeIpc());
     const target = model("top\n  one\n  two\n  three\n  four"), other = model("other");

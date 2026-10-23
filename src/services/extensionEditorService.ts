@@ -123,7 +123,7 @@ export class ExtensionEditorService {
     const uri = this.modelUriOf(str(p.path));
     if (uri === null) return;
     const selections: HostSelection[] = parseSelections(p.selections);
-    this.deps.editor.setSelectionsFor(uri, selections);
+    this.deps.editor.setSelectionsFor(uri, selections, typeof p.editorId === "string" ? p.editorId : undefined);
   }
 
   setOptions(params: unknown): void {
@@ -135,7 +135,7 @@ export class ExtensionEditorService {
     const insertSpaces = options.insertSpaces;
     if (tabSize !== undefined && tabSize !== "auto" && (typeof tabSize !== "number" || !Number.isInteger(tabSize) || tabSize < 1 || tabSize > 1000)) throw new Error("Invalid editor tab size.");
     if (insertSpaces !== undefined && insertSpaces !== "auto" && typeof insertSpaces !== "boolean") throw new Error("Invalid editor indentation option.");
-    this.deps.editor.setOptionsFor(uri, { tabSize: tabSize, insertSpaces: insertSpaces });
+    this.deps.editor.setOptionsFor(uri, { tabSize: tabSize, insertSpaces: insertSpaces }, typeof p.editorId === "string" ? p.editorId : undefined);
   }
 
   revealRange(params: unknown): void {
@@ -143,7 +143,7 @@ export class ExtensionEditorService {
     const uri = this.modelUriOf(str(p.path));
     if (uri === null) return;
     const type = p.type === 1 || p.type === 2 || p.type === 3 ? p.type : 0;
-    this.deps.editor.revealRangeFor(uri, record(p.range) as unknown as HostRange, type);
+    this.deps.editor.revealRangeFor(uri, record(p.range) as unknown as HostRange, type, typeof p.editorId === "string" ? p.editorId : undefined);
   }
 
   private modelUriOf(path: string): string | null {

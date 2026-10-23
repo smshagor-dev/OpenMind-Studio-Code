@@ -20,7 +20,7 @@ async function fixture(t, definitions, options = {}) {
       manifest: { extensionDependencies: definition.dependencies || [] },
     };
   });
-  const child = spawn(process.execPath, [path.resolve(__dirname, '../../host/host.js')], {
+  const child = spawn(process.execPath, [options.hostPath || path.resolve(__dirname, '../../host/host.js')], {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
   const pending = new Map();

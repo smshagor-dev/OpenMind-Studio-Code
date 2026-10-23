@@ -1046,6 +1046,7 @@ function createApi(host, ext) {
     asExtension,
     Disposable,
     types: { Position, Range, Selection, Uri },
+    track,
   });
   const { document, editor } = editors;
 
@@ -1349,8 +1350,7 @@ function createApi(host, ext) {
       const doc = target && target.getText ? target : await workspace.openTextDocument(target);
       const uri = doc.uri;
       if (uri.scheme === 'file') {
-        await request('ui/showTextDocument', { extension: ext.id, path: uri.fsPath, preserveFocus: !!(options && options.preserveFocus) });
-        return editors.activeEditor();
+        return editors.showEditor(uri.fsPath, !!(options && options.preserveFocus));
       }
       const data = state.documents.get(uri.toString());
       await request('ui/showVirtualDocument', {
@@ -1393,13 +1393,18 @@ function createApi(host, ext) {
       return editors.activeEditor();
     },
     get visibleTextEditors() {
-      const active = editors.activeEditor();
-      return active ? [active] : [];
+      return editors.visibleEditors();
     },
     onDidChangeActiveTextEditor: (listener, thisArg, disposables) =>
-      track(host.events.on('activeEditor')(asExtension((data) => listener(editor(data.editor))), thisArg, disposables)),
+      track(host.events.on('activeEditor')(asExtension((data) => listener.call(thisArg, editor(data.editor))), thisArg, disposables)),
+    onDidChangeVisibleTextEditors: (listener, thisArg, disposables) =>
+      track(host.events.on('visibleEditors')(asExtension(() => listener.call(thisArg, editors.visibleEditors())), undefined, disposables)),
+    onDidChangeTextEditorViewColumn: (listener, thisArg, disposables) =>
+      track(host.events.on('editorViewColumnChanged')(asExtension(data => listener.call(thisArg, { textEditor: editor(data), viewColumn: data.viewColumn })), undefined, disposables)),
+    onDidChangeTextEditorVisibleRanges: (listener, thisArg, disposables) =>
+      track(host.events.on('editorVisibleRangesChanged')(asExtension(data => { const target = editor(data); listener.call(thisArg, { textEditor: target, visibleRanges: target.visibleRanges }); }), undefined, disposables)),
     onDidChangeTextEditorOptions: (listener, thisArg, disposables) =>
-      track(host.events.on('editorOptionsChanged')(asExtension(data => listener.call(thisArg, { textEditor: editor({ path: data.path }), options: { tabSize: data.tabSize, insertSpaces: data.insertSpaces } })), thisArg, disposables)),
+      track(host.events.on('editorOptionsChanged')(asExtension(data => listener.call(thisArg, { textEditor: editor(data), options: { tabSize: data.tabSize, insertSpaces: data.insertSpaces } })), thisArg, disposables)),
     onDidChangeTextEditorSelection: (listener, thisArg, disposables) =>
       track(editors.selectionEvent(listener, thisArg, disposables)),
     createStatusBarItem: statusBar.createStatusBarItem,

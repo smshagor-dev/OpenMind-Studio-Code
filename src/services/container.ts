@@ -383,6 +383,7 @@ const extensions = wireExtensions({
   languageIds: () => monaco.languages.getLanguages().map((language) => language.id),
   languageForPath,
   activeTabId: () => workspace.getState().activeId,
+  activeEditorGroup: () => workspace.getState().activeGroupId,
   hasTextTab: (docId) =>
     workspace
       .getState()
@@ -698,3 +699,4 @@ export const container = {
       switchToEnglish: async () => (await settings.set("user", "workbench.language", "en")).ok,
     }),
 };
+

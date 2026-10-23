@@ -64,6 +64,7 @@ export interface ExtensionsWiringDeps {
   hasTextTab: (docId: string) => boolean;
   /** The id of the active tab of the active editor group. */
   activeTabId: () => string | null;
+  activeEditorGroup?: () => string | null;
 }
 
 /**
@@ -128,6 +129,14 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     notify: (method, params) => {
       if (host.isRunning()) void ipc.extHostNotify(method, params).catch(() => undefined);
     },
+    visibleEditors: () => deps.editor.snapshotEditors().flatMap(value => {
+      const docId = documents.idForModelUri(value.uri);
+      if (!docId || !documents.has(docId)) return [];
+      const path = documents.snapshot(docId).path;
+      if (!path) return [];
+      const activeGroup = deps.activeEditorGroup?.();
+      return [{ ...value, path, active: activeGroup ? value.groupId === activeGroup : value.active }];
+    }),
     editorState: (id) => {
       const uri = documents.modelUri(id);
       if (uri === null) return null;

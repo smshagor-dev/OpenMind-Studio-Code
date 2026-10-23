@@ -370,6 +370,7 @@ const handlers = {
     state.workspaceFolders = params.workspaceFolders || [];
     for (const doc of params.documents || []) state.documents.set(doc.path, doc);
     state.activeEditor = params.activeEditor || null;
+    require('./editorstate.js').initialize(host, params);
     return { ok: true, node: process.version };
   },
 
@@ -716,11 +717,13 @@ const notifications = {
   },
   'host/documentClosed': (params) => {
     const doc = state.documents.get(params.path);
+    events.fire('documentWillClose', doc || params);
     require('./contentproviders.js').close(host, doc);
     for (const entry of state.fileSystems?.values() || []) if (entry.id === doc?.fileSystemProvider) entry.revisions.delete(params.path);
     state.documents.delete(params.path);
     events.fire('documentClosed', doc || params);
   },
+  'host/editorSnapshot': params => require('./editorstate.js').update(host, params),
   'host/editorOptionsChanged': params => {
     if (state.activeEditor?.path === params.path) Object.assign(state.activeEditor, { tabSize: params.tabSize, insertSpaces: params.insertSpaces });
     events.fire('editorOptionsChanged', params);

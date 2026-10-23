@@ -132,7 +132,8 @@ export function wireExtensionApis(deps: ExtensionApiWiringDeps) {
     terminals,
     tasks,
     showTextDocument: async (path) => {
-      await workspace.openPath(path);
+      const opened = await workspace.openPath(path, { kind: "text" });
+      if (opened === null) throw new Error("The requested text document could not be opened.");
     },
     showVirtualDocument: async (request) => {
       await Promise.resolve();
