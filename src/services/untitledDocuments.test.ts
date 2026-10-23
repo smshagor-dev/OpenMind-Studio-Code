@@ -253,7 +253,8 @@ it("protects dirty virtual text from refresh and keeps edits made while a provid
   expect(r.documents.contentOf(id)).toBe("newer");
   expect(r.documents.isDirty(id)).toBe(true);
   expect(r.sync.initial().documents).toContainEqual(expect.objectContaining({ path: "editable:///draft.txt", text: "newer", virtual: true, native: true, isDirty: true }));
-  await expect(r.documents.saveAs(id)).rejects.toThrow("Save As is not supported");
+  vi.mocked(r.ipc.saveDocumentDialog).mockResolvedValueOnce(null);
+  await r.documents.saveAs(id);
   r.documents.close(id);
   expect(r.notifications.at(-1)).toMatchObject({ method: "host/documentClosed", params: { path: "editable:///draft.txt" } });
 });
@@ -290,6 +291,8 @@ it("shows read-only content as a native editor without duplicate opens or a vers
       v.commands.registerCommand('lockedShow',async()=>{editor=await v.window.showTextDocument(doc,{viewColumn:2,preview:false,selection:new v.Range(0,0,0,4)});const type=v.window.createTextEditorDecorationType({color:'red'});editor.setDecorations(type,[new v.Range(0,0,0,4)]);return{same:editor.document===doc,text:doc.getText(),version:doc.version,opened,column:editor.viewColumn,selection:editor.selection.end.character,saved:await doc.save()}});
       v.commands.registerCommand('lockedEdit',()=>editor.edit(b=>b.insert(new v.Position(0,0),'bad')));
       v.commands.registerCommand('lockedSnippet',()=>editor.insertSnippet(new v.SnippetString('bad')));
+      v.commands.registerCommand('lockedReopen',async()=>{const reopened=await v.workspace.openTextDocument(doc.uri);return{same:reopened===doc,oldClosed:doc.isClosed,oldText:doc.getText(),text:reopened.getText(),fileText:editor.document.getText()}});
+      v.commands.registerCommand('lockedExportState',()=>({oldClosed:doc.isClosed,oldUntitled:doc.isUntitled,scheme:editor.document.uri.scheme,file:editor.document.fileName,text:editor.document.getText(),dirty:editor.document.isDirty}));
       v.commands.registerCommand('lockedState',()=>({text:doc.getText(),version:doc.version,dirty:doc.isDirty,opened,closed:doc.isClosed}));
     };` } }, { handleRequest: (method, params) => bridge.handleRequest(method, params) });
   let refreshDone: (() => void) | undefined;
@@ -319,10 +322,13 @@ it("shows read-only content as a native editor without duplicate opens or a vers
   const after = new Promise<void>(resolve => { refreshDone = resolve; });
   await host.request("host/executeCommand", { command: "lockedChange", args: ["refreshed"] }); await after;
   expect(await host.request("host/executeCommand", { command: "lockedState" })).toEqual({ text: "refreshed", version: 3, dirty: false, opened: 1, closed: false });
+  await r.workspace.saveAs(id);
+  expect(await host.request("host/executeCommand", { command: "lockedExportState" })).toEqual({ oldClosed: true, oldUntitled: false, scheme: "file", file: "/tmp/saved.md", text: "refreshed", dirty: false });
+  expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/saved.md", "refreshed", "utf8");
+  await host.request("host/executeCommand", { command: "lockedChange", args: ["new provider text"] });
+  expect(await host.request("host/executeCommand", { command: "lockedReopen" })).toEqual({ same: false, oldClosed: true, oldText: "refreshed", text: "new provider text", fileText: "refreshed" });
   await r.workspace.close(id);
   expect(await host.request("host/executeCommand", { command: "lockedState" })).toMatchObject({ closed: true, text: "refreshed" });
-  expect(r.ipc.documentSave).not.toHaveBeenCalled();
-  expect(r.ipc.saveDocumentDialog).not.toHaveBeenCalled();
 });
 
 it("preflights read-only virtual targets before any workspace edit and prevents service writes and saves", async () => {
@@ -339,4 +345,54 @@ it("preflights read-only virtual targets before any workspace edit and prevents 
   await expect(r.documents.save(locked)).rejects.toThrow("read-only");
   expect(save).not.toHaveBeenCalled();
   expect(r.sync.initial().documents).toContainEqual(expect.objectContaining({ path: "locked:///read.txt", readonly: true, version: 20, isDirty: false }));
+});
+
+it("exports protected virtual text to a local file and changes its identity, language, and write permissions only after success", async () => {
+  const r = rig(); r.sync.start();
+  const uri = "generated:///report.txt?revision=1";
+  const id = r.documents.openVirtual(uri, "provider text", "plaintext", true, 8);
+  r.workspace.openDocument(id, "text");
+  const providerSave = vi.fn(); r.documents.setVirtualSaver(providerSave);
+  vi.mocked(r.ipc.saveDocumentDialog).mockResolvedValueOnce(null);
+  await r.documents.saveAs(id);
+  expect(r.documents.hostPath(id)).toBe(uri);
+  expect(r.documents.isReadOnly(id)).toBe(true);
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  vi.mocked(r.ipc.documentSave).mockRejectedValueOnce(Error("disk full"));
+  await expect(r.documents.saveAs(id)).rejects.toThrow("disk full");
+  expect(r.documents.hostPath(id)).toBe(uri);
+  expect(r.documents.isReadOnly(id)).toBe(true);
+  await r.documents.saveAs(id);
+  expect(r.ipc.saveDocumentDialog).toHaveBeenLastCalledWith("report.txt");
+  expect(r.ipc.documentSave).toHaveBeenLastCalledWith("/tmp/saved.md", "provider text", "utf8");
+  expect(providerSave).not.toHaveBeenCalled();
+  expect(r.documents.isVirtual(id)).toBe(false);
+  expect(r.documents.isReadOnly(id)).toBe(false);
+  expect(r.documents.languageOf(id)).toBe("markdown");
+  expect(r.sync.describe(id)).toMatchObject({ path: "/tmp/saved.md", version: 1, isDirty: false });
+  expect(r.notifications).toContainEqual({ method: "host/documentClosed", params: { path: uri } });
+  expect(r.api.applyWorkspaceEdit({ files: [{ path: "/tmp/saved.md", version: 1, edits: [{ startLine: 0, startColumn: 0, endLine: 0, endColumn: 0, text: "editable " }] }] })).toEqual({ applied: true });
+  expect(r.documents.contentOf(id)).toBe("editable provider text");
+});
+
+it("prevents virtual Save As collisions and preserves edits made while the local write is pending", async () => {
+  const r = rig(); r.sync.start();
+  const id = r.documents.openVirtual("editable:///source.txt", "original", "plaintext");
+  vi.mocked(r.ipc.documentOpen).mockResolvedValueOnce({ path: "/tmp/saved.md", content: "existing", encoding: "utf8", lineEnding: "lf" });
+  const existing = await r.documents.openFromPath("/tmp/saved.md");
+  await expect(r.documents.saveAs(id)).rejects.toThrow("already open");
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  expect(r.documents.contentOf(existing)).toBe("existing");
+  expect(r.documents.isVirtual(id)).toBe(true);
+  vi.mocked(r.ipc.saveDocumentDialog).mockResolvedValueOnce("/tmp/export.md");
+  let finish: (() => void) | undefined;
+  vi.mocked(r.ipc.documentSave).mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+  const pending = r.documents.saveAs(id);
+  await vi.waitFor(() => { expect(finish).toBeTypeOf("function"); });
+  r.buffers.setValue(id, "newer text");
+  finish?.(); await pending;
+  expect(r.documents.snapshot(id)).toMatchObject({ path: "/tmp/export.md", dirty: true });
+  expect(r.documents.contentOf(id)).toBe("newer text");
+  expect(r.sync.describe(id)).toMatchObject({ path: "/tmp/export.md", text: "newer text", isDirty: true });
+  expect(r.notifications.filter(value => value.method === "host/documentChanged").map(value => value.params)).toContainEqual(expect.objectContaining({ path: "editable:///source.txt", text: "newer text", virtual: true, isUntitled: false }));
 });

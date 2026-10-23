@@ -325,10 +325,16 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     return type;
   }
   const documents = new Map();
+  const documentClosers = new Map();
+  const closingDocuments = new Set();
   if (track) track(host.events.on('documentWillClose')(data => {
+    closingDocuments.add(data?.path);
     const cached = documents.get(data?.path);
     if (cached) void cached.version;
+    documentClosers.get(data?.path)?.();
+    documentClosers.delete(data?.path);
   }));
+  if (track) track(host.events.on('documentClosed')(data => closingDocuments.delete(data?.path)));
   const editors = new Map();
   const hiddenEditors = new Map();
   const collectedEditors = new FinalizationRegistry(({ key, reference }) => {
@@ -341,11 +347,15 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
   function document(data) {
     if (!data) return undefined;
     const key = data.path;
+    if (documents.get(key)?.isClosed && state.documents.has(key) && !closingDocuments.has(key)) documents.delete(key);
     if (!documents.has(key)) {
-      const doc = editing.makeDocument(key, () => state.documents.get(key), data);
+      let closed = closingDocuments.has(key) || !state.documents.has(key);
+      const doc = editing.makeDocument(key, () => closed ? undefined : state.documents.get(key), data);
+      documentClosers.set(key, () => { closed = true; });
       /** Saves the open document (`workspaceWrite`); a custom-scheme document can't be saved from here. */
       doc.save = async () => {
         need('workspaceWrite');
+        if (closed) return false;
         const current = state.documents.get(key);
         if (!current || (current.virtual && (!current.native || current.readonly !== false))) return false;
         const answer = await request('workspace/saveDocument', { extension: ext.id, path: key });

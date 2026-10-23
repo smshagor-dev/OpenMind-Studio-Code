@@ -173,9 +173,13 @@ export class DocumentService {
   private movePath(id: string, doc: DocumentRecord, newPath: string): void {
     const from = doc.path;
     if (from !== null && from === newPath) return;
-    const automatic = from === null ? (doc.associatedPath ? this.languageFor(doc.associatedPath) : "plaintext") : this.languageFor(from);
+    const sourceName = doc.associatedPath ?? (doc.virtualUri ? decodeURIComponent(new URL(doc.virtualUri).pathname) : null);
+    const automatic = from === null ? (sourceName ? this.languageFor(sourceName) : "plaintext") : this.languageFor(from);
     doc.path = newPath;
     doc.untitled = null;
+    delete doc.virtualUri;
+    delete doc.virtualReadOnly;
+    delete doc.initialHostVersion;
     if (this.buffers.getLanguage(id) === automatic) {
       const language = this.languageFor(newPath);
       if (language !== automatic) this.buffers.setLanguage(id, language);
@@ -242,8 +246,8 @@ export class DocumentService {
   /** Prompts for a path via the native save dialog, then saves there. */
   async saveAs(id: string): Promise<void> {
     const doc = this.requireDocument(id);
-    if (doc.virtualUri) throw new Error("Save As is not supported for virtual provider documents.");
-    const chosenPath = await this.ipc.saveDocumentDialog(doc.path ?? doc.associatedPath);
+    const suggested = doc.path ?? doc.associatedPath ?? (doc.virtualUri ? basename(decodeURIComponent(new URL(doc.virtualUri).pathname)) : undefined);
+    const chosenPath = await this.ipc.saveDocumentDialog(suggested);
     if (chosenPath === null) {
       return;
     }
@@ -574,7 +578,7 @@ export class DocumentService {
     doc.external = "none";
     doc.diskContent = null;
     this.events.emit("documentExternalChanged", { id });
-    this.events.emit("documentDirtyChanged", { id, dirty: false });
+    this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
     this.events.emit("documentSaved", { id, path });
   }
 
