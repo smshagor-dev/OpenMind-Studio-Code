@@ -111,3 +111,23 @@ test('replacing a disposed provider cannot reuse its pending open or restore sta
   assert.equal(await command(host, 'replace.open'), 'replacement'); await rejection;
   await command(host, 'replace.releaseOld'); assert.equal(await command(host, 'replace.open'), 'replacement');
 });
+
+
+test('failed provider registration leaves restored document ownership unchanged', () => {
+  const { create } = require('../../host/contentproviders.js');
+  const data = { path: 'restored:///value', native: true, virtual: true, readonly: true, contentProvider: 'previous-owner' };
+  const state = { documents: new Map([[data.path, data]]) };
+  const host = { state, als: { run: (_owner, callback) => callback() } };
+  class Disposable { constructor(callback) { this.dispose = callback; } }
+  const api = create({ host, ext: { id: 'test.owner' }, need() {}, track: value => value, Disposable, editors: {}, guessLanguage() {} });
+  assert.throws(() => api.register('restored', {
+    provideTextDocumentContent: () => 'unused',
+    onDidChange() { throw Error('subscription failed'); },
+  }), /subscription failed/);
+  assert.equal(data.contentProvider, 'previous-owner');
+  assert.equal(state.textContentProviders.has('restored'), false);
+  const registration = api.register('restored', { provideTextDocumentContent: () => 'unused' });
+  assert.notEqual(data.contentProvider, 'previous-owner');
+  assert.equal(data.contentProvider, state.textContentProviders.get('restored').id);
+  registration.dispose();
+});
