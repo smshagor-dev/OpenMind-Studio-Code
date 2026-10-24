@@ -151,6 +151,7 @@ function createWorkspaceApi(parts) {
   /** A custom-scheme document; writable filesystem resources get native editor models. */
   async function openSchemeDocument(uri) {
     need('workspaceRead');
+    if (uri.scheme === 'debug') return require('./debug.js').openSource(host, uri, editors, guessLanguage);
     if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);
     await host.activateByEvent?.(`onFileSystem:${uri.scheme}`);
     if (state.textContentProviders.has(uri.scheme)) return contents.open(uri);

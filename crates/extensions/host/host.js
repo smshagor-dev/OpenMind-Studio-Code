@@ -725,6 +725,7 @@ const notifications = {
     const doc = state.documents.get(params.path);
     events.fire('documentWillClose', doc || params);
     require('./contentproviders.js').close(host, doc);
+    require('./debug.js').closeSource(host, params.path);
     for (const entry of state.fileSystems?.values() || []) if (entry.id === doc?.fileSystemProvider) entry.revisions.delete(params.path);
     state.documents.delete(params.path);
     events.fire('documentClosed', doc || params);
