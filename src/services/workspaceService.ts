@@ -85,6 +85,7 @@ const EMPTY_STATE: WorkspaceState = {
  * mutation, so it survives a crash or force-quit, not just a clean exit.
  */
 export class WorkspaceService {
+  private recoveryRevision = 0;
   private readonly groups: EditorGroupService;
   private readonly associations: EditorAssociationService;
   private readonly previews: PreviewEditorService;
@@ -111,15 +112,20 @@ export class WorkspaceService {
     this.layout = new EditorLayoutService(
       ipc,
       this.groups,
-      (docId) => this.docPath(docId),
+      (docId) => this.documents.has(docId) && this.documents.snapshot(docId).path === null ? this.documents.hostPath(docId) : this.docPath(docId),
       (error) => {
         this.events.emit("appError", {
           message: `Couldn't save the open editors, so they won't reopen after a restart: ${String(error)}`,
         });
       },
+      () => this.documents.allIds().flatMap(id => {
+        const buffer = this.documents.recoverySnapshot(id);
+        return buffer ? [buffer] : [];
+      }),
     );
     this.unsubscribers.push(
       this.groups.subscribe(() => {
+        this.recoveryRevision++;
         this.recompute();
       }),
       // The file behind a tab changed on disk, was deleted or renamed: the tab shows it.
@@ -128,16 +134,25 @@ export class WorkspaceService {
       }),
       // Save As or a rename/move: the tab title, breadcrumbs and the saved session follow the new path.
       this.events.on("documentPathChanged", ({ id }) => {
+        this.recoveryRevision++;
+        void this.layout.save();
         if (this.groups.tabsForDoc(id).length === 0) return;
         this.recompute();
         void this.persistSession();
       }),
       this.events.on("documentDirtyChanged", ({ id, dirty }) => {
+        if (this.documents.has(id) && this.documents.snapshot(id).path === null) {
+          if (!this.documents.isReadOnly(id)) this.recoveryRevision++;
+          this.layout.scheduleDocumentSave();
+        }
         // Editing a provisional tab keeps it.
         if (dirty) this.groups.pinDoc(id);
         if (this.groups.tabsForDoc(id).length > 0) this.recompute();
       }),
     );
+    this.unsubscribers.push(this.events.on("documentOpened", ({ id }) => {
+      if (this.documents.snapshot(id).path === null) this.layout.scheduleDocumentSave();
+    }), this.events.on("documentClosed", ({ path }) => { if (path === null) this.layout.scheduleDocumentSave(); }));
     this.layout.startAutoSave();
     this.recompute();
   }
@@ -511,6 +526,7 @@ export class WorkspaceService {
     this.layout.pause();
     try {
       const saved = await this.layout.load();
+      for (const buffer of saved?.buffers ?? []) this.documents.restoreBuffer(buffer);
       if (saved?.groups.some((group) => group.tabs.length > 0)) {
         await this.restoreLayout(saved);
       } else {
@@ -529,10 +545,11 @@ export class WorkspaceService {
       const tabs: EditorTab[] = [];
       let activeTabId: string | null = null;
       for (const [tabIndex, savedTab] of savedGroup.tabs.entries()) {
-        const docId =
+        const existing = savedTab.kind !== "filePreview" ? this.documents.idForHostPath(savedTab.path) : null;
+        const docId = existing ?? (
           savedTab.kind === "filePreview"
             ? await this.openPreviewForRestore(savedTab.path)
-            : await this.openForRestore(savedTab.path);
+            : await this.openForRestore(savedTab.path));
         if (docId === null) continue;
         const id = tabIdFor(docId, savedTab.kind);
         if (tabs.some((tab) => tab.id === id)) continue;
@@ -590,10 +607,12 @@ export class WorkspaceService {
   }
 
   private async openPreviewForRestore(path: string): Promise<string | null> {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) return null;
     return (await this.filePreviews.exists(path)) ? this.filePreviews.open(path) : null;
   }
 
   private openForRestore(path: string): Promise<string | null> {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) return Promise.resolve(null);
     return safely(this.events, () => this.documents.openFromPath(path), `reopen "${path}"`, null);
   }
 
@@ -699,6 +718,17 @@ export class WorkspaceService {
     }
     if (before.size !== after.size || [...before].some((id) => !after.has(id))) this.recompute();
     return result;
+  }
+
+  /** Await recovery persistence before a controlled restart or shutdown. */
+  async flushSession(): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const revision = this.recoveryRevision;
+      if (!(await this.layout.save())) return false;
+      if (revision === this.recoveryRevision) return true;
+    }
+    this.events.emit("appError", { message: "Editors kept changing while their recovery data was saved. Try closing again after editing stops." });
+    return false;
   }
 
   private async persistSession(): Promise<void> {

@@ -82,3 +82,28 @@ describe("WindowService", () => {
     expect(api.close).toHaveBeenCalled();
   });
 });
+
+
+it("awaits recovery before native close completes and prevents closing when persistence fails", async () => {
+  let handler: ((event: { preventDefault(): void }) => Promise<void>) | undefined;
+  const stopped = vi.fn();
+  const api = createFakeApi({ onCloseRequested: callback => { handler = callback; return Promise.resolve(stopped); } });
+  let finish: ((saved: boolean) => void) | undefined;
+  const service = new WindowService(api, createFakeIpc(), () => new Promise<boolean>(resolve => { finish = resolve; }));
+  const stop = await service.initialize();
+  if (!handler) throw Error("No native close handler");
+  const event = { preventDefault: vi.fn() };
+  let completed = false;
+  const pending = handler(event).then(() => { completed = true; });
+  expect(completed).toBe(false);
+  finish?.(false); await pending;
+  expect(event.preventDefault).toHaveBeenCalledOnce();
+  stop(); expect(stopped).toHaveBeenCalledOnce();
+});
+
+it("does not request title-bar close before the native hook is installed when recovery fails", async () => {
+  const api = createFakeApi({ onCloseRequested: () => Promise.resolve(() => undefined) });
+  const service = new WindowService(api, createFakeIpc(), () => Promise.resolve(false));
+  await service.close();
+  expect(api.close).not.toHaveBeenCalled();
+});

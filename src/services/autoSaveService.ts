@@ -15,6 +15,7 @@ export interface AutoSaveDeps {
   };
   documents: {
     fileBackedIds: () => string[];
+    autoSaveIds?: () => string[];
     isDirty: (id: string) => boolean;
     externalState: (id: string) => "none" | "changed" | "deleted";
   };
@@ -31,12 +32,15 @@ export interface AutoSaveDeps {
 /**
  * Files > Auto Save (VS Code's `files.autoSave`): `afterDelay` saves a changed file a moment after the last edit,
  * `onFocusChange` when you switch to another editor or leave the window, `onWindowChange` when you leave the window.
- * Only files that already have a place on disk are saved (an untitled file is never saved behind your back), a file
+ * File-backed and writable provider resources are saved; untitled and read-only resources are excluded. A file
  * that changed on disk underneath is left alone, and a save after a delay skips Format on Save so typing isn't
  * rearranged under the cursor.
  */
 export class AutoSaveService {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly saving = new Set<string>();
+  private readonly queued = new Set<string>();
+  private running = false;
   private lastActive: string | null = null;
   private disposers: (() => void)[] = [];
 
@@ -58,6 +62,8 @@ export class AutoSaveService {
   /** Starts following edits, tab changes and window focus. */
   start(): void {
     const { events, settings } = this.deps;
+    if (this.running) return;
+    this.running = true;
     this.lastActive = this.deps.activeDocId();
     this.disposers.push(
       events.on("documentDirtyChanged", ({ id, dirty }) => {
@@ -76,18 +82,30 @@ export class AutoSaveService {
         if (this.mode() === "onFocusChange" || this.mode() === "onWindowChange")
           this.saveAllDirty();
       }),
+      events.on("extensionsChanged", () => {
+        if (this.mode() === "afterDelay" && this.deps.documents.autoSaveIds) {
+          for (const id of this.eligibleIds()) if (this.deps.documents.isDirty(id)) this.schedule(id);
+        }
+      }),
       settings.onChange(["files.autoSave", "files.autoSaveDelay"], () => {
         this.clearTimers();
         if (this.mode() === "afterDelay") {
-          for (const id of this.deps.documents.fileBackedIds()) {
+          for (const id of this.eligibleIds()) {
             if (this.deps.documents.isDirty(id)) this.schedule(id);
           }
         }
       }),
     );
+    if (this.mode() === "afterDelay" && this.deps.documents.autoSaveIds) {
+      for (const id of this.eligibleIds()) if (this.deps.documents.isDirty(id)) this.schedule(id);
+    }
   }
 
+  private eligibleIds(): string[] { return this.deps.documents.autoSaveIds?.() ?? this.deps.documents.fileBackedIds(); }
+
   stop(): void {
+    this.running = false;
+    this.queued.clear();
     for (const dispose of this.disposers) dispose();
     this.disposers = [];
     this.clearTimers();
@@ -121,17 +139,25 @@ export class AutoSaveService {
   }
 
   private saveAllDirty(): void {
-    for (const id of this.deps.documents.fileBackedIds()) void this.saveIfDirty(id, true);
+    for (const id of this.eligibleIds()) void this.saveIfDirty(id, true);
   }
 
   private async saveIfDirty(id: string, format: boolean): Promise<void> {
     const { documents } = this.deps;
-    if (!documents.fileBackedIds().includes(id)) return;
+    if (!this.running || !this.eligibleIds().includes(id)) return;
     if (!documents.isDirty(id) || documents.externalState(id) !== "none") return;
+    if (this.saving.has(id)) { this.queued.add(id); return; }
+    this.saving.add(id);
     try {
       await this.deps.save(id, format);
     } catch {
       // A failed save is reported by the save itself; the next edit tries again.
+    } finally {
+      this.saving.delete(id);
+      if (this.queued.delete(id)) {
+        if (this.mode() === "afterDelay") this.schedule(id);
+        else if (this.mode() !== "off") void this.saveIfDirty(id, format);
+      }
     }
   }
 }
@@ -166,3 +192,4 @@ export function createWorkbenchAutoSave(deps: {
     },
   });
 }
+
