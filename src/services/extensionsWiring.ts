@@ -1,3 +1,4 @@
+import { nativeWindowFocus } from "./extensionWindowState";
 import { nativeExtensionDialogs } from "./extensionDialogs";
 import type { CommandRegistry } from "./commandRegistry";
 import type { DocumentService } from "./documentService";
@@ -287,6 +288,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     sync,
     settingsValues: () => settings.values(),
     colorTheme: () => deps.theme.getTheme(),
+    windowFocus: nativeWindowFocus,
     onRestarted: () => {
       if (startupFinished) contributions.started(deps.workspacePath());
     },

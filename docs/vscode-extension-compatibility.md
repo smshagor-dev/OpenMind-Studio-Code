@@ -20,6 +20,7 @@ Verified Linux run on 2026-10-24: 120 Node tests passed with zero failures and z
 - Notebook edits and saves: serializer inputs are copied to keep extension-owned/frozen objects from corrupting transaction state. Save As uses guarded exclusive writes and retains the original document when serialization fails or newer edits arrive.
 - Workbench: real-host tests cover test discovery/execution/cancellation, SCM commands/validation, notebook editing/execution/save, trust grants and adapter permissions. React integration renders the actual dialog against the child-process host. Frontend tests also cover stale responses, dirty notebook retention and failed-edit barriers. Native Tauri rendering remains unverified.
 - Additional provider evidence: real-host/HostBridge tests cover declaration, signature context, selection parent flattening, linked word patterns, on-type edit mapping, lazy link and completion resolution, snippet flags, incomplete results and extra edits. Monaco registrations remain mocked.
+- Window focus: window.state and onDidChangeWindowState expose immutable focus snapshots from the main workbench window through native Tauri focus events. Initial sampling and host startup races, duplicate events, disposal and extension reactivation have automated coverage. Actual native Windows focus behavior has not been run here; secondary windows do not own extension hosts.
 - Untitled text documents: openTextDocument() and content/language options create native unsaved Monaco models with stable untitled URIs. They participate in initial synchronization, document lifecycle, diagnostics, language providers, showTextDocument pane targeting, edits, snippets and decorations. Save As closes the untitled identity and opens the file identity while retaining the editor; pending text reaches retained closed documents. Cancelled or failed saves preserve the unsaved buffer, and saving over another open document rejects before writing. Real stdio-host/Monaco tests use mocked native save and file IPC; actual Windows dialogs remain unverified. Named untitled URIs now reuse their open document identity and derive title/language from the resource name. Absolute associated paths save directly without reading an existing file; relative names retain the Save As dialog. Empty associated documents are dirty until saved. Pending edits, initial synchronization, close and save failures preserve the named URI. Host tests cover encoded and relative names, outside-workspace permissions and reserved/query URI rejection, and the real host/Monaco test covers associated-path edit/save. Query/fragment-bearing untitled URIs remain unsupported.
 - Workbench progress: withProgress and withScmProgress report through a status-bar item, with extension-owned cancellation commands and cleanup. Notification/window locations share this status-bar presentation; native notification progress widgets are not claimed. Clipboard uses the native frontend clipboard plugin; asExternalUri retains local URIs because this host has no remote tunneling.
 - Tasks and terminals: real-host tests cover extension pseudoterminal input/output/resize/close ownership and CustomExecution tasks that finish during initialization. Frontend tests cover native tasks that finish before creation resolves, ordered process lifecycle, matcher output capture and stale-result rejection across task reruns/reset. The new native runner is source-reviewed; Windows process launch and native problem parsing were not executed here.
@@ -118,7 +119,7 @@ Verified Linux run on 2026-10-24: 120 Node tests passed with zero failures and z
 | `window.onDidChangeTextEditorVisibleRanges` | Present; partial or unverified |
 | `window.onDidChangeVisibleNotebookEditors` | Unsupported |
 | `window.onDidChangeVisibleTextEditors` | Present; partial or unverified |
-| `window.onDidChangeWindowState` | Unsupported |
+| `window.onDidChangeWindowState` | Present; partial or unverified |
 | `window.onDidCloseTerminal` | Present; partial or unverified |
 | `window.onDidOpenTerminal` | Present; partial or unverified |
 | `window.registerCustomEditorProvider` | Unsupported |
@@ -140,7 +141,7 @@ Verified Linux run on 2026-10-24: 120 Node tests passed with zero failures and z
 | `window.showTextDocument` | Present; partial or unverified |
 | `window.showWarningMessage` | Present; partial or unverified |
 | `window.showWorkspaceFolderPick` | Present; partial or unverified |
-| `window.state` | Unsupported |
+| `window.state` | Present; partial or unverified |
 | `window.tabGroups` | Unsupported |
 | `window.terminals` | Present; partial or unverified |
 | `window.visibleNotebookEditors` | Unsupported |

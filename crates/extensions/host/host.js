@@ -363,6 +363,7 @@ const handlers = {
   },
   'host/workbench': (params) => require('./workbench.js').handle(host, params),
   'host/init': (params) => {
+    state.windowState = Object.freeze({ focused: params.windowState?.focused === true });
     state.isTrusted = params.isTrusted === true;
     for (const extension of params.extensions || []) state.extensions.set(extension.id, extension);
     state.configuration = params.configuration || {};
@@ -711,6 +712,11 @@ const notifications = {
     const current = state.documents.get(params.path);
     state.documents.set(params.path, { ...current, ...params });
     if (!(current?.virtual && !current.native && params.native)) events.fire('documentOpened', params);
+  },
+  'host/windowStateChanged': params => {
+    if (typeof params?.focused !== 'boolean' || state.windowState?.focused === params.focused) return;
+    state.windowState = Object.freeze({ focused: params.focused });
+    events.fire('windowState', state.windowState);
   },
   'host/documentLanguageChanged': (params) => {
     const current = state.documents.get(params.path);
