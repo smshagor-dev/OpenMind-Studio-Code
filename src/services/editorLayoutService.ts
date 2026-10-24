@@ -43,6 +43,8 @@ export class EditorLayoutService {
   private writes: Promise<void> = Promise.resolve();
   private disposed = false;
   private unreadable = false;
+  private hasReadLayout = false;
+  private initialRead: Promise<string | null> | null = null;
   private scheduled = false;
   private unsubscribe: (() => void) | null = null;
   /** A failed save was reported already (one message per session, not one per keystroke). */
@@ -105,11 +107,21 @@ export class EditorLayoutService {
   }
 
   async save(): Promise<boolean> {
-    if (this.paused || this.disposed || this.unreadable) return false;
+    if (!this.maySave()) return false;
     if (this.documentTimer !== null) { clearTimeout(this.documentTimer); this.documentTimer = null; }
     try {
-      const payload = JSON.stringify({ version: LAYOUT_VERSION, ...this.serialize() });
+      const current = this.serialize();
+      const payload = JSON.stringify({ version: LAYOUT_VERSION, ...current });
       if (payload.length > MAX_LAYOUT_LENGTH || new TextEncoder().encode(payload).length > MAX_LAYOUT_LENGTH) throw new Error("Editor recovery data exceeds 64 MB.");
+      // Capture before the first read awaits, preserving write order and dispose-time snapshots.
+      if (!this.hasReadLayout) {
+        if (await this.readInitial() !== null) {
+          // An empty loading/failed page can close while leaving its existing durable backup untouched.
+          return !current.buffers?.length && current.groups.every(group => group.tabs.length === 0);
+        }
+        this.hasReadLayout = true;
+      }
+      if (!this.maySave(true)) return false;
       // Serialize database writes so an older, slower request cannot overwrite a newer snapshot.
       const write = this.writes.catch(() => undefined).then(() => this.ipc.settingsSet(this.layoutKey, payload));
       this.writes = write;
@@ -127,8 +139,10 @@ export class EditorLayoutService {
   /** The saved layout, or `null` if there is none (first run, or unreadable). */
   async load(): Promise<SavedLayout | null> {
     try {
-      const raw = await this.ipc.settingsGet(this.layoutKey);
+      const raw = await (this.hasReadLayout ? this.ipc.settingsGet(this.layoutKey) : this.readInitial());
       const saved = raw === null ? null : parseLayout(raw);
+      this.hasReadLayout = true;
+      this.initialRead = null;
       this.unreadable = raw !== null && saved === null;
       if (this.unreadable) this.onSaveFailed(new Error("Existing editor recovery data could not be read; it has been preserved."));
       return saved;
@@ -137,6 +151,14 @@ export class EditorLayoutService {
       this.onSaveFailed(error);
       return null;
     }
+  }
+
+  private readInitial(): Promise<string | null> {
+    return this.initialRead ??= this.ipc.settingsGet(this.layoutKey);
+  }
+
+  private maySave(inFlight = false): boolean {
+    return !this.paused && (!this.disposed || inFlight) && !this.unreadable;
   }
 
   private scheduleSave(): void {

@@ -16,6 +16,10 @@ vi.mock("@tauri-apps/api/core", () => ({
     backend.calls.push({ command, args });
     const providers = backend.providers as AiProviderInfo[];
     switch (command) {
+      case "window_close_ready":
+        return Promise.resolve("test-page-token");
+      case "window_restore":
+        return Promise.resolve([]);
       case "theme_get":
         return Promise.resolve("dark");
       case "session_load":
@@ -96,6 +100,7 @@ vi.mock("@tauri-apps/api/window", () => ({
     isFullscreen: vi.fn().mockResolvedValue(false),
     setFullscreen: vi.fn().mockResolvedValue(undefined),
     onResized: vi.fn().mockResolvedValue(() => undefined),
+    listen: vi.fn().mockResolvedValue(() => undefined),
   }),
 }));
 
@@ -299,3 +304,4 @@ describe("the AI panel appears only with an enabled provider", () => {
     expect(within(dialog).getByText(/Local · 127\.0\.0\.1/)).toBeInTheDocument();
   });
 });
+

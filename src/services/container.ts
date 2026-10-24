@@ -126,7 +126,9 @@ const theme = new ThemeService(settings, events);
 const commands = new CommandRegistry();
 const editor = new EditorService(tauriIpcClient, settings);
 const layout = new LayoutService(tauriIpcClient);
-const windowService = new WindowService(tauriWindowApi, tauriIpcClient, () => workspace.flushSession());
+const windowService = new WindowService(tauriWindowApi, tauriIpcClient, () => workspace.flushSession(), error => {
+  events.emit("appError", { message: `Couldn't close the editor window: ${String(error)}` });
+});
 const keybindings = new KeybindingService(commands);
 const markers = new MarkerService();
 /**

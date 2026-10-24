@@ -75,6 +75,15 @@ export class EditorWindowService {
     return this.moveToNewWindow(group.id, group.activeTabId);
   }
 
+  /** Main only: native creation restores each extra window's folder before its page starts. */
+  async restoreWindows(): Promise<void> {
+    try {
+      for (const message of await this.ipc.windowRestore()) this.notice(message);
+    } catch (error) {
+      this.events.emit("appError", { message: `Couldn't restore editor windows: ${String(error)}` });
+    }
+  }
+
   /** In a window opened for a dragged-out tab: opens that file. */
   async openPending(): Promise<void> {
     const path = await this.ipc.windowTakePendingOpen().catch(() => null);
@@ -104,3 +113,4 @@ export class EditorWindowService {
     if (message !== null) this.events.emit("appNotice", { message });
   }
 }
+

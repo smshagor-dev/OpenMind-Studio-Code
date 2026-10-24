@@ -107,3 +107,53 @@ it("does not request title-bar close before the native hook is installed when re
   await service.close();
   expect(api.close).not.toHaveBeenCalled();
 });
+
+
+describe("native close acknowledgement", () => {
+  function closeRig(flush: () => Promise<boolean>) {
+    let requested: ((event: { preventDefault(): void }) => Promise<void>) | undefined;
+    const confirmClose = vi.fn().mockResolvedValue(undefined), failed = vi.fn();
+    const api = createFakeApi({ confirmClose, onCloseRequested: vi.fn((handler: (event: { preventDefault(): void }) => Promise<void>) => {
+      requested = handler; return Promise.resolve(() => undefined);
+    }) });
+    const service = new WindowService(api, createFakeIpc(), flush, failed);
+    return { api, service, confirmClose, failed, request: () => {
+      if (!requested) throw Error("No close listener");
+      return requested({ preventDefault: vi.fn() });
+    } };
+  }
+
+  it("waits for recovery before acknowledgement and coalesces repeated OS requests", async () => {
+    let finish: ((saved: boolean) => void) | undefined;
+    const flush = vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
+    const r = closeRig(flush); await r.service.initialize();
+    const first = r.request(); await r.request();
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(r.confirmClose).not.toHaveBeenCalled();
+    finish?.(true); await first;
+    expect(r.confirmClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the native window open when recovery fails and allows retry", async () => {
+    const r = closeRig(vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true));
+    await r.service.initialize(); await r.request();
+    expect(r.confirmClose).not.toHaveBeenCalled();
+    await r.request(); expect(r.confirmClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports native acknowledgement failure and allows retry without dispatching another OS close", async () => {
+    const r = closeRig(() => Promise.resolve(true));
+    r.confirmClose.mockRejectedValueOnce(new Error("registry write failed"));
+    await r.service.initialize(); await r.request();
+    expect(r.failed).toHaveBeenCalledWith(expect.objectContaining({ message: "registry write failed" }));
+    await r.request(); expect(r.confirmClose).toHaveBeenCalledTimes(2);
+    expect(r.api.close).not.toHaveBeenCalled();
+  });
+
+  it("can safely request a title-bar close before the event hook is installed", async () => {
+    const r = closeRig(() => Promise.resolve(true));
+    await r.service.close();
+    expect(r.confirmClose).not.toHaveBeenCalled();
+    expect(r.api.close).toHaveBeenCalledTimes(1);
+  });
+});

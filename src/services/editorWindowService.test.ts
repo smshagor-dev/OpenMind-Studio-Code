@@ -149,3 +149,21 @@ describe("EditorWindowService.openLaunch (OpenMindStudio.exe <folder|file ...>)"
     expect(r.errors).toEqual([]);
   });
 });
+
+
+
+describe("restoring extra editor windows", () => {
+  it("requests native restoration and reports each unavailable window or workspace", async () => {
+    const r = rig([], { windowRestore: vi.fn().mockResolvedValue(["Missing workspace", "Unavailable display"]) });
+    await r.service.restoreWindows();
+    expect(r.ipc.windowRestore).toHaveBeenCalledTimes(1);
+    expect(r.notices).toEqual(["Missing workspace", "Unavailable display"]);
+    expect(r.workspace.openPath).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed registry read without preventing the main workbench from starting", async () => {
+    const r = rig([], { windowRestore: vi.fn().mockRejectedValue(new Error("database locked")) });
+    await expect(r.service.restoreWindows()).resolves.toBeUndefined();
+    expect(r.errors[0]).toContain("database locked");
+  });
+});

@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -11,10 +12,13 @@ export interface WindowApi {
   isMaximized: () => Promise<boolean>;
   isFullscreen: () => Promise<boolean>;
   setFullscreen: (fullscreen: boolean) => Promise<void>;
+  confirmClose?: () => Promise<void>;
   onCloseRequested?: (handler: (event: { preventDefault(): void }) => Promise<void>) => Promise<() => void>;
   onResized: (handler: () => void) => Promise<() => void>;
   setZoom: (factor: number) => Promise<void>;
 }
+
+let nativeCloseToken: string | null = null;
 
 export const tauriWindowApi: WindowApi = {
   minimize: () => getCurrentWindow().minimize(),
@@ -24,7 +28,24 @@ export const tauriWindowApi: WindowApi = {
   isMaximized: () => getCurrentWindow().isMaximized(),
   isFullscreen: () => getCurrentWindow().isFullscreen(),
   setFullscreen: (fullscreen) => getCurrentWindow().setFullscreen(fullscreen),
-  onCloseRequested: handler => getCurrentWindow().onCloseRequested(handler),
+  // Rust intercepts the OS close first and waits for this explicit acknowledgement.
+  confirmClose: () => {
+    if (nativeCloseToken === null) return Promise.reject(new Error("Native close listener is not ready."));
+    return invoke("window_close_confirmed", { token: nativeCloseToken });
+  },
+  onCloseRequested: async handler => {
+    const off = await getCurrentWindow().listen("editor-close-requested", () => {
+      void handler({ preventDefault: () => undefined });
+    });
+    let token: string;
+    try { token = await invoke<string>("window_close_ready"); nativeCloseToken = token; }
+    catch (error) { off(); throw error; }
+    return () => {
+      off();
+      if (nativeCloseToken === token) nativeCloseToken = null;
+      void invoke("window_close_unready", { token }).catch((error: unknown) => { console.error("Could not retire the native close listener", error); });
+    };
+  },
   onResized: (handler) => getCurrentWindow().onResized(handler),
   setZoom: (factor) => getCurrentWebview().setZoom(factor),
 };
@@ -51,12 +72,14 @@ export function zoomFactor(level: number): number {
 export class WindowService {
   private state: WindowState = { maximized: false, fullscreen: false, zoomLevel: 0 };
   private closeHookInstalled = false;
+  private closing = false;
   private readonly listeners = new Set<() => void>();
 
   constructor(
     private readonly api: WindowApi,
     private readonly ipc: IpcClient,
     private readonly beforeClose: (() => Promise<boolean>) | null = null,
+    private readonly onCloseFailed: (error: unknown) => void = error => { console.error("Could not close the editor window", error); },
   ) {}
 
   getState(): WindowState {
@@ -84,8 +107,14 @@ export class WindowService {
       const beforeClose = this.beforeClose;
       if (this.api.onCloseRequested && beforeClose) {
         const off = await this.api.onCloseRequested(async event => {
-          try { if (!(await beforeClose())) event.preventDefault(); }
-          catch { event.preventDefault(); }
+          if (this.closing) { event.preventDefault(); return; }
+          this.closing = true;
+          try {
+            if (!(await beforeClose())) { event.preventDefault(); return; }
+            await this.api.confirmClose?.();
+          } catch (error) {
+            event.preventDefault(); this.onCloseFailed(error);
+          } finally { this.closing = false; }
         });
         this.closeHookInstalled = true;
         stopClose = () => { this.closeHookInstalled = false; off(); };
@@ -103,7 +132,14 @@ export class WindowService {
   }
 
   async close(): Promise<void> {
-    if (!this.closeHookInstalled && this.beforeClose && !(await this.beforeClose())) return;
+    if (!this.closeHookInstalled && this.beforeClose) {
+      if (this.closing) return;
+      this.closing = true;
+      try {
+        if (!(await this.beforeClose())) return;
+      } catch (error) { this.onCloseFailed(error); return; }
+      finally { this.closing = false; }
+    }
     await this.api.close();
   }
 

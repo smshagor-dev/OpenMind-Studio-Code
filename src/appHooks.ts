@@ -48,15 +48,17 @@ export function useAppStartup(): boolean {
         container.runtime.initialize(),
       ]);
       timings.mark("workbench");
-      container.window.initialize().then(
+      const windowTracking = container.window.initialize().then(
         (stop) => {
           if (lifecycle.cancelled) stop();
           else stopWindowTracking = stop;
+          return true;
         },
         (error: unknown) => {
           container.events.emit("appError", {
             message: `Window controls unavailable: ${String(error)}`,
           });
+          return false;
         },
       );
       await container.workspace.restoreActiveWorkspace();
@@ -74,10 +76,15 @@ export function useAppStartup(): boolean {
       // A window opened for a tab dragged out of another window opens that file.
       await container.editorWindows.openPending();
       // `OpenMindStudio.exe <folder|file ...>` (File Explorer, the `openmind` command): after the session, so it wins.
-      if (isMainWindow()) await container.editorWindows.openLaunch();
+      if (isMainWindow()) {
+        await container.editorWindows.openLaunch();
+        await container.editorWindows.restoreWindows();
+      }
       timings.mark("session");
       // The editor is usable now: what follows (services that only mirror state or wait for a click) must not keep
       // the window blank.
+      // No editable workbench is shown before the native recovery/close listener is ready.
+      if (!(await windowTracking)) return;
       if (!lifecycle.cancelled) setReady(true);
       // A UI that came up in another language than English offers English once per language (not awaited: a dialog).
       if (isMainWindow() && !lifecycle.cancelled) void container.offerEnglish();
@@ -292,4 +299,5 @@ export function useWorkbenchState() {
   );
   return { workspaceState, activeWorkspace, themeKind, layout };
 }
+
 

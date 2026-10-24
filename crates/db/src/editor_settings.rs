@@ -23,6 +23,21 @@ impl<'a> EditorSettingsRepository<'a> {
         Ok(row.map(|row| row.get(0)))
     }
 
+    /// Bounded discovery of independently saved window records. The prefix is literal, not LIKE syntax.
+    pub async fn list_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>, DbError> {
+        let rows = sqlx::query(
+            "SELECT key, value FROM editor_settings WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key LIMIT 257",
+        )
+        .bind(prefix)
+        .fetch_all(self.pool)
+        .await
+        .map_err(DbError::Query)?;
+        Ok(rows
+            .into_iter()
+            .map(|row| (row.get(0), row.get(1)))
+            .collect())
+    }
+
     pub async fn set(&self, key: &str, value: &str) -> Result<(), DbError> {
         sqlx::query(
             "INSERT INTO editor_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now')) \
@@ -51,6 +66,27 @@ impl<'a> EditorSettingsRepository<'a> {
 mod tests {
     use super::*;
     use crate::Db;
+
+    #[tokio::test]
+    async fn prefix_discovery_is_literal_bounded_and_keeps_other_settings_out() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = Db::connect(&dir.path().join("test.db"))
+            .await
+            .expect("connect");
+        let repo = EditorSettingsRepository::new(db.pool());
+        repo.set("window_%/one", "first").await.expect("set");
+        repo.set("window_other/two", "unrelated").await.expect("set");
+        assert_eq!(
+            repo.list_prefix("window_%/").await.expect("list"),
+            vec![("window_%/one".into(), "first".into())]
+        );
+        for n in 0..260 {
+            repo.set(&format!("session.{n:03}"), "value")
+                .await
+                .expect("set");
+        }
+        assert_eq!(repo.list_prefix("session.").await.expect("list").len(), 257);
+    }
 
     #[tokio::test]
     async fn get_returns_none_when_unset() {
