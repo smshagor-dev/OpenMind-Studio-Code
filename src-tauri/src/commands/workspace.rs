@@ -24,7 +24,7 @@ pub async fn recent_files_clear(state: State<'_, AppState>) -> Result<(), String
         .map_err(|err| err.to_string())
 }
 
-/// The saved session belongs to the main window; an extra window starts empty.
+/// The legacy flat session belongs to main; extra windows restore their scoped editor layout.
 #[tauri::command]
 pub async fn session_load(
     window: tauri::Window,
@@ -36,7 +36,7 @@ pub async fn session_load(
     state.session.load().await.map_err(|err| err.to_string())
 }
 
-/// Only the main window's session is saved (an extra window's isn't restored).
+/// Only main writes the legacy flat session; extra windows persist scoped layout and recovery records.
 #[tauri::command]
 pub async fn session_save(
     snapshot: SessionSnapshot,
@@ -54,7 +54,7 @@ pub async fn session_save(
 }
 
 /// Opens `path` in the calling window. The main window's folder is saved (and
-/// restored on launch); an extra window's is only remembered while it is open.
+/// restored on launch); an extra window's folder has its own recovery record.
 /// Either way the folder joins the recent folders.
 #[tauri::command]
 pub async fn workspace_open_folder(
@@ -63,6 +63,7 @@ pub async fn workspace_open_folder(
     state: State<'_, AppState>,
 ) -> Result<WorkspaceInfo, String> {
     checked_folder(&path)?;
+    let _operation = crate::windows::lock_operations(&state).await;
     if is_main(window.label()) {
         let folder = state
             .workspace_folder
@@ -77,6 +78,7 @@ pub async fn workspace_open_folder(
         .remember_folder(&path)
         .await
         .map_err(|err| err.to_string())?;
+    crate::windows::save_extra_workspace(&state, window.label(), Some(path)).await?;
     state
         .editor_windows
         .set_folder(window.label(), Some(info.clone()));
@@ -88,6 +90,8 @@ pub async fn workspace_close_folder(
     window: tauri::Window,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    let _operation = crate::windows::lock_operations(&state).await;
+    crate::windows::save_extra_workspace(&state, window.label(), None).await?;
     state.editor_windows.set_folder(window.label(), None);
     if !is_main(window.label()) {
         return Ok(());

@@ -267,6 +267,7 @@ export function createFakeIpc(overrides: Partial<FakeIpc> = {}): FakeIpc {
     phpPortFree: vi.fn().mockResolvedValue(true),
     phpWebRoot: vi.fn().mockResolvedValue("C:/OpenMind Studio/htdocs"),
     windowNew: vi.fn().mockResolvedValue("window-2"),
+    windowRestore: vi.fn().mockResolvedValue([]),
     windowTakePendingOpen: vi.fn().mockResolvedValue(null),
     launchTake: vi.fn().mockResolvedValue(null),
     integrationStatus: vi.fn().mockResolvedValue({

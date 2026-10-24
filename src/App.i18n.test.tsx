@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn((command: string) => {
+    if (command === "window_close_ready") return Promise.resolve("test-page-token");
+    if (command === "window_restore") return Promise.resolve([]);
     if (command === "theme_get") return Promise.resolve("dark");
     if (command === "session_load") return Promise.resolve({ openPaths: [], activePath: null });
     if (command === "recent_files_list") return Promise.resolve([]);
@@ -43,6 +45,7 @@ vi.mock("@tauri-apps/api/window", () => ({
     isFullscreen: vi.fn().mockResolvedValue(false),
     setFullscreen: vi.fn().mockResolvedValue(undefined),
     onResized: vi.fn().mockResolvedValue(() => undefined),
+    listen: vi.fn().mockResolvedValue(() => undefined),
   }),
 }));
 
@@ -141,3 +144,4 @@ describe("the workbench in the PC's language", () => {
     noMissingKeys();
   });
 });
+

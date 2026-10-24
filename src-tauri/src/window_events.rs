@@ -32,42 +32,35 @@ pub fn apply_window_state(window: &WebviewWindow, state: &WindowState) -> tauri:
 }
 
 /// Persist the window's current geometry before it actually closes, then
-/// shut the app down — or, while a PHP stack server runs, hide to the tray so
-/// the servers keep running (XAMPP style; see `tray.rs`). `CloseRequested` is
-/// deferred (`prevent_close`) so the async save can finish first.
-pub fn register_close_handler(window: &WebviewWindow, service: WindowStateService) {
+/// let the renderer finish its recovery write. `CloseRequested` is deferred;
+/// only its explicit acknowledgement may hide the main window or shut down.
+pub fn register_close_handler(window: &WebviewWindow, _service: WindowStateService) {
     let handled_window = window.clone();
-
     window.on_window_event(move |event| {
         let WindowEvent::CloseRequested { api, .. } = event else {
             return;
         };
         api.prevent_close();
-
-        let window = handled_window.clone();
-        let service = service.clone();
-        tauri::async_runtime::spawn(async move {
-            save_main_geometry(&window, &service).await;
-
-            let app = window.app_handle().clone();
-            let visible = crate::windows::visible_editor_windows(&app);
-            if !crate::windows::is_last_editor_window(&visible, MAIN_WINDOW_LABEL) {
-                // Other windows stay open (VS Code): this one goes away with its
-                // terminals and watcher. It is hidden, not destroyed, because it
-                // owns the saved session; the tray's Show brings it back.
-                crate::windows::release_window(&app, MAIN_WINDOW_LABEL);
-                if let Err(err) = window.hide() {
-                    tracing::error!(?err, "failed to hide the main window");
-                }
-                return;
-            }
-            close_last_editor_window(app, window).await;
-        });
+        crate::windows::request_editor_close(handled_window.app_handle(), handled_window.label());
     });
 }
 
-/// The last editor window on screen is closing: hide to the tray while a PHP
-/// stack server runs (if the user wants that), otherwise quit.
+/// Called after the renderer has confirmed its recovery write, never directly on CloseRequested.
+pub async fn close_main_confirmed(window: WebviewWindow, service: WindowStateService) {
+    save_main_geometry(&window, &service).await;
+    let app = window.app_handle().clone();
+    let visible = crate::windows::visible_editor_windows(&app);
+    if !crate::windows::is_last_editor_window(&visible, MAIN_WINDOW_LABEL) {
+        crate::windows::release_window(&app, MAIN_WINDOW_LABEL);
+        if let Err(err) = window.hide() {
+            tracing::error!(?err, "failed to hide the main window");
+        }
+        return;
+    }
+    close_last_editor_window(app, window).await;
+}
+
+/// The last editor window on screen is closing: stop managed processes and quit.
 pub async fn close_last_editor_window(app: AppHandle, _window: WebviewWindow) {
     // Closing the final editor window means exiting the application, even if
     // PHP servers are running. Never leave local AI, cloud requests, terminals

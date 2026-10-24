@@ -645,6 +645,8 @@ export interface IpcClient
   windowNew: (options?: { path?: string; x?: number; y?: number }) => Promise<string>;
   /** The file this window was opened for (a tab dragged out of another window), or `null`. */
   windowTakePendingOpen: () => Promise<string | null>;
+  /** Main recreates saved extra windows once per app run; returns recoverable warnings. */
+  windowRestore: () => Promise<string[]>;
   /** What `OpenMindStudio.exe <folder|file ...>` asked to open; the main window gets it once, others `null`. */
   launchTake: () => Promise<LaunchRequest | null>;
   /** Shell integration of this copy (reads the user's Registry; changes nothing). */
@@ -1304,6 +1306,7 @@ export const tauriIpcClient: IpcClient = {
       y: options?.y ?? null,
     }),
   windowTakePendingOpen: () => invoke<string | null>("window_take_pending_open"),
+  windowRestore: () => invoke<string[]>("window_restore"),
   launchTake: () => invoke<LaunchRequest | null>("launch_take"),
   integrationStatus: () => invoke<IntegrationStatus>("integration_status"),
   integrationApply: (action) => invoke<string>("integration_apply", { action }),
@@ -1442,5 +1445,6 @@ export const tauriIpcClient: IpcClient = {
   startupReport: (marks, usableMs) => invoke<string>("startup_report", { marks, usableMs }),
   appInfo: async () => ({ version: await getVersion(), tauriVersion: await getTauriVersion() }),
 };
+
 
 

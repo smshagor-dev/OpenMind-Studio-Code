@@ -371,3 +371,28 @@ it("retains separate recovery key identities for labels containing path-like cha
   expect(editorLayoutKey("window-2")).not.toBe("editor.layout");
   expect(editorLayoutKey("a/b")).not.toBe(editorLayoutKey("a%2Fb"));
 });
+
+
+it("preserves the previous recovery snapshot when an empty page closes before startup restoration", async () => {
+  const first = rig(); first.documents.createUntitled("previous unsaved draft", "plaintext");
+  await first.workspace.flushSession();
+  const settings = new Map(first.settings), previous = settings.get("editor.layout");
+  const again = rig(settings);
+  expect(await again.workspace.flushSession()).toBe(true);
+  expect(settings.get("editor.layout")).toBe(previous);
+  expect(again.ipc.settingsSet).not.toHaveBeenCalled();
+  await again.workspace.restoreSession();
+  expect(again.documents.allIds().map(id => again.documents.contentOf(id))).toEqual(["previous unsaved draft"]);
+  expect(await again.workspace.flushSession()).toBe(true);
+});
+
+
+it("blocks replacing an unread previous session with newly created buffers before restoration", async () => {
+  const first = rig(); first.documents.createUntitled("prior draft", "plaintext");
+  await first.workspace.flushSession();
+  const settings = new Map(first.settings), previous = settings.get("editor.layout");
+  const again = rig(settings); again.documents.createUntitled("new draft", "plaintext");
+  expect(await again.workspace.flushSession()).toBe(false);
+  expect(settings.get("editor.layout")).toBe(previous);
+  expect(again.ipc.settingsSet).not.toHaveBeenCalled();
+});
