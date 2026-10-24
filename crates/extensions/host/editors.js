@@ -412,17 +412,13 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     };
     function setOptions(value) {
       active();
-      if (!value || typeof value !== 'object') throw new TypeError('Editor options must be an object.');
-      for (const key of Object.keys(value)) if (!['tabSize', 'insertSpaces'].includes(key)) throw unsupportedError(`TextEditorOptions.${key}`);
-      const { tabSize, insertSpaces } = value;
-      if (tabSize !== undefined && tabSize !== 'auto' && (!Number.isInteger(tabSize) || tabSize < 1 || tabSize > 1000)) throw new TypeError('Invalid editor tab size.');
-      if (insertSpaces !== undefined && insertSpaces !== 'auto' && typeof insertSpaces !== 'boolean') throw new TypeError('Invalid editor indentation option.');
-      notify('editor/setOptions', { extension: ext.id, path: filePath, ...(editorId ? { editorId } : {}), options: { tabSize, insertSpaces } });
+      const options = require('./editorstate.js').validateOptions(value);
+      notify('editor/setOptions', { extension: ext.id, path: filePath, ...(editorId ? { editorId } : {}), options });
     }
     const editorOptions = {};
-    for (const key of ['tabSize', 'insertSpaces']) Object.defineProperty(editorOptions, key, {
+    for (const key of require('./editorstate.js').optionKeys) Object.defineProperty(editorOptions, key, {
       enumerable: true,
-      get() { return active()?.[key] ?? (key === 'tabSize' ? 4 : true); },
+      get() { return require('./editorstate.js').resolvedOptions(active() || {})[key]; },
       set(value) { setOptions({ [key]: value }); },
     });
     const target = {

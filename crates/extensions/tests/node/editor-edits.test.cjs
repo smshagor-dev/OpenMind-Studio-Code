@@ -40,7 +40,7 @@ test('editor option setters route live updates and option change events keep edi
  assert.equal(await host.request('host/executeCommand',{command:'options'}),true);
  const updates=host.messages.filter(m=>m.method==='editor/setOptions');assert.equal(updates.length,2);assert.deepEqual(updates[0].params.options,{tabSize:2,insertSpaces:false});assert.deepEqual(updates[1].params.options,{tabSize:'auto'});
  host.notify('host/editorOptionsChanged',{path:'/tmp/options.txt',tabSize:2,insertSpaces:false});
- assert.deepEqual(await host.request('host/executeCommand',{command:'check'}),{event:{same:true,tabSize:2,marker:'context'},options:{tabSize:2,insertSpaces:false}});
+ assert.deepEqual(await host.request('host/executeCommand',{command:'check'}),{event:{same:true,tabSize:2,marker:'context'},options:{tabSize:2,indentSize:2,insertSpaces:false,cursorStyle:1,lineNumbers:1}});
 });
 
 test('snippet insertion routes positions, ranges, defaults and undo flags through the real host', async t => {
@@ -73,4 +73,46 @@ test('snippet insertion requires workspaceWrite',async t=>{
  host.notify('host/activeEditorChanged',{editor:{path:'/tmp/read.txt',selections:[]}});
  await assert.rejects(host.request('host/executeCommand',{command:'attemptSnippet'}),/workspaceWrite/);
  assert.equal(host.messages.filter(m=>m.method==='editor/insertSnippet').length,0);
+});
+
+
+test('all text editor options target a split pane and report resolved changes without cursor movement', async t => {
+ const host = await fixture(t, {'test.options': { permissions: ['commands'], code: `
+ const v = require('vscode'); const events = [];
+ exports.activate = () => {
+  v.window.onDidChangeTextEditorOptions(event => events.push({ id: event.textEditor.document.uri.toString(), options: event.options, live: {...event.textEditor.options} }));
+  v.commands.registerCommand('set', value => { v.window.visibleTextEditors[1].options = value; });
+  v.commands.registerCommand('get', () => ({ editors: v.window.visibleTextEditors.map(e => ({...e.options})), events }));
+ };`}});
+ await host.request('host/activate', {id: 'test.options'});
+ const path = '/tmp/panes.txt';
+ host.notify('host/documentOpened', {path, text: 'text', languageId: 'plaintext', version: 1});
+ const left = {id:'left',path,tabSize:4,indentSize:2,insertSpaces:true,cursorStyle:1,lineNumbers:1,selections:[]};
+ const right = {...left,id:'right'};
+ host.notify('host/editorSnapshot', {editors:[left,right],activeId:'left'});
+ const options = {tabSize:8,indentSize:'tabSize',insertSpaces:'auto',cursorStyle:6,lineNumbers:2};
+ await host.request('host/executeCommand', {command:'set',args:[options]});
+ const update = host.messages.find(m => m.method === 'editor/setOptions');
+ assert.equal(update.params.editorId,'right'); assert.deepEqual(update.params.options,options);
+ for (const invalid of [{indentSize:'auto'},{indentSize:0},{cursorStyle:0},{cursorStyle:7},{lineNumbers:3},{lineNumbers:1.5},{tabSize:8,cursorStyle:NaN},{unknown:1}]) {
+  await assert.rejects(host.request('host/executeCommand',{command:'set',args:[invalid]}),/Invalid|Unsupported/);
+ }
+ assert.equal(host.messages.filter(m=>m.method==='editor/setOptions').length,1);
+ host.notify('host/editorSnapshot',{editors:[left,{...right,tabSize:8,indentSize:8,cursorStyle:6,lineNumbers:2}],activeId:'left'});
+ const value = await host.request('host/executeCommand',{command:'get'});
+ assert.deepEqual(value.editors[0],{tabSize:4,indentSize:2,insertSpaces:true,cursorStyle:1,lineNumbers:1});
+ assert.deepEqual(value.editors[1],{tabSize:8,indentSize:8,insertSpaces:true,cursorStyle:6,lineNumbers:2});
+ assert.equal(value.events.length,1); assert.deepEqual(value.events[0].options,value.editors[1]);
+ assert.deepEqual(value.events[0].live,value.editors[1]);
+ host.notify('host/editorSnapshot',{editors:[left,{...right,tabSize:8,indentSize:8,cursorStyle:6,lineNumbers:2}],activeId:'left'});
+ assert.equal((await host.request('host/executeCommand',{command:'get'})).events.length,1);
+ const visualOnly = {...right,tabSize:8,indentSize:8,cursorStyle:5,lineNumbers:0};
+ host.notify('host/editorSnapshot',{editors:[left,visualOnly],activeId:'left'});
+ const visual = await host.request('host/executeCommand',{command:'get'});
+ assert.equal(visual.events.length,2);
+ assert.deepEqual(visual.events[1].options,{tabSize:8,indentSize:8,insertSpaces:true,cursorStyle:5,lineNumbers:0});
+ host.notify('host/editorSnapshot',{editors:[left,{...visualOnly,indentSize:3}],activeId:'left'});
+ const indentation = await host.request('host/executeCommand',{command:'get'});
+ assert.equal(indentation.events.length,3);
+ assert.deepEqual(indentation.events[2].options,{tabSize:8,indentSize:3,insertSpaces:true,cursorStyle:5,lineNumbers:0});
 });

@@ -1429,7 +1429,7 @@ function createApi(host, ext) {
     onDidChangeTextEditorVisibleRanges: (listener, thisArg, disposables) =>
       track(host.events.on('editorVisibleRangesChanged')(asExtension(data => { const target = editor(data); listener.call(thisArg, { textEditor: target, visibleRanges: target.visibleRanges }); }), undefined, disposables)),
     onDidChangeTextEditorOptions: (listener, thisArg, disposables) =>
-      track(host.events.on('editorOptionsChanged')(asExtension(data => listener.call(thisArg, { textEditor: editor(data), options: { tabSize: data.tabSize, insertSpaces: data.insertSpaces } })), thisArg, disposables)),
+      track(host.events.on('editorOptionsChanged')(asExtension(data => listener.call(thisArg, { textEditor: editor(data), options: require('./editorstate.js').resolvedOptions(data) })), thisArg, disposables)),
     onDidChangeTextEditorSelection: (listener, thisArg, disposables) =>
       track(editors.selectionEvent(listener, thisArg, disposables)),
     createStatusBarItem: statusBar.createStatusBarItem,
