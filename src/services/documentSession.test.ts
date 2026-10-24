@@ -4,7 +4,7 @@ import { AutoSaveService } from "./autoSaveService";
 import { BufferManager } from "./bufferManager";
 import { DocumentService } from "./documentService";
 import { EditorGroupService } from "./editorGroupService";
-import { EditorLayoutService, parseLayout } from "./editorLayoutService";
+import { editorLayoutKey, EditorLayoutService, parseLayout } from "./editorLayoutService";
 import { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import { HostDocumentSync } from "./extensionHostSync";
@@ -13,13 +13,13 @@ import { WorkspaceService } from "./workspaceService";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); vi.useRealTimers(); });
 
-function rig(settings = new Map<string, string>()) {
+function rig(settings = new Map<string, string>(), windowLabel = "main") {
   const ipc = createFakeIpc({
     settingsGet: vi.fn((key: string) => Promise.resolve(settings.get(key) ?? null)),
     settingsSet: vi.fn((key: string, value: string) => { settings.set(key, value); return Promise.resolve(); }),
   });
   const events = new EventBus<AppEvents>(), buffers = new BufferManager(), groups = new EditorGroupService();
-  const documents = new DocumentService(ipc, buffers, events), workspace = new WorkspaceService(documents, ipc, events, { groups });
+  const documents = new DocumentService(ipc, buffers, events), workspace = new WorkspaceService(documents, ipc, events, { groups, windowLabel });
   cleanups.push(() => { workspace.dispose(); buffers.disposeAll(); });
   return { ipc, events, buffers, groups, documents, workspace, settings };
 }
@@ -331,4 +331,43 @@ it("makes an unsaved native buffer that had no tab discoverable after recovery",
   await again.workspace.restoreSession();
   expect(again.workspace.getState().tabs).toContainEqual(expect.objectContaining({ path: "/tmp/hidden.txt", dirty: true, preview: false }));
   expect(again.ipc.documentSave).not.toHaveBeenCalled();
+});
+
+
+it("keeps simultaneous window recovery records separate through edits, closure and restoration", async () => {
+  const settings = new Map<string, string>();
+  const main = rig(settings), extra = rig(settings, "window-2"), other = rig(settings, "window-3");
+  const a = main.documents.createUntitled("main edits", "plaintext");
+  const b = extra.documents.createUntitled("second edits", "plaintext");
+  const c = other.documents.createUntitled("third edits", "plaintext");
+  main.workspace.openDocument(a, "text"); extra.workspace.openDocument(b, "text"); other.workspace.openDocument(c, "text");
+  await Promise.all([main.workspace.flushSession(), extra.workspace.flushSession(), other.workspace.flushSession()]);
+  expect(settings.size).toBe(3);
+  expect(parseLayout(settings.get("editor.layout") ?? "")?.buffers?.[0]?.text).toBe("main edits");
+  expect(parseLayout(settings.get(editorLayoutKey("window-2")) ?? "")?.buffers?.[0]?.text).toBe("second edits");
+  extra.buffers.setValue(b, "new second edits"); await extra.workspace.flushSession();
+  const primary = rig(settings), restored = rig(settings, "window-2");
+  await Promise.all([primary.workspace.restoreSession(), restored.workspace.restoreSession()]);
+  expect(primary.documents.allIds().map(id => primary.documents.contentOf(id))).toEqual(["main edits"]);
+  expect(restored.documents.allIds().map(id => restored.documents.contentOf(id))).toEqual(["new second edits"]);
+  extra.documents.close(b); await extra.workspace.flushSession();
+  expect(parseLayout(settings.get(editorLayoutKey("window-2")) ?? "")?.buffers).toBeUndefined();
+  expect(parseLayout(settings.get(editorLayoutKey("window-3")) ?? "")?.buffers?.[0]?.text).toBe("third edits");
+});
+
+it("starts a new extra window without loading or replacing the main window recovery", async () => {
+  const settings = new Map<string, string>();
+  const main = rig(settings); main.documents.createUntitled("important main draft", "plaintext");
+  await main.workspace.flushSession();
+  const original = settings.get("editor.layout");
+  const extra = rig(settings, "window-2"); await extra.workspace.restoreSession();
+  expect(extra.documents.allIds()).toEqual([]);
+  expect(settings.get("editor.layout")).toBe(original);
+  expect(extra.ipc.settingsGet).toHaveBeenCalledWith(editorLayoutKey("window-2"));
+});
+
+it("retains separate recovery key identities for labels containing path-like characters", () => {
+  expect(editorLayoutKey("main")).toBe("editor.layout");
+  expect(editorLayoutKey("window-2")).not.toBe("editor.layout");
+  expect(editorLayoutKey("a/b")).not.toBe(editorLayoutKey("a%2Fb"));
 });
