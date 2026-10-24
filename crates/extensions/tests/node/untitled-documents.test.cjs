@@ -38,3 +38,18 @@ test('named untitled creation enforces associated filesystem permissions and rej
  await assert.rejects(host.request('host/executeCommand',{command:'queryNamed'}),/Invalid or closed/);
  assert.equal(host.messages.filter(m=>m.method==='workspace/createUntitled').length,0);
 });
+
+test('reopening a URI creates a new document while retained closed documents keep their text and cannot save the replacement',async t=>{
+ const saves=[];
+ const host=await fixture(t,{'test.closedidentity':{permissions:['commands','workspaceRead','workspaceWrite','filesystemOutsideWorkspace'],code:`const v=require('vscode');let original,closedOnly,closedSame=false;exports.activate=()=>{v.workspace.onDidCloseTextDocument(d=>{closedSame=d===original;if(d.uri.path.endsWith('unseen.txt'))closedOnly=d});v.commands.registerCommand('unseenClosed',()=>({closed:closedOnly.isClosed,text:closedOnly.getText(),same:v.workspace.textDocuments.find(d=>d.uri.path.endsWith('unseen.txt'))===closedOnly}));v.commands.registerCommand('retainOriginal',async()=>{original=await v.workspace.openTextDocument(v.Uri.file('/tmp/identity.txt'))});v.commands.registerCommand('reopenedIdentity',async()=>{const current=v.workspace.textDocuments[0];return{same:current===original,closedSame,oldClosed:original.isClosed,oldText:original.getText(),newText:current.getText(),saved:await original.save()}})}`}}, {handleRequest(method,p){if(method==='workspace/openTextDocument')return{path:p.path,text:'original',languageId:'plaintext',version:1,isDirty:false};if(method==='workspace/saveDocument'){saves.push(p);return{saved:true}}throw Error('Unexpected request '+method);}});
+ await host.request('host/activate',{id:'test.closedidentity'});
+ await host.request('host/executeCommand',{command:'retainOriginal'});
+ host.notify('host/documentClosed',{path:'/tmp/identity.txt'});
+ host.notify('host/documentOpened',{path:'/tmp/identity.txt',text:'replacement',languageId:'plaintext',version:1,isDirty:false});
+ assert.deepEqual(await host.request('host/executeCommand',{command:'reopenedIdentity'}),{same:false,closedSame:true,oldClosed:true,oldText:'original',newText:'replacement',saved:false});
+ assert.equal(saves.length,0);
+ host.notify('host/documentOpened',{path:'/tmp/unseen.txt',text:'unseen original',languageId:'plaintext',version:1,isDirty:false});
+ host.notify('host/documentClosed',{path:'/tmp/unseen.txt'});
+ host.notify('host/documentOpened',{path:'/tmp/unseen.txt',text:'unseen replacement',languageId:'plaintext',version:1,isDirty:false});
+ assert.deepEqual(await host.request('host/executeCommand',{command:'unseenClosed'}),{closed:true,text:'unseen original',same:false});
+});

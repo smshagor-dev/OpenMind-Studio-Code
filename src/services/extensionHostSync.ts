@@ -47,6 +47,7 @@ export class HostDocumentSync {
   private offs: (() => void)[] = [];
   private readonly watchers = new Map<string, () => void>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly identities = new Map<string, Pick<HostDocument, "version" | "isUntitled" | "virtual" | "native" | "readonly">>();
   private readonly paths = new Map<string, string>();
   private readonly versions = new Map<string, number>();
   private activeId: string | null = null;
@@ -80,11 +81,12 @@ export class HostDocumentSync {
       }),
       events.on("documentPathChanged", ({ id, from }) => {
         const old = this.paths.get(id) ?? from ?? `untitled://openmind/${id}`;
+        const previous = this.identities.get(id);
         const pending = this.timers.get(id);
         if (pending !== undefined) {
           clearTimeout(pending); this.timers.delete(id);
           const latest = this.describe(id);
-          if (latest) this.deps.notify("host/documentChanged", { ...latest, path: old, isUntitled: from === null, version: (this.versions.get(id) ?? 1) + 1 });
+          if (latest) this.deps.notify("host/documentChanged", { ...latest, path: old, ...previous, isUntitled: previous?.isUntitled ?? old.startsWith("untitled:"), version: (this.versions.get(id) ?? previous?.version ?? 1) + 1 });
         }
         this.deps.notify("host/documentClosed", { path: old });
         this.versions.delete(id);
@@ -104,7 +106,7 @@ export class HostDocumentSync {
       this.scheduleSelection();
     });
     if (offSelection) this.offs.push(offSelection);
-    for (const id of documents.allIds()) { this.paths.set(id, documents.hostPath(id)); this.watch(id); }
+    for (const id of documents.allIds()) { this.describe(id); this.watch(id); }
     // The tab that is active now is known to the host from the start, without waiting for a tab change.
     this.hydrate();
     const editor = this.activeEditor();
@@ -154,6 +156,7 @@ export class HostDocumentSync {
     for (const off of this.watchers.values()) off();
     this.watchers.clear();
     this.paths.clear();
+    this.identities.clear();
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
     if (this.selectionTimer !== null) clearTimeout(this.selectionTimer);
@@ -232,7 +235,7 @@ export class HostDocumentSync {
     const { dirty } = snapshot;
     const path = this.deps.documents.hostPath(id);
     this.paths.set(id, path);
-    return {
+    const document: HostDocument = {
       path,
       ...(this.deps.documents.isVirtual(id) ? { virtual: true, native: true, readonly: this.deps.documents.isReadOnly(id) } : snapshot.path === null ? { isUntitled: true } : {}),
       languageId: this.deps.documents.languageOf(id),
@@ -241,6 +244,9 @@ export class HostDocumentSync {
       isDirty: dirty,
       eol: this.deps.documents.eolOf(id) === "\r\n" ? 2 : 1,
     };
+    this.identities.set(id, { version: document.version, isUntitled: document.isUntitled === true,
+      ...(document.virtual ? { virtual: true, native: document.native, readonly: document.readonly } : {}) });
+    return document;
   }
 
   private opened(id: string): void {
@@ -260,6 +266,7 @@ export class HostDocumentSync {
     this.versions.delete(id);
     const key = this.paths.get(id) ?? path ?? this.deps.documents.hostPath(id);
     this.paths.delete(id);
+    this.identities.delete(id);
     this.deps.notify("host/documentClosed", { path: key });
   }
 
