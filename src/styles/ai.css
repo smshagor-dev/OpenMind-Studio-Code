@@ -1,4 +1,4 @@
-/* --- The AI panel, its provider manager and confirmation (Milestone 13) --- */
+/* The AI panel, Cloud settings and request confirmation. */
 
 .ai-view {
   display: flex;
@@ -374,4 +374,112 @@
 
 .ai-manager__actions {
   flex-wrap: wrap;
+}
+
+
+/* Cloud settings use workbench tokens so installed light and dark themes stay consistent. */
+.ai-manager {
+  width: min(800px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--fg);
+  background: var(--editor-bg);
+  box-shadow: 0 24px 80px var(--widget-shadow);
+}
+.ai-manager__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.ai-manager__mark {
+  display: grid;
+  flex: 0 0 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--focus-border) 35%, var(--border));
+  border-radius: 12px;
+  color: var(--link-fg);
+  background: color-mix(in srgb, var(--focus-border) 10%, var(--editor-bg));
+}
+.ai-manager__header h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.4px; }
+.ai-manager__header p { margin: 5px 0 0; color: var(--fg-muted); font-size: 12px; }
+.ai-manager__close {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  flex: 0 0 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.ai-manager__close:hover { background: var(--input-bg); color: var(--fg); }
+.ai-manager__body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 24px 28px; }
+.ai-manager__providers { margin-top: 28px; }
+.ai-manager__section-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ai-manager__section-heading h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.ai-manager .ai-intro { font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+.ai-manager .ai-providers { display: grid; gap: 10px; }
+.ai-manager .ai-provider { padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); }
+.ai-manager .ai-provider__name { font-size: 13px; }
+.ai-manager .ai-provider__meta { margin-top: 8px; overflow-wrap: anywhere; }
+.ai-manager .ai-provider__actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.ai-provider-empty { margin: 0; padding: 18px; border: 1px dashed var(--border); border-radius: 8px; color: var(--fg-muted); font-size: 12px; }
+.ai-manager .ai-manager__actions { justify-content: flex-start; padding-top: 20px; margin-top: 20px; border-top: 1px solid var(--border); }
+.ai-manager .ai-manager__actions button:last-child { margin-left: auto; }
+.ai-manager .ai-input, .ai-manager .ai-select { padding: 9px 11px; border-radius: 6px; flex: none; min-width: 0; }
+.ai-manager .ai-form { gap: 8px; }
+.ai-manager .ai-form__label { margin-top: 10px; }
+.ai-manager .agent-cloud-settings {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  display: grid;
+  gap: 18px;
+  font-size: 12px;
+}
+.ai-manager .agent-cloud-settings legend { padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.agent-cloud-settings__overview { display: flex; align-items: flex-start; gap: 16px; }
+.ai-manager .agent-cloud-settings__description { flex: 1; color: var(--fg-muted); line-height: 1.6; margin: 0; }
+.ai-cloud-status { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 20px; color: var(--fg-muted); font-size: 11px; }
+.ai-cloud-status > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.ai-cloud-status--saved { color: var(--success-fg); }
+.ai-manager .agent-cloud-settings__key-row { display: flex; flex-direction: column; gap: 8px; }
+.ai-manager .agent-cloud-settings__key-row > span:first-child { font-weight: 500; }
+.ai-manager .agent-cloud-settings__key-input { display: flex; align-items: stretch; gap: 8px; }
+.ai-manager .agent-cloud-settings__key-input input {
+  width: 100%; min-width: 0; flex: 1; padding: 10px 12px;
+  background: var(--input-bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px;
+  font: 12px monospace;
+}
+.ai-manager button { font: inherit; }
+.ai-manager .agent-cloud-settings button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--fg); cursor: pointer; }
+.ai-manager .agent-cloud-settings .button--primary { background: var(--button-bg); color: var(--button-fg); border-color: transparent; }
+.ai-manager .agent-cloud-settings button:disabled { opacity: .5; cursor: default; }
+.ai-manager .agent-cloud-settings__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-manager .agent-cloud-settings__hint { margin: 0; color: var(--fg-muted); font-size: 12px; line-height: 1.6; }
+.ai-manager .agent-cloud-settings .agent-link-button { padding: 0; border: 0; color: var(--link-fg); background: transparent; }
+.ai-manager .agent-cloud-settings__models { display: grid; gap: 10px; padding-top: 18px; border-top: 1px solid var(--border); }
+.ai-cloud-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; padding: 0; margin: 0; list-style: none; }
+.ai-cloud-models .agent-cloud-settings__model { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); }
+.ai-manager :is(button, input, select):focus-visible { outline: 2px solid var(--focus-border); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .ai-manager { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .ai-manager__header { padding: 18px; gap: 10px; }
+  .ai-manager__header h2 { font-size: 17px; }
+  .ai-manager__body { padding: 18px; }
+  .agent-cloud-settings__overview { flex-direction: column; gap: 10px; }
+  .ai-manager .agent-cloud-settings__key-input { flex-wrap: wrap; }
+  .ai-manager .agent-cloud-settings__key-input input { flex-basis: 180px; }
 }

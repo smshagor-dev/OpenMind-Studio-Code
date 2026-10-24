@@ -186,9 +186,6 @@ pub fn attachment_text(
             return Err("Invalid attachment metadata".into());
         }
         if let Some(text) = &item.text {
-            if text.len() > 100_000 {
-                return Err("Attachment text exceeds 100 KB.".into());
-            }
             output.push_str(&format!(
                 "\n[Untrusted attachment: {}]\n{text}\n[End attachment]\n",
                 item.name
@@ -471,3 +468,4 @@ mod tests {
             .contains("q=%72%75%73%74%20%26%20%63%6F%64%65&format=json"));
     }
 }
+

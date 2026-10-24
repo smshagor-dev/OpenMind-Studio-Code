@@ -41,12 +41,6 @@ pub async fn agent_history_save(
 ) -> Result<(), String> {
     if conversation.model != "agent-v1"
         || conversation.provider_id.len() > 4096
-        || conversation
-            .messages
-            .iter()
-            .map(|m| m.content.len())
-            .sum::<usize>()
-            > 32 * 1024 * 1024
     {
         return Err("Invalid agent history format".into());
     }
@@ -70,3 +64,4 @@ pub async fn agent_history_delete(
         .await
         .map_err(|e| e.to_string())?
 }
+

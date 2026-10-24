@@ -223,11 +223,9 @@ export class AgentService {
   }
   /**
    * Adds text from the editor (a file or a selection) to the composer's attachments. One with the same name is
-   * replaced, not duplicated; the composer's limits (six attachments, 100 KB each) apply.
+   * replaced, not duplicated. Text is retained in full.
    */
   attachText(name: string, text: string): void {
-    if (new TextEncoder().encode(text).length > 100000)
-      throw new Error(this.host.text("agent.attach.tooLarge"));
     const others = (this.state.attachments ?? []).filter(
       (item) => item.name !== name,
     );
@@ -369,8 +367,8 @@ export class AgentService {
         ...DEFAULT_AGENT_OPTIONS,
         contextTokens: 0,
         useGpu: true,
-        maxOutputTokens: lowMemory ? 1024 : mediumMemory ? 2048 : 4096,
-        reasoningBudgetTokens: lowMemory ? 0 : mediumMemory ? 256 : 1024,
+        maxOutputTokens: 0,
+        reasoningBudgetTokens: 0,
         maxSteps: lowMemory ? 48 : mediumMemory ? 96 : 128,
         maxContinuations: lowMemory ? 2 : mediumMemory ? 4 : 8,
       };
@@ -1006,7 +1004,7 @@ export class AgentService {
     if (this.commandMutation) return false;
     const message = text.trim();
     const attachments = savedAttachments ?? this.state.attachments ?? [];
-    if ((!message && !attachments.length) || message.length > 100000)
+    if (!message && !attachments.length)
       return Promise.resolve(false);
     if (!this.host.hasFolder() && this.host.ensureWorkspace) {
       try {
@@ -1031,7 +1029,6 @@ export class AgentService {
     const taskMode = modeOverride ?? this.state.mode;
     const options = { ...this.options() };
     if (this.isQuickConversation(message, attachments, taskMode)) {
-      options.maxOutputTokens = Math.min(options.maxOutputTokens, 128);
       options.reasoningBudgetTokens = 0;
       options.maxSteps = 1;
       options.maxContinuations = 0;
@@ -1123,8 +1120,7 @@ export class AgentService {
               },
             ]
           : [],
-      )
-      .slice(quickConversation ? -4 : -80);
+      );
     let transcript = addUser(this.state.transcript, task.text, this.now());
     for (const item of task.attachments ?? []) {
       if (item.data)
@@ -1726,3 +1722,4 @@ export class AgentService {
     return this.host.suggestFiles(query).catch(() => []);
   }
 }
+

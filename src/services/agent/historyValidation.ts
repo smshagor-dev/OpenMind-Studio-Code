@@ -9,7 +9,7 @@ export function attachment(value: unknown): value is AgentAttachment {
     typeof item.name === "string" &&
     item.name.length <= 300 &&
     (item.text === undefined ||
-      (typeof item.text === "string" && new TextEncoder().encode(item.text).length <= 100000)) &&
+      typeof item.text === "string") &&
     (item.data === undefined ||
       (typeof item.data === "string" &&
         item.data.length <= 700000 &&
@@ -56,3 +56,4 @@ function validDiff(value: unknown): boolean {
     })
   );
 }
+

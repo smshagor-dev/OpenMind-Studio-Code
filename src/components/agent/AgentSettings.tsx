@@ -13,7 +13,7 @@ export function AgentSettings() {
         <h3 style={{ margin: "0 0 6px", fontSize: 21 }}>{t("agent.settings.title")}</h3>
         <p className="agent-model__progress-text" style={{ margin: 0 }}>
           Local AI runs on this computer. Performance settings are automatic.
-          Configure OpenMindAI Cloud separately in Settings → AI Providers.
+          Configure OpenMind ai Cloud separately in Settings → OpenMind ai Cloud.
         </p>
       </header>
       {state.overview ? (
@@ -23,3 +23,4 @@ export function AgentSettings() {
     </div>
   );
 }
+

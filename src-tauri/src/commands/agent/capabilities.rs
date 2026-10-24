@@ -40,9 +40,6 @@ pub fn agent_document_read(data: String) -> Result<String, String> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    if text.len() > 100_000 {
-        return Err("Document text exceeds 100 KB; attach a smaller extract.".into());
-    }
     Ok(text)
 }
 
@@ -52,3 +49,4 @@ pub async fn agent_capabilities_check(options: SessionOptions) -> Result<Vec<Str
         .await
         .map_err(|error| error.to_string())
 }
+

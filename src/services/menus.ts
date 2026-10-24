@@ -490,7 +490,7 @@ export const MANAGE_MENU: MenuEntry[] = [
   cmd("Runtimes", "runtime.manage"),
   cmd("Language Tools", "lsp.manage"),
   cmd("Project & Language Status...", "language.showStatus"),
-  cmd("AI Providers...", "ai.manageProviders"),
+  cmd("OpenMind ai Cloud...", "ai.manageProviders"),
   cmd("Tasks", "tasks.configure"),
   cmd("Display Language...", "preferences.displayLanguage"),
   sub("Themes", [
@@ -619,3 +619,4 @@ export function projectMenuCommands(
   }
   return out;
 }
+

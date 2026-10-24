@@ -10,14 +10,22 @@ function file(text: string, name = "code.ts"): File {
 }
 describe("readAttachment", () => {
   it("reads UTF-8 source without interpreting instructions", async () => {
-    expect(await readAttachment(file("const greeting = 'বাংলা';"))).toMatchObject({
+    expect(
+      await readAttachment(file("const greeting = 'বাংলা';")),
+    ).toMatchObject({
       name: "code.ts",
       text: "const greeting = 'বাংলা';",
     });
   });
-  it("rejects empty, binary and oversized extracted text", async () => {
+  it("rejects empty and binary files", async () => {
     await expect(readAttachment(file(""))).rejects.toThrow("1 byte");
-    await expect(readAttachment(file("binary\0payload"))).rejects.toThrow("binary");
-    await expect(readAttachment(file("a".repeat(100001)))).rejects.toThrow("100 KB");
+    await expect(readAttachment(file("binary\0payload"))).rejects.toThrow(
+      "binary",
+    );
   });
+});
+
+it("retains UTF-8 text beyond the old 100 KB attachment limit", async () => {
+  const text = "বাংলা source\n".repeat(40_000);
+  expect((await readAttachment(file(text))).text).toBe(text);
 });

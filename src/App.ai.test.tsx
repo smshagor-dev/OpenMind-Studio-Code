@@ -266,7 +266,7 @@ describe("the AI panel appears only with an enabled provider", () => {
     expect(within(panel).queryByLabelText("Message")).toBeNull();
     fireEvent.click(within(panel).getByRole("button", { name: "Open provider settings" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "AI Providers" });
+    const dialog = await screen.findByRole("dialog", { name: "OpenMind ai Cloud" });
     const key = within(dialog).getByLabelText("API key");
     expect(key).toHaveAttribute("type", "password");
     fireEvent.change(key, { target: { value: "sk-super-secret" } });
@@ -288,7 +288,7 @@ describe("the AI panel appears only with an enabled provider", () => {
     act(() => {
       container.run("ai.manageProviders");
     });
-    const dialog = await screen.findByRole("dialog", { name: "AI Providers" });
+    const dialog = await screen.findByRole("dialog", { name: "OpenMind ai Cloud" });
     expect(within(dialog).getByText(/No AI providers yet/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Add provider" }));
 

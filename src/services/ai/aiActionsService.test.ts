@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { aiRig, providerInfo } from "../../testUtils/aiFixtures";
 import type { FilePreviewDoc } from "../filePreviewService";
 import { AiActionsService, type AiContextSource } from "./aiActionsService";
-import { MAX_ACTION_CHARS, fenced, previewText } from "./aiContext";
+import { fenced, previewText } from "./aiContext";
 
 const SELECTION = {
   text: "function add(a, b) { return a + b }",
@@ -100,11 +100,11 @@ describe("AiActionsService: selected-code actions need a text editor with a sele
     expect(blank.actions.reason("docs")).toBe("Select some code first.");
   });
 
-  it("refuse more than the limit instead of cutting it", async () => {
+  it("allows large selections without a desktop character ceiling", async () => {
     const { actions } = await setup({
-      selection: () => ({ ...SELECTION, text: "x".repeat(MAX_ACTION_CHARS + 1) }),
+      selection: () => ({ ...SELECTION, text: "বাংলা".repeat(40_000) }),
     });
-    expect(actions.reason("explain")).toContain("too much text");
+    expect(actions.reason("explain")).toBeNull();
   });
 
   it("go through the confirmation for an online provider and name what is sent", async () => {
@@ -251,3 +251,4 @@ describe("fenced", () => {
     expect(fenced("x", "ts")).toBe("```ts\nx\n```");
   });
 });
+

@@ -3,9 +3,6 @@ import type { FilePreviewDoc } from "../filePreviewService";
 /** The AI actions that start from something the user selected or is looking at. */
 export type AiActionKind = "explain" | "fix" | "docs" | "terminal" | "preview";
 
-/** A hard limit for what one action attaches; larger content is refused, not silently cut. */
-export const MAX_ACTION_CHARS = 100_000;
-
 export interface AiSelection {
   text: string;
   languageId: string;
@@ -108,3 +105,4 @@ export function previewText(doc: FilePreviewDoc): PreviewText {
       return { text: null, reason: "Notebooks are not summarized yet: select code in a cell instead." };
   }
 }
+

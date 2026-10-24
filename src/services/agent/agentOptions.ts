@@ -27,8 +27,8 @@ export const DEFAULT_AGENT_OPTIONS: Readonly<AgentOptions> = {
   visionEndpoint: "",
   imageEndpoint: "",
   contextTokens: 0,
-  maxOutputTokens: 4096,
-  reasoningBudgetTokens: 1024,
+  maxOutputTokens: 0,
+  reasoningBudgetTokens: 0,
   maxSteps: 128,
   maxContinuations: 8,
   temperature: 0.6,
@@ -84,9 +84,9 @@ export function agentOptions(value: unknown): AgentOptions {
     searchEndpoint: endpoint("searchEndpoint"),
     visionEndpoint: endpoint("visionEndpoint"),
     imageEndpoint: endpoint("imageEndpoint"),
-    contextTokens: number("contextTokens", 0, 131072),
-    maxOutputTokens: number("maxOutputTokens", 1024, 32768),
-    reasoningBudgetTokens: number("reasoningBudgetTokens", 0, 8192),
+    contextTokens: number("contextTokens", 0, 4294967295),
+    maxOutputTokens: number("maxOutputTokens", 0, 4294967295),
+    reasoningBudgetTokens: number("reasoningBudgetTokens", 0, 4294967295),
     maxSteps: number("maxSteps", 8, 512),
     maxContinuations: number("maxContinuations", 0, 16),
     temperature: number("temperature", 0, 1, false),
@@ -102,3 +102,4 @@ export function agentOptions(value: unknown): AgentOptions {
         : "",
   };
 }
+
