@@ -1,3 +1,4 @@
+import { ExtensionSaveParticipants } from "./extensionSaveParticipants";
 import { registerLanguageConfiguration } from "./extensionLanguageConfiguration";
 import { nativeWindowFocus } from "./extensionWindowState";
 import { nativeExtensionDialogs } from "./extensionDialogs";
@@ -301,6 +302,13 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     },
   });
 
+  const saveParticipants = new ExtensionSaveParticipants({
+    documents, sync, isRunning: () => host.isRunning(),
+    request: params => ipc.extHostRequest("host/willSaveDocument", params),
+    applyEdits: params => editorApi.applyEdits(params),
+  });
+  bridge.connect({ resetSaveParticipants: () => { saveParticipants.reset(); } });
+
   events.on("themeChanged", ({ theme }) => {
     if (host.isRunning()) void ipc.extHostNotify("host/configurationChanged", { colorTheme: theme }).catch(() => undefined);
   });
@@ -355,6 +363,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
     // The host, and what extensions ask of the user, live in the main window.
     if (!isMainWindow) return;
     await host.initialize();
+    documents.setSaveParticipant((id, reason) => saveParticipants.run(id, reason));
     contributions.initialize();
     events.on("extensionsChanged", () => {
       keybindingsManager.refresh();

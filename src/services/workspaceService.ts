@@ -479,7 +479,7 @@ export class WorkspaceService {
   }
 
   /** `format: false` skips Format on Save (Auto Save after a delay must not rearrange text while you type). */
-  async save(id: string, options: { format?: boolean } = {}): Promise<void> {
+  async save(id: string, options: { format?: boolean; reason?: 1 | 2 | 3 } = {}): Promise<void> {
     const docId = this.docIdOfTab(id) ?? (this.documents.has(id) ? id : null);
     if (docId === null || this.filePreviews.has(docId)) return;
     const before = this.documents.snapshot(docId).path;
