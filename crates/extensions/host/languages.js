@@ -252,6 +252,32 @@ function createLanguagesApi(parts) {
       });
     },
     getLanguages: async () => request('workspace/getLanguages', {}),
+    async setTextDocumentLanguage(doc, languageId) {
+      need('languages');
+      if (!doc || doc.isClosed || document(state.documents.get(toPath(doc.uri))) !== doc) throw new Error('The document is not open.');
+      if (typeof languageId !== 'string' || !languageId) throw new TypeError('Invalid language identifier.');
+      const file = toPath(doc.uri);
+      const data = state.documents.get(file);
+      if (data.virtual && !data.native) {
+        const known = await request('workspace/getLanguages', {});
+        if (!Array.isArray(known) || !known.includes(languageId)) throw new Error('Unknown document language.');
+        if (doc.isClosed || document(state.documents.get(file)) !== doc) throw new Error('The document is not open.');
+        if (doc.languageId !== languageId) {
+          const latest = state.documents.get(file);
+          host.events.fire('documentWillClose', latest);
+          state.documents.delete(file);
+          host.events.fire('documentClosed', latest);
+          const next = { ...latest, languageId };
+          state.documents.set(file, next);
+          host.events.fire('documentOpened', next);
+        }
+      } else {
+        await request('workspace/setDocumentLanguage', { extension: ext.id, path: file, languageId });
+      }
+      const current = document(state.documents.get(file));
+      if (!current || current.isClosed || current.languageId !== languageId) throw new Error('The document language could not be changed.');
+      return current;
+    },
     registerCompletionItemProvider(selector, provider, ...triggerCharacters) {
       need('languages'); const cache = new Map(); let itemCounter = 0;
       const serialize = (item, id) => ({

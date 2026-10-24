@@ -334,7 +334,10 @@ export class DocumentService {
   /** Switches the syntax mode of an open document (e.g. Markdown Editor vs Text Editor). */
   setLanguage(id: string, languageId: string): void {
     this.requireDocument(id);
+    const from = this.languageOf(id);
+    if (from === languageId) return;
     this.buffers.setLanguage(id, languageId);
+    this.events.emit("documentLanguageChanged", { id, from });
   }
 
   /**
@@ -348,7 +351,7 @@ export class DocumentService {
       if (doc.path === null || this.buffers.getLanguage(id) !== "plaintext") continue;
       const language = this.languageFor(doc.path);
       if (language === "plaintext") continue;
-      this.buffers.setLanguage(id, language);
+      this.setLanguage(id, language);
       changed++;
     }
     return changed;

@@ -96,6 +96,17 @@ export class HostDocumentSync {
         this.opened(id);
         this.announceActive(true);
       }),
+      events.on("documentLanguageChanged", ({ id, from }) => {
+        const pending = this.timers.get(id);
+        if (pending !== undefined) {
+          clearTimeout(pending);
+          this.timers.delete(id);
+          this.sendChange(id, from);
+        }
+        const document = this.describe(id);
+        if (!document) return;
+        this.deps.notify("host/documentLanguageChanged", document);
+      }),
       events.on("documentSaved", ({ id }) => {
         const document = this.describe(id);
         if (document) this.deps.notify("host/documentSaved", document);
@@ -301,10 +312,10 @@ export class HostDocumentSync {
     );
   }
 
-  private sendChange(id: string): void {
+  private sendChange(id: string, languageId?: string): void {
     this.versions.set(id, this.versionOf(id) + 1);
     const document = this.describe(id);
-    if (document) this.deps.notify("host/documentChanged", document);
+    if (document) this.deps.notify("host/documentChanged", { ...document, ...(languageId ? { languageId } : {}) });
   }
 }
 
