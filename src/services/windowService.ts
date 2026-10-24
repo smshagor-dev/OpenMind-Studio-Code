@@ -3,6 +3,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { IpcClient } from "./ipc";
+import { freezeWorkbenchInput, ShutdownRecovery } from "./shutdownRecovery";
+
+export interface CloseRequestEvent { preventDefault(): void; recoveryOnly?: boolean; error?: string }
 
 /** The native-window operations the custom title bar needs — injectable so tests need no Tauri runtime. */
 export interface WindowApi {
@@ -13,7 +16,7 @@ export interface WindowApi {
   isFullscreen: () => Promise<boolean>;
   setFullscreen: (fullscreen: boolean) => Promise<void>;
   confirmClose?: () => Promise<void>;
-  onCloseRequested?: (handler: (event: { preventDefault(): void }) => Promise<void>) => Promise<() => void>;
+  onCloseRequested?: (handler: (event: CloseRequestEvent) => Promise<void>) => Promise<() => void>;
   onResized: (handler: () => void) => Promise<() => void>;
   setZoom: (factor: number) => Promise<void>;
 }
@@ -34,14 +37,31 @@ export const tauriWindowApi: WindowApi = {
     return invoke("window_close_confirmed", { token: nativeCloseToken });
   },
   onCloseRequested: async handler => {
-    const off = await getCurrentWindow().listen("editor-close-requested", () => {
-      void handler({ preventDefault: () => undefined });
+    let registrationToken: string | null = null;
+    const recovery = new ShutdownRecovery({
+      currentToken: () => registrationToken === nativeCloseToken ? registrationToken : null,
+      flush: async () => {
+        let prevented = false;
+        await handler({ recoveryOnly: true, preventDefault: () => { prevented = true; } });
+        return !prevented;
+      },
+      acknowledge: (request, saved) => invoke("window_shutdown_ack", { ...request, saved }),
+      freezeInput: freezeWorkbenchInput,
+      onError: error => { void handler({ recoveryOnly: true, error: error instanceof Error ? error.message : String(error), preventDefault: () => undefined }); },
     });
+    const stops: (() => void)[] = [];
     let token: string;
-    try { token = await invoke<string>("window_close_ready"); nativeCloseToken = token; }
-    catch (error) { off(); throw error; }
+    try {
+      stops.push(await getCurrentWindow().listen("editor-close-requested", () => {
+        void handler({ preventDefault: () => undefined });
+      }));
+      stops.push(await getCurrentWindow().listen<unknown>("editor-shutdown-requested", event => { void recovery.request(event.payload); }));
+      stops.push(await getCurrentWindow().listen<unknown>("editor-shutdown-finished", event => { recovery.finish(event.payload); }));
+      token = await invoke<string>("window_close_ready"); registrationToken = token; nativeCloseToken = token;
+    } catch (error) { recovery.dispose(); for (const stop of stops) stop(); throw error; }
     return () => {
-      off();
+      recovery.dispose();
+      for (const stop of stops) stop();
       if (nativeCloseToken === token) nativeCloseToken = null;
       void invoke("window_close_unready", { token }).catch((error: unknown) => { console.error("Could not retire the native close listener", error); });
     };
@@ -107,6 +127,12 @@ export class WindowService {
       const beforeClose = this.beforeClose;
       if (this.api.onCloseRequested && beforeClose) {
         const off = await this.api.onCloseRequested(async event => {
+          if (event.error) { this.onCloseFailed(new Error(event.error)); event.preventDefault(); return; }
+          if (event.recoveryOnly) {
+            try { if (!(await beforeClose())) event.preventDefault(); }
+            catch (error) { event.preventDefault(); this.onCloseFailed(error); }
+            return;
+          }
           if (this.closing) { event.preventDefault(); return; }
           this.closing = true;
           try {

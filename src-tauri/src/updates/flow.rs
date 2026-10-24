@@ -318,6 +318,12 @@ pub(crate) async fn install_now(app: &AppHandle) -> Result<(), String> {
     {
         return Err("No update has been downloaded.".into());
     }
+    let state = app.state::<crate::app_state::AppState>();
+    let _operation = crate::windows::lock_operations(&state).await;
+    let _recovery = crate::shutdown_recovery::prepare(app).await?;
+    if super::activity(app).unsaved > 0 {
+        return Err("An editor changed while preparing the update. Save its changes before restarting.".into());
+    }
     set_status(app, |s| s.phase = Phase::Installing);
     crate::window_events::stop_everything(app).await;
     let handle = app.clone();

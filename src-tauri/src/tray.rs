@@ -101,7 +101,7 @@ fn stop_all(app: &AppHandle) {
 fn quit_app(app: &AppHandle) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let _ = app.remove_tray_by_id(TRAY_ID);
+        // Keep the tray reachable if a renderer cannot confirm its recovery data.
         crate::window_events::shutdown(app).await;
     });
 }

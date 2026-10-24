@@ -92,6 +92,15 @@ async fn save_main_geometry(window: &WebviewWindow, service: &WindowStateService
 /// destroys the main window and exits. Used by a normal close and by the
 /// tray's Quit.
 pub async fn shutdown(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let _operation = crate::windows::lock_operations(&state).await;
+    let _recovery = match crate::shutdown_recovery::prepare(&app).await {
+        Ok(recovery) => recovery,
+        Err(error) => {
+            tracing::error!(%error, "shutdown cancelled before stopping managed processes");
+            return;
+        }
+    };
     stop_everything(&app).await;
     // An update the user put off ("Later") is installed now; on success the process ends here.
     crate::updates::install_on_exit(&app);

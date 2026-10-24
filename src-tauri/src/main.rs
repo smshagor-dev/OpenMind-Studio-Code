@@ -8,6 +8,7 @@ mod integration;
 mod launch;
 mod locale;
 mod secret;
+mod shutdown_recovery;
 mod startup;
 mod startup_error;
 mod state;
@@ -194,6 +195,7 @@ fn main() {
             windows::window_close_confirmed,
             windows::window_close_ready,
             windows::window_close_unready,
+            shutdown_recovery::window_shutdown_ack,
             windows::window_take_pending_open,
             commands::database::mariadb_status,
             commands::database::mariadb_credentials,
