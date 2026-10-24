@@ -168,6 +168,22 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
   }
   const debug = {
     get activeDebugSession() { return state.activeDebugSession?.session; },
+    asDebugSourceUri(source, session) {
+      if (!source || typeof source !== 'object') throw new TypeError('A debug source descriptor is required.');
+      const reference = source.sourceReference ?? 0;
+      if (!Number.isSafeInteger(reference)) throw new TypeError('Invalid debug source reference.');
+      if (reference <= 0) {
+        if (typeof source.path !== 'string' || !source.path.trim()) throw new Error('The debug source has no path or source reference.');
+        return Uri.file(source.path);
+      }
+      const entry = session ? state.sessions.get(session.id) : state.activeDebugSession;
+      if (!entry || entry.client.closed) throw new Error('A running debug session is required for this source.');
+      const name = typeof source.path === 'string' && source.path ? source.path : typeof source.name === 'string' && source.name ? source.name : 'source';
+      const uri = Uri.from({ scheme: 'debug', authority: entry.session.id, path: '/' + name.replace(/\\/g, '/').replace(/^\/+/, ''), query: `ref=${reference}` });
+      state.debugSources ||= new Map();
+      state.debugSources.set(uri.toString(), { entry, source: structuredClone(source) });
+      return uri;
+    },
     get breakpoints() { return [...state.breakpoints]; },
     activeDebugConsole: { append: value => host.log(ext.id, 'Debug', String(value)), appendLine: value => host.log(ext.id, 'Debug', String(value) + '\n') },
     onDidStartDebugSession: on('start'), onDidTerminateDebugSession: on('terminate'), onDidChangeActiveDebugSession: on('active'), onDidReceiveDebugSessionCustomEvent: on('custom'), onDidChangeBreakpoints: on('breakpoints'),
@@ -226,6 +242,7 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
         if (descriptor instanceof DebugAdapterServer && !owner.permissions.includes('network')) failure('The debug adapter extension needs network permission.');
         const finish = () => {
           if (!state.sessions.has(id)) return; state.sessions.delete(id);
+          closeSources(host, id);
           if (state.activeDebugSession === entry) { state.activeDebugSession = [...state.sessions.values()].at(-1); fire('active', state.activeDebugSession?.session); }
           fire('terminate', session); update();
         };
@@ -315,6 +332,42 @@ function create({ host, ext, need, track, Disposable, EventEmitter, Cancellation
   }));
   return debug;
 }
+/** Session-bound source reads reuse the normal read-only virtual-document/editor bridge. */
+async function openSource(host, uri, editors, guessLanguage) {
+  const key = uri.toString(), known = host.state.documents.get(key);
+  if (known?.debugSource || (known?.native && known.virtual && known.readonly)) return editors.document(known);
+  const state = registry(host), descriptor = state.debugSources?.get(key);
+  if (!descriptor || state.sessions.get(descriptor.entry.session.id) !== descriptor.entry || descriptor.entry.client.closed) throw new Error('The debug source session is unavailable.');
+  state.debugSourceReads ||= new Map();
+  if (!state.debugSourceReads.has(key)) {
+    const pending = { session: descriptor.entry.session.id };
+    state.debugSourceReads.set(key, pending);
+    const cancelled = new Promise((_, reject) => { pending.cancel = () => reject(new Error('Debug source request was cancelled.')); });
+    pending.promise = Promise.race([
+      Promise.resolve().then(() => owned(host, descriptor.entry.extension, () => descriptor.entry.client.request('source', { source: descriptor.source, sourceReference: descriptor.source.sourceReference }))),
+      cancelled,
+    ]).then(result => {
+      if (state.debugSourceReads.get(key) !== pending || state.sessions.get(pending.session) !== descriptor.entry) throw new Error('The debug source session is unavailable.');
+      if (typeof result?.content !== 'string') throw new Error('The debug adapter did not return source text.');
+      if (Buffer.byteLength(result.content, 'utf8') > 32 * 1024 * 1024) throw new Error('Debug source content exceeds 32 MB.');
+      const data = { path: key, text: result.content, languageId: guessLanguage(uri.path), version: 1, isDirty: false, virtual: true, readonly: true, debugSource: true };
+      host.state.documents.set(key, data); host.events.fire('documentOpened', data);
+      return data;
+    }).finally(() => { if (state.debugSourceReads.get(key) === pending) state.debugSourceReads.delete(key); });
+  }
+  return editors.document(await state.debugSourceReads.get(key).promise);
+}
+function closeSource(host, key) {
+  const state = host.state.extensionWorkbench;
+  const pending = state?.debugSourceReads?.get(key);
+  if (pending) { state.debugSourceReads.delete(key); pending.cancel(); }
+}
+function closeSources(host, session) {
+  const state = registry(host);
+  for (const [key, pending] of state.debugSourceReads || []) if (pending.session === session) closeSource(host, key);
+  for (const [key, descriptor] of state.debugSources || []) if (descriptor.entry.session.id === session) state.debugSources.delete(key);
+}
+
 function snapshot(host) {
   const state = registry(host);
   return { types: [...new Set([...state.factories.keys(), ...(host.contributions?.('debuggers') || []).map(value => value.type).filter(value => typeof value === 'string' && value)])], breakpoints: state.breakpoints.filter(b => b.location).map(b => ({ id: b.id, path: b.location.uri.fsPath, line: b.location.range.start.line + 1, enabled: b.enabled })),
@@ -342,4 +395,4 @@ async function invoke(host, params) {
     return entry.client.request(params.op, params.arguments || {});
   });
 }
-module.exports = { create, snapshot, invoke, DapClient, DebugAdapterExecutable, DebugAdapterServer, DebugAdapterInlineImplementation, SourceBreakpoint, FunctionBreakpoint };
+module.exports = { create, snapshot, invoke, openSource, closeSource, DapClient, DebugAdapterExecutable, DebugAdapterServer, DebugAdapterInlineImplementation, SourceBreakpoint, FunctionBreakpoint };
