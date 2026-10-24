@@ -3,7 +3,7 @@ import type { EditorGroup, EditorGroupService, EditorKind } from "./editorGroupS
 import type { IpcClient } from "./ipc";
 
 const LAYOUT_KEY = "editor.layout";
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 
 /** One saved tab. File paths or recovery resource URIs identify the document. */
 export interface SavedTab {
@@ -172,7 +172,7 @@ export function parseLayout(raw: string): SavedLayout | null {
   }
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
-  if ((record.version !== 1 && record.version !== LAYOUT_VERSION) || !Array.isArray(record.groups)) return null;
+  if ((record.version !== 1 && record.version !== 2 && record.version !== LAYOUT_VERSION) || !Array.isArray(record.groups)) return null;
 
   const groups: SavedGroup[] = [];
   for (const candidate of record.groups as unknown[]) {
@@ -199,7 +199,7 @@ export function parseLayout(raw: string): SavedLayout | null {
       ? Math.max(0, record.activeGroup)
       : 0;
   const buffers = new Map<string, SavedBuffer>();
-  if (record.version === LAYOUT_VERSION && Array.isArray(record.buffers)) {
+  if ((record.version === 2 || record.version === LAYOUT_VERSION) && Array.isArray(record.buffers)) {
     for (const candidate of (record.buffers as unknown[]).slice(0, 256)) {
       const buffer = parseSavedBuffer(candidate);
       if (buffer && !buffers.has(buffer.uri)) buffers.set(buffer.uri, buffer);
