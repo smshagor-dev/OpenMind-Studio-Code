@@ -56,6 +56,8 @@ export class DocumentService {
   private nextId = 0;
   private languageResolver: ((path: string) => string | null) | null = null;
   private virtualSaver: ((uri: string, text: string) => Promise<void>) | null = null;
+  private saveParticipant: ((id: string, reason: 1 | 2 | 3) => Promise<void>) | null = null;
+  private readonly participating = new Set<string>();
   private beforeSave: ((id: string) => Promise<void>) | null = null;
   /** Opens still reading the file: a second open of the same path waits for the first instead of making a second document. */
   private readonly opening = new Map<string, Promise<string>>();
@@ -272,12 +274,16 @@ export class DocumentService {
   }
 
   /** Saves to the document's current path, or delegates to `saveAs` if it has none yet. */
-  async save(id: string, options: { format?: boolean } = {}): Promise<void> {
+  async save(id: string, options: { format?: boolean; reason?: 1 | 2 | 3 } = {}): Promise<void> {
     const doc = this.requireDocument(id);
     if (doc.virtualUri) {
       if (doc.virtualReadOnly) throw new Error("The virtual document is read-only.");
       if (!this.virtualSaver) throw new Error("The virtual filesystem is unavailable.");
       const uri = doc.virtualUri;
+      if (this.saveParticipant && !this.participating.has(id)) await this.participate(id, options.reason ?? 1);
+      if (!this.has(id) || this.documents.get(id) !== doc || doc.virtualUri !== uri) return;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Provider writability may change while the save participant is awaited.
+      if (doc.virtualReadOnly) throw new Error("The virtual document is read-only.");
       const content = this.buffers.getValue(id);
       await this.virtualSaver(uri, content);
       if (!this.has(id) || doc.virtualUri !== uri) return;
@@ -287,8 +293,8 @@ export class DocumentService {
       return;
     }
     if (doc.path === null) {
-      if (doc.associatedPath) { await this.writeAndMarkClean(id, doc, doc.associatedPath); return; }
-      await this.saveAs(id);
+      if (doc.associatedPath) { await this.writeAndMarkClean(id, doc, doc.associatedPath, options.reason); return; }
+      await this.saveAs(id, options.reason);
       return;
     }
     if (doc.recoveredConflict) throw new Error("The recovered file differs from disk. Reload, Keep My Changes, or Save As before saving.");
@@ -299,18 +305,18 @@ export class DocumentService {
         // A hook that fails must never keep the file from being saved.
       }
     }
-    await this.writeAndMarkClean(id, doc, doc.path);
+    await this.writeAndMarkClean(id, doc, doc.path, options.reason);
   }
 
   /** Prompts for a path via the native save dialog, then saves there. */
-  async saveAs(id: string): Promise<void> {
+  async saveAs(id: string, reason: 1 | 2 | 3 = 1): Promise<void> {
     const doc = this.requireDocument(id);
     const suggested = doc.path ?? doc.associatedPath ?? (doc.virtualUri ? basename(decodeURIComponent(new URL(doc.virtualUri).pathname)) : undefined);
     const chosenPath = await this.ipc.saveDocumentDialog(suggested);
     if (chosenPath === null) {
       return;
     }
-    await this.writeAndMarkClean(id, doc, chosenPath);
+    await this.writeAndMarkClean(id, doc, chosenPath, reason);
   }
 
   has(id: string): boolean {
@@ -394,6 +400,16 @@ export class DocumentService {
   /** Runs `hook` before a save to the document's own path (Format on Save). It must not throw; a failure never stops the save. */
   setBeforeSave(hook: ((id: string) => Promise<void>) | null): void {
     this.beforeSave = hook;
+  }
+
+  /** Extension save contributions run for every writable save, independently of formatting. */
+  setSaveParticipant(hook: ((id: string, reason: 1 | 2 | 3) => Promise<void>) | null): void { this.saveParticipant = hook; }
+
+  private async participate(id: string, reason: 1 | 2 | 3): Promise<void> {
+    if (!this.saveParticipant || this.participating.has(id)) return;
+    this.participating.add(id);
+    try { await this.saveParticipant(id, reason); } catch { /* A failed extension cannot prevent saving. */ }
+    finally { this.participating.delete(id); }
   }
 
   /** Edits from an extension, applied to the open buffer only (nothing is written to disk). */
@@ -628,10 +644,17 @@ export class DocumentService {
     this.documents.delete(id);
   }
 
-  private async writeAndMarkClean(id: string, doc: DocumentRecord, path: string): Promise<void> {
-    if (doc.recoveredConflict && doc.path !== null && pathKey(doc.path) === pathKey(path)) throw new Error("Resolve the recovered file's disk conflict before overwriting it.");
-    const other = this.idForPath(path);
-    if (other !== null && other !== id) throw new Error("That file is already open in another document.");
+  private async writeAndMarkClean(id: string, doc: DocumentRecord, path: string, reason: 1 | 2 | 3 = 1): Promise<void> {
+    const validateTarget = () => {
+      if (doc.recoveredConflict && doc.path !== null && pathKey(doc.path) === pathKey(path)) throw new Error("Resolve the recovered file's disk conflict before overwriting it.");
+      const other = this.idForPath(path);
+      if (other !== null && other !== id) throw new Error("That file is already open in another document.");
+    };
+    validateTarget();
+    const originalPath = doc.path;
+    if (this.saveParticipant && !this.participating.has(id)) await this.participate(id, reason);
+    if (!this.has(id) || this.documents.get(id) !== doc || doc.path !== originalPath) return;
+    validateTarget();
     const content = this.buffers.getValue(id);
     // Nothing was edited and the file is where it was: leave the bytes on disk alone
     // (a mixed-line-ending file must not be rewritten just because Save was pressed).

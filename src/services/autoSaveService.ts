@@ -172,7 +172,7 @@ export function createWorkbenchAutoSave(deps: {
   documents: AutoSaveDeps["documents"] & { has: (id: string) => boolean };
   workspace: {
     getState: () => { activeId: string | null };
-    save: (id: string, options: { format: boolean }) => Promise<void>;
+    save: (id: string, options: { format: boolean; reason?: 1 | 2 | 3 }) => Promise<void>;
     subscribe: (handler: () => void) => () => void;
   };
 }): AutoSaveService {
@@ -181,7 +181,7 @@ export function createWorkbenchAutoSave(deps: {
     events: deps.events,
     settings: deps.settings,
     documents,
-    save: (id, format) => workspace.save(id, { format }),
+    save: (id, format) => workspace.save(id, { format, reason: format ? 3 : 2 }),
     activeDocId: () => {
       const id = workspace.getState().activeId;
       return id !== null && documents.has(id) ? id : null;

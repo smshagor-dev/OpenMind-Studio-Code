@@ -22,7 +22,7 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 const PROVIDE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Requests the window may send to the host.
-const ALLOWED_REQUESTS: [&str; 10] = [
+const ALLOWED_REQUESTS: [&str; 14] = [
     "host/activate",
     "host/deactivate",
     "host/executeCommand",
@@ -33,9 +33,20 @@ const ALLOWED_REQUESTS: [&str; 10] = [
     "host/resolveWebviewView",
     "host/provideTasks",
     "host/fs",
+    "host/quickInputEvent",
+    "host/validateTask",
+    "host/executeCustomTask",
+    "host/willSaveDocument",
 ];
 /// Notifications the window may send to the host.
-const ALLOWED_NOTIFICATIONS: [&str; 15] = [
+const ALLOWED_NOTIFICATIONS: [&str; 22] = [
+    "host/windowStateChanged",
+    "host/documentLanguageChanged",
+    "host/editorSnapshot",
+    "host/editorOptionsChanged",
+    "host/activeTerminalChanged",
+    "host/terminalStateChanged",
+    "host/ptyEvent",
     "host/terminalClosed",
     "host/filesChanged",
     "host/taskStarted",
@@ -181,11 +192,14 @@ fn host_or_reason(state: &AppState) -> Result<Arc<ExtensionHost>, String> {
 
 fn timeout_for(method: &str) -> Duration {
     match method {
+        "host/willSaveDocument" => Duration::from_secs(3),
         // A tree item's click runs its command, which may wait for the user too.
         "host/executeCommand"
         | "host/tree"
         | "host/resolveWebviewView"
         | "host/provideTasks"
+        | "host/validateTask"
+        | "host/executeCustomTask"
         | "host/fs"
         | "host/workbench" => COMMAND_TIMEOUT,
         "host/provide" => PROVIDE_TIMEOUT,

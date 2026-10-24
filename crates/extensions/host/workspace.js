@@ -370,9 +370,63 @@ function createWorkspaceApi(parts) {
     onDidCloseTextDocument: documentEvent('documentClosed'),
     onDidChangeTextDocument: documentEvent('documentChanged'),
     onDidSaveTextDocument: documentEvent('documentSaved'),
+    onWillSaveTextDocument(listener, thisArg, disposables) {
+      need('workspaceRead');
+      if (typeof listener !== 'function') throw new TypeError('A save listener must be a function.');
+      const listeners = state.willSaveListeners ||= new Set();
+      const entry = { extension: ext.id, failures: 0, invoke: asExtension(async data => {
+        const view = document(state.documents.get(data.path));
+        if (!view || view.isClosed) return [];
+        const version = view.version, pending = []; let accepting = true;
+        const event = { document: view, reason: data.reason, waitUntil(value) {
+          if (!accepting) throw new Error('waitUntil must be called during save event delivery.');
+          if (!value || typeof value.then !== 'function') throw new TypeError('waitUntil requires a thenable.');
+          const promise = Promise.resolve(value); promise.catch(() => {}); pending.push(promise);
+        } };
+        try {
+          const returned = listener.call(thisArg, event);
+          if (returned?.then) Promise.resolve(returned).catch(error => host.log(ext.id, 'error', `Save listener failed: ${error.message}`));
+        } finally { accepting = false; }
+        const values = await Promise.all(pending);
+        if (!listeners.has(entry) || view.isClosed || view.version !== version) return [];
+        const edits = values.flatMap(value => {
+          if (!Array.isArray(value)) return [];
+          return value;
+        });
+        if (!edits.length) return [];
+        const edit = new editors.WorkspaceEdit(); edit.set(view.uri, edits);
+        return editors.prepareTextEdit(edit) || [];
+      }) };
+      listeners.add(entry);
+      const disposable = track(new Disposable(() => listeners.delete(entry)));
+      disposables?.push(disposable);
+      return disposable;
+    },
   });
   return workspace;
 }
 
-module.exports = { createWorkspaceApi, globToRegExp, matcherOf, RelativePattern, ConfigurationTarget, guessLanguage };
+async function willSaveDocument(host, params) {
+  if (![1, 2, 3].includes(params.reason)) throw new TypeError('Invalid save reason.');
+  const initial = host.state.documents.get(params.path);
+  if (!initial || initial.version !== params.version) return { files: [] };
+  const deadline = Date.now() + 1500, files = [];
+  for (const entry of [...host.state.willSaveListeners || []]) {
+    if (entry.failures >= 3 || !host.state.willSaveListeners.has(entry)) continue;
+    if (Date.now() >= deadline || host.state.documents.get(params.path)?.version !== params.version) break;
+    let timer;
+    try {
+      const result = await Promise.race([
+        host.als.run(entry.extension, () => entry.invoke(params)),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Save listener timed out.')), Math.max(0, deadline - Date.now())); }),
+      ]);
+      if (Date.now() >= deadline) { entry.failures++; host.log(entry.extension, 'error', 'Save listener exceeded its budget.'); }
+      else if (host.state.willSaveListeners.has(entry)) files.push(...result);
+    } catch (error) { entry.failures++; host.log(entry.extension, 'error', `Save listener ignored: ${error.message}`); }
+    finally { clearTimeout(timer); }
+  }
+  return { files };
+}
+
+module.exports = { willSaveDocument, createWorkspaceApi, globToRegExp, matcherOf, RelativePattern, ConfigurationTarget, guessLanguage };
 

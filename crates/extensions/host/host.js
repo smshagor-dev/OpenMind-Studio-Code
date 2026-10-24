@@ -361,6 +361,7 @@ const handlers = {
     if (!entry) return null;
     return als.run(entry.extension, () => entry.event(params));
   },
+  'host/willSaveDocument': params => require('./workspace.js').willSaveDocument(host, params),
   'host/workbench': (params) => require('./workbench.js').handle(host, params),
   'host/init': (params) => {
     state.windowState = Object.freeze({ focused: params.windowState?.focused === true });

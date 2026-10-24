@@ -578,19 +578,15 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     });
   }
 
-  async function applyEdit(edit) {
+  function prepareTextEdit(edit) {
     need('workspaceWrite');
-    if (edit._notebooks?.size) {
-      if (edit.entries().some(([, edits]) => edits.length)) throw unsupportedError('workspace.applyEdit.mixedNotebookAndText');
-      return require('./notebooks.js').applyEdits(host, [...edit._notebooks.values()], checkEditable);
-    }
     const files = [];
     for (const [uri, list] of edit.entries()) {
       const filePath = uri.scheme !== 'file' ? uri.toString() : uri.fsPath;
       const doc = state.documents.get(filePath);
       if (!doc) {
         console.error(`workspace.applyEdit: ${filePath} isn't open, and only open documents can be edited for now.`);
-        return false;
+        return null;
       }
       checkEditable(filePath);
       const view = document(doc);
@@ -602,6 +598,17 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       if (eol !== undefined && eol !== EndOfLine.LF && eol !== EndOfLine.CRLF) throw new TypeError('Invalid end-of-line value.');
       files.push({ path: filePath, version: doc.version, edits, ...(eol !== undefined ? { eol } : {}) });
     }
+    return files;
+  }
+
+  async function applyEdit(edit) {
+    need('workspaceWrite');
+    if (edit._notebooks?.size) {
+      if (edit.entries().some(([, edits]) => edits.length)) throw unsupportedError('workspace.applyEdit.mixedNotebookAndText');
+      return require('./notebooks.js').applyEdits(host, [...edit._notebooks.values()], checkEditable);
+    }
+    const files = prepareTextEdit(edit);
+    if (!files) return false;
     if (files.length === 0) return true;
     const result = await request('editor/applyWorkspaceEdit', { extension: ext.id, files });
     if (!result || result.applied !== true) {
@@ -621,7 +628,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
       disposables,
     );
 
-  return { createTextEditorDecorationType, document, editor, activeEditor, visibleEditors, showEditor, applyEdit, selectionEvent, WorkspaceEdit: editing.WorkspaceEdit, Disposable, Position, Range };
+  return { createTextEditorDecorationType, document, editor, activeEditor, visibleEditors, showEditor, applyEdit, prepareTextEdit, selectionEvent, WorkspaceEdit: editing.WorkspaceEdit, Disposable, Position, Range };
 }
 
 module.exports = { createEditorApi, EndOfLine, TextEditorRevealType, TextEditorSelectionChangeKind };

@@ -195,6 +195,7 @@ export interface BridgeDeps {
   /** Opens a file in a tab (`window.showTextDocument`). */
   showTextDocument?: (path: string, options: TextDocumentShowOptions, context: { extension: string; requestId: string }) => Promise<{ editorId: string }>;
   cancelShowTextDocument?: (extension: string, requestId: string) => void;
+  resetSaveParticipants?: () => void;
   resetDocumentOpening?: () => void;
   /** Opens a custom-scheme document read-only in a tab. */
   showVirtualDocument?: (request: VirtualDocumentRequest) => Promise<void>;
@@ -542,6 +543,7 @@ export class HostBridge {
     this.deps.editorApi?.resetDecorations();
     this.deps.editorApi?.cancelPendingEdits();
     this.deps.resetDocumentOpening?.();
+    this.deps.resetSaveParticipants?.();
     this.deps.onHostCommandsChanged();
     this.deps.onViewEvent?.("views/reset", {});
     this.deps.onStatusBarEvent?.("statusBar/reset", {});
