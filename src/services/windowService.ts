@@ -11,6 +11,7 @@ export interface WindowApi {
   isMaximized: () => Promise<boolean>;
   isFullscreen: () => Promise<boolean>;
   setFullscreen: (fullscreen: boolean) => Promise<void>;
+  onCloseRequested?: (handler: (event: { preventDefault(): void }) => Promise<void>) => Promise<() => void>;
   onResized: (handler: () => void) => Promise<() => void>;
   setZoom: (factor: number) => Promise<void>;
 }
@@ -23,6 +24,7 @@ export const tauriWindowApi: WindowApi = {
   isMaximized: () => getCurrentWindow().isMaximized(),
   isFullscreen: () => getCurrentWindow().isFullscreen(),
   setFullscreen: (fullscreen) => getCurrentWindow().setFullscreen(fullscreen),
+  onCloseRequested: handler => getCurrentWindow().onCloseRequested(handler),
   onResized: (handler) => getCurrentWindow().onResized(handler),
   setZoom: (factor) => getCurrentWebview().setZoom(factor),
 };
@@ -48,11 +50,13 @@ export function zoomFactor(level: number): number {
  */
 export class WindowService {
   private state: WindowState = { maximized: false, fullscreen: false, zoomLevel: 0 };
+  private closeHookInstalled = false;
   private readonly listeners = new Set<() => void>();
 
   constructor(
     private readonly api: WindowApi,
     private readonly ipc: IpcClient,
+    private readonly beforeClose: (() => Promise<boolean>) | null = null,
   ) {}
 
   getState(): WindowState {
@@ -74,9 +78,20 @@ export class WindowService {
       await this.applyZoom(level);
     }
     await this.syncFrameState();
-    return this.api.onResized(() => {
-      void this.syncFrameState();
-    });
+    const stopResize = await this.api.onResized(() => { void this.syncFrameState(); });
+    let stopClose: () => void = () => undefined;
+    try {
+      const beforeClose = this.beforeClose;
+      if (this.api.onCloseRequested && beforeClose) {
+        const off = await this.api.onCloseRequested(async event => {
+          try { if (!(await beforeClose())) event.preventDefault(); }
+          catch { event.preventDefault(); }
+        });
+        this.closeHookInstalled = true;
+        stopClose = () => { this.closeHookInstalled = false; off(); };
+      }
+    } catch (error) { stopResize(); throw error; }
+    return () => { stopClose(); stopResize(); };
   }
 
   minimize(): Promise<void> {
@@ -87,8 +102,9 @@ export class WindowService {
     return this.api.toggleMaximize();
   }
 
-  close(): Promise<void> {
-    return this.api.close();
+  async close(): Promise<void> {
+    if (!this.closeHookInstalled && this.beforeClose && !(await this.beforeClose())) return;
+    await this.api.close();
   }
 
   async toggleFullscreen(): Promise<void> {
@@ -136,3 +152,4 @@ export class WindowService {
     }
   }
 }
+

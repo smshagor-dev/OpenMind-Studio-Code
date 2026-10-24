@@ -1,10 +1,11 @@
+import { MAX_LAYOUT_LENGTH, parseSavedBuffer, type SavedBuffer } from "./documentSession";
 import type { EditorGroup, EditorGroupService, EditorKind } from "./editorGroupService";
 import type { IpcClient } from "./ipc";
 
 const LAYOUT_KEY = "editor.layout";
-const LAYOUT_VERSION = 1;
+const LAYOUT_VERSION = 2;
 
-/** One saved tab. Only file-backed editors are saved — an untitled buffer has nothing to reopen. */
+/** One saved tab. File paths or recovery resource URIs identify the document. */
 export interface SavedTab {
   path: string;
   kind: EditorKind;
@@ -22,18 +23,23 @@ export interface SavedLayout {
   groups: SavedGroup[];
   activeGroup: number;
   weights: number[];
+  buffers?: SavedBuffer[];
 }
 
 /**
  * Persists the editor arrangement — how many groups, what each holds, which
  * tab and group are active, which groups are locked, group widths — as one
  * JSON value in `editor_settings`, and hands it back on the next launch. It
- * only records and parses the layout; opening the files again is
+ * records layout and bounded recovery snapshots; recreating the documents is
  * `WorkspaceService`'s job (it owns the documents). Saves are coalesced, so a
  * burst of changes writes once.
  */
 export class EditorLayoutService {
   private paused = false;
+  private documentTimer: ReturnType<typeof setTimeout> | null = null;
+  private writes: Promise<void> = Promise.resolve();
+  private disposed = false;
+  private unreadable = false;
   private scheduled = false;
   private unsubscribe: (() => void) | null = null;
   /** A failed save was reported already (one message per session, not one per keystroke). */
@@ -42,10 +48,11 @@ export class EditorLayoutService {
   constructor(
     private readonly ipc: IpcClient,
     private readonly groups: EditorGroupService,
-    /** Resolves a document id to its file path (`null` for untitled buffers). */
+    /** Resolves a document to a native file path or a saved buffer URI. */
     private readonly pathOf: (docId: string) => string | null,
     /** Told when the layout can't be saved (a full disk, a locked database): the tabs wouldn't come back after a restart. */
     private readonly onSaveFailed: (error: unknown) => void = () => undefined,
+    private readonly buffers: () => SavedBuffer[] = () => [],
   ) {}
 
   /** Starts saving after every change to the groups. Safe to call more than once. */
@@ -56,6 +63,8 @@ export class EditorLayoutService {
   }
 
   dispose(): void {
+    if (this.documentTimer !== null) { clearTimeout(this.documentTimer); this.documentTimer = null; void this.save(); }
+    this.disposed = true;
     this.unsubscribe?.();
     this.unsubscribe = null;
   }
@@ -71,6 +80,8 @@ export class EditorLayoutService {
 
   serialize(): SavedLayout {
     const state = this.groups.getState();
+    const buffers = this.buffers();
+    if (buffers.length > 256 || buffers.some(buffer => !parseSavedBuffer(buffer))) throw new Error("Some editor buffers exceed recovery limits.");
     return {
       groups: state.groups.map((group) => serializeGroup(group, this.pathOf)),
       activeGroup: Math.max(
@@ -78,30 +89,54 @@ export class EditorLayoutService {
         state.groups.findIndex((group) => group.id === state.activeGroupId),
       ),
       weights: state.weights,
+      ...(buffers.length ? { buffers } : {}),
     };
   }
 
-  async save(): Promise<void> {
-    if (this.paused) return;
-    const payload = JSON.stringify({ version: LAYOUT_VERSION, ...this.serialize() });
+  /** Back up text after a short quiet period rather than serializing it on every keystroke. */
+  scheduleDocumentSave(): void {
+    if (this.disposed || this.paused) return;
+    if (this.documentTimer !== null) clearTimeout(this.documentTimer);
+    this.documentTimer = setTimeout(() => { this.documentTimer = null; void this.save(); }, 300);
+  }
+
+  async save(): Promise<boolean> {
+    if (this.paused || this.disposed || this.unreadable) return false;
+    if (this.documentTimer !== null) { clearTimeout(this.documentTimer); this.documentTimer = null; }
     try {
-      await this.ipc.settingsSet(LAYOUT_KEY, payload);
+      const payload = JSON.stringify({ version: LAYOUT_VERSION, ...this.serialize() });
+      if (payload.length > MAX_LAYOUT_LENGTH || new TextEncoder().encode(payload).length > MAX_LAYOUT_LENGTH) throw new Error("Editor recovery data exceeds 64 MB.");
+      // Serialize database writes so an older, slower request cannot overwrite a newer snapshot.
+      const write = this.writes.catch(() => undefined).then(() => this.ipc.settingsSet(LAYOUT_KEY, payload));
+      this.writes = write;
+      await write;
       this.reportedFailure = false;
+      return true;
     } catch (error) {
-      if (this.reportedFailure) return;
+      if (this.reportedFailure) return false;
       this.reportedFailure = true;
       this.onSaveFailed(error);
+      return false;
     }
   }
 
   /** The saved layout, or `null` if there is none (first run, or unreadable). */
   async load(): Promise<SavedLayout | null> {
-    const raw = await this.ipc.settingsGet(LAYOUT_KEY).catch(() => null);
-    return raw === null ? null : parseLayout(raw);
+    try {
+      const raw = await this.ipc.settingsGet(LAYOUT_KEY);
+      const saved = raw === null ? null : parseLayout(raw);
+      this.unreadable = raw !== null && saved === null;
+      if (this.unreadable) this.onSaveFailed(new Error("Existing editor recovery data could not be read; it has been preserved."));
+      return saved;
+    } catch (error) {
+      this.unreadable = true;
+      this.onSaveFailed(error);
+      return null;
+    }
   }
 
   private scheduleSave(): void {
-    if (this.scheduled) return;
+    if (this.scheduled || this.disposed) return;
     this.scheduled = true;
     queueMicrotask(() => {
       this.scheduled = false;
@@ -128,6 +163,7 @@ function isKind(value: unknown): value is EditorKind {
 
 /** Validates untrusted stored JSON; anything malformed is dropped rather than trusted. */
 export function parseLayout(raw: string): SavedLayout | null {
+  if (raw.length > MAX_LAYOUT_LENGTH) return null;
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -136,7 +172,7 @@ export function parseLayout(raw: string): SavedLayout | null {
   }
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
-  if (record.version !== LAYOUT_VERSION || !Array.isArray(record.groups)) return null;
+  if ((record.version !== 1 && record.version !== LAYOUT_VERSION) || !Array.isArray(record.groups)) return null;
 
   const groups: SavedGroup[] = [];
   for (const candidate of record.groups as unknown[]) {
@@ -162,7 +198,14 @@ export function parseLayout(raw: string): SavedLayout | null {
     typeof record.activeGroup === "number" && record.activeGroup < groups.length
       ? Math.max(0, record.activeGroup)
       : 0;
-  return { groups, activeGroup, weights };
+  const buffers = new Map<string, SavedBuffer>();
+  if (record.version === LAYOUT_VERSION && Array.isArray(record.buffers)) {
+    for (const candidate of (record.buffers as unknown[]).slice(0, 256)) {
+      const buffer = parseSavedBuffer(candidate);
+      if (buffer && !buffers.has(buffer.uri)) buffers.set(buffer.uri, buffer);
+    }
+  }
+  return { groups, activeGroup, weights, ...(buffers.size ? { buffers: [...buffers.values()] } : {}) };
 }
 
 function parseTab(candidate: unknown): SavedTab[] {

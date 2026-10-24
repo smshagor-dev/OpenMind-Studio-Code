@@ -1,3 +1,4 @@
+import { parseSavedBuffer, type SavedBuffer } from "./documentSession";
 import type * as monaco from "monaco-editor";
 
 import { assemblyIncludeLanguage } from "../editor/assemblyGrammars";
@@ -72,8 +73,9 @@ export class DocumentService {
     this.languageResolver = resolver;
   }
 
-  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }, virtual?: { uri: string; readonly: boolean; version: number }): string {
-    const virtualUri = virtual?.uri;
+  createUntitled(content = "", language = "plaintext", named?: { uri: string; associatedPath?: string }, virtual?: { uri: string; readonly: boolean; version: number; recovery?: SavedBuffer }): string {
+    const recovery = virtual?.recovery;
+    const virtualUri = recovery?.kind === "untitled" ? undefined : virtual?.uri;
     let namedPath: string | undefined;
     if (named) {
       const resource = new URL(named.uri);
@@ -84,23 +86,48 @@ export class DocumentService {
       if (existing !== null) return existing;
       language = this.languageFor(named.associatedPath ?? namedPath);
     }
-    const id = `untitled-${++this.nextId}`;
+    let id: string;
+    do { id = `untitled-${++this.nextId}`; } while (this.idForHostPath(`untitled://openmind/${id}`) !== null);
     this.documents.set(id, {
       path: null,
-      ...(virtual ? { virtualUri: virtual.uri, virtualReadOnly: virtual.readonly, initialHostVersion: virtual.version } : {}),
-      untitled: virtualUri ? null : this.freeUntitledNumber(),
+      ...(virtualUri && virtual ? { virtualUri, virtualReadOnly: virtual.readonly, initialHostVersion: virtual.version } : {}),
+      ...(recovery?.kind === "untitled" ? { untitledUri: recovery.uri, untitledName: recovery.name, associatedPath: recovery.associatedPath } : {}),
+      untitled: virtualUri ? null : recovery?.number ?? this.freeUntitledNumber(),
       ...(named ? { untitledUri: named.uri, untitledName: basename(namedPath ?? ""), associatedPath: named.associatedPath } : {}),
       encoding: "utf8",
       lineEnding: "lf",
-      savedContent: virtualUri ? content : "",
+      savedContent: recovery?.savedText ?? (virtualUri ? content : ""),
       external: "none",
       diskContent: null,
     });
     this.buffers.create(id, content, language);
-    if (virtualUri) this.requireDocument(id).savedContent = this.buffers.getValue(id);
+    if (virtualUri && !recovery) this.requireDocument(id).savedContent = this.buffers.getValue(id);
     this.watchDirtyState(id);
     this.events.emit("documentOpened", { id });
     return id;
+  }
+
+  recoverySnapshot(id: string): SavedBuffer | null {
+    const doc = this.requireDocument(id);
+    if (doc.path !== null) return null;
+    return { uri: this.hostPath(id), kind: doc.virtualUri ? "virtual" : "untitled",
+      text: this.buffers.getValue(id), savedText: doc.savedContent, language: this.languageOf(id), readonly: this.isReadOnly(id),
+      ...(doc.associatedPath ? { associatedPath: doc.associatedPath } : {}), ...(doc.untitledName ? { name: doc.untitledName } : {}),
+      ...(doc.untitled !== null ? { number: doc.untitled } : {}) };
+  }
+
+  restoreBuffer(value: SavedBuffer): string {
+    const saved = parseSavedBuffer(value);
+    if (!saved) throw new Error("Invalid saved editor buffer.");
+    const existing = this.idForHostPath(saved.uri);
+    if (existing !== null) return existing;
+    const id = this.createUntitled(saved.text, saved.language, undefined, { uri: saved.uri, readonly: saved.readonly, version: 1, recovery: saved });
+    this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
+    return id;
+  }
+
+  autoSaveIds(): string[] {
+    return [...this.documents].filter(([, doc]) => doc.path !== null || (!!doc.virtualUri && !doc.virtualReadOnly)).map(([id]) => id);
   }
 
   /** Provider resources own native models, but never native filesystem paths. */
@@ -220,12 +247,13 @@ export class DocumentService {
     if (doc.virtualUri) {
       if (doc.virtualReadOnly) throw new Error("The virtual document is read-only.");
       if (!this.virtualSaver) throw new Error("The virtual filesystem is unavailable.");
+      const uri = doc.virtualUri;
       const content = this.buffers.getValue(id);
-      await this.virtualSaver(doc.virtualUri, content);
-      if (!this.has(id)) return;
+      await this.virtualSaver(uri, content);
+      if (!this.has(id) || doc.virtualUri !== uri) return;
       doc.savedContent = content;
       this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
-      this.events.emit("documentSaved", { id, path: doc.virtualUri });
+      this.events.emit("documentSaved", { id, path: uri });
       return;
     }
     if (doc.path === null) {

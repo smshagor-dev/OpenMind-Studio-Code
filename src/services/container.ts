@@ -120,7 +120,7 @@ const theme = new ThemeService(settings, events);
 const commands = new CommandRegistry();
 const editor = new EditorService(tauriIpcClient, settings);
 const layout = new LayoutService(tauriIpcClient);
-const windowService = new WindowService(tauriWindowApi, tauriIpcClient);
+const windowService = new WindowService(tauriWindowApi, tauriIpcClient, () => workspace.flushSession());
 const keybindings = new KeybindingService(commands);
 const markers = new MarkerService();
 /**
