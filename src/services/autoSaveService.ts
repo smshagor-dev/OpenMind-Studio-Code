@@ -82,6 +82,9 @@ export class AutoSaveService {
         if (this.mode() === "onFocusChange" || this.mode() === "onWindowChange")
           this.saveAllDirty();
       }),
+      events.on("documentExternalChanged", ({ id }) => {
+        if (this.mode() === "afterDelay" && this.eligibleIds().includes(id) && this.deps.documents.isDirty(id) && this.deps.documents.externalState(id) === "none") this.schedule(id);
+      }),
       events.on("extensionsChanged", () => {
         if (this.mode() === "afterDelay" && this.deps.documents.autoSaveIds) {
           for (const id of this.eligibleIds()) if (this.deps.documents.isDirty(id)) this.schedule(id);

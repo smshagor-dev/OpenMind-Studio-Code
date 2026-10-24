@@ -26,6 +26,7 @@ export type ExternalState = "none" | "changed" | "deleted";
 export type DiskCheck = "same" | "reloaded" | "conflict" | "deleted" | "unavailable";
 
 interface DocumentRecord {
+  recoveredConflict?: boolean;
   virtualUri?: string;
   virtualReadOnly?: boolean;
   initialHostVersion?: number;
@@ -109,8 +110,9 @@ export class DocumentService {
 
   recoverySnapshot(id: string): SavedBuffer | null {
     const doc = this.requireDocument(id);
-    if (doc.path !== null) return null;
-    return { uri: this.hostPath(id), kind: doc.virtualUri ? "virtual" : "untitled",
+    if (doc.path !== null && !this.isDirty(id) && doc.external === "none") return null;
+    return { uri: this.hostPath(id), kind: doc.path !== null ? "file" : doc.virtualUri ? "virtual" : "untitled",
+      ...(doc.path !== null ? { encoding: doc.encoding, lineEnding: doc.lineEnding } : {}),
       text: this.buffers.getValue(id), savedText: doc.savedContent, language: this.languageOf(id), readonly: this.isReadOnly(id),
       ...(doc.associatedPath ? { associatedPath: doc.associatedPath } : {}), ...(doc.untitledName ? { name: doc.untitledName } : {}),
       ...(doc.untitled !== null ? { number: doc.untitled } : {}) };
@@ -118,10 +120,37 @@ export class DocumentService {
 
   restoreBuffer(value: SavedBuffer): string {
     const saved = parseSavedBuffer(value);
-    if (!saved) throw new Error("Invalid saved editor buffer.");
+    if (!saved || saved.kind === "file") throw new Error("Invalid saved editor buffer.");
     const existing = this.idForHostPath(saved.uri);
     if (existing !== null) return existing;
     const id = this.createUntitled(saved.text, saved.language, undefined, { uri: saved.uri, readonly: saved.readonly, version: 1, recovery: saved });
+    this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
+    return id;
+  }
+
+  /** Rebuild the user's buffer first; disk is checked for conflicts, never written during recovery. */
+  async restoreFileBuffer(value: SavedBuffer): Promise<string> {
+    const saved = parseSavedBuffer(value);
+    if (!saved || saved.kind !== "file") throw new Error("Invalid saved file buffer.");
+    const existing = this.idForPath(saved.uri);
+    if (existing !== null) return existing;
+    const read = await this.ipc.documentRead(saved.uri).catch(() => ({ state: "unreadable" as const, reason: "The file could not be read." }));
+    // A concurrent open wins; never replace newer in-memory work.
+    const opened = this.idForPath(saved.uri);
+    if (opened !== null) return opened;
+    const id = `doc-${++this.nextId}`;
+    const currentMatches = read.state === "file" && read.content === saved.text;
+    const conflict = read.state === "unreadable" || (read.state === "file" && !currentMatches && (!sameText(read.content, saved.savedText) || read.encoding !== saved.encoding));
+    this.documents.set(id, { path: saved.uri, untitled: null,
+      encoding: currentMatches ? read.encoding : saved.encoding ?? "utf8",
+      lineEnding: currentMatches ? read.lineEnding : saved.lineEnding ?? "lf", savedContent: saved.savedText,
+      external: read.state === "missing" ? "deleted" : conflict ? "changed" : "none",
+      diskContent: conflict && read.state === "file" ? read.content : null, recoveredConflict: conflict });
+    const model = this.buffers.create(id, saved.text, saved.language);
+    if (currentMatches) this.requireDocument(id).savedContent = model.getValue();
+    this.watchDirtyState(id);
+    this.events.emit("documentOpened", { id });
+    this.events.emit("documentExternalChanged", { id });
     this.events.emit("documentDirtyChanged", { id, dirty: this.isDirty(id) });
     return id;
   }
@@ -207,6 +236,7 @@ export class DocumentService {
     delete doc.virtualUri;
     delete doc.virtualReadOnly;
     delete doc.initialHostVersion;
+    delete doc.recoveredConflict;
     if (this.buffers.getLanguage(id) === automatic) {
       const language = this.languageFor(newPath);
       if (language !== automatic) this.buffers.setLanguage(id, language);
@@ -261,6 +291,7 @@ export class DocumentService {
       await this.saveAs(id);
       return;
     }
+    if (doc.recoveredConflict) throw new Error("The recovered file differs from disk. Reload, Keep My Changes, or Save As before saving.");
     if (this.beforeSave !== null && options.format !== false) {
       try {
         await this.beforeSave(id);
@@ -543,6 +574,7 @@ export class DocumentService {
   private setExternal(id: string, external: ExternalState, diskContent: string | null): void {
     const doc = this.requireDocument(id);
     doc.external = external;
+    if (external === "none") delete doc.recoveredConflict;
     doc.diskContent = diskContent;
     this.events.emit("documentExternalChanged", { id });
   }
@@ -594,6 +626,7 @@ export class DocumentService {
   }
 
   private async writeAndMarkClean(id: string, doc: DocumentRecord, path: string): Promise<void> {
+    if (doc.recoveredConflict && doc.path !== null && pathKey(doc.path) === pathKey(path)) throw new Error("Resolve the recovered file's disk conflict before overwriting it.");
     const other = this.idForPath(path);
     if (other !== null && other !== id) throw new Error("That file is already open in another document.");
     const content = this.buffers.getValue(id);

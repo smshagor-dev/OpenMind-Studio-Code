@@ -207,3 +207,128 @@ it("autosaves an already dirty recovered provider buffer when the workbench star
   expect(save).toHaveBeenCalledWith("memory:///recovered", "recovered edits");
   expect(r.documents.isDirty(id)).toBe(false);
 });
+
+it("recovers unsaved native files with their encoding and baseline without writing to disk", async () => {
+  const first = rig();
+  vi.mocked(first.ipc.documentOpen).mockResolvedValueOnce({ path: "/tmp/local.txt", content: "original\r\n", encoding: "utf16-le", lineEnding: "crlf" });
+  const id = await first.documents.openFromPath("/tmp/local.txt");
+  first.workspace.openDocument(id, "text"); first.workspace.splitRight();
+  first.buffers.setValue(id, "unsaved বাংলা\r\n");
+  await first.workspace.flushSession();
+  const again = rig(new Map(first.settings));
+  vi.mocked(again.ipc.documentRead).mockResolvedValue({ state: "file", content: "original\r\n", encoding: "utf16-le", lineEnding: "crlf" });
+  await again.workspace.restoreSession();
+  const recovered = again.documents.idForPath("/tmp/local.txt");
+  if (!recovered) throw Error("Missing recovered file");
+  expect(again.documents.contentOf(recovered)).toBe("unsaved বাংলা\r\n");
+  expect(again.documents.savedText(recovered)).toBe("original\r\n");
+  expect(again.documents.snapshot(recovered)).toMatchObject({ encoding: "utf16-le", dirty: true, external: "none" });
+  expect(again.groups.tabsForDoc(recovered)).toHaveLength(2);
+  expect(again.ipc.documentOpen).not.toHaveBeenCalled();
+  expect(again.ipc.documentSave).not.toHaveBeenCalled();
+  await again.documents.save(recovered);
+  expect(again.ipc.documentSave).toHaveBeenCalledWith("/tmp/local.txt", "unsaved বাংলা\r\n", "utf16-le");
+  await again.workspace.flushSession();
+  expect(parseLayout(again.settings.get("editor.layout") ?? "")?.buffers).toBeUndefined();
+});
+
+it("keeps recovered file edits separate from changed disk text until the user resolves the conflict", async () => {
+  const r = rig();
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "someone else's change", encoding: "utf8", lineEnding: "lf" });
+  const id = await r.documents.restoreFileBuffer({ uri: "/tmp/conflict.txt", kind: "file", text: "my edits", savedText: "original", language: "plaintext", readonly: false, encoding: "utf8", lineEnding: "lf" });
+  expect(r.documents.contentOf(id)).toBe("my edits");
+  expect(r.documents.diskContentOf(id)).toBe("someone else's change");
+  expect(r.documents.externalState(id)).toBe("changed");
+  await expect(r.documents.save(id)).rejects.toThrow("differs from disk");
+  vi.mocked(r.ipc.saveDocumentDialog).mockResolvedValueOnce("/tmp/conflict.txt");
+  await expect(r.documents.saveAs(id)).rejects.toThrow("disk conflict");
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  r.documents.keepMine(id);
+  await r.documents.save(id);
+  expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/conflict.txt", "my edits", "utf8");
+});
+
+it("allows a recovered conflict to be exported to another path without touching the original", async () => {
+  const r = rig();
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "changed on disk", encoding: "utf8", lineEnding: "lf" });
+  const id = await r.documents.restoreFileBuffer({ uri: "/tmp/original.txt", kind: "file", text: "recovered", savedText: "old disk", language: "plaintext", readonly: false, encoding: "utf8", lineEnding: "lf" });
+  vi.mocked(r.ipc.saveDocumentDialog).mockResolvedValueOnce("/tmp/copy.txt");
+  await r.documents.saveAs(id);
+  expect(r.ipc.documentSave).toHaveBeenCalledExactlyOnceWith("/tmp/copy.txt", "recovered", "utf8");
+  expect(r.documents.snapshot(id)).toMatchObject({ path: "/tmp/copy.txt", external: "none", dirty: false });
+});
+
+it.each(["missing", "unreadable"])("retains recovered native text when the disk file is %s", async state => {
+  const r = rig();
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce(state === "missing" ? { state: "missing" } : { state: "unreadable", reason: "permission denied" });
+  const id = await r.documents.restoreFileBuffer({ uri: "/tmp/unavailable.txt", kind: "file", text: "keep these edits", savedText: "old", language: "plaintext", readonly: false, encoding: "utf8-bom", lineEnding: "lf" });
+  expect(r.documents.contentOf(id)).toBe("keep these edits");
+  expect(r.documents.externalState(id)).toBe(state === "missing" ? "deleted" : "changed");
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  if (state === "missing") {
+    await r.documents.save(id);
+    expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/unavailable.txt", "keep these edits", "utf8-bom");
+  } else await expect(r.documents.save(id)).rejects.toThrow("differs from disk");
+});
+
+it("preserves recovered EOL-only changes and protects against disk encoding changes", async () => {
+  const r = rig();
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "one\r\ntwo", encoding: "utf8", lineEnding: "crlf" });
+  const id = await r.documents.restoreFileBuffer({ uri: "/tmp/eol.txt", kind: "file", text: "one\ntwo", savedText: "one\r\ntwo", language: "plaintext", readonly: false, encoding: "utf8", lineEnding: "crlf" });
+  expect(r.documents.isDirty(id)).toBe(true);
+  expect(r.documents.externalState(id)).toBe("none");
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "old", encoding: "utf16-be", lineEnding: "lf" });
+  const changed = await r.documents.restoreFileBuffer({ uri: "/tmp/encoding.txt", kind: "file", text: "new", savedText: "old", language: "plaintext", readonly: false, encoding: "utf8", lineEnding: "lf" });
+  expect(r.documents.externalState(changed)).toBe("changed");
+  await expect(r.documents.save(changed)).rejects.toThrow("differs from disk");
+});
+
+it("treats an externally saved matching recovered buffer as clean and never replaces a newer open buffer", async () => {
+  const r = rig();
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "already saved", encoding: "utf8", lineEnding: "lf" });
+  const saved = { uri: "/tmp/matching.txt", kind: "file" as const, text: "already saved", savedText: "old", language: "plaintext", readonly: false, encoding: "utf8" as const, lineEnding: "lf" as const };
+  const id = await r.documents.restoreFileBuffer(saved);
+  expect(r.documents.isDirty(id)).toBe(false);
+  r.buffers.setValue(id, "newer in memory");
+  expect(await r.documents.restoreFileBuffer(saved)).toBe(id);
+  expect(r.documents.contentOf(id)).toBe("newer in memory");
+  expect(r.ipc.documentRead).toHaveBeenCalledTimes(1);
+});
+
+it("does not autosave a recovered disk conflict and retries after an explicit Keep My Changes", async () => {
+  vi.useFakeTimers();
+  const r = rig();
+  vi.mocked(r.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "theirs", encoding: "utf8", lineEnding: "lf" });
+  const id = await r.documents.restoreFileBuffer({ uri: "/tmp/protected.txt", kind: "file", text: "mine", savedText: "original", language: "plaintext", readonly: false, encoding: "utf8", lineEnding: "lf" });
+  autosave(r, "afterDelay"); await vi.advanceTimersByTimeAsync(1000);
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  r.documents.keepMine(id); await vi.advanceTimersByTimeAsync(150);
+  expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/protected.txt", "mine", "utf8");
+});
+
+it("backs up later native edits after the debounce and removes their snapshot after a successful save", async () => {
+  vi.useFakeTimers();
+  const r = rig();
+  vi.mocked(r.ipc.documentOpen).mockResolvedValueOnce({ path: "/tmp/debounce.txt", content: "disk", encoding: "utf8", lineEnding: "lf" });
+  const id = await r.documents.openFromPath("/tmp/debounce.txt");
+  r.workspace.openDocument(id, "text", { preview: false });
+  await r.workspace.flushSession();
+  r.buffers.setValue(id, "later edit");
+  await vi.advanceTimersByTimeAsync(350);
+  expect(parseLayout(r.settings.get("editor.layout") ?? "")?.buffers?.[0]).toMatchObject({ kind: "file", text: "later edit" });
+  expect(r.ipc.documentSave).not.toHaveBeenCalled();
+  await r.documents.save(id); await vi.advanceTimersByTimeAsync(350);
+  expect(parseLayout(r.settings.get("editor.layout") ?? "")?.buffers).toBeUndefined();
+});
+
+it("makes an unsaved native buffer that had no tab discoverable after recovery", async () => {
+  const r = rig();
+  vi.mocked(r.ipc.documentOpen).mockResolvedValueOnce({ path: "/tmp/hidden.txt", content: "disk", encoding: "utf8", lineEnding: "lf" });
+  const id = await r.documents.openFromPath("/tmp/hidden.txt"); r.buffers.setValue(id, "hidden unsaved text");
+  await r.workspace.flushSession();
+  const again = rig(new Map(r.settings));
+  vi.mocked(again.ipc.documentRead).mockResolvedValueOnce({ state: "file", content: "disk", encoding: "utf8", lineEnding: "lf" });
+  await again.workspace.restoreSession();
+  expect(again.workspace.getState().tabs).toContainEqual(expect.objectContaining({ path: "/tmp/hidden.txt", dirty: true, preview: false }));
+  expect(again.ipc.documentSave).not.toHaveBeenCalled();
+});

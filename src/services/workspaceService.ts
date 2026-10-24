@@ -130,6 +130,8 @@ export class WorkspaceService {
       }),
       // The file behind a tab changed on disk, was deleted or renamed: the tab shows it.
       this.events.on("documentExternalChanged", ({ id }) => {
+        this.recoveryRevision++;
+        this.layout.scheduleDocumentSave();
         if (this.groups.tabsForDoc(id).length > 0) this.recompute();
       }),
       // Save As or a rename/move: the tab title, breadcrumbs and the saved session follow the new path.
@@ -141,7 +143,7 @@ export class WorkspaceService {
         void this.persistSession();
       }),
       this.events.on("documentDirtyChanged", ({ id, dirty }) => {
-        if (this.documents.has(id) && this.documents.snapshot(id).path === null) {
+        if (this.documents.has(id)) {
           if (!this.documents.isReadOnly(id)) this.recoveryRevision++;
           this.layout.scheduleDocumentSave();
         }
@@ -152,7 +154,7 @@ export class WorkspaceService {
     );
     this.unsubscribers.push(this.events.on("documentOpened", ({ id }) => {
       if (this.documents.snapshot(id).path === null) this.layout.scheduleDocumentSave();
-    }), this.events.on("documentClosed", ({ path }) => { if (path === null) this.layout.scheduleDocumentSave(); }));
+    }), this.events.on("documentClosed", () => { this.recoveryRevision++; this.layout.scheduleDocumentSave(); }));
     this.layout.startAutoSave();
     this.recompute();
   }
@@ -526,11 +528,23 @@ export class WorkspaceService {
     this.layout.pause();
     try {
       const saved = await this.layout.load();
-      for (const buffer of saved?.buffers ?? []) this.documents.restoreBuffer(buffer);
+      for (const buffer of saved?.buffers ?? []) {
+        if (buffer.kind === "file") await this.documents.restoreFileBuffer(buffer);
+        else this.documents.restoreBuffer(buffer);
+      }
       if (saved?.groups.some((group) => group.tabs.length > 0)) {
         await this.restoreLayout(saved);
       } else {
         await this.restoreFlatSession();
+      }
+      // Recovered user edits must remain discoverable even if the original buffer had no tab.
+      for (const buffer of saved?.buffers ?? []) {
+        if (buffer.kind !== "file") continue;
+        const id = this.documents.idForPath(buffer.uri);
+        if (id !== null && this.groups.tabsForDoc(id).length === 0
+          && (this.documents.isDirty(id) || this.documents.externalState(id) !== "none")) {
+          this.openDocument(id, "text", { preview: false, preserveFocus: this.groups.activeTab() !== null });
+        }
       }
     } finally {
       this.layout.resume();
