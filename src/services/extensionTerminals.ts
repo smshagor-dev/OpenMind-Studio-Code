@@ -6,7 +6,7 @@ import { t } from "../i18n";
 export type TerminalsForExtensions = Pick<
   TerminalService,
   "createTerminal" | "closeTerminal" | "write" | "setActive" | "getState" | "subscribe" | "isShowing"
-> & Partial<Pick<TerminalService, "createPseudoterminal" | "writePseudoterminal" | "exitPseudoterminal">>;
+> & Partial<Pick<TerminalService, "createPseudoterminal" | "writePseudoterminal" | "exitPseudoterminal" | "onInput">>;
 
 export interface ExtensionTerminalDeps {
   terminals: TerminalsForExtensions;
@@ -28,6 +28,7 @@ interface Entry {
   /** Text the extension typed without running it yet (shown when it later asks to run). */
   typed: string;
   pseudo?: boolean;
+  interacted?: boolean;
 }
 
 /** The confirmation's buttons in English (shown in the UI language). */
@@ -50,10 +51,19 @@ function str(value: unknown, fallback = ""): string {
 export class ExtensionTerminalService {
   private readonly byId = new Map<string, Entry>();
   private known = new Map<string, boolean>();
+  private activeId: string | null = null;
 
   constructor(private readonly deps: ExtensionTerminalDeps) {
     deps.terminals.subscribe(() => {
       this.onSessionsChanged();
+    });
+    deps.terminals.onInput?.((sessionId, data) => {
+      if (!data) return;
+      for (const [id, entry] of this.byId) {
+        if (entry.sessionId !== sessionId || entry.interacted) continue;
+        entry.interacted = true;
+        this.deps.notifyHost("host/terminalStateChanged", { id, isInteractedWith: true });
+      }
     });
   }
 
@@ -99,6 +109,7 @@ export class ExtensionTerminalService {
         input: data => { send("input", { data }); }, resize: (columns, rows) => { send("resize", { columns, rows }); }, close: () => { send("close"); },
       });
       this.byId.set(id, { extension, name, sessionId, trusted: false, typed: "", pseudo: true }); this.known.set(sessionId, false);
+      this.onSessionsChanged();
       return { pid: null };
     }
     const sessionId = await this.deps.terminals.createTerminal(undefined, cwd, {
@@ -110,6 +121,7 @@ export class ExtensionTerminalService {
     if (sessionId === null) throw new Error("The terminal could not be started.");
     this.byId.set(id, { extension, name, sessionId, trusted: false, typed: "" });
     this.known.set(sessionId, false);
+    this.onSessionsChanged();
     this.deps.log?.(`[${extension}] created terminal "${name}"`);
     return { pid: null };
   }
@@ -206,6 +218,7 @@ export class ExtensionTerminalService {
     for (const entry of [...this.byId.values()]) if (entry.pseudo) this.deps.terminals.exitPseudoterminal?.(entry.sessionId, null);
     this.byId.clear();
     this.known.clear();
+    this.activeId = null;
   }
 
   /** How many terminals an extension has open (its details page). */
@@ -227,6 +240,12 @@ export class ExtensionTerminalService {
         this.deps.notifyHost("host/terminalClosed", { id, exitCode: session.exitCode });
         this.byId.delete(id);
       }
+    }
+    const selected = this.deps.terminals.getState().activeId;
+    const activeId = [...this.byId].find(([, entry]) => entry.sessionId === selected)?.[0] ?? null;
+    if (this.activeId !== activeId) {
+      this.activeId = activeId;
+      this.deps.notifyHost("host/activeTerminalChanged", { id: activeId });
     }
   }
 }
