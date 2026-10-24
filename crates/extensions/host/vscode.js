@@ -1342,6 +1342,37 @@ function createApi(host, ext) {
       return selected == null ? undefined : Uri.file(selected);
     },
     createQuickPick: () => createQuickInput('quickPick'),
+    async showWorkspaceFolderPick(options = {}) {
+      if (!options || typeof options !== 'object' || Array.isArray(options)) throw new TypeError('Workspace folder pick options must be an object.');
+      if (options.placeHolder !== undefined && typeof options.placeHolder !== 'string') throw new TypeError('Workspace folder placeholder must be a string.');
+      if (options.ignoreFocusOut !== undefined && typeof options.ignoreFocusOut !== 'boolean') throw new TypeError('Workspace folder ignoreFocusOut must be boolean.');
+      const folders = workspace.workspaceFolders || [];
+      if (!folders.length) return undefined;
+      const pick = createQuickInput('quickPick');
+      pick.placeholder = options.placeHolder;
+      pick.ignoreFocusOut = options.ignoreFocusOut === true;
+      pick.matchOnDescription = true;
+      pick.items = folders.map(folder => ({ label: folder.name, description: folder.uri.fsPath, folder }));
+      return new Promise(resolve => {
+        let done = false, completion;
+        const finish = value => {
+          if (done) return;
+          done = true;
+          accepted.dispose(); hidden.dispose(); changed.dispose(); pick.dispose();
+          for (const disposable of [accepted, hidden, pick, completion]) tracked.delete(disposable);
+          resolve(value);
+        };
+        const accepted = pick.onDidAccept(() => {
+          const item = pick.selectedItems[0] || pick.activeItems[0];
+          if (!item) return;
+          finish(item.folder);
+        });
+        const hidden = pick.onDidHide(() => finish(undefined));
+        const changed = host.events.on('workspaceFolders')(() => finish(undefined));
+        completion = track(new Disposable(() => finish(undefined)));
+        pick.show();
+      });
+    },
     createInputBox: () => createQuickInput('input'),
     withProgress,
     withScmProgress: task => withProgress({ location: publicEnums.ProgressLocation.SourceControl }, task),
