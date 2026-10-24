@@ -28,6 +28,44 @@ class TextEdit {
   }
 }
 
+// Only the public configuration fields cross the bridge; regexes retain their flags.
+function configurationOut(value) {
+  const object = v => { if (!v || typeof v !== 'object' || Array.isArray(v)) throw new TypeError('Invalid language configuration object.'); return v; };
+  const string = v => { if (typeof v !== 'string') throw new TypeError('Language configuration text must be a string.'); return v; };
+  const regex = v => { if (!(v instanceof RegExp)) throw new TypeError('Language configuration patterns must be RegExp values.'); return { source: v.source, flags: v.flags }; };
+  const array = (v, map) => { if (!Array.isArray(v)) throw new TypeError('Language configuration pairs/rules must be arrays.'); return v.map(map); };
+  const pair = v => { if (!Array.isArray(v) || v.length !== 2) throw new TypeError('Invalid character pair.'); return v.map(string); };
+  const autoPair = (v, legacy = false) => { object(v); const result = { open: string(v.open), close: string(v.close) }; if (v.notIn !== undefined) result.notIn = array(v.notIn, token => {
+    if (legacy) return string(token);
+    if (!Number.isInteger(token) || token < 0 || token > 3) throw new TypeError('Invalid syntax token type.');
+    return ['other', 'comment', 'string', 'regex'][token];
+  }); return result; };
+  object(value); const result = {};
+  for (const key of Object.keys(value)) if (!['comments','brackets','wordPattern','indentationRules','onEnterRules','autoClosingPairs','__electricCharacterSupport','__characterPairSupport'].includes(key)) throw new TypeError(`Unknown language configuration field: ${key}`);
+  if (value.comments !== undefined) { const c = object(value.comments); result.comments = {}; if (c.lineComment !== undefined) result.comments.lineComment = string(c.lineComment); if (c.blockComment !== undefined) result.comments.blockComment = pair(c.blockComment); }
+  if (value.brackets !== undefined) result.brackets = array(value.brackets, pair);
+  if (value.wordPattern !== undefined) result.wordPattern = regex(value.wordPattern);
+  if (value.indentationRules !== undefined) {
+    const rules = object(value.indentationRules); result.indentationRules = {};
+    for (const key of ['increaseIndentPattern','decreaseIndentPattern','indentNextLinePattern','unIndentedLinePattern']) if (rules[key] !== undefined || key === 'increaseIndentPattern' || key === 'decreaseIndentPattern') result.indentationRules[key] = regex(rules[key]);
+  }
+  if (value.onEnterRules !== undefined) result.onEnterRules = array(value.onEnterRules, rule => {
+    object(rule); const action = object(rule.action);
+    if (!Number.isInteger(action.indentAction) || action.indentAction < 0 || action.indentAction > 3) throw new TypeError('Invalid indent action.');
+    const next = { beforeText: regex(rule.beforeText), action: { indentAction: action.indentAction } };
+    for (const key of ['afterText','previousLineText']) if (rule[key] !== undefined) next[key] = regex(rule[key]);
+    if (action.appendText !== undefined) next.action.appendText = string(action.appendText);
+    if (action.removeText !== undefined) { if (!Number.isSafeInteger(action.removeText) || action.removeText < 0) throw new TypeError('Invalid indentation removal.'); next.action.removeText = action.removeText; }
+    return next;
+  });
+  const pairs = value.autoClosingPairs ?? value.__characterPairSupport?.autoClosingPairs;
+  if (pairs !== undefined) result.autoClosingPairs = array(pairs, v => autoPair(v, value.autoClosingPairs === undefined));
+  // Deprecated electric brackets/scope/lineStart are ignored by the VS Code baseline.
+  const comment = value.__electricCharacterSupport?.docComment;
+  if (comment !== undefined) { object(comment); result.__electricCharacterSupport = { docComment: { open: string(comment.open), ...(comment.close === undefined ? {} : { close: string(comment.close) }) } }; }
+  return result;
+}
+
 function createLanguagesApi(parts) {
   const { host, ext, need, track, Disposable, namespace, editors, types, toPath, asExtension } = parts;
   const { state, notify, request } = host;
@@ -228,6 +266,15 @@ function createLanguagesApi(parts) {
 
   return namespace('languages', {
     match: matchSelector,
+    setLanguageConfiguration(language, configuration) {
+      need('languages');
+      if (typeof language !== 'string' || !language) throw new TypeError('Invalid language identifier.');
+      const config = configurationOut(configuration);
+      const handle = `${ext.id}:configuration:${++handleCounter}`;
+      const disposable = track(new Disposable(() => notify('languages/unregistered', { handle })));
+      notify('languages/configuration', { extension: ext.id, handle, language, configuration: config });
+      return disposable;
+    },
     registerCallHierarchyProvider(selector, provider) { return hierarchy('callHierarchy', selector, provider); },
     registerTypeHierarchyProvider(selector, provider) { return hierarchy('typeHierarchy', selector, provider); },
     registerWorkspaceSymbolProvider(provider) {

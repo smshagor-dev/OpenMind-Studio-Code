@@ -1,3 +1,4 @@
+import { registerLanguageConfiguration } from "./extensionLanguageConfiguration";
 import { nativeWindowFocus } from "./extensionWindowState";
 import { nativeExtensionDialogs } from "./extensionDialogs";
 import type { CommandRegistry } from "./commandRegistry";
@@ -248,6 +249,7 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
           : await settings.set(target, key, value as SettingValue);
       if (!result.ok) throw new Error(result.error);
     },
+    registerLanguageConfiguration,
     registerProvider: (registration, invoke) =>
       deps.registerProvider(registration, invoke, (modelUri) => {
         const id = documents.idForModelUri(modelUri);

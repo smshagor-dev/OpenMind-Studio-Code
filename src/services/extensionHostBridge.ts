@@ -164,6 +164,7 @@ export interface BridgeDeps {
     value: unknown,
     target: "user" | "workspace",
   ) => Promise<void>;
+  registerLanguageConfiguration?: (language: string, configuration: unknown) => () => void;
   registerProvider: (
     registration: ProviderRegistration,
     invoke: ProviderInvoke,
@@ -426,6 +427,16 @@ export class HostBridge {
         this.hostCommands.delete(text(p.command));
         this.deps.onHostCommandsChanged();
         return;
+      case "languages/configuration": {
+        const handle = text(p.handle), extension = text(p.extension), language = text(p.language);
+        if (!extension || !handle.startsWith(`${extension}:configuration:`) || !language) return;
+        try {
+          const dispose = this.need(this.deps.registerLanguageConfiguration, "Language configurations")(language, p.configuration);
+          this.providers.get(handle)?.();
+          this.providers.set(handle, dispose);
+        } catch (error) { this.log(extension, "error", `Language configuration rejected: ${String(error)}`); }
+        return;
+      }
       case "languages/registered":
         this.registerProvider(params as ProviderRegistration);
         return;
