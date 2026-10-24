@@ -11,7 +11,7 @@
 //! A tab dragged out of the tab bar opens its file in a new window
 //! (`window_new` with a path, picked up by `window_take_pending_open`).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
@@ -34,6 +34,7 @@ pub struct EditorWindows {
     operations: tokio::sync::Mutex<()>,
     restored: AtomicBool,
     close_ready: Mutex<HashMap<String, String>>,
+    pub(crate) shutdown: crate::shutdown_recovery::RecoveryState,
     /// Extra-window folders and automatic roots; explicitly selected main projects are in the database.
     folders: Mutex<HashMap<String, WorkspaceInfo>>,
     /// Which window created each terminal, so closing a window ends its terminals.
@@ -79,11 +80,15 @@ impl EditorWindows {
         self.pending_open.lock().ok()?.remove(label)
     }
 
-    /// Forgets `label` and returns the terminals it owned.
-    fn remove_window(&self, label: &str) -> Vec<String> {
+    /// Releases native resources without retiring a still-live hidden main page.
+    fn retire_page(&self, label: &str) {
         if let Ok(mut ready) = self.close_ready.lock() {
             ready.remove(label);
         }
+        self.shutdown.cancel_window(label);
+    }
+
+    fn remove_window(&self, label: &str) -> Vec<String> {
         self.set_folder(label, None);
         let _ = self.take_pending_open(label);
         let Ok(mut terminals) = self.terminals.lock() else {
@@ -131,6 +136,10 @@ pub fn visible_editor_windows(app: &AppHandle) -> Vec<String> {
 /// Ends what belongs to one window (its terminals and file watcher), as its close does.
 pub fn release_window(app: &AppHandle, label: &str) {
     let state = app.state::<AppState>();
+    // Main is only hidden here: its renderer and recovery listener remain alive.
+    if !is_main(label) {
+        state.editor_windows.retire_page(label);
+    }
     for id in state.editor_windows.remove_window(label) {
         if let Err(err) = state.terminal.close(&id) {
             tracing::warn!(?err, %id, "could not end a closed window's terminal");
@@ -151,9 +160,7 @@ pub fn release_window(app: &AppHandle, label: &str) {
 /// room connection itself belongs to the computer, not the page, and stays.
 pub fn page_started(app: &AppHandle, label: &str) {
     let state = app.state::<AppState>();
-    if let Ok(mut ready) = state.editor_windows.close_ready.lock() {
-        ready.remove(label);
-    }
+    state.editor_windows.retire_page(label);
     crate::commands::collab::net_presence::window_closed(app, label);
     crate::commands::collab::net_voice::window_closed(app, label);
 }
@@ -461,6 +468,7 @@ pub fn window_close_ready(
         .lock()
         .map_err(|err| err.to_string())?
         .insert(window.label().to_string(), token.clone());
+    state.editor_windows.shutdown.cancel_window(window.label());
     Ok(token)
 }
 
@@ -476,10 +484,33 @@ pub fn window_close_unready(
         .close_ready
         .lock()
         .map_err(|err| err.to_string())?;
-    if ready.get(window.label()) == Some(&token) {
+    let retired = ready.get(window.label()) == Some(&token);
+    if retired {
         ready.remove(window.label());
     }
+    drop(ready);
+    if retired {
+        state.editor_windows.shutdown.cancel_window(window.label());
+    }
     Ok(())
+}
+
+/// Ready editor pages, including hidden main, rather than only visible native windows.
+pub(crate) fn ready_editors(app: &AppHandle) -> Result<BTreeMap<String, String>, String> {
+    let state = app.state::<AppState>();
+    let ready = state
+        .editor_windows
+        .close_ready
+        .lock()
+        .map_err(|err| err.to_string())?
+        .clone();
+    let windows = app.webview_windows();
+    Ok(ready
+        .into_iter()
+        .filter(|(label, _)| {
+            (is_main(label) || is_editor_window_extra(label)) && windows.contains_key(label)
+        })
+        .collect())
 }
 
 pub fn request_editor_close(app: &AppHandle, label: &str) {
@@ -542,9 +573,11 @@ async fn close_editor_confirmed(
     }
     let visible = visible_editor_windows(&app);
     if is_main(&label) {
+        drop(_operation);
         crate::window_events::close_main_confirmed(editor, state.window_states.clone()).await;
     } else if is_last_editor_window(&visible, &label) {
-        // Keep the last window's descriptor so app restart restores its session.
+        // Shutdown takes the operation lock itself while it gathers every renderer's recovery reply.
+        drop(_operation);
         crate::window_events::close_last_editor_window(app.clone(), editor).await;
     } else {
         // Only a confirmed individual close retires the window from startup recovery.
@@ -601,6 +634,25 @@ mod tests {
         assert!(valid_session("editor.window.session.window-2", "invalid JSON").is_err());
         let value = serde_json::json!({"label": "window-2", "workspace": "a\0b"}).to_string();
         assert!(valid_session("editor.window.session.window-2", &value).is_err());
+    }
+
+    #[test]
+    fn releasing_hidden_main_resources_keeps_its_live_recovery_page() {
+        let windows = EditorWindows::default();
+        windows
+            .close_ready
+            .lock()
+            .unwrap()
+            .insert("main".into(), "page".into());
+        windows.set_folder("main", Some(info("C:/project")));
+        windows.remove_window("main");
+        assert!(windows.folder("main").is_none());
+        assert_eq!(
+            windows.close_ready.lock().unwrap().get("main"),
+            Some(&"page".to_string())
+        );
+        windows.retire_page("main");
+        assert!(!windows.close_ready.lock().unwrap().contains_key("main"));
     }
 
     #[test]

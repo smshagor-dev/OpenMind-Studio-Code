@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const native = vi.hoisted(() => ({
   invoke: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
-  listen: vi.fn<(event: string, handler: () => void) => Promise<() => void>>(),
+  listen: vi.fn<(event: string, handler: (event?: { payload: unknown }) => void) => Promise<() => void>>(),
   off: vi.fn(),
 }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
@@ -28,14 +28,14 @@ it("installs the recovery event listener before telling native code it is ready"
   const event: unknown = handler.mock.calls[0]?.[0];
   expect(event).toHaveProperty("preventDefault");
   expect(native.invoke.mock.calls.map(call => call[0])).not.toContain("window_close_confirmed");
-  off?.(); expect(native.off).toHaveBeenCalledTimes(1);
+  off?.(); expect(native.off).toHaveBeenCalledTimes(3);
   expect(native.invoke).toHaveBeenLastCalledWith("window_close_unready", { token: "current-page-token" });
 });
 
 it("removes the listener if native readiness registration fails", async () => {
   native.invoke.mockRejectedValueOnce(new Error("native unavailable"));
   await expect(tauriWindowApi.onCloseRequested?.(vi.fn())).rejects.toThrow("native unavailable");
-  expect(native.off).toHaveBeenCalledTimes(1);
+  expect(native.off).toHaveBeenCalledTimes(3);
 });
 
 it("acknowledges a confirmed close through its dedicated native command", async () => {
@@ -52,4 +52,38 @@ it("replaces the close capability when a listener is re-registered", async () =>
   await tauriWindowApi.onCloseRequested?.(vi.fn());
   await tauriWindowApi.confirmClose?.();
   expect(native.invoke).toHaveBeenLastCalledWith("window_close_confirmed", { token: "replacement-page-token" });
+});
+
+
+it("routes global recovery through flush-only events and acknowledges without closing the window", async () => {
+  const handler = vi.fn().mockResolvedValue(undefined);
+  const off = await tauriWindowApi.onCloseRequested?.(handler);
+  const request = native.listen.mock.calls.find(call => call[0] === "editor-shutdown-requested")?.[1];
+  const finished = native.listen.mock.calls.find(call => call[0] === "editor-shutdown-finished")?.[1];
+  request?.({ payload: { requestId: "quit-all", token: "current-page-token" } });
+  await vi.waitFor(() => { expect(native.invoke).toHaveBeenCalledWith("window_shutdown_ack", { requestId: "quit-all", token: "current-page-token", saved: true }); });
+  expect(native.invoke.mock.calls.map(call => call[0])).not.toContain("window_close_confirmed");
+  expect(document.documentElement.inert).toBe(true);
+  finished?.({ payload: { requestId: "quit-all" } }); expect(document.documentElement.inert).not.toBe(true);
+  off?.();
+});
+
+it("retires partial listener registration before exposing native readiness", async () => {
+  native.listen.mockResolvedValueOnce(native.off).mockRejectedValueOnce(Error("listener failed"));
+  await expect(tauriWindowApi.onCloseRequested?.(vi.fn())).rejects.toThrow("listener failed");
+  expect(native.off).toHaveBeenCalledTimes(1);
+  expect(native.invoke).not.toHaveBeenCalled();
+});
+
+
+it("ignores a global recovery event in a replaced registration instead of acknowledging twice", async () => {
+  native.invoke.mockResolvedValueOnce("old").mockResolvedValueOnce("new");
+  const first = await tauriWindowApi.onCloseRequested?.(vi.fn().mockResolvedValue(undefined));
+  const second = await tauriWindowApi.onCloseRequested?.(vi.fn().mockResolvedValue(undefined));
+  const requests = native.listen.mock.calls.filter(call => call[0] === "editor-shutdown-requested");
+  for (const call of requests) call[1]({ payload: { requestId: "quit-replacement", token: "new" } });
+  await vi.waitFor(() => { expect(native.invoke).toHaveBeenCalledWith("window_shutdown_ack", { requestId: "quit-replacement", token: "new", saved: true }); });
+  expect(native.invoke.mock.calls.filter(call => call[0] === "window_shutdown_ack")).toHaveLength(1);
+  first?.(); expect(document.documentElement.inert).toBe(true);
+  second?.(); expect(document.documentElement.inert).not.toBe(true);
 });

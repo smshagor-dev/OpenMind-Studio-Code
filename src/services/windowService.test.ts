@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createFakeIpc } from "../testUtils/fakeIpcClient";
-import { type WindowApi, WindowService, zoomFactor } from "./windowService";
+import { type CloseRequestEvent, type WindowApi, WindowService, zoomFactor } from "./windowService";
 
 function createFakeApi(overrides: Partial<WindowApi> = {}): WindowApi {
   return {
@@ -156,4 +156,29 @@ describe("native close acknowledgement", () => {
     expect(r.confirmClose).not.toHaveBeenCalled();
     expect(r.api.close).toHaveBeenCalledTimes(1);
   });
+});
+
+
+it("can flush for app-wide Quit while its own normal close acknowledgement is still pending", async () => {
+  let requested: ((event: CloseRequestEvent) => Promise<void>) | undefined;
+  let finish: (() => void) | undefined;
+  const confirmClose = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  const flush = vi.fn().mockResolvedValue(true);
+  const api = createFakeApi({ confirmClose, onCloseRequested: handler => { requested = handler; return Promise.resolve(() => undefined); } });
+  const service = new WindowService(api, createFakeIpc(), flush); await service.initialize();
+  const normal = requested?.({ preventDefault: vi.fn() });
+  await vi.waitFor(() => { expect(confirmClose).toHaveBeenCalledTimes(1); });
+  await requested?.({ recoveryOnly: true, preventDefault: vi.fn() });
+  expect(flush).toHaveBeenCalledTimes(2); expect(confirmClose).toHaveBeenCalledTimes(1);
+  finish?.(); await normal;
+});
+
+it("reports app-wide Quit cancellation without starting another flush or normal close", async () => {
+  let requested: ((event: CloseRequestEvent) => Promise<void>) | undefined;
+  const flush = vi.fn().mockResolvedValue(true), failed = vi.fn(), confirmClose = vi.fn();
+  const api = createFakeApi({ confirmClose, onCloseRequested: handler => { requested = handler; return Promise.resolve(() => undefined); } });
+  const service = new WindowService(api, createFakeIpc(), flush, failed); await service.initialize();
+  await requested?.({ recoveryOnly: true, error: "Window recovery timed out", preventDefault: vi.fn() });
+  expect(failed).toHaveBeenCalledWith(expect.objectContaining({ message: "Window recovery timed out" }));
+  expect(flush).not.toHaveBeenCalled(); expect(confirmClose).not.toHaveBeenCalled();
 });
