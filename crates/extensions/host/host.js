@@ -731,8 +731,13 @@ const notifications = {
   },
   'host/editorSnapshot': params => require('./editorstate.js').update(host, params),
   'host/editorOptionsChanged': params => {
-    if (state.activeEditor?.path === params.path) Object.assign(state.activeEditor, { tabSize: params.tabSize, insertSpaces: params.insertSpaces });
-    events.fire('editorOptionsChanged', params);
+    const id = params.id || params.editorId;
+    const matches = editor => editor && (id ? editor.id === id : editor.path === params.path);
+    const target = (state.visibleEditors || []).find(matches) || (matches(state.activeEditor) ? state.activeEditor : null);
+    const options = Object.fromEntries(require('./editorstate.js').optionKeys.filter(key => params[key] !== undefined).map(key => [key, params[key]]));
+    if (target) Object.assign(target, options);
+    if (matches(state.activeEditor)) Object.assign(state.activeEditor, options);
+    events.fire('editorOptionsChanged', { ...target, ...params });
   },
   'host/selectionChanged': (params) => {
     if (state.activeEditor && state.activeEditor.path === params.path) {

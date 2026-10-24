@@ -3,6 +3,7 @@ import * as monaco from "monaco-editor";
 import type { ExtensionEditorAction } from "./extensionContributionService";
 import type { HostRange, HostSelection } from "./hostEdits";
 import type { IpcClient } from "./ipc";
+import { CURSOR_STYLES, LINE_NUMBERS as EXTENSION_LINE_NUMBERS, parseEditorOptions, type ExtensionEditorOptions, type ResolvedEditorOptions } from "./extensionEditorOptions";
 import { snippetUsesClipboard } from "./snippetClipboard";
 
 /** The slice of Monaco's editor API this service uses — structural, so tests can pass a fake. */
@@ -21,6 +22,8 @@ export type CodeEditorLike = Partial<
     | "getRawOptions"
     | "getVisibleRanges"
     | "onDidScrollChange"
+    | "getOption"
+    | "onDidChangeConfiguration"
   >
 > &
   Pick<
@@ -39,7 +42,7 @@ export type CodeEditorLike = Partial<
     | "onDidChangeModelOptions"
   >;
 
-export interface VisibleEditorState {
+export interface VisibleEditorState extends ResolvedEditorOptions {
   id: string;
   uri: string;
   groupId?: string;
@@ -340,6 +343,8 @@ export class EditorService {
         this.refreshStatus();
       }),
     ];
+    const configuration = editor.onDidChangeConfiguration?.(refresh);
+    if (configuration) disposables.push(configuration);
     const scroll = editor.onDidScrollChange?.(() => { this.notify(); });
     if (scroll) disposables.push(scroll);
     this.identityOf(editor);
@@ -421,7 +426,7 @@ export class EditorService {
         viewColumn,
         active: editor === this.editor,
         selections: (editor.getSelections() ?? []).map(s => ({ anchorLine: s.selectionStartLineNumber - 1, anchorColumn: s.selectionStartColumn - 1, activeLine: s.positionLineNumber - 1, activeColumn: s.positionColumn - 1 })),
-        tabSize: options.tabSize, insertSpaces: options.insertSpaces,
+        ...this.resolvedOptions(editor, options),
         visibleRanges: (editor.getVisibleRanges?.() ?? []).map(range => ({ startLine: range.startLineNumber - 1, startColumn: range.startColumn - 1, endLine: range.endLineNumber - 1, endColumn: range.endColumn - 1 })),
         selectionKind: identity.selectionKind,
       });
@@ -450,10 +455,19 @@ export class EditorService {
     }));
   }
 
-  /** Tab size and insert-spaces of the model as its editor uses them. */
-  optionsFor(uri: string): { tabSize: number; insertSpaces: boolean } | null {
-    const options = this.editorShowing(uri)?.getModel()?.getOptions();
-    return options ? { tabSize: options.tabSize, insertSpaces: options.insertSpaces } : null;
+  private resolvedOptions(editor: CodeEditorLike, options: monaco.editor.TextModelResolvedOptions): ResolvedEditorOptions {
+    const raw = editor.getRawOptions?.();
+    const cursorStyle = editor.getOption?.(monaco.editor.EditorOption.cursorStyle)
+      ?? CURSOR_STYLES.indexOf(raw?.cursorStyle ?? "line") + 1;
+    const renderType = editor.getOption?.(monaco.editor.EditorOption.lineNumbers).renderType
+      ?? (raw?.lineNumbers === "off" ? 0 : raw?.lineNumbers === "relative" ? 2 : 1);
+    return { tabSize: options.tabSize, indentSize: options.indentSize, insertSpaces: options.insertSpaces,
+      cursorStyle, lineNumbers: renderType === 0 ? 0 : renderType === 2 ? 2 : 1 };
+  }
+
+  optionsFor(uri: string): ResolvedEditorOptions | null {
+    const editor = this.editorShowing(uri), options = editor?.getModel()?.getOptions();
+    return editor && options ? this.resolvedOptions(editor, options) : null;
   }
 
   /** Uses Monaco's snippet session so placeholders and Tab navigation stay native. */
@@ -497,16 +511,23 @@ export class EditorService {
     return true;
   }
 
-  setOptionsFor(uri: string, options: { tabSize?: number | "auto"; insertSpaces?: boolean | "auto" }, editorId?: string): boolean {
-    const model = this.editorShowing(uri, editorId)?.getModel();
-    if (!model) return false;
+  setOptionsFor(uri: string, options: ExtensionEditorOptions, editorId?: string): boolean {
+    options = parseEditorOptions(options);
+    const editor = this.editorShowing(uri, editorId);
+    const model = editor?.getModel();
+    if (!editor || !model) return false;
     if (options.tabSize === "auto" || options.insertSpaces === "auto") {
       const current = model.getOptions();
       model.detectIndentation(typeof options.insertSpaces === "boolean" ? options.insertSpaces : current.insertSpaces, typeof options.tabSize === "number" ? options.tabSize : current.tabSize);
     }
     model.updateOptions({
-      ...(typeof options.tabSize === "number" ? { tabSize: options.tabSize, indentSize: options.tabSize } : {}),
+      ...(typeof options.tabSize === "number" ? { tabSize: options.tabSize } : {}),
       ...(typeof options.insertSpaces === "boolean" ? { insertSpaces: options.insertSpaces } : {}),
+    });
+    if (options.indentSize !== undefined) model.updateOptions({ indentSize: options.indentSize });
+    editor.updateOptions({
+      ...(options.cursorStyle !== undefined ? { cursorStyle: CURSOR_STYLES[options.cursorStyle - 1] } : {}),
+      ...(options.lineNumbers !== undefined ? { lineNumbers: EXTENSION_LINE_NUMBERS[options.lineNumbers] } : {}),
     });
     this.refreshStatus();
     return true;

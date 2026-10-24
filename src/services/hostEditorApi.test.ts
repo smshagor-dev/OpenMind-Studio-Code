@@ -45,7 +45,7 @@ interface Editor {
     isReversed: boolean;
   };
   selections: RangeLike[];
-  options: { tabSize: number; insertSpaces: boolean };
+  options: { tabSize: number; indentSize: number; insertSpaces: boolean; cursorStyle: number; lineNumbers: number };
   edit(callback: (builder: Builder) => void): Promise<boolean>;
   revealRange(range: RangeLike): void;
   setDecorations: () => void;
@@ -187,7 +187,10 @@ describe("activeTextEditor and TextDocument", () => {
     expect(r.api.window.visibleTextEditors).toHaveLength(1);
     expect(r.api.window.activeTextEditor?.options).toEqual({
       tabSize: 2,
+      indentSize: 2,
       insertSpaces: false,
+      cursorStyle: 1,
+      lineNumbers: 1,
     });
   });
 

@@ -20,6 +20,9 @@ export interface HostEditorInfo {
   selections: HostSelection[];
   tabSize: number;
   insertSpaces: boolean;
+  indentSize?: number;
+  cursorStyle?: number;
+  lineNumbers?: number;
 }
 
 export interface HostSyncDeps {
@@ -30,7 +33,7 @@ export interface HostSyncDeps {
   visibleEditors?: () => HostEditorInfo[];
   editorState?: (
     id: string,
-  ) => { selections: HostSelection[]; tabSize: number; insertSpaces: boolean } | null;
+  ) => Pick<HostEditorInfo, "selections" | "tabSize" | "insertSpaces" | "indentSize" | "cursorStyle" | "lineNumbers"> | null;
   /** Subscribes to cursor/selection movement in the editors; returns the unsubscribe function. */
   onSelectionChange?: (listener: () => void) => () => void;
   /** The tab that is active right now (a text tab's id is its document id), so a host that starts later still knows it. */
@@ -112,7 +115,7 @@ export class HostDocumentSync {
     const editor = this.activeEditor();
     this.lastActiveSent = JSON.stringify(editor);
     this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
-    this.lastOptionsSent = JSON.stringify(editor && { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces });
+    this.lastOptionsSent = JSON.stringify(editor && this.editorOptions(editor));
     if (this.deps.visibleEditors) { this.lastEditorSnapshot = ""; this.announceEditors(); }
   }
 
@@ -147,7 +150,7 @@ export class HostDocumentSync {
     if (!force && serialized === this.lastActiveSent) return;
     this.lastActiveSent = serialized;
     this.lastSelectionSent = JSON.stringify(editor?.selections ?? null);
-    this.lastOptionsSent = JSON.stringify(editor && { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces });
+    this.lastOptionsSent = JSON.stringify(editor && this.editorOptions(editor));
     this.deps.notify("host/activeEditorChanged", { editor });
   }
 
@@ -203,7 +206,17 @@ export class HostDocumentSync {
       ],
       tabSize: state?.tabSize ?? 4,
       insertSpaces: state?.insertSpaces ?? true,
+      ...(state?.indentSize !== undefined ? { indentSize: state.indentSize } : {}),
+      ...(state?.cursorStyle !== undefined ? { cursorStyle: state.cursorStyle } : {}),
+      ...(state?.lineNumbers !== undefined ? { lineNumbers: state.lineNumbers } : {}),
     };
+  }
+
+  private editorOptions(editor: HostEditorInfo) {
+    return { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces,
+      ...(editor.indentSize !== undefined ? { indentSize: editor.indentSize } : {}),
+      ...(editor.cursorStyle !== undefined ? { cursorStyle: editor.cursorStyle } : {}),
+      ...(editor.lineNumbers !== undefined ? { lineNumbers: editor.lineNumbers } : {}) };
   }
 
   private scheduleSelection(): void {
@@ -213,7 +226,7 @@ export class HostDocumentSync {
       if (this.deps.visibleEditors) { this.announceEditors(); return; }
       const editor = this.activeEditor();
       if (editor === null) return;
-      const options = { path: editor.path, tabSize: editor.tabSize, insertSpaces: editor.insertSpaces };
+      const options = this.editorOptions(editor);
       const serializedOptions = JSON.stringify(options);
       if (serializedOptions !== this.lastOptionsSent) {
         this.lastOptionsSent = serializedOptions;

@@ -1,3 +1,4 @@
+import { parseEditorOptions } from "./extensionEditorOptions";
 import { ExtensionDecorations } from "./extensionDecorations";
 import type { DocumentService } from "./documentService";
 import type { EditorService } from "./editorService";
@@ -172,11 +173,7 @@ export class ExtensionEditorService {
     const options = record(p.options);
     const uri = this.modelUriOf(str(p.path));
     if (uri === null) return;
-    const tabSize = options.tabSize;
-    const insertSpaces = options.insertSpaces;
-    if (tabSize !== undefined && tabSize !== "auto" && (typeof tabSize !== "number" || !Number.isInteger(tabSize) || tabSize < 1 || tabSize > 1000)) throw new Error("Invalid editor tab size.");
-    if (insertSpaces !== undefined && insertSpaces !== "auto" && typeof insertSpaces !== "boolean") throw new Error("Invalid editor indentation option.");
-    this.deps.editor.setOptionsFor(uri, { tabSize: tabSize, insertSpaces: insertSpaces }, typeof p.editorId === "string" ? p.editorId : undefined);
+    this.deps.editor.setOptionsFor(uri, parseEditorOptions(options), typeof p.editorId === "string" ? p.editorId : undefined);
   }
 
   revealRange(params: unknown): void {
