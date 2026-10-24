@@ -54,6 +54,7 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
     const name = String(options.name || ext.manifest.displayName || ext.manifest.name || 'Extension');
     const cwd = cwdOf(options.cwd);
     let exitStatus;
+    let terminalState = Object.freeze({ isInteractedWith: false });
     let closed = false, ptyOpened = false, ptyClosed = false;
     let dimensions = { columns: 80, rows: 24 }, pendingInput = '';
     const subscriptions = [];
@@ -80,7 +81,7 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
       get exitStatus() {
         return exitStatus;
       },
-      state: { isInteractedWith: false },
+      get state() { return terminalState; },
       shellIntegration: undefined,
       /** Types `text`; with `addNewLine` (the default) it would run, so the user is asked first. */
       async sendText(text, addNewLine = true) {
@@ -111,12 +112,19 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
       if (!state.terminals.has(id)) return;
       state.terminals.delete(id);
       exitStatus = { code, reason: 0 };
+      if (state.activeTerminalId === id) activeTerminalChanged(host, { id: null });
       host.events.fire('terminalClosed', { terminal });
     }
 
     state.terminals.set(id, {
       extension: ext.id,
       terminal,
+      ready: false,
+      stateChanged() {
+        if (closed || terminalState.isInteractedWith) return;
+        terminalState = Object.freeze({ isInteractedWith: true });
+        if (state.terminals.get(id)?.ready) host.events.fire('terminalState', { terminal, extension: ext.id });
+      },
       ptyEvent(params) {
         if (!pty || closed || ptyClosed) return;
         if (params.event === 'close') { terminal.dispose(); return; }
@@ -138,8 +146,13 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
     created.then(
       asExtension(() => {
         if (closed) return;
+        state.terminals.get(id).ready = true;
         host.events.fire('terminalOpened', { terminal });
-        if (!pty) return;
+        if (closed) return;
+        if (state.activeTerminalId === id) host.events.fire('activeTerminal', {});
+        if (closed) return;
+        if (terminalState.isInteractedWith) host.events.fire('terminalState', { terminal, extension: ext.id });
+        if (closed || !pty) return;
         try {
           subscriptions.push(pty.onDidWrite(asExtension(value => {
             if (closed || ptyClosed) return;
@@ -163,6 +176,7 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
       }),
       (error) => {
         state.terminals.delete(id);
+        if (state.activeTerminalId === id) activeTerminalChanged(host, { id: null });
         host.log(ext.id, 'error', `Creating terminal '${name}' failed: ${error && error.message ? error.message : error}`);
       },
     );
@@ -179,6 +193,25 @@ function createTerminalApi({ host, ext, need, track, Disposable, EventEmitter, n
     get terminals() {
       return [...state.terminals.values()].filter((entry) => entry.extension === ext.id).map((entry) => entry.terminal);
     },
+    get activeTerminal() {
+      const entry = state.terminals.get(state.activeTerminalId);
+      return entry?.ready && entry.extension === ext.id ? entry.terminal : undefined;
+    },
+    onDidChangeActiveTerminal(listener, thisArg, disposables) {
+      need('terminal');
+      const current = () => { const entry = state.terminals.get(state.activeTerminalId); return entry?.ready && entry.extension === ext.id ? entry.terminal : undefined; };
+      let previous = current();
+      return track(host.events.on('activeTerminal')(asExtension(() => {
+        const value = current(); if (value === previous) return; previous = value;
+        listener.call(thisArg, value);
+      }), undefined, disposables));
+    },
+    onDidChangeTerminalState(listener, thisArg, disposables) {
+      need('terminal');
+      return track(host.events.on('terminalState')(asExtension(data => {
+        if (data.extension === ext.id) listener.call(thisArg, data.terminal);
+      }), undefined, disposables));
+    },
     onDidOpenTerminal: listen('terminalOpened'),
     onDidCloseTerminal: listen('terminalClosed'),
     EventEmitter,
@@ -191,5 +224,14 @@ function terminalClosed(host, params) {
   if (entry) entry.closed(typeof params.exitCode === 'number' ? params.exitCode : undefined);
 }
 
-module.exports = { createTerminalApi, terminalClosed };
+function activeTerminalChanged(host, params) {
+  if (params.id !== null && typeof params.id !== 'string') return;
+  if (host.state.activeTerminalId === params.id) return;
+  host.state.activeTerminalId = params.id;
+  host.events.fire('activeTerminal', {});
+}
+function terminalStateChanged(host, params) {
+  if (params.isInteractedWith === true) host.state.terminals?.get(params.id)?.stateChanged();
+}
+module.exports = { createTerminalApi, terminalClosed, activeTerminalChanged, terminalStateChanged };
 

@@ -12,6 +12,8 @@ function rig(answers: (string | null)[] = []) {
   let sessions: FakeSession[] = [];
   const listeners = new Set<() => void>();
   let showing = false;
+  let activeId: string | null = null;
+  const inputs = new Set<(id: string, data: string) => void>();
   const emit = () => {
     for (const listener of listeners) listener();
   };
@@ -19,6 +21,7 @@ function rig(answers: (string | null)[] = []) {
     createTerminal: vi.fn(() => {
       const id = `s${String(sessions.length + 1)}`;
       sessions = [...sessions, { id, exited: false, exitCode: null }];
+      activeId = id;
       return Promise.resolve(id);
     }),
     closeTerminal: vi.fn((id: string) => {
@@ -26,9 +29,10 @@ function rig(answers: (string | null)[] = []) {
       emit();
       return Promise.resolve();
     }),
-    write: vi.fn(),
-    setActive: vi.fn(),
-    getState: () => ({ sessions }),
+    write: vi.fn((id: string, data: string) => { for (const input of inputs) input(id, data); }),
+    onInput: (listener: (id: string, data: string) => void) => { inputs.add(listener); return () => { inputs.delete(listener); }; },
+    setActive: vi.fn((id: string) => { activeId = id; emit(); }),
+    getState: () => ({ sessions, activeId }),
     subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -50,6 +54,7 @@ function rig(answers: (string | null)[] = []) {
     confirm,
     notifyHost,
     notice,
+    select: (id: string) => { activeId = id; emit(); },
     exit: (id: string, code: number) => {
       sessions = sessions.map((s) => (s.id === id ? { ...s, exited: true, exitCode: code } : s));
       emit();
@@ -128,5 +133,29 @@ describe("ExtensionTerminalService", () => {
     await r.service.keepOnly(new Set(["other.ext"]));
     expect(r.terminals.closeTerminal).toHaveBeenCalledWith("s1");
     expect(r.service.countFor("pub.ext")).toBe(0);
+  });
+});
+
+
+
+describe("extension terminal focus and interaction", () => {
+  it("announces selected managed terminals, deduplicates changes and clears ordinary or closed selections", async () => {
+    const r = rig(); await r.service.create(base);
+    expect(r.notifyHost).toHaveBeenLastCalledWith("host/activeTerminalChanged", { id: base.id });
+    const count = r.notifyHost.mock.calls.length; r.select("s1"); expect(r.notifyHost).toHaveBeenCalledTimes(count);
+    r.select("ordinary"); expect(r.notifyHost).toHaveBeenLastCalledWith("host/activeTerminalChanged", { id: null });
+    r.select("s1"); r.exit("s1", 0); expect(r.notifyHost).toHaveBeenLastCalledWith("host/activeTerminalChanged", { id: null });
+  });
+  it("only marks real nonempty routed input once, including user input", async () => {
+    const r = rig(); await r.service.create(base); r.notifyHost.mockClear();
+    r.terminals.write("ordinary", "x"); r.terminals.write("s1", ""); expect(r.notifyHost).not.toHaveBeenCalled();
+    r.terminals.write("s1", "typed"); r.terminals.write("s1", "more");
+    expect(r.notifyHost.mock.calls).toEqual([["host/terminalStateChanged", { id: base.id, isInteractedWith: true }]]);
+  });
+  it("does not mark cancelled commands as interaction but marks accepted programmatic text", async () => {
+    const r = rig([null]); await r.service.create(base); r.notifyHost.mockClear();
+    await r.service.sendText({ ...base, text: "cancelled" }); expect(r.notifyHost).not.toHaveBeenCalled();
+    await r.service.sendText({ ...base, text: "accepted", addNewLine: false });
+    expect(r.notifyHost).toHaveBeenCalledWith("host/terminalStateChanged", { id: base.id, isInteractedWith: true });
   });
 });

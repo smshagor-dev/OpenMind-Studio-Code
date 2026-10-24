@@ -1388,9 +1388,9 @@ function createApi(host, ext) {
     get terminals() {
       return terminals.terminals;
     },
-    get activeTerminal() {
-      return undefined;
-    },
+    get activeTerminal() { return terminals.activeTerminal; },
+    onDidChangeActiveTerminal: terminals.onDidChangeActiveTerminal,
+    onDidChangeTerminalState: terminals.onDidChangeTerminalState,
     onDidOpenTerminal: terminals.onDidOpenTerminal,
     onDidCloseTerminal: terminals.onDidCloseTerminal,
     registerWebviewViewProvider: webviews.registerWebviewViewProvider,

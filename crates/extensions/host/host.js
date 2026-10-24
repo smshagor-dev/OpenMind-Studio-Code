@@ -23,7 +23,7 @@ const { createApi, disposeApi, setUnsupportedReporter } = require('./vscode.js')
 const { createGuard, permissionError, modulePermission } = require('./guard.js');
 const { handleTreeRequest } = require('./treeviews.js');
 const { resolveWebviewView } = require('./webviews.js');
-const { terminalClosed } = require('./terminals.js');
+const { terminalClosed, activeTerminalChanged, terminalStateChanged } = require('./terminals.js');
 const { provideAll, taskEvent } = require('./tasks.js');
 const { handleFsRequest } = require('./fsprovider.js');
 
@@ -764,6 +764,8 @@ const notifications = {
   'host/webviewMessage': (params) => events.fire('webviewMessage', params),
   'host/webviewDisposed': (params) => events.fire('webviewDisposed', params),
   'host/webviewViewState': (params) => events.fire('webviewViewState', params),
+  'host/activeTerminalChanged': params => activeTerminalChanged(host, params),
+  'host/terminalStateChanged': params => terminalStateChanged(host, params),
   'host/terminalClosed': (params) => terminalClosed(host, params),
   'host/ptyEvent': params => { const entry = state.terminals?.get(params.id); if (entry && entry.extension === params.extension) als.run(entry.extension, () => entry.ptyEvent?.(params)); },
   'host/filesChanged': (params) => events.fire('filesChanged', params),
