@@ -1329,6 +1329,8 @@ function createApi(host, ext) {
       filters: options.filters && Object.entries(options.filters).map(([name, extensions]) => ({ name, extensions })) };
   }
   const window = namespace('window', {
+    get state() { return state.windowState || Object.freeze({ focused: false }); },
+    onDidChangeWindowState: (listener, thisArg, disposables) => track(host.events.on('windowState')(asExtension(value => listener.call(thisArg, value)), undefined, disposables)),
     createTextEditorDecorationType: editors.createTextEditorDecorationType,
     setStatusBarMessage,
     get activeColorTheme() { return colorTheme(); },

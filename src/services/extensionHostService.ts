@@ -1,3 +1,4 @@
+import { ExtensionWindowState, type WindowFocusSource } from "./extensionWindowState";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { HostBridge } from "./extensionHostBridge";
@@ -25,6 +26,7 @@ export interface HostServiceDeps {
   sync: HostDocumentSync;
   settingsValues: () => Record<string, unknown>;
   colorTheme?: () => string;
+  windowFocus?: WindowFocusSource;
   workspaceFolders: () => { path: string; name: string }[];
   /** The "Extensions" Output channel. */
   log?: (line: string) => void;
@@ -51,7 +53,11 @@ export class ExtensionHostService {
   private autoRestarts = 0;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private readonly deps: HostServiceDeps) {}
+  private readonly windowState: ExtensionWindowState | undefined;
+
+  constructor(private readonly deps: HostServiceDeps) {
+    if (deps.windowFocus) this.windowState = new ExtensionWindowState(deps.windowFocus, focused => { this.tell("host/windowStateChanged", { focused }); });
+  }
 
   /** What the backend says the host is doing (the registry's snapshot, or the latest event). */
   status(): ExtensionHostStatus {
@@ -70,6 +76,8 @@ export class ExtensionHostService {
   async initialize(): Promise<void> {
     this.dispose();
     const { ipc, events } = this.deps;
+    try { await this.windowState?.start(); }
+    catch (error) { this.log(`Window focus tracking unavailable: ${String(error)}`); }
     try {
       this.offs.push(
         await ipc.onExtHostRequest((request) => {
@@ -99,6 +107,7 @@ export class ExtensionHostService {
   }
 
   dispose(): void {
+    this.windowState?.stop();
     if (this.restartTimer !== null) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
@@ -175,6 +184,7 @@ export class ExtensionHostService {
       const status = await ipc.extHostStart({
         configuration: this.deps.settingsValues(),
         colorTheme: this.deps.colorTheme?.(),
+        ...(this.windowState ? { windowState: { focused: this.windowState.focused } } : {}),
         workspaceFolders: this.deps.workspaceFolders(),
         documents: initial.documents,
         activeEditor: initial.activeEditor,
@@ -184,6 +194,7 @@ export class ExtensionHostService {
       this.setStatus(status);
       this.log(`Extension host started: ${status.node ?? "Node.js"} (pid ${String(status.pid ?? 0)}).`);
       sync.start();
+      if (this.windowState) this.tell("host/windowStateChanged", { focused: this.windowState.focused });
       return true;
     } catch (error) {
       events.emit("appError", { message: String(error).replace(/^Error: /, "") });
