@@ -231,6 +231,14 @@ export function wireExtensions(deps: ExtensionsWiringDeps) {
         isDirty: false,
       };
     },
+    setDocumentLanguage: async (path, language) => {
+      const id = documents.idForHostPath(path) ?? await documents.openFromPath(path);
+      sync.flush();
+      documents.setLanguage(id, language);
+      const data = sync.describe(id);
+      if (!data) throw new Error("The document is no longer open.");
+      return data;
+    },
     languageIds: deps.languageIds,
     updateConfiguration: async (key, value, target) => {
       const result =

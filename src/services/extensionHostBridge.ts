@@ -157,6 +157,7 @@ export interface BridgeDeps {
   openVirtualTextDocument?: (uri: string, content: string, language: string, readonly: boolean, version: number) => HostDocument;
   createUntitled?: (content: string, language: string, named?: { uri: string; associatedPath?: string }) => HostDocument;
   readDocument: (path: string) => Promise<HostDocument | null>;
+  setDocumentLanguage?: (path: string, language: string) => Promise<HostDocument>;
   languageIds: () => string[];
   updateConfiguration: (
     key: string,
@@ -325,6 +326,12 @@ export class HostBridge {
         if (document === null)
           throw new Error(`Couldn't open ${text(p.path)}.`);
         return document;
+      }
+      case "workspace/setDocumentLanguage": {
+        if (typeof p.path !== "string" || !p.path || typeof p.languageId !== "string" || !this.deps.languageIds().includes(p.languageId)) {
+          throw new Error("Unknown document language.");
+        }
+        return this.need(this.deps.setDocumentLanguage, "Document language changes")(p.path, p.languageId);
       }
       case "workspace/getLanguages":
         return this.deps.languageIds();

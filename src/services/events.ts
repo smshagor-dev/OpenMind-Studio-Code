@@ -13,6 +13,8 @@ export interface AppEvents extends Record<string, unknown> {
   documentSaved: { id: string; path: string };
   /** A document now exists (its text is loaded and it can be edited). */
   documentOpened: { id: string };
+  /** An open model switched its language without changing its text. */
+  documentLanguageChanged: { id: string; from: string };
   /** An open document's file now lives at `to` (Save As, or a rename/move from the Explorer or on disk). */
   documentPathChanged: { id: string; from: string | null; to: string };
   /** A document is about to go away; `path` is where its file was, if it had one. */
@@ -59,3 +61,4 @@ export interface AppEvents extends Record<string, unknown> {
   /** Open the "Configure Run Command" dialog for the active file type. */
   showRunConfiguration: undefined;
 }
+

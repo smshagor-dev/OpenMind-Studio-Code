@@ -560,6 +560,7 @@ describe("HostBridge: editor and status bar messages", () => {
       revealRange: vi.fn(),
     };
     const status: [string, unknown][] = [];
+    const setLanguage = vi.fn().mockResolvedValue({ path: FILE, languageId: "plaintext" });
     const opening = { show: vi.fn().mockResolvedValue({ editorId: "chosen" }), cancel: vi.fn(), reset: vi.fn() };
     const b = new HostBridge({
       prompts: new ExtensionPromptService(),
@@ -568,7 +569,8 @@ describe("HostBridge: editor and status bar messages", () => {
       showOutput: () => undefined,
       openExternal: () => Promise.resolve(),
       readDocument: () => Promise.resolve(null),
-      languageIds: () => [],
+      languageIds: () => ["plaintext"],
+      setDocumentLanguage: setLanguage,
       updateConfiguration: () => Promise.resolve(),
       registerProvider: () => () => undefined,
       setDiagnostics: () => undefined,
@@ -581,8 +583,18 @@ describe("HostBridge: editor and status bar messages", () => {
       resetDocumentOpening: opening.reset,
       onStatusBarEvent: (method, params) => status.push([method, params]),
     });
-    return { b, editorApi, status, opening };
+    return { b, editorApi, status, opening, setLanguage };
   }
+
+  it("validates language IDs before requesting a model mutation", async () => {
+    const { b, setLanguage } = bridge();
+    for (const p of [{ path: FILE, languageId: "unknown" }, { path: FILE, languageId: 1 }, { path: "", languageId: "plaintext" }]) {
+      await expect(b.handleRequest("workspace/setDocumentLanguage", p)).rejects.toThrow("Unknown document language");
+    }
+    expect(setLanguage).not.toHaveBeenCalled();
+    await expect(b.handleRequest("workspace/setDocumentLanguage", { path: FILE, languageId: "plaintext" })).resolves.toMatchObject({ languageId: "plaintext" });
+    expect(setLanguage).toHaveBeenCalledWith(FILE, "plaintext");
+  });
 
   it("validates show options, returns the requested pane and flushes its snapshot before replying", async () => {
     const { b, editorApi, opening } = bridge();
@@ -640,3 +652,24 @@ describe("HostBridge: editor and status bar messages", () => {
   });
 });
 
+
+describe("document language lifecycle", () => {
+  it("changes the real model without losing pending dirty text, and suppresses identical changes", async () => {
+    const r = documentsRig();
+    const id = await r.documents.openFromPath(FILE);
+    r.sync.start();
+    r.sent.length = 0;
+    (await import("monaco-editor")).languages.register({ id: "openmind-test-language" });
+    r.buffers.setValue(id, "unsaved text");
+    r.documents.setLanguage(id, "openmind-test-language");
+    expect(r.documents.languageOf(id)).toBe("openmind-test-language");
+    expect(r.documents.contentOf(id)).toBe("unsaved text");
+    expect(r.sent.map(([method]) => method)).toEqual(["host/documentChanged", "host/documentLanguageChanged"]);
+    expect(r.sent[0]?.[1]).toMatchObject({ languageId: "plaintext", text: "unsaved text" });
+    expect(r.sent[1]?.[1]).toMatchObject({ languageId: "openmind-test-language", text: "unsaved text", isDirty: true });
+    r.sent.length = 0;
+    r.documents.setLanguage(id, "openmind-test-language");
+    expect(r.sent).toEqual([]);
+    r.sync.stop(); r.buffers.disposeAll();
+  });
+});
