@@ -54,11 +54,12 @@ function create({ host, ext, need, track, Disposable, editors, guessLanguage }) 
     if (typeof provider?.provideTextDocumentContent !== 'function') throw new Error('A text document content provider needs provideTextDocumentContent().');
     const entry = { id: randomUUID(), extension: ext.id, scheme, provider, active: true, requests: new Map(), revisions: new Map() };
     state.textContentProviders.set(scheme, entry);
-    for (const data of state.documents.values()) if (data.native && data.virtual && data.readonly && data.path.startsWith(scheme + '://')) data.contentProvider = entry.id;
     let subscription;
     try {
       if (provider.onDidChange) subscription = owned(entry, () => provider.onDidChange(uri => { void owned(entry, () => refresh(entry, uri)); }));
     } catch (error) { entry.active = false; state.textContentProviders.delete(scheme); throw error; }
+    // Adopt only after subscription succeeds so a failed registration cannot steal restored documents.
+    for (const data of state.documents.values()) if (data.native && data.virtual && data.readonly && data.path.startsWith(scheme + '://')) data.contentProvider = entry.id;
     return track(new Disposable(() => owned(entry, () => {
       if (!entry.active) return;
       entry.active = false;
