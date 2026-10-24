@@ -7,7 +7,7 @@ pub struct SessionOptions {
     pub effort: String,
     pub context_tokens: u32,
     pub max_output_tokens: u32,
-    /// Per-request llama.cpp thinking budget (0 means no reasoning, if supported by the model/template).
+    /// Per-request thinking budget; zero delegates to the inference server.
     pub reasoning_budget_tokens: u32,
     pub max_steps: usize,
     pub max_continuations: usize,
@@ -27,8 +27,8 @@ impl Default for SessionOptions {
         Self {
             effort: "medium".into(),
             context_tokens: 0,
-            max_output_tokens: 4_096,
-            reasoning_budget_tokens: 1_024,
+            max_output_tokens: 0,
+            reasoning_budget_tokens: 0,
             max_steps: 128,
             max_continuations: 8,
             temperature: 0.6,
@@ -54,16 +54,18 @@ impl SessionOptions {
         } else {
             self.context_tokens.clamp(1_024, ceiling)
         };
-        self.max_output_tokens = self
-            .max_output_tokens
-            .clamp(256, 32_768)
-            .min(self.context_tokens / 2);
+        // Zero delegates output length to the inference server. Explicit budgets
+        // remain constrained by the real model allocation, without a fixed app cap.
+        if self.max_output_tokens != 0 {
+            self.max_output_tokens = self.max_output_tokens.min(self.context_tokens / 2);
+        }
         // max_tokens includes reasoning as well as answer tokens. Preserve at
         // least 512 tokens for a visible answer and complete tool-call JSON.
-        self.reasoning_budget_tokens = self
-            .reasoning_budget_tokens
-            .min(8_192)
-            .min(self.max_output_tokens.saturating_sub(512));
+        if self.max_output_tokens != 0 {
+            self.reasoning_budget_tokens = self
+                .reasoning_budget_tokens
+                .min(self.max_output_tokens.saturating_sub(512));
+        }
         self.max_steps = self.max_steps.clamp(8, 512);
         self.after_edit_command = self.after_edit_command.trim().to_string();
         if self.after_edit_command.len() > 2_000
@@ -86,14 +88,14 @@ impl SessionOptions {
 mod tests {
     use super::*;
     #[test]
-    fn automatic_defaults_to_real_engine_window_and_caps_output() {
+    fn automatic_context_uses_real_engine_window_and_server_managed_output() {
         let small = SessionOptions::default().bounded(8_192);
         assert_eq!(small.context_tokens, 8_192);
-        assert_eq!(small.max_output_tokens, 4_096);
+        assert_eq!(small.max_output_tokens, 0);
         let larger = SessionOptions::default().bounded(32_768);
         assert_eq!(larger.context_tokens, 32_768);
-        assert_eq!(larger.max_output_tokens, 4_096);
-        assert_eq!(larger.reasoning_budget_tokens, 1_024);
+        assert_eq!(larger.max_output_tokens, 0);
+        assert_eq!(larger.reasoning_budget_tokens, 0);
     }
 
     #[test]
@@ -111,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn callers_cannot_overallocate_the_models_context_or_remove_limits() {
+    fn explicit_budgets_cannot_overallocate_the_models_context() {
         let options = SessionOptions {
             context_tokens: 1_000_000,
             max_output_tokens: 1_000_000,
@@ -139,7 +141,7 @@ mod tests {
 
         let off = SessionOptions {
             reasoning_budget_tokens: 0,
-            max_output_tokens: 4_096,
+            max_output_tokens: 0,
             ..Default::default()
         }
         .bounded(32_768);
@@ -151,7 +153,7 @@ mod tests {
             ..Default::default()
         }
         .bounded(65_536);
-        assert_eq!(maximum.reasoning_budget_tokens, 8_192);
+        assert_eq!(maximum.reasoning_budget_tokens, 32_256);
         assert_eq!(maximum.max_output_tokens, 32_768);
     }
 
@@ -160,8 +162,9 @@ mod tests {
         let options: SessionOptions =
             serde_json::from_str(r#"{"contextTokens":0,"maxOutputTokens":16384,"effort":"high"}"#)
                 .expect("legacy options deserialize");
-        assert_eq!(options.reasoning_budget_tokens, 1_024);
+        assert_eq!(options.reasoning_budget_tokens, 0);
         // Keep a user's pre-existing output preference rather than overwriting it.
         assert_eq!(options.bounded(32_768).max_output_tokens, 16_384);
     }
 }
+

@@ -3,12 +3,16 @@ import { agent } from "../../services/agent";
 import { CloudSetup } from "../agent/AgentSetup";
 
 import { container } from "../../services/container";
-import { PROVIDER_KIND_LABELS, type AiProviderView } from "../../services/ai/aiProviderService";
+import {
+  PROVIDER_KIND_LABELS,
+  type AiProviderView,
+} from "../../services/ai/aiProviderService";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { t } from "../../i18n";
 
 function statusOf(provider: AiProviderView): string {
-  if (!provider.available) return provider.unavailableReason ?? t("ai.unavailable");
+  if (!provider.available)
+    return provider.unavailableReason ?? t("ai.unavailable");
   return container.ai.providers.configIssue(provider) ?? t("ai.ready");
 }
 
@@ -30,10 +34,18 @@ function ProviderSummary({
     <>
       <div className="ai-provider__head">
         <strong className="ai-provider__name">{provider.name}</strong>
-        <span className={provider.local ? "ai-badge ai-badge--local" : "ai-badge ai-badge--online"}>
+        <span
+          className={
+            provider.local
+              ? "ai-badge ai-badge--local"
+              : "ai-badge ai-badge--online"
+          }
+        >
           {provider.local ? t("ai.local") : t("ai.online")} · {provider.host}
         </span>
-        {isDefault ? <span className="ai-badge">{t("keys.source.default")}</span> : null}
+        {isDefault ? (
+          <span className="ai-badge">{t("keys.source.default")}</span>
+        ) : null}
       </div>
       <p className="ai-provider__meta">
         {PROVIDER_KIND_LABELS[provider.kind]}
@@ -48,7 +60,9 @@ function ProviderSummary({
       </p>
       {test && test.status !== "idle" ? (
         <p
-          className={test.status === "failed" ? "ai-note ai-note--error" : "ai-note"}
+          className={
+            test.status === "failed" ? "ai-note ai-note--error" : "ai-note"
+          }
           role="status"
         >
           {test.status === "testing" ? t("ai.testing") : test.message}
@@ -107,9 +121,7 @@ function ProviderActions({ provider, isDefault, onDelete }: ActionsProps) {
         type="button"
         className="ai-link"
         disabled={isDefault || !provider.available}
-        title={
-          isDefault ? t("ai.alreadyDefault") : t("ai.defaultTitle")
-        }
+        title={isDefault ? t("ai.alreadyDefault") : t("ai.defaultTitle")}
         onClick={() => {
           void providers.setDefault(provider.id);
         }}
@@ -133,12 +145,20 @@ function ProviderActions({ provider, isDefault, onDelete }: ActionsProps) {
   );
 }
 
-function ProviderRow(props: { provider: AiProviderView; onDelete: (id: string) => void }) {
-  const isDefault = container.settings.string("ai.defaultProvider", "") === props.provider.id;
+function ProviderRow(props: {
+  provider: AiProviderView;
+  onDelete: (id: string) => void;
+}) {
+  const isDefault =
+    container.settings.string("ai.defaultProvider", "") === props.provider.id;
   return (
     <li className="ai-provider">
       <ProviderSummary provider={props.provider} isDefault={isDefault} />
-      <ProviderActions provider={props.provider} isDefault={isDefault} onDelete={props.onDelete} />
+      <ProviderActions
+        provider={props.provider}
+        isDefault={isDefault}
+        onDelete={props.onDelete}
+      />
     </li>
   );
 }
@@ -158,14 +178,6 @@ function ListButtons({ onClear }: { onClear: () => void }) {
       <button type="button" onClick={onClear}>
         {t("ai.clearHistory")}
       </button>
-      <button
-        type="button"
-        onClick={() => {
-          container.ai.ui.closeManager();
-        }}
-      >
-        {t("common.close")}
-      </button>
     </div>
   );
 }
@@ -176,29 +188,42 @@ export function ProviderList() {
     (listener) => container.ai.providers.subscribe(listener),
     () => container.ai.providers.getVersion(),
   );
-  const cloudState = useSyncExternalStore((listener) => agent.subscribe(listener), () => agent.getState());
+  const cloudState = useSyncExternalStore(
+    (listener) => agent.subscribe(listener),
+    () => agent.getState(),
+  );
   const [deleting, setDeleting] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const providers = container.ai.providers.all();
-  const doomed = deleting === null ? undefined : container.ai.providers.find(deleting);
+  const doomed =
+    deleting === null ? undefined : container.ai.providers.find(deleting);
   return (
     <>
-      <p className="ai-intro">
-        {t("ai.intro")}
-      </p>
-      {providers.length === 0 ? (
-        <p className="ai-note">{t("ai.noProviders")}</p>
-      ) : (
-        <ul className="ai-providers">
-          {providers.map((provider) => (
-            <ProviderRow key={provider.id} provider={provider} onDelete={setDeleting} />
-          ))}
-        </ul>
-      )}
-      <section className="ai-provider" aria-label="OpenMindAI Cloud" style={{ marginTop: 16, padding: 16 }}>
-        <h3>OpenMindAI Cloud</h3>
-        <p className="ai-intro">Cloud API connection, encrypted developer key, connection test and available models. Local AI remains independent.</p>
+      <section className="ai-cloud-card" aria-label="OpenMind ai Cloud">
         <CloudSetup cloud={cloudState.cloud} modelId={cloudState.modelId} />
+      </section>
+      <section
+        className="ai-manager__providers"
+        aria-labelledby="ai-custom-providers"
+      >
+        <div className="ai-manager__section-heading">
+          <h3 id="ai-custom-providers">{t("ai.cloud.otherProviders")}</h3>
+          <span className="ai-badge">{providers.length}</span>
+        </div>
+        <p className="ai-intro">{t("ai.intro")}</p>
+        {providers.length === 0 ? (
+          <p className="ai-provider-empty">{t("ai.noProviders")}</p>
+        ) : (
+          <ul className="ai-providers">
+            {providers.map((provider) => (
+              <ProviderRow
+                key={provider.id}
+                provider={provider}
+                onDelete={setDeleting}
+              />
+            ))}
+          </ul>
+        )}
       </section>
       <ListButtons
         onClear={() => {

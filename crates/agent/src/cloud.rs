@@ -52,10 +52,9 @@ pub fn is_cloud_model(id: &str) -> bool {
     cloud_model(id).is_some()
 }
 
-/// A conservative context window to report for a cloud model until a real answer says otherwise: the
-/// OpenAI-compatible `/models` response carries no context-length field, so this is an assumption, not a
-/// value read from the server. Matches the local engine's mid-sized automatic tier (see `engine.rs`).
-pub const DEFAULT_CLOUD_CONTEXT_TOKENS: u32 = 65_536;
+/// Zero means the hosted provider manages the context window; `/models` does not
+/// reliably report it. Never impose a guessed desktop context ceiling on cloud input.
+pub const DEFAULT_CLOUD_CONTEXT_TOKENS: u32 = 0;
 
 /// Builds the (secret-free) provider configuration used only to reuse `openmind_ai`'s validated
 /// OpenAI-compatible request builders and transport. Never persisted as an `openmind_ai` provider — the
@@ -232,3 +231,4 @@ mod tests {
         assert!(matches!(err, AiError::Provider { status: 401, .. }));
     }
 }
+

@@ -46,7 +46,7 @@ export class AgentTasks {
     for (const raw of value.slice(-100)) {
       if (!raw || typeof raw !== "object") continue;
       const t = raw as Record<string, unknown>;
-      if (typeof t.id !== "string" || !t.id || t.id.length > 128 || tasks.some((item) => item.id === t.id) || typeof t.text !== "string" || t.text.length > 100000 || typeof t.modelId !== "string") continue;
+      if (typeof t.id !== "string" || !t.id || t.id.length > 128 || tasks.some((item) => item.id === t.id) || typeof t.text !== "string" || typeof t.modelId !== "string") continue;
       if (t.mode !== "ask" && t.mode !== "acceptEdits" && t.mode !== "auto" && t.mode !== "plan") continue;
       const terminal = t.status === "completed" || t.status === "cancelled" || t.status === "failed";
       tasks.push({ attachments: Array.isArray(t.attachments) ? t.attachments.slice(0, 6).filter(attachment) : [], id: t.id, text: t.text, modelId: t.modelId, mode: t.mode,
@@ -119,3 +119,4 @@ export class AgentTasks {
   resume(): void { this.set({ paused: false }); void this.pump(); }
   clear(): void { this.abort?.abort(); this.set(EMPTY_TASKS); }
 }
+

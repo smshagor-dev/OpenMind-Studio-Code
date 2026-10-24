@@ -4,7 +4,6 @@ import type { FilePreviewDoc } from "../filePreviewService";
 import type { LayoutService } from "../layoutService";
 import type { AiChatService } from "./aiChatService";
 import {
-  MAX_ACTION_CHARS,
   docsPrompt,
   explainPrompt,
   fixPrompt,
@@ -69,14 +68,14 @@ export class AiActionsService {
       case "terminal": {
         const text = this.source.terminalSelection();
         if (text.trim() === "") return "Select the terminal output to explain first.";
-        return text.length > MAX_ACTION_CHARS ? this.tooLarge(text.length) : null;
+        return null;
       }
       case "preview": {
         const doc = this.source.activePreview();
         if (doc === null) return "Open a file preview first.";
         const { text, reason } = previewText(doc);
         if (text === null) return reason;
-        return text.length > MAX_ACTION_CHARS ? this.tooLarge(text.length) : null;
+        return null;
       }
     }
   }
@@ -87,11 +86,7 @@ export class AiActionsService {
     if (active === "none") return "Open a text file and select some code first.";
     const selection = this.source.selection();
     if (selection === null || selection.text.trim() === "") return "Select some code first.";
-    return selection.text.length > MAX_ACTION_CHARS ? this.tooLarge(selection.text.length) : null;
-  }
-
-  private tooLarge(chars: number): string {
-    return `That is too much text to send at once (${chars.toLocaleString()} characters; the limit is ${MAX_ACTION_CHARS.toLocaleString()}).`;
+    return null;
   }
 
   async run(kind: AiActionKind): Promise<void> {
@@ -145,3 +140,4 @@ export class AiActionsService {
     return this.source.insertAtCursor(text);
   }
 }
+

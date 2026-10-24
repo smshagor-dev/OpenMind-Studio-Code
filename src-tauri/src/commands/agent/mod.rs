@@ -243,16 +243,8 @@ pub async fn agent_send(
     agent: State<'_, AgentRuntime>,
 ) -> Result<(), String> {
     let text = request.text.trim().to_string();
-    if text.len() > 100000
-        || request.task_id.as_ref().is_some_and(|id| id.len() > 128)
+    if request.task_id.as_ref().is_some_and(|id| id.len() > 128)
         || request.attachments.len() > 6
-        || request.history.len() > 80
-        || request
-            .history
-            .iter()
-            .map(|m| m.content.len())
-            .sum::<usize>()
-            > 8 * 1024 * 1024
         || request
             .conversation_id
             .as_ref()
@@ -729,3 +721,4 @@ mod reset_tests {
         assert!(!chat.busy.load(Ordering::SeqCst));
     }
 }
+

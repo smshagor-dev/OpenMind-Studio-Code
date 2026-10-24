@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use crate::error::AiError;
 
 const MAX_MESSAGES: usize = 2000;
-const MAX_CONTENT: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,12 +92,7 @@ impl ConversationStore {
         if conversation.id.is_empty() || conversation.id.len() > 80 {
             return Err(AiError::Storage("The conversation id is not valid.".into()));
         }
-        if conversation.messages.len() > MAX_MESSAGES
-            || conversation
-                .messages
-                .iter()
-                .any(|m| m.content.len() > MAX_CONTENT)
-        {
+        if conversation.messages.len() > MAX_MESSAGES {
             return Err(AiError::Storage(
                 "The conversation is too large to save.".into(),
             ));
@@ -308,11 +302,16 @@ mod tests {
     }
 
     #[test]
-    fn oversized_or_unnamed_conversations_are_refused() {
+    fn long_messages_are_preserved_and_unnamed_conversations_are_refused() {
         let (_dir, store) = store();
         let mut big = conversation("a", 1);
-        big.messages[0].content = "x".repeat(MAX_CONTENT + 1);
-        assert!(store.save(&big).is_err());
+        big.messages[0].content = "বাংলা".repeat(300_000);
+        store.save(&big).expect("long prompt saves");
+        assert_eq!(
+            store.load("a").expect("load").expect("saved").messages[0].content,
+            big.messages[0].content
+        );
         assert!(store.save(&conversation("", 1)).is_err());
     }
 }
+

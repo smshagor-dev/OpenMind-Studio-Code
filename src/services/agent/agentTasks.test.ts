@@ -44,7 +44,7 @@ describe("task controller", () => {
     expect(queue.enqueue(task("overflow"))).toBe(false);
   });
   it("validates persisted options without trusting strings or nonfinite values", () => {
-    expect(agentOptions({ maxSteps: Infinity, maxOutputTokens: 1000000, autoRunQueue: "true", temperature: -1 })).toMatchObject({ maxSteps: 128, maxOutputTokens: 32768, autoRunQueue: true, temperature: 0 });
+    expect(agentOptions({ maxSteps: Infinity, maxOutputTokens: 1000000, autoRunQueue: "true", temperature: -1 })).toMatchObject({ maxSteps: 128, maxOutputTokens: 1000000, autoRunQueue: true, temperature: 0 });
   });
 });
 
@@ -76,4 +76,14 @@ it("restoring history never turns a removed prompt into an interrupted task", ()
   const { queue } = setup();
   queue.restore([{ ...task("stopped"), status: "cancelled", reason: "cancelled" }, { ...task("removed"), status: "cancelled", reason: null }]);
   expect(lastInterruptedTask(queue.getState().tasks)?.id).toBe("stopped");
+});
+
+
+it("restores large pending prompts and text attachments intact", () => {
+  const { queue } = setup();
+  const text = "বাংলা\n".repeat(40_000);
+  queue.restore([{ ...task("large"), text, attachments: [{ id: "source", name: "large.txt", text }] }]);
+  expect(queue.getState().tasks[0]?.text).toBe(text);
+  expect(queue.getState().tasks[0]?.attachments?.[0]?.text).toBe(text);
+  expect(queue.getState().paused).toBe(true);
 });

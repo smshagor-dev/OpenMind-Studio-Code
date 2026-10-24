@@ -92,7 +92,7 @@ describe("AiProviderManager", () => {
     });
     ui.openManager();
     render(<AiProviderManager />);
-    const dialog = screen.getByRole("dialog", { name: "AI Providers" });
+    const dialog = screen.getByRole("dialog", { name: "OpenMind ai Cloud" });
     expect(within(dialog).getByText(/Online · api\.example\.com/)).toBeInTheDocument();
     expect(within(dialog).getByText(/API key saved/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Local · 127\.0\.0\.1/)).toBeInTheDocument();
@@ -524,3 +524,4 @@ describe("AiView", () => {
     expect(await screen.findByText(/This conversation is long/)).toBeInTheDocument();
   });
 });
+

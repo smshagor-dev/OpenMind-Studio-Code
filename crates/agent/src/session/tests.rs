@@ -320,7 +320,7 @@ fn reasoning_budget_is_sent_on_every_model_request() {
 }
 
 #[test]
-fn disabled_reasoning_still_sends_zero_budget() {
+fn automatic_reasoning_omits_the_budget_instead_of_disabling_thinking() {
     let project = Project::new();
     let model = Script::new(vec![say("Direct answer")]);
     let panel = Panel::new(vec![]);
@@ -332,7 +332,8 @@ fn disabled_reasoning_still_sends_zero_budget() {
     s.run_turn("Reply", &model, &panel, &project.input());
     assert_eq!(panel.end(), "done");
     let requests = model.requests.lock().expect("lock");
-    assert_eq!(requests[0]["thinking_budget_tokens"], 0);
+    assert!(requests[0].get("thinking_budget_tokens").is_none());
+    assert!(requests[0].get("max_tokens").is_none());
 }
 
 #[test]
@@ -993,3 +994,24 @@ fn plan_exposes_search_but_excludes_image_generation() {
 }
 
 mod guard_turns;
+
+#[test]
+fn hosted_context_preserves_large_input_and_omits_local_generation_limits() {
+    let project = Project::new();
+    let model = Script::new(vec![say("Read the entire prompt")]);
+    let panel = Panel::new(vec![]);
+    let mut s = session(Mode::Ask);
+    let prompt = "বাংলা input\n".repeat(40_000);
+    s.use_provider_context();
+    s.run_turn(&prompt, &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let requests = model.requests.lock().expect("requests");
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].get("max_tokens").is_none());
+    assert!(requests[0].get("thinking_budget_tokens").is_none());
+    assert!(requests[0]["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .any(|message| message["content"] == prompt));
+}

@@ -114,13 +114,18 @@ export function LocalSection({ overview, downloads, modelId, installing }: {
 /** Where a user gets their own OpenMindAI Cloud API key (the OpenMindAI developer portal, hosted at api.openmindai.org). */
 const CLOUD_KEY_SIGNUP_URL = "https://api.openmindai.org/";
 
-/** The whole Online tab, in both the Setup dialog (model chip / "Configure now") and the Settings dialog
- * (gear icon) — one real page, not fragments: the connection (address/key/test) and the model choice
- * together, since one key is what unlocks all three published models. Earlier this showed three
- * near-identical cards (same description, same "Runs on OpenMindAI Cloud" text) with their own "Use"
- * button each, as if they were three separate downloads like the local editions — they are not: a single
- * key enables all of them server-side, so the model is one dropdown, not three cards. */
-export function CloudSetup({ cloud }: { cloud: CloudStatus | null | undefined; modelId?: string | null }) {
+async function cloudOperation(operation: Promise<void>): Promise<void> {
+  await operation;
+  const error = agent.getState().cloudError;
+  if (error) throw new Error(error);
+}
+
+export function CloudSetup({
+  cloud,
+}: {
+  cloud: CloudStatus | null | undefined;
+  modelId?: string | null;
+}) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -134,94 +139,231 @@ export function CloudSetup({ cloud }: { cloud: CloudStatus | null | undefined; m
 
   useEffect(() => {
     let active = true;
-    void agent.loadCloudStatus().then(() => {
-      if (!active) return;
-      const next = agent.getState().cloud;
-      if (next) setBaseUrlDraft((prev) => prev || next.baseUrl);
-    });
-    return () => { active = false; };
+    void agent
+      .loadCloudStatus()
+      .then(() => {
+        if (!active) return;
+        const state = agent.getState();
+        const next = state.cloud;
+        if (next) setBaseUrlDraft((prev) => prev || next.baseUrl);
+        if (state.cloudError) setError(state.cloudError);
+      })
+      .catch((err: unknown) => {
+        if (active) setError(String(err));
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
-  if (!cloud) return <p className="agent-model__progress-text">{t("agent.loading")}</p>;
+  if (!cloud)
+    return error ? (
+      <p className="ai-note ai-note--error" role="alert">
+        {error}
+      </p>
+    ) : (
+      <p className="agent-model__progress-text" role="status">
+        {t("agent.loading")}
+      </p>
+    );
 
   return (
     <fieldset className="agent-cloud-settings">
       <legend>{t("agent.cloud.settings.title")}</legend>
-      <p className="agent-cloud-settings__description">{t("agent.cloud.settings.description")}</p>
-      <label className="agent-cloud-settings__key-row">
+      <div className="agent-cloud-settings__overview">
+        <p className="agent-cloud-settings__description">
+          {t("agent.cloud.settings.description")}
+        </p>
+        <span
+          className={`ai-cloud-status${cloud.hasKey ? " ai-cloud-status--saved" : ""}`}
+        >
+          <span aria-hidden="true" />
+          {t(
+            cloud.hasKey ? "ai.cloud.keyConfigured" : "ai.cloud.notConfigured",
+          )}
+        </span>
+      </div>
+      <label className="agent-cloud-settings__key-row" htmlFor="cloud-base-url">
         <span>{t("agent.cloud.settings.baseUrl")}</span>
         <span className="agent-cloud-settings__key-input">
-          <input type="text" value={baseUrlDraft} spellCheck={false}
-            onChange={(event) => { setBaseUrlDraft(event.target.value); }} />
-          <button type="button" className="button button--secondary" disabled={busy}
+          <input
+            id="cloud-base-url"
+            type="url"
+            value={baseUrlDraft}
+            spellCheck={false}
+            disabled={busy || testing}
+            onChange={(event) => {
+              setBaseUrlDraft(event.target.value);
+            }}
+          />
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={busy || testing}
             onClick={() => {
               setBusy(true);
               setError(null);
-              void agent.setCloudBaseUrl(baseUrlDraft).catch((err: unknown) => { setError(String(err)); })
-                .finally(() => { setBusy(false); });
-            }}>
+              void cloudOperation(agent.setCloudBaseUrl(baseUrlDraft))
+                .catch((err: unknown) => {
+                  setError(String(err));
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
+            }}
+          >
             {t("agent.cloud.settings.saveBaseUrl")}
           </button>
         </span>
       </label>
       <p className="agent-cloud-settings__hint">
         {t("agent.cloud.settings.getKeyHint")}{" "}
-        <button type="button" className="agent-link-button" onClick={() => void container.ipc.openExternalUrl(CLOUD_KEY_SIGNUP_URL)}>
+        <button
+          type="button"
+          className="agent-link-button"
+          onClick={() =>
+            void container.ipc.openExternalUrl(CLOUD_KEY_SIGNUP_URL)
+          }
+        >
           {CLOUD_KEY_SIGNUP_URL}
         </button>
       </p>
-      <label className="agent-cloud-settings__key-row">
+      <label className="agent-cloud-settings__key-row" htmlFor="cloud-api-key">
         <span>{t("agent.cloud.settings.apiKey")}</span>
         <span className="agent-cloud-settings__key-input">
-          <input type={showKey ? "text" : "password"} value={keyDraft}
-            placeholder={cloud.hasKey ? t("agent.cloud.settings.keyStored") : ""} autoComplete="off"
-            onChange={(event) => { setKeyDraft(event.target.value); }} />
-          <button type="button" className="agent-icon-button" onClick={() => { setShowKey(!showKey); }}>
-            {showKey ? t("agent.cloud.settings.hide") : t("agent.cloud.settings.show")}
+          <input
+            id="cloud-api-key"
+            type={showKey ? "text" : "password"}
+            value={keyDraft}
+            disabled={busy || testing}
+            spellCheck={false}
+            placeholder={
+              cloud.hasKey ? t("agent.cloud.settings.keyStored") : ""
+            }
+            autoComplete="off"
+            onChange={(event) => {
+              setKeyDraft(event.target.value);
+            }}
+          />
+          <button
+            type="button"
+            className="agent-icon-button"
+            aria-controls="cloud-api-key"
+            aria-pressed={showKey}
+            onClick={() => {
+              setShowKey(!showKey);
+            }}
+          >
+            {showKey
+              ? t("agent.cloud.settings.hide")
+              : t("agent.cloud.settings.show")}
           </button>
         </span>
       </label>
       <div className="agent-cloud-settings__actions">
-        <button type="button" className="button button--primary" disabled={!keyDraft.trim() || busy}
+        <button
+          type="button"
+          className="button button--primary"
+          disabled={!keyDraft.trim() || busy || testing}
           onClick={() => {
             setBusy(true);
             setError(null);
-            void agent.setCloudKey(keyDraft).then(() => { setKeyDraft(""); })
-              .catch((err: unknown) => { setError(String(err)); }).finally(() => { setBusy(false); });
-          }}>
+            void cloudOperation(agent.setCloudKey(keyDraft))
+              .then(() => {
+                setKeyDraft("");
+              })
+              .catch((err: unknown) => {
+                setError(String(err));
+              })
+              .finally(() => {
+                setBusy(false);
+              });
+          }}
+        >
           {t("agent.cloud.settings.saveKey")}
         </button>
         {cloud.hasKey ? (
-          <button type="button" className="button button--secondary" disabled={busy}
+          <button
+            type="button"
+            className="button button--secondary"
+            disabled={busy || testing}
             onClick={() => {
               setBusy(true);
-              void agent.clearCloudKey().finally(() => { setBusy(false); });
-            }}>
+              setError(null);
+              void cloudOperation(agent.clearCloudKey())
+                .catch((err: unknown) => {
+                  setError(String(err));
+                })
+                .finally(() => {
+                  setBusy(false);
+                });
+            }}
+          >
             {t("agent.cloud.settings.disconnect")}
           </button>
         ) : null}
-        <button type="button" className="button button--secondary" disabled={!cloud.hasKey || testing}
+        <button
+          type="button"
+          className="button button--secondary"
+          disabled={!cloud.hasKey || busy || testing}
           onClick={() => {
             setTesting(true);
             setError(null);
-            void agent.testCloudConnection().then((models) => {
-              setTesting(false);
-              if (models === null) setError(agent.getState().cloudError ?? t("agent.ui.operationFailed"));
-            });
-          }}>
-          {testing ? t("agent.cloud.settings.testing") : t("agent.cloud.settings.test")}
+            void agent
+              .testCloudConnection()
+              .then((models) => {
+                if (models === null)
+                  setError(
+                    agent.getState().cloudError ??
+                      t("agent.ui.operationFailed"),
+                  );
+              })
+              .catch((err: unknown) => {
+                setError(String(err));
+              })
+              .finally(() => {
+                setTesting(false);
+              });
+          }}
+        >
+          {testing
+            ? t("agent.cloud.settings.testing")
+            : t("agent.cloud.settings.test")}
         </button>
       </div>
-      {error ? <p className="agent-notice agent-notice--error" role="alert">{error}</p> : null}
+      {error ? (
+        <p className="agent-notice agent-notice--error" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="agent-cloud-settings__models">
         <strong>{t("agent.cloud.setup.modelLabel")}</strong>
-        <ul>
-          {cloud.models.map((model) => (
-            <li key={model.id}>{model.name} — {model.available ? "Available" : "Not confirmed"}</li>
-          ))}
-        </ul>
-        <p className="agent-model__progress-text">
-          OpenMindAI Cloud models are managed separately from the local coding assistant.
+        {cloud.models.length === 0 ? (
+          <p className="agent-cloud-settings__hint">
+            {t("ai.cloud.modelsHint")}
+          </p>
+        ) : (
+          <ul className="ai-cloud-models">
+            {cloud.models.map((model) => (
+              <li key={model.id} className="agent-cloud-settings__model">
+                <span className="agent-cloud-settings__model-name">
+                  {model.name}
+                </span>
+                <span
+                  className={`ai-badge${model.available ? " ai-badge--local" : ""}`}
+                >
+                  {t(
+                    model.available
+                      ? "agent.cloud.settings.available"
+                      : "agent.cloud.settings.unavailable",
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="agent-cloud-settings__hint">
+          {t("ai.cloud.modelLimits")}
         </p>
       </div>
     </fieldset>
@@ -246,3 +388,4 @@ export function AgentSetup({ overview, downloads, modelId, installing }: {
     </div>
   );
 }
+

@@ -147,7 +147,7 @@ describe("AgentService", () => {
       expect(ipc.send).toHaveBeenCalled();
     });
     const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
-    expect(request?.options?.maxOutputTokens).toBeLessThanOrEqual(128);
+    expect(request?.options?.maxOutputTokens).toBe(0);
     expect(request?.options?.reasoningBudgetTokens).toBe(0);
     expect(request?.options?.maxSteps).toBe(1);
     expect(request?.history).toHaveLength(0);
@@ -337,8 +337,8 @@ describe("AgentService", () => {
     expect(t.entries[0]).toMatchObject({ kind: "user", text: "fix the bug" });
     expect(t.startedAt).toBe(5000);
     const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
-    expect(request?.options?.reasoningBudgetTokens).toBe(256);
-    expect(request?.options?.maxOutputTokens).toBe(2048);
+    expect(request?.options?.reasoningBudgetTokens).toBe(0);
+    expect(request?.options?.maxOutputTokens).toBe(0);
   });
 
   it("keeps automatic local budgets instead of persisting manual token limits", async () => {
@@ -356,8 +356,8 @@ describe("AgentService", () => {
       expect(ipc.send).toHaveBeenCalled();
     });
     expect(vi.mocked(ipc.send).mock.calls[0]?.[0]?.options).toMatchObject({
-      reasoningBudgetTokens: 256,
-      maxOutputTokens: 2048,
+      reasoningBudgetTokens: 0,
+      maxOutputTokens: 0,
     });
   });
 
@@ -873,7 +873,7 @@ describe("slash command workflows", () => {
     expect(service.options()).toMatchObject({
       effort: "medium",
       maxSteps: 96,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 0,
     });
     expect(await service.send("/permission plan")).toBe(true);
     expect(service.getState().mode).toBe("plan");
@@ -1205,4 +1205,19 @@ describe("background commands", () => {
       { id: "bg-2", command: "vite" },
     ]);
   });
+});
+
+
+it("sends a large Bangla prompt and attachment intact with server-managed output", async () => {
+  const { service, ipc } = setup([model("a", "ready")]);
+  await service.start();
+  const text = "বড় লেখার সম্পূর্ণ অংশ\n".repeat(20_000);
+  service.attachText("large-source.txt", text);
+  expect(await service.send(text)).toBe(true);
+  await vi.waitFor(() => { expect(ipc.send).toHaveBeenCalled(); });
+  const request = vi.mocked(ipc.send).mock.calls[0]?.[0];
+  expect(request?.text).toBe(text.trim());
+  expect(request?.attachments?.[0]?.text).toBe(text);
+  expect(request?.options?.maxOutputTokens).toBe(0);
+  expect(request?.options?.reasoningBudgetTokens).toBe(0);
 });

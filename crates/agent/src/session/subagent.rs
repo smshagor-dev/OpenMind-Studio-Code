@@ -122,6 +122,9 @@ impl Session {
         let mut options = self.options.clone();
         options.max_steps = MAX_STEPS;
         sub.set_options(options);
+        if self.provider_context {
+            sub.use_provider_context();
+        }
         sub.subagent = true;
         let input = TurnInput {
             ws: ctx.ws,
@@ -181,3 +184,4 @@ mod tests {
         assert_eq!(spec()["function"]["name"], TOOL);
     }
 }
+

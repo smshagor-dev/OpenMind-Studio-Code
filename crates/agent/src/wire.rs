@@ -67,16 +67,19 @@ fn wire_message(message: &Message) -> Value {
 
 /// The streamed chat request body.
 pub fn request_body(model: &str, messages: &[Message], tools: &Value, max_tokens: u32) -> Value {
-    json!({
+    let mut body = json!({
         "model": model,
         "messages": messages.iter().map(wire_message).collect::<Vec<_>>(),
         "tools": tools,
         "tool_choice": "auto",
         "stream": true,
         "stream_options": {"include_usage": true},
-        "max_tokens": max_tokens,
         "temperature": 0.6,
-    })
+    });
+    if max_tokens != 0 {
+        body["max_tokens"] = json!(max_tokens);
+    }
+    body
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -285,6 +288,23 @@ mod tests {
     }
 
     #[test]
+    fn automatic_output_does_not_send_a_zero_or_fixed_max_tokens_field() {
+        let prompt = "বাংলা".repeat(100_000);
+        let body = request_body(
+            "m",
+            &[Message::User { content: prompt.clone() }],
+            &json!([]),
+            0,
+        );
+        assert!(body.get("max_tokens").is_none());
+        assert_eq!(body["messages"][0]["content"], prompt);
+        assert_eq!(
+            request_body("m", &[], &json!([]), 100_000)["max_tokens"],
+            100_000
+        );
+    }
+
+    #[test]
     fn the_request_carries_tools_and_the_whole_conversation() {
         let messages = vec![
             Message::System {
@@ -317,3 +337,4 @@ mod tests {
         assert_eq!(body["tools"][0]["type"], "function");
     }
 }
+

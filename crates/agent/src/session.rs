@@ -201,6 +201,7 @@ pub struct Session {
     policy: Policy,
     options: crate::SessionOptions,
     model_context: u32,
+    provider_context: bool,
     memory: String,
     goal: String,
     /// The changes of each turn that changed something, newest last (for Undo).
@@ -231,6 +232,7 @@ impl Session {
             model,
             context_tokens,
             model_context: context_tokens,
+            provider_context: false,
             options: crate::SessionOptions::default().bounded(context_tokens),
             memory: String::new(),
             goal: String::new(),
@@ -341,6 +343,7 @@ impl Session {
     /// The next options update will bound input/output to this actual window.
     pub fn set_model_context(&mut self, context_tokens: u32) {
         self.model_context = context_tokens.max(1_024);
+        self.provider_context = false;
     }
 
     pub fn set_options(&mut self, options: crate::SessionOptions) {
@@ -348,7 +351,19 @@ impl Session {
         self.context_tokens = self.options.context_tokens;
     }
 
+    /// Hosted models own their actual context/output allocation. Do not reject or
+    /// compact their input against a guessed local window, or send local budgets.
+    pub fn use_provider_context(&mut self) {
+        self.provider_context = true;
+        self.context_tokens = 0;
+        self.options.max_output_tokens = 0;
+        self.options.reasoning_budget_tokens = 0;
+    }
+
     fn fit_context(&mut self, tools: &Value, host: &dyn AgentHost) -> Result<(), String> {
+        if self.provider_context {
+            return Ok(());
+        }
         let schema = tools.to_string().len().div_ceil(2);
         // The estimate counts two bytes per token, far more than most text needs. Once the engine has reported the
         // real prompt size, the budget is scaled by it, so the conversation isn't compacted (and the model doesn't
@@ -385,7 +400,9 @@ impl Session {
         // llama.cpp accepts this request-scoped field when the model's
         // template supports reasoning control. Do not set a global server
         // budget: that would force a model restart whenever a user edits it.
-        body["thinking_budget_tokens"] = serde_json::json!(self.options.reasoning_budget_tokens);
+        if self.options.reasoning_budget_tokens != 0 {
+            body["thinking_budget_tokens"] = serde_json::json!(self.options.reasoning_budget_tokens);
+        }
         let sent = crate::context::estimate(&messages) + tools.to_string().len().div_ceil(2);
         let mut measured: Option<u64> = None;
         let mut state = StreamState::default();
@@ -963,11 +980,27 @@ mod manual_context_tests {
         session.set_model_context(32_768);
         session.set_options(crate::SessionOptions::default());
         assert_eq!(session.context_tokens, 32_768);
-        assert_eq!(session.context_snapshot()["maxOutputTokens"], 4_096);
+        assert_eq!(session.context_snapshot()["maxOutputTokens"], 0);
         assert!(session
             .messages()
             .iter()
             .any(|m| matches!(m, Message::User { content } if content == "Please finish this")));
+    }
+
+    #[test]
+    fn cloud_context_is_provider_managed_and_local_context_can_be_restored() {
+        let mut session = Session::new("Rules".into(), "cloud".into(), 65_536, Mode::Ask);
+        let prompt = "বাংলা".repeat(100_000);
+        session.add_history("user", &prompt);
+        session.use_provider_context();
+        assert!(session.provider_context);
+        assert_eq!(session.context_tokens, 0);
+        assert_eq!(session.options.max_output_tokens, 0);
+        assert!(matches!(&session.messages()[1], Message::User { content } if content == &prompt));
+        session.set_model_context(32_768);
+        session.set_options(crate::SessionOptions::default());
+        assert!(!session.provider_context);
+        assert_eq!(session.context_tokens, 32_768);
     }
 
     #[test]
@@ -977,3 +1010,4 @@ mod manual_context_tests {
         assert_eq!(session.messages().len(), 1);
     }
 }
+

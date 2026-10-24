@@ -98,7 +98,7 @@ pub fn compact(
             memory.clear();
             continue;
         }
-        return Err("The current request and agent instructions do not fit this context setting. Increase the context setting within this edition's limit, or shorten the request.".into());
+        return Err("The current request exceeds this local model's allocated context. Use a model with a larger context or more available memory, or send a smaller request. Your text has not been truncated.".into());
     }
     Ok((before, estimate(&with_memory(messages, memory))))
 }
@@ -158,3 +158,4 @@ mod tests {
         assert!(matches!(&messages[1], Message::User { content } if content == &goal));
     }
 }
+

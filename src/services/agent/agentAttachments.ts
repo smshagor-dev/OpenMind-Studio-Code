@@ -47,12 +47,10 @@ async function pdf(bytes: Uint8Array): Promise<string> {
   });
   try {
     const doc = await task.promise;
-    if (doc.numPages > 50) throw new Error("PDF exceeds 50 pages; attach a smaller extract");
     const pages: string[] = [];
     for (let page = 1; page <= doc.numPages; page++) {
       const content = await (await doc.getPage(page)).getTextContent();
       pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(" "));
-      if (pages.join("\n").length > 80000) throw new Error("PDF text exceeds 80,000 characters");
     }
     if (!pages.join("").trim())
       throw new Error("Scanned PDF has no text. Attach page images for vision analysis.");
@@ -62,8 +60,9 @@ async function pdf(bytes: Uint8Array): Promise<string> {
   }
 }
 export async function readAttachment(file: File): Promise<AgentAttachment> {
-  if (!file.size || file.size > 10 * 1024 * 1024)
-    throw new Error("Files must be between 1 byte and 10 MB");
+  if (!file.size) throw new Error("Files must contain at least 1 byte");
+  if (/\.(pdf|docx|png|jpe?g|webp)$/i.test(file.name) && file.size > 10 * 1024 * 1024)
+    throw new Error("Images and documents must be at most 10 MB");
   const result = { id: crypto.randomUUID(), name: Array.from(file.name).slice(0, 75).join("") };
   if (/^image\/(png|jpeg|webp)$/.test(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name))
     return { ...result, data: await image(file) };
@@ -79,7 +78,6 @@ export async function readAttachment(file: File): Promise<AgentAttachment> {
       );
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   }
-  if (new TextEncoder().encode(text).length > 100000)
-    throw new Error("Extracted text exceeds 100 KB; attach a smaller extract");
   return { ...result, text };
 }
+
