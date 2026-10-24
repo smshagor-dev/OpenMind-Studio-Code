@@ -2,7 +2,10 @@ import { MAX_LAYOUT_LENGTH, parseSavedBuffer, type SavedBuffer } from "./documen
 import type { EditorGroup, EditorGroupService, EditorKind } from "./editorGroupService";
 import type { IpcClient } from "./ipc";
 
-const LAYOUT_KEY = "editor.layout";
+/** Main keeps the legacy key; extra windows never share its recovery record. */
+export function editorLayoutKey(windowLabel: string): string {
+  return windowLabel === "main" ? "editor.layout" : `editor.layout.window.${encodeURIComponent(windowLabel)}`;
+}
 const LAYOUT_VERSION = 3;
 
 /** One saved tab. File paths or recovery resource URIs identify the document. */
@@ -53,6 +56,7 @@ export class EditorLayoutService {
     /** Told when the layout can't be saved (a full disk, a locked database): the tabs wouldn't come back after a restart. */
     private readonly onSaveFailed: (error: unknown) => void = () => undefined,
     private readonly buffers: () => SavedBuffer[] = () => [],
+    private readonly layoutKey = editorLayoutKey("main"),
   ) {}
 
   /** Starts saving after every change to the groups. Safe to call more than once. */
@@ -107,7 +111,7 @@ export class EditorLayoutService {
       const payload = JSON.stringify({ version: LAYOUT_VERSION, ...this.serialize() });
       if (payload.length > MAX_LAYOUT_LENGTH || new TextEncoder().encode(payload).length > MAX_LAYOUT_LENGTH) throw new Error("Editor recovery data exceeds 64 MB.");
       // Serialize database writes so an older, slower request cannot overwrite a newer snapshot.
-      const write = this.writes.catch(() => undefined).then(() => this.ipc.settingsSet(LAYOUT_KEY, payload));
+      const write = this.writes.catch(() => undefined).then(() => this.ipc.settingsSet(this.layoutKey, payload));
       this.writes = write;
       await write;
       this.reportedFailure = false;
@@ -123,7 +127,7 @@ export class EditorLayoutService {
   /** The saved layout, or `null` if there is none (first run, or unreadable). */
   async load(): Promise<SavedLayout | null> {
     try {
-      const raw = await this.ipc.settingsGet(LAYOUT_KEY);
+      const raw = await this.ipc.settingsGet(this.layoutKey);
       const saved = raw === null ? null : parseLayout(raw);
       this.unreadable = raw !== null && saved === null;
       if (this.unreadable) this.onSaveFailed(new Error("Existing editor recovery data could not be read; it has been preserved."));

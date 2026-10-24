@@ -7,7 +7,7 @@ import {
   type EditorKind,
   type EditorTab,
 } from "./editorGroupService";
-import { EditorLayoutService, type SavedLayout } from "./editorLayoutService";
+import { editorLayoutKey, EditorLayoutService, type SavedLayout } from "./editorLayoutService";
 import { FilePreviewService, isPreviewableText, type CollabOrigin } from "./filePreviewService";
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
@@ -61,6 +61,7 @@ export interface RevealTarget {
 export type ReopenView = "text" | "markdownEditor" | "markdownPreview";
 
 export interface WorkspaceDeps {
+  windowLabel: string;
   groups: EditorGroupService;
   associations: EditorAssociationService;
   previews: PreviewEditorService;
@@ -122,6 +123,7 @@ export class WorkspaceService {
         const buffer = this.documents.recoverySnapshot(id);
         return buffer ? [buffer] : [];
       }),
+      editorLayoutKey(deps.windowLabel ?? "main"),
     );
     this.unsubscribers.push(
       this.groups.subscribe(() => {

@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BufferManager } from "./bufferManager";
 import { CommandRegistry } from "./commandRegistry";
 import { DocumentService } from "./documentService";
@@ -104,7 +105,12 @@ const editorGroups = new EditorGroupService();
 const associations = new EditorAssociationService(tauriIpcClient);
 const previews = new PreviewEditorService(tauriIpcClient);
 const filePreviews = new FilePreviewService(tauriIpcClient);
+function recoveryWindowLabel(): string {
+  try { return getCurrentWindow().label; }
+  catch { return "main"; }
+}
 const workspace = new WorkspaceService(documents, tauriIpcClient, events, {
+  windowLabel: recoveryWindowLabel(),
   groups: editorGroups,
   associations,
   previews,
