@@ -3508,6 +3508,10 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
     documents) were fixed. Verified by hand in a debug build with a fake VS Code profile (`APPDATA` pointed at it) and the real
     `ms-vscode.cpptools-themes` and `mechatroner.rainbow-csv` extensions: import, theme applied, Run Anyway, three grants, Align CSV
     Columns aligned the file. Not supported: semantic-token colouring, decorations beyond the subset.
+  - **Files split under 700 lines**: `host/vscode.js` → `types.js` (basic value types) + `languagetypes.js` (language-feature
+    types, public enums), re-exported unchanged; `host/host.js` → `loader.js` (require/ESM loading through the guard) +
+    `secrets.js`; `tests/host.rs` and `tests/api_v2.rs` → `tests/support/`. A host module must be embedded in
+    `src/host.rs` (`include_str!` + the written-out list) — `every_host_module_is_embedded_and_written_out` checks it.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).

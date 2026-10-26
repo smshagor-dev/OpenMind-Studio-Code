@@ -24,7 +24,11 @@ use crate::paths::ExtensionPaths;
 
 const HOST_JS: &str = include_str!("../host/host.js");
 const VSCODE_JS: &str = include_str!("../host/vscode.js");
+const TYPES_JS: &str = include_str!("../host/types.js");
+const LANGUAGETYPES_JS: &str = include_str!("../host/languagetypes.js");
 const GUARD_JS: &str = include_str!("../host/guard.js");
+const LOADER_JS: &str = include_str!("../host/loader.js");
+const SECRETS_JS: &str = include_str!("../host/secrets.js");
 const TREEVIEWS_JS: &str = include_str!("../host/treeviews.js");
 const EDITORS_JS: &str = include_str!("../host/editors.js");
 const EDITORSTATE_JS: &str = include_str!("../host/editorstate.js");
@@ -326,7 +330,11 @@ fn write_host_files(paths: &ExtensionPaths) -> Result<(), ExtensionError> {
     for (name, content) in [
         ("host.js", HOST_JS),
         ("vscode.js", VSCODE_JS),
+        ("types.js", TYPES_JS),
+        ("languagetypes.js", LANGUAGETYPES_JS),
         ("guard.js", GUARD_JS),
+        ("loader.js", LOADER_JS),
+        ("secrets.js", SECRETS_JS),
         ("treeviews.js", TREEVIEWS_JS),
         ("editors.js", EDITORS_JS),
         ("editorstate.js", EDITORSTATE_JS),
@@ -376,6 +384,24 @@ pub fn host_descriptor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The host runs from the files written out of this binary: a host module that isn't embedded is missing at run
+    /// time ("Cannot find module './x.js'") although every test against the source folder passes.
+    #[test]
+    fn every_host_module_is_embedded_and_written_out() {
+        let source = include_str!("host.rs");
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("host");
+        for entry in std::fs::read_dir(folder).expect("host folder") {
+            let name = entry.expect("entry").file_name().to_string_lossy().into_owned();
+            if name.ends_with(".js") {
+                assert!(
+                    source.contains(&format!("include_str!(\"../host/{name}\")"))
+                        && source.contains(&format!("(\"{name}\", ")),
+                    "host/{name} is not embedded and written out"
+                );
+            }
+        }
+    }
 
     #[test]
     fn no_node_is_the_documented_error() {
