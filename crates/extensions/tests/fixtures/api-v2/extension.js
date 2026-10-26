@@ -198,8 +198,11 @@ function activate(context) {
       received = { scheme: item.scheme, count: diagnostics.length, same: owner === collection };
     }, receiver);
     const present = collection.has(uri);
+    collection.delete(uri);
+    const removed = collection.has(uri) === false;
+    // Like VS Code, a disposed collection can't be used any more (has() would throw).
     collection.dispose();
-    return { received, hits: receiver.hits, present, removed: collection.has(uri) === false };
+    return { received, hits: receiver.hits, present, removed };
   });
   reg('sampleV2.positionOverloads', () => {
     const position = new vscode.Position(3, 4);

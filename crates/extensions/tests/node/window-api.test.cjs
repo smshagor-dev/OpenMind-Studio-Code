@@ -17,6 +17,30 @@ test('active color theme follows initialization and live events without erasing 
   assert.deepEqual(await host.request('host/executeCommand', { command: 'theme.read' }), { kind: 3, seen: [3], count: 1, configured: true, uiKind: 1, remote: true });
 });
 
+test('a contributed setting the app has no value for reads its package.json default, like VS Code', async t => {
+  const manifest = { name: 'csv', publisher: 'test', version: '1.0.0', main: 'extension.js', contributes: { configuration: {
+    properties: { 'csv.separators': { type: 'array', default: ['TAB', ','] }, 'csv.limits': { type: 'object', default: { rows: 5 } }, 'csv.enabled': { type: 'boolean', default: true } } } } };
+  const host = await fixture(t, { 'test.csv': { permissions: ['commands', 'settings'], files: { 'package.json': JSON.stringify(manifest) }, code: `const v = require('vscode');
+    exports.activate = () => v.commands.registerCommand('csv.read', () => { const c = v.workspace.getConfiguration('csv');
+      return { separators: c.get('separators'), limits: c.get('limits'), enabled: c.get('enabled'), has: c.has('separators'), missing: c.get('nothing', 'fallback') }; });` } });
+  await host.request('host/init', { configuration: { 'csv.enabled': false } });
+  await host.request('host/activate', { id: 'test.csv' });
+  assert.deepEqual(await host.request('host/executeCommand', { command: 'csv.read' }),
+    { separators: ['TAB', ','], limits: { rows: 5 }, enabled: false, has: true, missing: 'fallback' });
+});
+
+test('a permission refused inside a command is reported to the app once, naming the extension', async t => {
+  const host = await fixture(t, { 'test.denied': { permissions: ['commands'], code: `const v = require('vscode');
+    exports.activate = () => v.commands.registerCommand('denied.read', () => v.workspace.getConfiguration('x'));` } });
+  await host.request('host/init', {});
+  await host.request('host/activate', { id: 'test.denied' });
+  for (let i = 0; i < 2; i++) {
+    await assert.rejects(host.request('host/executeCommand', { command: 'denied.read' }), /Permission 'settings' is required/);
+  }
+  const reports = host.messages.filter(m => m.method === 'extensions/permissionDenied').map(m => m.params);
+  assert.deepEqual(reports, [{ id: 'test.denied', permission: 'settings' }]);
+});
+
 test('status messages stack, restore previous entries, expire and clean up on extension teardown', async t => {
   const host = await fixture(t, { 'test.status': { permissions: ['commands'], code: `const v = require('vscode'); let first, second, finish;
     exports.activate = () => {

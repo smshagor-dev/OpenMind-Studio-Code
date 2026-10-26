@@ -330,7 +330,10 @@ test('notebook structural edits require write permission and recheck symlink con
   const writer = await setup(t, extension); const inside = path.join(writer.root, 'inside.omnb'); const outside = path.join(writer.root, '../outside.omnb');
   fs.writeFileSync(inside, JSON.stringify({ cells: [] })); fs.writeFileSync(outside, 'outside');
   await writer.activate(); await writer.call('notebooks', 'open', { type: 'example', path: inside });
-  fs.unlinkSync(inside); fs.symlinkSync(outside, inside);
+  fs.unlinkSync(inside);
+  // A file symbolic link needs Developer Mode or administrator rights on Windows; without them there is nothing to test.
+  try { fs.symlinkSync(outside, inside); }
+  catch (error) { if (error.code === 'EPERM') { t.skip('this account may not create symbolic links'); return; } throw error; }
   await assert.rejects(writer.request('host/executeCommand', { command: 'notebook.modify' }), /filesystemOutsideWorkspace/);
   assert.equal((await writer.call('notebooks', 'snapshot')).documents[0].dirty, false); assert.equal(fs.readFileSync(outside, 'utf8'), 'outside');
 });

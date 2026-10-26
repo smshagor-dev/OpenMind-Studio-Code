@@ -70,6 +70,27 @@ pub async fn ext_set_enabled(
     Ok(extension)
 }
 
+/// The user's "Run anyway" (or taking it back) for an extension whose VS Code engine is newer than the host's API
+/// subset. Nothing runs here; the extension starts on its next activation event.
+#[tauri::command]
+pub async fn ext_set_run_anyway(
+    id: String,
+    allow: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<InstalledExtension, String> {
+    if !allow {
+        deactivate_in_host(&state, &id).await;
+    }
+    let extension = state
+        .extensions
+        .store
+        .set_run_anyway(&id, allow)
+        .map_err(|err| err.to_string())?;
+    changed(&app);
+    Ok(extension)
+}
+
 /// The user's explicit grant of a permission the manifest doesn't request (only "filesystemOutsideWorkspace").
 /// The host has to be reloaded afterwards to pick it up (the app does that).
 #[tauri::command]

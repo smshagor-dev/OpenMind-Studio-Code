@@ -20,9 +20,10 @@ export function ExtensionDialogs() {
   const pendingUninstall =
     ui.pendingUninstall === null ? undefined : registry.find(ui.pendingUninstall);
   const pendingGrant = ui.pendingGrant === null ? undefined : registry.find(ui.pendingGrant);
+  const pendingRunAnyway = ui.pendingRunAnyway === null ? undefined : registry.find(ui.pendingRunAnyway);
   return (
     <>
-      {pendingGrant ? (
+      {pendingGrant && ui.pendingGrantPermission === "filesystemOutsideWorkspace" ? (
         <ConfirmDialog
           title={t("extensions.grant.title")}
           message={t("extensions.grant.message", { name: displayName(pendingGrant) })}
@@ -32,6 +33,39 @@ export function ExtensionDialogs() {
           }}
           onCancel={() => {
             service.cancelGrant();
+          }}
+        />
+      ) : null}
+      {pendingGrant && ui.pendingGrantPermission !== "filesystemOutsideWorkspace" ? (
+        <ConfirmDialog
+          title={t("extensions.grantAny.title", { permission: t(`permission.${ui.pendingGrantPermission}.label`) })}
+          message={t("extensions.grantAny.message", {
+            name: displayName(pendingGrant),
+            permission: t(`permission.${ui.pendingGrantPermission}.label`),
+            description: t(`permission.${ui.pendingGrantPermission}.description`),
+          })}
+          confirmLabel={t("extensions.grantAny.confirm")}
+          onConfirm={() => {
+            void service.confirmGrant();
+          }}
+          onCancel={() => {
+            service.cancelGrant();
+          }}
+        />
+      ) : null}
+      {pendingRunAnyway ? (
+        <ConfirmDialog
+          title={t("extensions.runAnyway.title")}
+          message={t("extensions.runAnyway.message", {
+            name: displayName(pendingRunAnyway),
+            engine: pendingRunAnyway.manifest.enginesVscode ?? "?",
+          })}
+          confirmLabel={t("extensions.runAnyway.confirm")}
+          onConfirm={() => {
+            void service.confirmRunAnyway();
+          }}
+          onCancel={() => {
+            service.cancelRunAnyway();
           }}
         />
       ) : null}

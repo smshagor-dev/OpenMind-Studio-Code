@@ -378,7 +378,7 @@ function createEditorApi({ host, ext, need, namespace, types, asExtension, Dispo
     if (state.documents.get(filePath)?.isUntitled === true && filePath.startsWith('untitled:')) return;
     const target = resolvedPath(filePath);
     if (state.workspaceFolders.length > 0 && !state.workspaceFolders.some((folder) => within(resolvedPath(folder.path), target))) {
-      if (!(ext.permissions || []).includes('filesystemOutsideWorkspace')) throw permissionError('filesystemOutsideWorkspace');
+      if (!(ext.permissions || []).includes('filesystemOutsideWorkspace')) throw permissionError('filesystemOutsideWorkspace', ext.id);
     }
   }
 

@@ -3,8 +3,8 @@ const vscode = require('vscode');
 function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('sampleUnsupported.run', () => {
-      // Virtual debug source URIs remain outside the supported debug subset.
-      vscode.debug.asDebugSourceUri({ sourceReference: 1 });
+      // Notebook cell status bar items remain outside the supported API subset.
+      vscode.notebooks.registerNotebookCellStatusBarItemProvider('x', {});
     }),
   );
 }

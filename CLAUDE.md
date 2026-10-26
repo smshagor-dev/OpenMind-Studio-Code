@@ -693,7 +693,13 @@ during the Milestone 1 → rebrand pass for exactly this reason.
   field `"openmindPermissions": [...]` (an unknown name is refused, listing the valid ones); the contributions *imply* the harmless ones (commands,
   settings, languages, themes, snippets). The install dialog shows both (dangerous ones marked "High risk"), installing accepts them, and the accepted
   list is stored in `.openmind-permissions.json` inside the extension folder (so it moves with enable/disable and dies with uninstall; a file can't grant
-  more than the manifest asks for, except the one the user can add by hand, filesystemOutsideWorkspace; an extension installed before this milestone only gets the implied ones). The host descriptor carries the accepted
+  more than the manifest asks for, except what the user granted by hand — any permission the guard refused, offered as
+  "Grant “…”…" in the gear menu after a warning and kept in `.openmind-user-grants.json`; installing strips that file,
+  the accepted list and `.openmind-engine-override.json` from every package, so an extension can't bring its own; an
+  extension installed before this milestone only gets the implied ones). Each refusal is reported by the host
+  (`extensions/permissionDenied`) as the extension's last error. An extension asking for a newer VS Code engine than
+  `EXTENSION_API_VERSION` isn't activated unless the user chose "Run Anyway…" for it (`engine_override`, per engine
+  range). The host descriptor carries the accepted
   list and `host/guard.js` enforces it — **a guard, not a sandbox** (the host is an ordinary Node process; native addons, `process.binding` or a
   hand-made loader can get around it, and a symlink inside the workspace can point outside it). Exactly: `require('child_process'|'cluster')` needs
   `processExecution`; `require('net'|'http'|'https'|'http2'|'tls'|'dgram'|'dns')`, the globals `fetch`/`WebSocket` (attributed with `AsyncLocalStorage`, so it
@@ -2282,8 +2288,8 @@ without explicit approval.
   the version is stale or typing hasn't reached the host yet; otherwise it applies all edits as ONE undoable step to the open buffer (never the disk — Save is unchanged), the buffer is
   dirty, the host is told the new text and version *before* the answer, so `document.version`/`isDirty`/`onDidChangeTextDocument` are current when `edit` resolves. `setEndOfLine` is
   unsupported. **`WorkspaceEdit`** (`insert/replace/delete/has/get/set/entries/size`) and `workspace.applyEdit` work on documents that are already open (needs `workspaceWrite`; an unopened file
-  returns false with a logged reason); `createFile/deleteFile/renameFile` throw the unsupported message. **Permissions decision**: `TextEditor.edit` needs no permission (it edits a buffer the
-  user opened); with a folder open, editing an open file *outside* it needs `filesystemOutsideWorkspace` (the existing grant), with no folder open open files are editable. **Status bar**:
+  returns false with a logged reason); `createFile/deleteFile/renameFile` throw the unsupported message. **Permissions decision**: `TextEditor.edit` needed no permission at first; since `3a977cd` it needs
+  `workspaceWrite` like every other edit; with a folder open, editing an open file *outside* it needs `filesystemOutsideWorkspace` (the existing grant), with no folder open open files are editable. **Status bar**:
   `createStatusBarItem(alignment?, priority?)` (and the `id, alignment, priority` form); text, tooltip, command (string or `{command, arguments}`), `ThemeColor` colour/backgroundColor from a fixed
   list (`statusBarItem.errorBackground/warningBackground`, `errorForeground`, `editorError/Warning/Info.foreground`; any other colour is ignored with a warning), `show/hide/dispose`. Items are
   plain React text (never HTML), `$(icon)` markers are dropped, long text is cut with an ellipsis and the tooltip has it all; higher priority = further left; a click runs the command (an
@@ -3477,6 +3483,31 @@ ode.exe`, clangd/rust-analyzer from `language-servers\` — with problems from T
     Imports, Remove Unused Imports, Extract to constant via command + `workspace/applyEdit`, Rename, a quick fix, one-step undo), the
     real Nemotron 3 Nano 4B (inline propose/refine/accept/reject, Explain, Review), dictation (voice typing opened only over the app),
     revision-tab menu. CI did not run (GitHub billing limit).
+- [x] **VS Code import and running VS Code extensions** (after the editor context menu; branch `feature/vscode-import-extensions`).
+  - **Import** (Settings page, `src/services/vscodeImport/` + `VsCodeImportPanel`; Rust `openmind_settings::{vscode_import, vscode_map}`,
+    `commands::vscode_import`): sources are found by edition/profile id (Code, Insiders, VSCodium, Code - OSS), never a page-sent path.
+    `vscode_map::setting` translates ids and value shapes (`wordWrap "on"`→true, `renderWhitespace`, built-in theme names → dark/light/
+    high-contrast, an installed extension theme by label, `window.autoDetectColorScheme`→system, `terminal.integrated.*`, `search.exclude`
+    object → patterns, icon theme, start-up editor), then validates against the schema; credentials are never copied; everything left out
+    is listed with its reason. `vscode_map::keybinding` maps ~80 VS Code command ids to OpenMind's (a command an installed extension
+    contributes keeps its id; `-command` removals too; key sequences and `when` shortcuts are left out); `merge_keybindings` keeps the
+    user's own shortcuts (an imported binding wins only its key). Snippets, "Save as an OpenMind profile" (unique name), and an installed
+    extension (packed with the tree check, installed **disabled**; VS Code's `.obsolete` versions hidden). The Profiles dialog's import
+    uses the same translator.
+  - **Running VS Code extensions**: per-extension **Run Anyway…** for an engine newer than `EXTENSION_API_VERSION`
+    (`engine_override.rs`, per engine range) and **Grant “…”…** for exactly the permission the guard refused (user grants in
+    `.openmind-user-grants.json`); installing strips both files and the accepted list from every package. The host reports each
+    refusal (`extensions/permissionDenied`) and every activation refreshes the extensions domain, so the card shows the error.
+  - **Host fixes found on the way**: a contributed setting the app has no value for (arrays/objects) reads its `package.json` default;
+    ES-module extensions couldn't import `vscode` on Node 24 (a require() inside a hook-loaded CommonJS bridge skips `Module._load`) —
+    bridges are now ES modules reading the guarded value from a host-private registry; `toPath()` keys custom-scheme documents by their
+    Uri text (virtual documents couldn't change language). Session restore: a row created by opening a folder before any save holds
+    the column default `[]`, read as "nothing saved" (it showed "Failed to restore the previous session").
+  - **Tests**: the Windows-only failures of host/front-end tests (POSIX paths, CRLF, symbolic links without Developer Mode — now
+    skipped with the reason) and outdated expectations (`FoldingRangeKind`, `CustomExecution`, input boxes, workspace trust, virtual
+    documents) were fixed. Verified by hand in a debug build with a fake VS Code profile (`APPDATA` pointed at it) and the real
+    `ms-vscode.cpptools-themes` and `mechatroner.rainbow-csv` extensions: import, theme applied, Run Anyway, three grants, Align CSV
+    Columns aligned the file. Not supported: semantic-token colouring, decorations beyond the subset.
 - [ ] Later, unassigned: installer-time workload selection, more screens translated, native-speaker review, profile-aware keybindings,
   code signing with a real certificate, auto-update (the updater plugin was left out of the release: no key or endpoint, no
   `latest.json`); the university-PC live test of Milestone 23 (`docs/university-validation.md`).

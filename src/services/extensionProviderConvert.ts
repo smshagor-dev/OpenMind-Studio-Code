@@ -128,7 +128,6 @@ export const INSERT_AS_SNIPPET = 4;
 /** VS Code's `DiagnosticSeverity` (0 Error ... 3 Hint) -> Monaco's `MarkerSeverity`. */
 export function markerSeverity(severity: number): MarkerSeverity {
   // A wire-format conversion: keep this module free of the Monaco runtime.
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-assignment -- Tested conversion from wire severities to the declared Monaco enum values.
   return severity === 0 ? 8 : severity === 1 ? 4 : severity === 2 ? 2 : 1;
 }
 

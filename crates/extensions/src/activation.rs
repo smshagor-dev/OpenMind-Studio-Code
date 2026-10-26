@@ -74,9 +74,9 @@ pub fn activation_order(
         if !extension.enabled {
             return Err(format!("Extension dependency {id} is disabled."));
         }
-        if !crate::manifest::engine_compatible(&extension.manifest) {
+        if !extension.engine_supported && !extension.run_anyway {
             return Err(format!(
-                "{id} requires VS Code engine {}, but OpenMind Studio supports the {} API subset.",
+                "{id} requires VS Code engine {}, but OpenMind Studio supports the {} API subset. To try it anyway, choose Run Anyway in its menu in Extensions.",
                 extension.manifest.engines_vscode.as_deref().unwrap_or("unknown"),
                 crate::manifest::EXTENSION_API_VERSION
             ));
@@ -85,7 +85,13 @@ pub fn activation_order(
             return Err(format!("Circular extension dependency involving {id}."));
         }
         for dependency in &extension.manifest.extension_dependencies {
-            visit(&dependency.to_lowercase(), by_id, visiting, visited, ordered)?;
+            visit(
+                &dependency.to_lowercase(),
+                by_id,
+                visiting,
+                visited,
+                ordered,
+            )?;
         }
         visiting.remove(id);
         visited.insert(id.to_string());
@@ -95,13 +101,21 @@ pub fn activation_order(
         Ok(())
     }
 
-    let by_id: HashMap<&str, &InstalledExtension> =
-        extensions.iter().map(|extension| (extension.id.as_str(), extension)).collect();
+    let by_id: HashMap<&str, &InstalledExtension> = extensions
+        .iter()
+        .map(|extension| (extension.id.as_str(), extension))
+        .collect();
     let mut visiting = HashSet::new();
     let mut visited = HashSet::new();
     let mut ordered = Vec::new();
     for id in requested {
-        visit(&id.to_lowercase(), &by_id, &mut visiting, &mut visited, &mut ordered)?;
+        visit(
+            &id.to_lowercase(),
+            &by_id,
+            &mut visiting,
+            &mut visited,
+            &mut ordered,
+        )?;
     }
     Ok(ordered)
 }
@@ -238,16 +252,23 @@ mod tests {
             r#"{"name":"base","publisher":"acme","version":"1.0.0","main":"./b.js"}"#,
             false,
         );
-        assert!(activation_order(&[needs.clone()], &["acme.needs".into()])
-            .unwrap_err().contains("not installed"));
-        assert!(activation_order(&[needs.clone(), base], &["acme.needs".into()])
-            .unwrap_err().contains("disabled"));
+        assert!(
+            activation_order(std::slice::from_ref(&needs), &["acme.needs".into()])
+                .unwrap_err()
+                .contains("not installed")
+        );
+        assert!(
+            activation_order(&[needs.clone(), base], &["acme.needs".into()])
+                .unwrap_err()
+                .contains("disabled")
+        );
         let cycle = extension(
             r#"{"name":"base","publisher":"acme","version":"1.0.0","main":"./b.js","extensionDependencies":["acme.needs"]}"#,
             true,
         );
         assert!(activation_order(&[needs, cycle], &["acme.needs".into()])
-            .unwrap_err().contains("Circular"));
+            .unwrap_err()
+            .contains("Circular"));
     }
 
     #[test]
@@ -256,8 +277,20 @@ mod tests {
             r#"{"name":"newer","publisher":"acme","version":"1.0.0","main":"./main.js","engines":{"vscode":"^1.100.0"}}"#,
             true,
         );
-        assert!(activation_order(&[new_api], &["acme.newer".into()])
-            .unwrap_err().contains("requires VS Code engine"));
+        assert!(
+            activation_order(std::slice::from_ref(&new_api), &["acme.newer".into()])
+                .unwrap_err()
+                .contains("choose Run Anyway")
+        );
+        // The user's per-extension "Run anyway" lets it start.
+        let allowed = InstalledExtension {
+            run_anyway: true,
+            ..new_api
+        };
+        assert_eq!(
+            activation_order(&[allowed], &["acme.newer".into()]).unwrap(),
+            ["acme.newer"]
+        );
         let supported = extension(
             r#"{"name":"supported","publisher":"acme","version":"1.0.0","main":"./main.js","engines":{"vscode":"^1.85.0"}}"#,
             true,
@@ -378,4 +411,3 @@ mod tests {
         assert!(extensions_for(&all, &Trigger::View { view: "x".into() }).is_empty());
     }
 }
-

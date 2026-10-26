@@ -63,7 +63,9 @@ test('workspace.fs applies symlink checks to reads and writes', async (t) => {
 
 test('dangling external symlinks do not grant permission to future files', (t) => {
   const f = fixture(t);
-  fs.symlinkSync(path.join(f.outside, 'missing'), path.join(f.workspace, 'dangling'));
+  // A file symbolic link needs Developer Mode or administrator rights on Windows; without them there is nothing to test.
+  try { fs.symlinkSync(path.join(f.outside, 'missing'), path.join(f.workspace, 'dangling')); }
+  catch (error) { if (error.code === 'EPERM') { t.skip('this account may not create symbolic links'); return; } throw error; }
   assert.throws(() => f.guard.checkPath(path.join(f.workspace, 'dangling'), true), { code: 'ENOENT' });
 });
 

@@ -175,6 +175,10 @@ export interface InstalledExtension {
   warnings: string[];
   activationEvents: string[];
   permissions: PermissionSet;
+  /** False when it asks for a newer VS Code engine than OpenMind's API subset (it isn't started then). */
+  engineSupported: boolean;
+  /** The user chose to run it although its engine isn't supported. */
+  runAnyway: boolean;
 }
 
 export interface BrokenExtension {
@@ -261,9 +265,12 @@ export interface ExtensionsIpc {
   extUninstall: (id: string) => Promise<void>;
   /** The user's own grant of a permission the extension doesn't request (outside-workspace files). */
   extGrantPermission: (id: string, permission: PermissionName) => Promise<InstalledExtension>;
+  extSetRunAnyway: (id: string, allow: boolean) => Promise<InstalledExtension>;
   /** A local file for an extension's webview as a `data:` URL; the backend re-checks roots, type and size. */
   extWebviewReadResource: (id: string, path: string, roots: string[]) => Promise<string>;
   extReadFile: (id: string, path: string) => Promise<string>;
+  /** Snippet files imported from VS Code (Settings > Import from VS Code), per language. */
+  extImportedSnippets: () => Promise<{ language: string; text: string }[]>;
   /** An `.svg`/`.png` inside the extension as a `data:` URL. */
   extReadIcon: (id: string, path: string) => Promise<string>;
   /** How many secrets an extension keeps (`context.secrets`); never their values. */
@@ -292,9 +299,11 @@ export const tauriExtensionsIpc: ExtensionsIpc = {
   extUninstall: (id) => invoke("ext_uninstall", { id }),
   extWebviewReadResource: (id, path, roots) =>
     invoke<string>("ext_webview_read_resource", { id, path, roots }),
+  extSetRunAnyway: (id, allow) => invoke<InstalledExtension>("ext_set_run_anyway", { id, allow }),
   extGrantPermission: (id, permission) =>
     invoke<InstalledExtension>("ext_grant_permission", { id, permission }),
   extReadFile: (id, path) => invoke<string>("ext_read_file", { id, path }),
+  extImportedSnippets: () => invoke<{ language: string; text: string }[]>("vscode_imported_snippets"),
   extReadIcon: (id, path) => invoke<string>("ext_read_icon", { id, path }),
   extSecretsCount: (id) => invoke<number>("ext_secrets_count", { id }),
   extSecretsClear: (id) => invoke("ext_secrets_clear", { id }),

@@ -1,6 +1,6 @@
 import { container } from "../services/container";
 import type { MarketSort } from "../services/marketplaceIpc";
-import type { InstalledExtension } from "../services/extensionsIpc";
+import type { InstalledExtension, PermissionName } from "../services/extensionsIpc";
 import type { PopupItem } from "./MenuPopup";
 import { t } from "../i18n";
 
@@ -92,11 +92,49 @@ export function moreActionsMenu(): PopupItem[] {
   ];
 }
 
-/** An installed extension's gear menu. */
-export function manageMenu(extension: InstalledExtension): PopupItem[] {
+/** "Run Anyway…" / "Stop Running Anyway" for an extension whose VS Code engine is newer than OpenMind's subset. */
+function runAnywayItems(extension: InstalledExtension): PopupItem[] {
+  if (extension.engineSupported) return [];
+  const { service } = container.extensions;
+  return [
+    extension.runAnyway
+      ? {
+          kind: "item",
+          label: t("extensions.runAnyway.stop"),
+          enabled: true,
+          onSelect: () => void service.stopRunningAnyway(extension.id),
+        }
+      : {
+          kind: "item",
+          label: t("extensions.runAnyway.menu"),
+          enabled: extension.enabled,
+          reason: t("extensions.runAnyway.enableFirst"),
+          onSelect: () => {
+            service.requestRunAnyway(extension.id);
+          },
+        },
+  ];
+}
+
+/** An installed extension's gear menu; `refused`: a permission the guard refused it (offered as a grant). */
+export function manageMenu(extension: InstalledExtension, refused: PermissionName | null = null): PopupItem[] {
   const { service } = container.extensions;
   const toggle = service.toggleAvailability(extension);
+  const grant: PopupItem[] =
+    refused === null
+      ? []
+      : [
+          {
+            kind: "item",
+            label: t("extensions.grantAny.menu", { permission: t(`permission.${refused}.label`) }),
+            enabled: true,
+            onSelect: () => {
+              service.requestGrant(extension.id, refused);
+            },
+          },
+        ];
   return [
+    ...grant,
     {
       kind: "item",
       label: extension.enabled ? t("extensions.disable") : t("extensions.enable"),
@@ -104,6 +142,7 @@ export function manageMenu(extension: InstalledExtension): PopupItem[] {
       reason: toggle.reason,
       onSelect: () => void service.setEnabled(extension.id, !extension.enabled),
     },
+    ...runAnywayItems(extension),
     {
       kind: "item",
       label: t("extensions.uninstall.confirm"),

@@ -1033,6 +1033,8 @@ const ViewColumn = { Active: -1, Beside: -2, One: 1, Two: 2, Three: 3, Four: 4, 
 function toPath(value) {
   if (!value) return undefined;
   if (typeof value === 'string') return value;
+  // A custom-scheme document (virtual, untitled) is keyed by its Uri text, a file by its native path (as showEditor).
+  if (value instanceof Uri && value.scheme !== 'file') return value.toString();
   if (value.fsPath !== undefined) return value.fsPath;
   if (value.uri) return toPath(value.uri);
   return undefined;
@@ -1043,7 +1045,7 @@ function createApi(host, ext) {
   let handleCounter = 0;
   const granted = new Set(ext.permissions || []);
   const need = (permission) => {
-    if (!granted.has(permission)) throw permissionError(permission);
+    if (!granted.has(permission)) throw permissionError(permission, ext.id);
   };
   // Everything this extension registered through the API, so deactivating (or a failed activation) can undo it.
   const tracked = new Set();

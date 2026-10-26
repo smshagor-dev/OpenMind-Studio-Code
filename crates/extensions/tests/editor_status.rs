@@ -444,11 +444,21 @@ fn apis_that_stay_unsupported_still_fail_with_the_clear_message() {
         .iter()
         .map(|v| v.as_str().unwrap_or_default().to_string())
         .collect();
+    // Implemented since: input boxes, decorations, debug source URIs (they now fail only for their own reasons).
+    for line in ["inputBox: allowed", "decorations: allowed"] {
+        assert!(lines.contains(&line.to_string()), "{line} not in {lines:?}");
+    }
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("debug: ") && !l.contains("not supported")),
+        "{lines:?}"
+    );
     for (label, api) in [
-        ("inputBox", "window.createInputBox"),
-        ("decorations", "window.createTextEditorDecorationType"),
-        ("debug", "debug.asDebugSourceUri"),
-        ("notebook", "notebooks.registerNotebookCellStatusBarItemProvider"),
+        (
+            "notebook",
+            "notebooks.registerNotebookCellStatusBarItemProvider",
+        ),
         ("createFile", "WorkspaceEdit.createFile"),
     ] {
         let expected =
@@ -457,4 +467,3 @@ fn apis_that_stay_unsupported_still_fail_with_the_clear_message() {
     }
     host.stop();
 }
-

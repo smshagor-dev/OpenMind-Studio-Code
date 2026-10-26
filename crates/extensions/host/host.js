@@ -20,7 +20,7 @@ const fs = require('fs');
 const { pathToFileURL, fileURLToPath } = require('url');
 const { AsyncLocalStorage } = require('async_hooks');
 const { createApi, disposeApi, setUnsupportedReporter } = require('./vscode.js');
-const { createGuard, permissionError, modulePermission } = require('./guard.js');
+const { createGuard, permissionError, onPermissionDenied, modulePermission } = require('./guard.js');
 const { handleTreeRequest } = require('./treeviews.js');
 const { resolveWebviewView } = require('./webviews.js');
 const { terminalClosed, activeTerminalChanged, terminalStateChanged } = require('./terminals.js');
@@ -59,6 +59,17 @@ function request(method, params) {
 function notify(method, params) {
   send({ jsonrpc: '2.0', method, params });
 }
+
+// The app records which permission an extension was refused (once per extension and permission while the host runs),
+// so it can offer the user to grant it.
+const reportedDenials = new Set();
+onPermissionDenied((id, permission) => {
+  const key = `${id}
+${permission}`;
+  if (reportedDenials.has(key)) return;
+  reportedDenials.add(key);
+  notify('extensions/permissionDenied', { id, permission });
+});
 
 // ---- logging: nothing an extension prints can corrupt the protocol ---------------------------------------------
 
@@ -174,6 +185,10 @@ let bridgeSerial = 0;
 const moduleBridges = new Map();
 const bridgeOwners = new Map();
 const bridgeSources = new Map();
+// Values the ESM bridge modules export, keyed by bridge file (see esmBridge).
+const BRIDGE_VALUES = 'openmind.extensionHost.bridgeValues';
+const bridgeValues = new Map();
+Object.defineProperty(globalThis, Symbol.for(BRIDGE_VALUES), { value: bridgeValues });
 const esmOwners = new Map();
 const guards = new Map();
 const activations = new Map();
@@ -229,10 +244,17 @@ function esmBridge(id, requested) {
   const key = `${id}:${run.generation}:${requested}`;
   if (moduleBridges.has(key)) return moduleBridges.get(key);
   const file = `${__filename}.bridge-${++bridgeSerial}.cjs`;
-  const value = requested === 'vscode' ? run.api : originalLoad.call(Module, requested, module, false);
+  // The value is the extension's own `vscode` API or the guarded builtin (the same object its require() gets).
+  // The bridge reads it from a host-private registry instead of calling require(): since Node 24 a require() inside a
+  // CommonJS module loaded through these hooks is resolved by the ESM resolver and never reaches Module._load, so
+  // `vscode` wasn't found and builtins would have skipped the guard.
+  const value = requested === 'vscode' ? run.api : guardOf(id).moduleFor(requested, () => originalLoad.call(Module, requested, module, false));
+  bridgeValues.set(file, value);
   const names = Object.keys(value).filter(name => name !== 'default' && /^[A-Za-z_$][\w$]*$/.test(name));
-  // Static assignments let Node discover named exports from this CommonJS bridge.
-  const source = names.map(name => `exports.${name} = undefined;`).join('\n') + `\nconst value = require(${JSON.stringify(requested)}); module.exports = value;\n`;
+  // An ES module (its source is used however Node reaches it, also under require(esm)): the default export is the value
+  // itself, every own name a named export (`export { _0 as delete }` is valid for any name).
+  const source = `const value = globalThis[Symbol.for(${JSON.stringify(BRIDGE_VALUES)})].get(${JSON.stringify(file)});\nexport default value;\n`
+    + names.map((name, index) => `const _${index} = value[${JSON.stringify(name)}];\nexport { _${index} as ${name} };`).join('\n') + '\n';
   bridgeSources.set(pathToFileURL(file).href, source);
   bridgeOwners.set(file, { id, generation: run.generation });
   moduleBridges.set(key, file);
@@ -266,7 +288,7 @@ if (typeof Module.registerHooks === 'function') Module.registerHooks({
   },
   load(url, context, nextLoad) {
     const source = bridgeSources.get(url);
-    return source === undefined ? nextLoad(url, context) : { format: 'commonjs', source, shortCircuit: true };
+    return source === undefined ? nextLoad(url, context) : { format: 'module', source, shortCircuit: true };
   },
 });
 
@@ -299,12 +321,12 @@ function guardGlobals() {
   };
   if (typeof globalThis.fetch === 'function') {
     const realFetch = globalThis.fetch.bind(globalThis);
-    globalThis.fetch = (...args) => (allowed() ? realFetch(...args) : Promise.reject(permissionError('network')));
+    globalThis.fetch = (...args) => (allowed() ? realFetch(...args) : Promise.reject(permissionError('network', als.getStore())));
   }
   if (typeof globalThis.WebSocket === 'function') {
     globalThis.WebSocket = new Proxy(globalThis.WebSocket, {
       construct(target, args) {
-        if (!allowed()) throw permissionError('network');
+        if (!allowed()) throw permissionError('network', als.getStore());
         return Reflect.construct(target, args);
       },
     });

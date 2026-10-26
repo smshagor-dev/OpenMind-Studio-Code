@@ -1,9 +1,9 @@
 import type { EventBus } from "./eventBus";
 import type { AppEvents } from "./events";
 import type { ExtensionHostService } from "./extensionHostService";
-import { OUTSIDE_WORKSPACE, displayName } from "./extensionModel";
+import { OUTSIDE_WORKSPACE, PERMISSION_INFO, displayName } from "./extensionModel";
 import type { ExtensionRegistryService } from "./extensionRegistryService";
-import type { InstalledExtension } from "./extensionsIpc";
+import type { InstalledExtension, PermissionName } from "./extensionsIpc";
 import type { IpcClient } from "./ipc";
 import type { SettingsService } from "./settingsService";
 import { t } from "../i18n";
@@ -22,6 +22,10 @@ export interface ExtensionUiState {
   pendingUninstall: string | null;
   /** An extension the user is about to give access to files outside the workspace. */
   pendingGrant: string | null;
+  /** The permission `pendingGrant` is about. */
+  pendingGrantPermission: PermissionName;
+  /** An extension the user is about to run although its VS Code engine is newer than OpenMind's API subset. */
+  pendingRunAnyway: string | null;
   /** The extension host's log, shown in the Extensions view while open. */
   logs: string | null;
   busy: string | null;
@@ -39,6 +43,8 @@ const INITIAL: ExtensionUiState = {
   pendingInstall: null,
   pendingUninstall: null,
   pendingGrant: null,
+  pendingGrantPermission: OUTSIDE_WORKSPACE,
+  pendingRunAnyway: null,
   logs: null,
   busy: null,
   notice: null,
@@ -206,7 +212,12 @@ export class ExtensionService {
   }
 
   requestGrantOutsideWorkspace(id: string): void {
-    this.set({ pendingGrant: id });
+    this.requestGrant(id, OUTSIDE_WORKSPACE);
+  }
+
+  /** Asks (with a warning) before giving the extension a permission the guard refused it. */
+  requestGrant(id: string, permission: PermissionName): void {
+    this.set({ pendingGrant: id, pendingGrantPermission: permission });
   }
 
   cancelGrant(): void {
@@ -218,16 +229,68 @@ export class ExtensionService {
     const id = this.state.pendingGrant;
     if (id === null) return;
     const extension = this.registry.find(id);
+    const permission = this.state.pendingGrantPermission;
     this.set({ pendingGrant: null, busy: "Granting access…", error: null });
     try {
-      await this.ipc.extGrantPermission(id, OUTSIDE_WORKSPACE);
+      await this.ipc.extGrantPermission(id, permission);
       await this.registry.refresh();
-      this.log(`${id}: granted access to files outside the workspace.`);
+      this.log(`${id}: granted "${permission}".`);
       if (this.host.isRunning()) await this.host.reload();
+      const name = extension ? displayName(extension) : id;
       this.set({
         busy: null,
-        notice: `${extension ? displayName(extension) : id} can now use files outside the open workspace.`,
+        notice:
+          permission === OUTSIDE_WORKSPACE
+            ? `${name} can now use files outside the open workspace.`
+            : `${name} was granted "${PERMISSION_INFO[permission].label}". It starts again on its next activation.`,
       });
+      if (extension?.enabled) await this.wake(extension);
+      this.events.emit("extensionsChanged", undefined);
+    } catch (error) {
+      this.set({ busy: null, error: cleanMessage(error) });
+    }
+  }
+
+  requestRunAnyway(id: string): void {
+    this.set({ pendingRunAnyway: id });
+  }
+
+  cancelRunAnyway(): void {
+    this.set({ pendingRunAnyway: null });
+  }
+
+  /**
+   * After the warning: lets the extension run although its engine is newer, then wakes it for what is already open
+   * (an open file of its language, its start-up events), like enabling does.
+   */
+  async confirmRunAnyway(): Promise<void> {
+    const id = this.state.pendingRunAnyway;
+    if (id === null) return;
+    this.set({ pendingRunAnyway: null });
+    await this.setRunAnyway(id, true);
+  }
+
+  /** Takes "Run anyway" back: the extension is stopped and isn't started again. */
+  async stopRunningAnyway(id: string): Promise<void> {
+    await this.setRunAnyway(id, false);
+  }
+
+  private async setRunAnyway(id: string, allow: boolean): Promise<void> {
+    const extension = this.registry.find(id);
+    if (extension === undefined) return;
+    const name = displayName(extension);
+    this.set({ busy: allow ? `Allowing ${name}…` : `Stopping ${name}…`, error: null });
+    try {
+      await this.ipc.extSetRunAnyway(id, allow);
+      await this.registry.refresh();
+      this.log(`${id}: ${allow ? "runs anyway although it asks for VS Code " + (extension.manifest.enginesVscode ?? "?") : "no longer runs anyway"}.`);
+      this.set({
+        busy: null,
+        notice: allow
+          ? `${name} may run now. A VS Code API OpenMind Studio lacks fails with a message when it calls it.`
+          : `${name} won't be started again (its VS Code engine isn't supported).`,
+      });
+      if (allow && extension.enabled) await this.wake({ ...extension, runAnyway: true });
       this.events.emit("extensionsChanged", undefined);
     } catch (error) {
       this.set({ busy: null, error: cleanMessage(error) });

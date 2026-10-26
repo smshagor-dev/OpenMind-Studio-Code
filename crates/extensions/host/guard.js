@@ -14,7 +14,16 @@ const path = require('path');
 const fs = require('fs');
 const { fileURLToPath } = require('url');
 
-function permissionError(permission) {
+// Told about every refusal of a known extension (the app offers the user to grant that permission).
+let deniedReporter = null;
+function onPermissionDenied(reporter) {
+  deniedReporter = reporter;
+}
+
+function permissionError(permission, extensionId) {
+  if (extensionId && deniedReporter) {
+    try { deniedReporter(extensionId, permission); } catch { /* reporting never changes the refusal */ }
+  }
   const error = new Error(`Permission '${permission}' is required for this extension API.`);
   error.code = 'EPERMISSION';
   return error;
@@ -96,7 +105,7 @@ function createGuard(descriptor, folders) {
   const granted = new Set(descriptor.permissions || []);
   const has = (permission) => granted.has(permission);
   const need = (permission) => {
-    if (!has(permission)) throw permissionError(permission);
+    if (!has(permission)) throw permissionError(permission, descriptor.id);
   };
   const ownStorage = [descriptor.globalStorage, descriptor.workspaceStorage, descriptor.logPath].filter(Boolean);
 
@@ -169,5 +178,5 @@ function createGuard(descriptor, folders) {
   return { has, need, checkPath, moduleFor, permissions: [...granted] };
 }
 
-module.exports = { createGuard, permissionError, modulePermission, within, resolvedPath };
+module.exports = { createGuard, permissionError, onPermissionDenied, modulePermission, within, resolvedPath };
 

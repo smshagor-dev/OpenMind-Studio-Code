@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { normalize } from "node:path";
 import { useSyncExternalStore } from "react";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
@@ -44,6 +45,6 @@ it("selects a workspace folder through the real host and filters duplicate names
   fireEvent.change(input, {target:{value:"folder-b"}});
   await waitFor(() => { expect(screen.getAllByRole("button", {name:/Project/})).toHaveLength(1); });
   fireEvent.click(screen.getByRole("button", {name:/Project/}));
-  expect(await opening).toEqual({path:"/workspace/folder-b",index:1,name:"Project"});
+  expect(await opening).toEqual({path:normalize("/workspace/folder-b"),index:1,name:"Project"});
   await waitFor(() => { expect(screen.queryByRole("dialog")).toBeNull(); });
 });

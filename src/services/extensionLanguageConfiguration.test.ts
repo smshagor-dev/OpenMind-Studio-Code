@@ -52,6 +52,6 @@ it("uses configured comments, auto-closing brackets and Enter rules in a real Mo
     model.setValue(""); editor.setPosition({ lineNumber: 1, column: 1 }); editor.trigger("keyboard", "type", { text: "{" });
     expect(model.getValue()).toBe("{}");
     model.setValue("start"); editor.setPosition({ lineNumber: 1, column: 6 }); editor.trigger("keyboard", "type", { text: "\n" });
-    expect(model.getValue()).toBe("start\n  // ");
+    expect(model.getValue(monaco.editor.EndOfLinePreference.LF)).toBe("start\n  // ");
   } finally { dispose(); editor.dispose(); model.dispose(); element.remove(); }
 });

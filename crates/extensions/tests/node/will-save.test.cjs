@@ -1,6 +1,7 @@
 'use strict';
+const { normalize } = require('node:path');
 const {test}=require('node:test');const assert=require('node:assert/strict');const {fixture}=require('./rpc-fixture.cjs');
-const file='/workspace/save.txt';const document={path:file,text:'body',version:1,languageId:'plaintext',isDirty:true};
+const file=normalize('/workspace/save.txt');const document={path:file,text:'body',version:1,languageId:'plaintext',isDirty:true};
 async function setup(t,body,permissions=['commands','workspaceRead','workspaceWrite']){
  const h=await fixture(t,{'test.save':{permissions,code:`const v=require('vscode');exports.activate=()=>{${body}};`}});
  h.notify('host/documentOpened',document);await h.request('host/activate',{id:'test.save'});return h;

@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { container } from "../services/container";
-import { displayName, hostStateText, runtimeStatus } from "../services/extensionModel";
+import { displayName, hostStateText, refusedPermission, runtimeStatus } from "../services/extensionModel";
 import { isNewerVersion, marketId } from "../services/extensionMarketplaceService";
 import type { InstalledExtension } from "../services/extensionsIpc";
 import type { MarketItem } from "../services/marketplaceIpc";
@@ -104,7 +104,7 @@ function InstalledRow(props: {
         label: extension.enabled ? "" : t("extensions.disabled"),
         onManage: (anchor) => {
           props.onMenu({
-            items: manageMenu(extension),
+            items: manageMenu(extension, refusedPermission(extension, activity.lastError)),
             x: anchor.left,
             y: anchor.bottom,
             label: t("extensions.manage"),

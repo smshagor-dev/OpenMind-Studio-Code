@@ -20,11 +20,10 @@ export interface ProfileList {
   covers: string[];
 }
 
+/** A VS Code profile on this computer (`edition:profile`); its files are read by the backend, never sent here. */
 export interface VsCodeProfileSource {
   id: string;
   label: string;
-  settingsPath: string;
-  keybindingsPath: string | null;
 }
 
 export interface ProfilesIpc {

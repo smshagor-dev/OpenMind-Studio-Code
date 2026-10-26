@@ -6,6 +6,7 @@
   "publisher": "openmind-samples",
   "engines": { "vscode": "^1.85.0" },
   "main": "./extension.js",
+  "openmindPermissions": ["workspaceWrite"],
   "contributes": {
     "commands": [{ "command": "sampleOverlap.run", "title": "Sample: Try Overlapping Edits" }],
     "keybindings": [{ "command": "sampleOverlap.run", "key": "ctrl+alt+f3" }]

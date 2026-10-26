@@ -11,6 +11,7 @@ import {
   hostStateText,
   outsideWorkspaceBlock,
   permissionLines,
+  refusedPermission,
 } from "./extensionModel";
 import type { ExtensionHostStatus, InstalledExtension } from "./extensionsIpc";
 
@@ -91,6 +92,63 @@ describe("permissions", () => {
     await r.service.confirmGrant();
     expect(r.ipc.extGrantPermission).toHaveBeenCalledWith(command.id, "filesystemOutsideWorkspace");
     expect(r.service.getState().pendingGrant).toBeNull();
+  });
+});
+
+describe("granting a permission the guard refused", () => {
+  const refusedBy = (name: string) => `Activating x failed: Permission '${name}' is required for this extension API.`;
+
+  it("names the refused permission until it is granted", () => {
+    const plain = testExtension();
+    expect(refusedPermission(plain, refusedBy("processExecution"))).toBe("processExecution");
+    expect(refusedPermission(plain, refusedBy("root"))).toBeNull();
+    expect(refusedPermission(plain, "some other error")).toBeNull();
+    expect(refusedPermission(plain, null)).toBeNull();
+    const granted = testExtension({
+      permissions: { requested: [], inferred: ["commands"], accepted: ["commands", "processExecution"], highRisk: [] },
+    });
+    expect(refusedPermission(granted, refusedBy("processExecution"))).toBeNull();
+  });
+
+  it("grants exactly that permission after the warning", async () => {
+    const r = await started([command], { node: NODE });
+    r.service.requestGrant(command.id, "processExecution");
+    expect(r.service.getState()).toMatchObject({ pendingGrant: command.id, pendingGrantPermission: "processExecution" });
+    r.service.cancelGrant();
+    expect(r.ipc.extGrantPermission).not.toHaveBeenCalled();
+    r.service.requestGrant(command.id, "processExecution");
+    await r.service.confirmGrant();
+    expect(r.ipc.extGrantPermission).toHaveBeenCalledWith(command.id, "processExecution");
+    expect(r.service.getState().notice).toContain("Run programs");
+  });
+});
+
+describe("run anyway (a VS Code engine newer than OpenMind's API subset)", () => {
+  const newer = testExtension({ engineSupported: false, runAnyway: false });
+
+  it("runs only after the warning, and can be taken back", async () => {
+    const r = await started([newer], { node: NODE });
+    r.service.requestRunAnyway(newer.id);
+    expect(r.service.getState().pendingRunAnyway).toBe(newer.id);
+    r.service.cancelRunAnyway();
+    expect(r.ipc.extSetRunAnyway).not.toHaveBeenCalled();
+
+    r.service.requestRunAnyway(newer.id);
+    await r.service.confirmRunAnyway();
+    expect(r.ipc.extSetRunAnyway).toHaveBeenCalledWith(newer.id, true);
+    expect(r.service.getState()).toMatchObject({ pendingRunAnyway: null, error: null });
+    expect(r.service.getState().notice).toContain("may run now");
+
+    await r.service.stopRunningAnyway(newer.id);
+    expect(r.ipc.extSetRunAnyway).toHaveBeenLastCalledWith(newer.id, false);
+  });
+
+  it("shows the backend's refusal", async () => {
+    const r = await started([newer], { node: NODE });
+    vi.mocked(r.ipc.extSetRunAnyway).mockRejectedValueOnce("It doesn't ask for a VS Code engine; nothing to allow.");
+    r.service.requestRunAnyway(newer.id);
+    await r.service.confirmRunAnyway();
+    expect(r.service.getState().error).toContain("nothing to allow");
   });
 });
 
