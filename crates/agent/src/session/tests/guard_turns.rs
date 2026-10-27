@@ -185,6 +185,41 @@ fn stopping_with_open_items_on_the_task_list_sends_the_model_back_to_work() {
 }
 
 #[test]
+fn a_rename_left_unfinished_in_a_searched_file_is_sent_back_once() {
+    let project = Project::new();
+    let root = project.ws.root();
+    fs::write(root.join("main.py"), "from utils import get_total\nget_total([])\n").expect("w");
+    fs::write(root.join("report.py"), "import utils\nutils.get_total([])\n").expect("w");
+    let rename = |id: &str, path: &str| {
+        call(
+            id,
+            "edit_file",
+            json!({"path": path, "old_string": "get_total", "new_string": "compute_total", "replace_all": true}),
+        )
+    };
+    let model = Script::new(vec![
+        call("s", "search", json!({"query": "get_total"})),
+        rename("e1", "main.py"),
+        say("Renamed get_total everywhere."),
+        rename("e2", "report.py"),
+        say("Renamed get_total in main.py and report.py."),
+    ]);
+    let panel = Panel::new(vec![Decision::Allow, Decision::Allow]);
+    let mut s = session(Mode::Ask);
+    s.run_turn("Rename get_total to compute_total", &model, &panel, &project.input());
+    assert_eq!(panel.end(), "done");
+    let reminder = last_user_message(&model, 3);
+    assert!(
+        reminder.contains("also found it in report.py, which still contains it"),
+        "{reminder}"
+    );
+    assert!(fs::read_to_string(root.join("report.py"))
+        .expect("read")
+        .contains("utils.compute_total"));
+    assert_eq!(model.requests.lock().expect("requests").len(), 5);
+}
+
+#[test]
 fn stopping_without_an_answer_is_sent_back_once_more() {
     let project = Project::new();
     let model = Script::new(vec![say(""), say("main.py has a subtraction bug.")]);
