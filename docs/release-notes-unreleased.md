@@ -1,7 +1,6 @@
-# OpenMind Studio — unreleased changes (after v1.0.4)
+# OpenMind Studio — v1.0.5 development notes (historical)
 
-Not built into any package and not published. The v1.0.4 packages that were already built do **not** contain these
-changes.
+These development notes were written after v1.0.4 and before the v1.0.5 release. For the consolidated published release summary, see [v1.0.5 release notes](release-notes-1.0.5.md). The v1.0.4 packages do not contain the post-v1.0.4 changes.
 
 ## New
 
