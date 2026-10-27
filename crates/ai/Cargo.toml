@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-openmind-network = { version = "1.0.4", path = "../network" }
+openmind-network = { version = "1.0.5", path = "../network" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

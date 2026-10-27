@@ -8,8 +8,8 @@ authors.workspace = true
 description = "Project dependencies and environments: reads manifests and builds package-manager plans (side-effect free)"
 
 [dependencies]
-openmind-language = { version = "1.0.4", path = "../language" }
-openmind-network = { version = "1.0.4", path = "../network" }
+openmind-language = { version = "1.0.5", path = "../language" }
+openmind-network = { version = "1.0.5", path = "../network" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
