@@ -9,10 +9,10 @@ authors.workspace = true
 [dependencies]
 base64 = "0.22"
 ureq = { version = "3.4.2", features = ["rustls"] }
-openmind-ai = { version = "1.0.4", path = "../ai" }
-openmind-network = { version = "1.0.4", path = "../network" }
-openmind-fs = { version = "1.0.4", path = "../fs" }
-openmind-search = { version = "1.0.4", path = "../search" }
+openmind-ai = { version = "1.0.5", path = "../ai" }
+openmind-network = { version = "1.0.5", path = "../network" }
+openmind-fs = { version = "1.0.5", path = "../fs" }
+openmind-search = { version = "1.0.5", path = "../search" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["preserve_order"] }
 thiserror.workspace = true
@@ -24,7 +24,7 @@ tempfile = "3.27.0"
 libc = "0.2"
 
 [target."cfg(windows)".dependencies]
-openmind-process = { version = "1.0.4", path = "../process" }
+openmind-process = { version = "1.0.5", path = "../process" }
 
 [dev-dependencies]
-openmind-llm = { version = "1.0.4", path = "../llm" }
+openmind-llm = { version = "1.0.5", path = "../llm" }

@@ -15,38 +15,38 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 base64 = "0.23.1"
-openmind-collab = { version = "1.0.4", path = "../crates/collab" }
-openmind-collab-net = { version = "1.0.4", path = "../crates/collab-net" }
-openmind-collab-signal = { version = "1.0.4", path = "../crates/collab-signal" }
-openmind-core = { version = "1.0.4", path = "../crates/core" }
-openmind-db = { version = "1.0.4", path = "../crates/db" }
-openmind-file-watch = { version = "1.0.4", path = "../crates/file-watch" }
-openmind-dap = { version = "1.0.4", path = "../crates/dap" }
-openmind-deps = { version = "1.0.4", path = "../crates/deps" }
-openmind-deploy = { version = "1.0.4", path = "../crates/deploy" }
-openmind-language = { version = "1.0.4", path = "../crates/language" }
-openmind-format = { version = "1.0.4", path = "../crates/format" }
-openmind-lsp = { version = "1.0.4", path = "../crates/lsp" }
-openmind-notebook = { version = "1.0.4", path = "../crates/notebook" }
-openmind-tasks = { version = "1.0.4", path = "../crates/tasks" }
-openmind-extensions = { version = "1.0.4", path = "../crates/extensions" }
-openmind-git = { version = "1.0.4", path = "../crates/git" }
-openmind-fs = { version = "1.0.4", path = "../crates/fs" }
-openmind-preview = { version = "1.0.4", path = "../crates/preview" }
-openmind-live-preview = { version = "1.0.4", path = "../crates/live-preview" }
-openmind-toolchains = { version = "1.0.4", path = "../crates/toolchains" }
-openmind-ai = { version = "1.0.4", path = "../crates/ai" }
-openmind-agent = { version = "1.0.4", path = "../crates/agent" }
-openmind-llm = { version = "1.0.4", path = "../crates/llm" }
-openmind-search = { version = "1.0.4", path = "../crates/search" }
-openmind-runner = { version = "1.0.4", path = "../crates/runner" }
-openmind-runtime-manager = { version = "1.0.4", path = "../crates/runtime-manager" }
-openmind-network = { version = "1.0.4", path = "../crates/network" }
-openmind-broker = { version = "1.0.4", path = "../crates/broker" }
-openmind-workloads = { version = "1.0.4", path = "../crates/workloads" }
-openmind-settings = { version = "1.0.4", path = "../crates/settings" }
-openmind-terminal = { version = "1.0.4", path = "../crates/terminal" }
-openmind-workspace = { version = "1.0.4", path = "../crates/workspace" }
+openmind-collab = { version = "1.0.5", path = "../crates/collab" }
+openmind-collab-net = { version = "1.0.5", path = "../crates/collab-net" }
+openmind-collab-signal = { version = "1.0.5", path = "../crates/collab-signal" }
+openmind-core = { version = "1.0.5", path = "../crates/core" }
+openmind-db = { version = "1.0.5", path = "../crates/db" }
+openmind-file-watch = { version = "1.0.5", path = "../crates/file-watch" }
+openmind-dap = { version = "1.0.5", path = "../crates/dap" }
+openmind-deps = { version = "1.0.5", path = "../crates/deps" }
+openmind-deploy = { version = "1.0.5", path = "../crates/deploy" }
+openmind-language = { version = "1.0.5", path = "../crates/language" }
+openmind-format = { version = "1.0.5", path = "../crates/format" }
+openmind-lsp = { version = "1.0.5", path = "../crates/lsp" }
+openmind-notebook = { version = "1.0.5", path = "../crates/notebook" }
+openmind-tasks = { version = "1.0.5", path = "../crates/tasks" }
+openmind-extensions = { version = "1.0.5", path = "../crates/extensions" }
+openmind-git = { version = "1.0.5", path = "../crates/git" }
+openmind-fs = { version = "1.0.5", path = "../crates/fs" }
+openmind-preview = { version = "1.0.5", path = "../crates/preview" }
+openmind-live-preview = { version = "1.0.5", path = "../crates/live-preview" }
+openmind-toolchains = { version = "1.0.5", path = "../crates/toolchains" }
+openmind-ai = { version = "1.0.5", path = "../crates/ai" }
+openmind-agent = { version = "1.0.5", path = "../crates/agent" }
+openmind-llm = { version = "1.0.5", path = "../crates/llm" }
+openmind-search = { version = "1.0.5", path = "../crates/search" }
+openmind-runner = { version = "1.0.5", path = "../crates/runner" }
+openmind-runtime-manager = { version = "1.0.5", path = "../crates/runtime-manager" }
+openmind-network = { version = "1.0.5", path = "../crates/network" }
+openmind-broker = { version = "1.0.5", path = "../crates/broker" }
+openmind-workloads = { version = "1.0.5", path = "../crates/workloads" }
+openmind-settings = { version = "1.0.5", path = "../crates/settings" }
+openmind-terminal = { version = "1.0.5", path = "../crates/terminal" }
+openmind-workspace = { version = "1.0.5", path = "../crates/workspace" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tauri = { version = "2.11.6", features = ["tray-icon"] }
@@ -66,7 +66,7 @@ tracing.workspace = true
 thiserror.workspace = true
 
 [target."cfg(windows)".dependencies]
-openmind-process = { version = "1.0.4", path = "../crates/process" }
+openmind-process = { version = "1.0.5", path = "../crates/process" }
 winapi = { version = "0.3", features = ["dpapi", "wincrypt", "winbase", "errhandlingapi", "minwindef", "psapi", "processthreadsapi", "winnls", "winreg", "winnt", "winerror", "processenv", "winuser", "combaseapi", "objbase", "knownfolders", "shlobj", "shobjidl_core", "objidl", "unknwnbase", "winnetwk", "wtypesbase", "wincon", "handleapi", "securitybaseapi", "winver"] }
 
 [dev-dependencies]

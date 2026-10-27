@@ -8,7 +8,7 @@ authors.workspace = true
 
 [dependencies]
 openmind-core.workspace = true
-openmind-lsp = { version = "1.0.4", path = "../lsp" }
+openmind-lsp = { version = "1.0.5", path = "../lsp" }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
