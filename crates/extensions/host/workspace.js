@@ -102,9 +102,14 @@ function createWorkspaceApi(parts) {
     );
   };
 
-  /** The default a setting has in this extension's own `contributes.configuration`. */
+  /**
+   * The default a setting has in this extension's own `contributes.configuration` (its package.json as written, so
+   * array and object settings, which OpenMind's Settings page doesn't show, keep their default as in VS Code).
+   */
   function contributedDefault(key) {
-    const contributed = ext.manifest && ext.manifest.contributes && ext.manifest.contributes.configuration;
+    let manifest = ext.manifest;
+    try { if (host.manifestOf) manifest = host.manifestOf(ext); } catch { /* keep the descriptor's copy */ }
+    const contributed = manifest && manifest.contributes && manifest.contributes.configuration;
     for (const block of Array.isArray(contributed) ? contributed : contributed ? [contributed] : []) {
       const property = block && block.properties && block.properties[key];
       if (property && Object.prototype.hasOwnProperty.call(property, 'default')) return property.default;
@@ -125,7 +130,7 @@ function createWorkspaceApi(parts) {
           found = true;
         }
       }
-      return found ? nested : undefined;
+      return found ? nested : contributedDefault(full);
     };
     return {
       get(key, fallback) {

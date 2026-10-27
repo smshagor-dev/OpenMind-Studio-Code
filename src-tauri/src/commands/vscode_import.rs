@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use openmind_settings::{keybindings, store, vscode_import};
+use openmind_settings::{keybindings, store, vscode_import, vscode_map};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use tauri::{AppHandle, State};
@@ -33,29 +33,62 @@ pub fn vscode_import_preview(
     profile: String,
     state: State<'_, AppState>,
 ) -> Result<vscode_import::Preview, String> {
-    vscode_import::inspect(&edition, &profile, &crate::commands::extensions::extras(&state))
+    vscode_import::inspect(
+        &edition,
+        &profile,
+        &crate::commands::extensions::extras(&state),
+        &extension_commands(&state),
+    )
+}
+
+/// The commands installed OpenMind extensions contribute: a VS Code shortcut for one of them keeps its id.
+fn extension_commands(state: &AppState) -> Vec<String> {
+    state
+        .extensions
+        .store
+        .list()
+        .extensions
+        .iter()
+        .flat_map(|extension| {
+            extension
+                .manifest
+                .contributes
+                .commands
+                .iter()
+                .map(|c| c.command.clone())
+        })
+        .collect()
 }
 
 fn backup(path: &Path) -> Result<Option<PathBuf>, String> {
-    if !path.exists() { return Ok(None); }
-    let unique = SystemTime::now().duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?.as_nanos();
-    let name = path.file_name().ok_or("Invalid target filename.")?.to_string_lossy();
+    if !path.exists() {
+        return Ok(None);
+    }
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_nanos();
+    let name = path
+        .file_name()
+        .ok_or("Invalid target filename.")?
+        .to_string_lossy();
     let backup = path.with_file_name(format!("{name}.before-vscode-import-{unique}.bak"));
-    fs::copy(path, &backup)
-        .map_err(|e| format!("Couldn't back up {}: {e}", path.display()))?;
+    fs::copy(path, &backup).map_err(|e| format!("Couldn't back up {}: {e}", path.display()))?;
     Ok(Some(backup))
 }
 
 fn restore(target: &Path, saved: &Option<PathBuf>) -> Result<(), String> {
     if let Some(backup) = saved {
-        fs::copy(backup, target).map_err(|e| format!(
-            "Couldn't restore {} from {}: {e}", target.display(), backup.display()
-        ))?;
+        fs::copy(backup, target).map_err(|e| {
+            format!(
+                "Couldn't restore {} from {}: {e}",
+                target.display(),
+                backup.display()
+            )
+        })?;
     } else if target.exists() {
-        fs::remove_file(target).map_err(|e| format!(
-            "Couldn't remove newly created {}: {e}", target.display()
-        ))?;
+        fs::remove_file(target)
+            .map_err(|e| format!("Couldn't remove newly created {}: {e}", target.display()))?;
     }
     Ok(())
 }
@@ -75,52 +108,70 @@ pub fn vscode_import_apply(
         return Err("Select settings or keyboard shortcuts to import.".into());
     }
     let preview = vscode_import::inspect(
-        &edition, &profile, &crate::commands::extensions::extras(&state)
+        &edition,
+        &profile,
+        &crate::commands::extensions::extras(&state),
+        &extension_commands(&state),
     )?;
     let settings_file = &state.settings_file;
     let shortcuts_file = &state.keybindings_file;
     if import_settings {
         if let Some(error) = store::read_layer(settings_file).error {
-            return Err(format!("Existing OpenMind settings are invalid; import refused: {error}"));
+            return Err(format!(
+                "Existing OpenMind settings are invalid; import refused: {error}"
+            ));
         }
     }
+    let existing_shortcuts = keybindings::read_file(shortcuts_file);
     if import_shortcuts {
-        if let Some(error) = keybindings::read_file(shortcuts_file).error {
-            return Err(format!("Existing OpenMind shortcuts are invalid; import refused: {error}"));
+        if let Some(error) = &existing_shortcuts.error {
+            return Err(format!(
+                "Existing OpenMind shortcuts are invalid; import refused: {error}"
+            ));
         }
     }
 
     let settings_backup = if import_settings && !preview.settings.is_empty() {
         backup(settings_file)?
-    } else { None };
+    } else {
+        None
+    };
     let shortcuts_backup = if import_shortcuts && !preview.keybindings.is_empty() {
-        match backup(shortcuts_file) {
-            Ok(value) => value,
-            Err(error) => return Err(error),
-        }
-    } else { None };
+        backup(shortcuts_file)?
+    } else {
+        None
+    };
     let mut settings_imported = 0;
     let mut shortcuts_imported = 0;
     if import_settings && !preview.settings.is_empty() {
-        let candidates: Map<String, Value> = preview.settings.iter()
+        let candidates: Map<String, Value> = preview
+            .settings
+            .iter()
             .map(|entry| (entry.id.clone(), entry.value.clone()))
             .collect();
         match store::merge_values(
-            settings_file, &candidates, false, &crate::commands::extensions::extras(&state)
+            settings_file,
+            &candidates,
+            false,
+            &crate::commands::extensions::extras(&state),
         ) {
             Ok(count) => settings_imported = count,
             Err(error) => return Err(format!("Settings import failed; backup retained: {error}")),
         }
     }
     if import_shortcuts && !preview.keybindings.is_empty() {
-        // Replacing the shortcut file is intentional, with backup for recovery.
-        match keybindings::write_file(shortcuts_file, &preview.keybindings) {
-            Ok(entries) => shortcuts_imported = entries.len(),
+        // The user's own shortcuts stay; an imported binding takes over only the keys VS Code bound.
+        let merged =
+            vscode_map::merge_keybindings(&existing_shortcuts.entries, &preview.keybindings);
+        match keybindings::write_file(shortcuts_file, &merged) {
+            Ok(_) => shortcuts_imported = preview.keybindings.len(),
             Err(error) => {
                 let restored = if import_settings && settings_imported > 0 {
                     restore(settings_file, &settings_backup)
-                } else { Ok(()) }
-                    .and_then(|()| restore(shortcuts_file, &shortcuts_backup));
+                } else {
+                    Ok(())
+                }
+                .and_then(|()| restore(shortcuts_file, &shortcuts_backup));
                 return Err(match restored {
                     Ok(()) => format!("Shortcut import failed; existing settings restored: {error}"),
                     Err(rollback) => format!(
@@ -149,7 +200,9 @@ pub struct ImportedSnippet {
 }
 
 fn snippets_dir(state: &AppState) -> Result<PathBuf, String> {
-    Ok(state.settings_file.parent()
+    Ok(state
+        .settings_file
+        .parent()
         .ok_or("Cannot locate settings directory.")?
         .join("snippets"))
 }
@@ -202,24 +255,44 @@ pub fn vscode_imported_snippets(
         let file = file.map_err(|e| e.to_string())?;
         let path = file.path();
         let name = file.file_name().to_string_lossy().to_string();
-        if !(name.ends_with(".json") || name.ends_with(".code-snippets")) { continue; }
+        if !(name.ends_with(".json") || name.ends_with(".code-snippets")) {
+            continue;
+        }
         let metadata = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
-        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 1024 * 1024 { continue; }
+        if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() > 1024 * 1024
+        {
+            continue;
+        }
         let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
         if name.ends_with(".json") {
             let language = name.trim_end_matches(".json").to_string();
             result.push(ImportedSnippet { language, text });
         } else {
-            let Ok(Value::Object(snippets)) = serde_json::from_str::<Value>(&text) else { continue; };
+            let Ok(Value::Object(snippets)) = serde_json::from_str::<Value>(&text) else {
+                continue;
+            };
             let mut scoped: std::collections::BTreeMap<String, Map<String, Value>> =
                 std::collections::BTreeMap::new();
             for (label, value) in snippets {
-                let Some(scope) = value.get("scope").and_then(Value::as_str) else { continue; };
-                for language in scope.split(',').map(str::trim).filter(|scope| !scope.is_empty()) {
-                    if language.len() > 64 || !language.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_') {
+                let Some(scope) = value.get("scope").and_then(Value::as_str) else {
+                    continue;
+                };
+                for language in scope
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|scope| !scope.is_empty())
+                {
+                    if language.len() > 64
+                        || !language
+                            .bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+                    {
                         continue;
                     }
-                    scoped.entry(language.to_string()).or_default().insert(label.clone(), value.clone());
+                    scoped
+                        .entry(language.to_string())
+                        .or_default()
+                        .insert(label.clone(), value.clone());
                 }
             }
             for (language, definitions) in scoped {
@@ -241,11 +314,25 @@ pub fn vscode_import_profile(
     profile: String,
     state: State<'_, AppState>,
 ) -> Result<openmind_settings::profiles::ProfileList, String> {
+    import_profile(&state, &edition, &profile)
+}
+
+/// The Settings page's and the Profiles dialog's "import a VS Code profile as an OpenMind profile".
+pub(crate) fn import_profile(
+    state: &AppState,
+    edition: &str,
+    profile: &str,
+) -> Result<openmind_settings::profiles::ProfileList, String> {
     use openmind_settings::profiles::{self, ProfileStore};
     let preview = vscode_import::inspect(
-        &edition, &profile, &crate::commands::extensions::extras(&state)
+        edition,
+        profile,
+        &crate::commands::extensions::extras(state),
+        &extension_commands(state),
     )?;
-    let settings_dir = state.settings_file.parent()
+    let settings_dir = state
+        .settings_file
+        .parent()
         .ok_or("Cannot locate OpenMind settings directory.")?;
     let store = ProfileStore::new(settings_dir);
     let current = store::read_layer(&state.settings_file);
@@ -256,17 +343,40 @@ pub fn vscode_import_profile(
     if let Some(error) = shortcuts.error {
         return Err(format!("Existing shortcuts are invalid: {error}"));
     }
-    store.ensure_seeded(&current.values, &shortcuts.entries)
+    store
+        .ensure_seeded(&current.values, &shortcuts.entries)
         .map_err(|error| error.to_string())?;
-    let values: Map<String, Value> = preview.settings.iter()
-        .map(|item| (item.id.clone(), item.value.clone())).collect();
-    let name = format!("VS Code {} {}", edition, profile);
-    store.create(
-        &name.chars().take(40).collect::<String>(),
-        profiles::snapshot(&values),
-        preview.keybindings,
-    ).map_err(|error| error.to_string())?;
+    let values: Map<String, Value> = preview
+        .settings
+        .iter()
+        .map(|item| (item.id.clone(), item.value.clone()))
+        .collect();
+    let name = unique_profile_name(&store.summary(), &preview.source.label);
+    store
+        .create(
+            &name,
+            profiles::snapshot(&values),
+            profiles::keybindings_snapshot(&preview.keybindings),
+        )
+        .map_err(|error| error.to_string())?;
     Ok(store.summary())
+}
+
+/// A profile name from the VS Code profile's label that no existing profile uses ("Code — Default (2)" ...).
+fn unique_profile_name(list: &openmind_settings::profiles::ProfileList, label: &str) -> String {
+    let base: String = label.chars().take(32).collect();
+    let taken = |name: &str| {
+        list.profiles
+            .iter()
+            .any(|p| p.name.eq_ignore_ascii_case(name))
+    };
+    let mut name = base.clone();
+    let mut number = 2;
+    while taken(&name) {
+        name = format!("{base} ({number})");
+        number += 1;
+    }
+    name
 }
 
 /// Package a user-selected installed VS Code extension with the same safe VSIX
@@ -282,18 +392,20 @@ pub async fn vscode_import_extension(
     let source = vscode_import::extension_path(&edition, &folder)?;
     let store = state.extensions.store.clone();
     let installed = tokio::task::spawn_blocking(move || {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH)
-            .map_err(|e| e.to_string())?.as_nanos();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_nanos();
         let staging = std::env::temp_dir().join(format!(
-            "openmind-vscode-import-{}-{unique}", std::process::id()
+            "openmind-vscode-import-{}-{unique}",
+            std::process::id()
         ));
         fs::create_dir(&staging).map_err(|e| e.to_string())?;
         let archive = staging.join("extension.vsix");
         let result = (|| {
-            openmind_extensions::vsix::pack(&source, &archive)
-                .map_err(|e| e.to_string())?;
-            let installed = store.install(&archive, false)
-                .map_err(|e| e.to_string())?;
+            crate::commands::extensions::validate_vscode_extension_tree(&source)?;
+            openmind_extensions::vsix::pack(&source, &archive).map_err(|e| e.to_string())?;
+            let installed = store.install(&archive, false).map_err(|e| e.to_string())?;
             match store.set_enabled(&installed.id, false) {
                 Ok(disabled) => Ok(disabled),
                 Err(error) => {
@@ -304,7 +416,9 @@ pub async fn vscode_import_extension(
         })();
         let _ = fs::remove_dir_all(&staging);
         result
-    }).await.map_err(|error| error.to_string())??;
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     crate::state::refresh_soon(&app, &[crate::state::Domain::Extensions]);
     crate::sync::announce_now(&app, crate::sync::Topic::Extensions).await;
     Ok(installed)
@@ -313,6 +427,33 @@ pub async fn vscode_import_extension(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_import_of_one_profile_gets_its_own_name() {
+        use openmind_settings::profiles::{ProfileList, ProfileSummary};
+        let summary = |name: &str| ProfileSummary {
+            id: name.to_lowercase(),
+            name: name.into(),
+            active: false,
+            setting_count: 0,
+            updated_at: 0,
+        };
+        let mut list = ProfileList {
+            profiles: vec![summary("Default")],
+            active: "default".into(),
+            problems: vec![],
+            covers: vec![],
+        };
+        assert_eq!(
+            unique_profile_name(&list, "Code — Default"),
+            "Code — Default"
+        );
+        list.profiles.push(summary("code — default"));
+        assert_eq!(
+            unique_profile_name(&list, "Code — Default"),
+            "Code — Default (2)"
+        );
+    }
 
     #[test]
     fn backup_and_restore_preserves_the_original_file() {
@@ -325,4 +466,3 @@ mod tests {
         assert_eq!(fs::read_to_string(&file).unwrap(), "old");
     }
 }
-

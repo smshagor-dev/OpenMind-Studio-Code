@@ -14,6 +14,7 @@ use crate::events::AgentEvent;
 use crate::tools::{self, Outcome, Todo, ToolKind};
 use crate::wire::{Message, ToolCall};
 
+use super::leftovers::Leftovers;
 use super::{AgentHost, Session};
 
 /// The same call (same tool, same arguments, nothing changed in between) is refused from this run on.
@@ -77,6 +78,12 @@ impl Session {
         kind: ToolKind,
         outcome: &mut Outcome,
     ) {
+        if call.name == "search" && outcome.ok {
+            self.guard.leftovers.searched(arguments, &outcome.for_model);
+        }
+        if let Some(change) = &outcome.change {
+            self.guard.leftovers.changed(change);
+        }
         match kind {
             ToolKind::Edit | ToolKind::Delete if outcome.change.is_some() => self.guard.changed(),
             ToolKind::Edit | ToolKind::Delete if !outcome.ok => {
@@ -96,9 +103,14 @@ impl Session {
             .record(&call.name, arguments, kind, &call.id, true);
     }
 
-    /// The model answered without a tool call. When its work looks unfinished, tells it to go on (returns `true`).
-    pub(super) fn keep_going(&mut self, answer: &str) -> bool {
-        match self.guard.finish_nudge(answer, self.policy.read_only()) {
+    /// The model answered without a tool call. When its work looks unfinished — open items on its task list, no answer,
+    /// or a name it replaced still in files its search found — tells it to go on (returns `true`).
+    pub(super) fn keep_going(&mut self, answer: &str, root: &std::path::Path) -> bool {
+        let nudge = self
+            .guard
+            .finish_nudge(answer, self.policy.read_only())
+            .or_else(|| self.guard.leftovers.reminder(root));
+        match nudge {
             Some(nudge) => {
                 self.messages.push(Message::User { content: nudge });
                 true
@@ -135,6 +147,8 @@ pub(crate) struct TurnGuard {
     /// The model's task list as of its last update in this turn.
     todos: Vec<Todo>,
     nudges: u32,
+    /// Searched names a change replaced in some files but not in others.
+    leftovers: Leftovers,
     /// After-edit checks run this turn, and how many changes the last one saw.
     pub(super) hook_runs: u32,
     pub(super) hook_seen: usize,

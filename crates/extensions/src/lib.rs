@@ -3,6 +3,7 @@
 
 pub mod activation;
 pub mod contributions;
+pub mod engine_override;
 pub mod error;
 pub mod host;
 pub mod hostlog;
@@ -28,4 +29,3 @@ pub use settings::{extras_for, theme_value};
 pub use store::{
     preview, BrokenExtension, ExtensionStore, InstalledExtension, Listing, NODE_REQUIRED,
 };
-

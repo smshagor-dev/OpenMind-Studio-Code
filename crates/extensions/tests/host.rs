@@ -1,140 +1,13 @@
 //! The extension host against a real Node.js (skipped when the machine has none) and the five sample
 //! extensions in `tests/fixtures`, installed through real `.vsix` files into a folder with a space in it.
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-
-use openmind_extensions::host::{host_descriptor, resolve_host_node, HostEvents, HostStart};
+use openmind_extensions::vsix;
 use openmind_extensions::Permission;
-use openmind_extensions::{
-    vsix, ExtensionHost, ExtensionPaths, ExtensionStore, InstalledExtension,
-};
 use serde_json::{json, Value};
 
-const WAIT: Duration = Duration::from_secs(20);
-
-#[derive(Default)]
-struct Recorder {
-    requests: Mutex<Vec<(Value, String, Value)>>,
-    notifications: Mutex<Vec<(String, Value)>>,
-    exits: Mutex<Vec<Option<String>>>,
-}
-
-impl HostEvents for Recorder {
-    fn request(&self, id: Value, method: &str, params: Value) {
-        self.requests
-            .lock()
-            .expect("lock")
-            .push((id, method.to_string(), params));
-    }
-    fn notification(&self, method: &str, params: Value) {
-        self.notifications
-            .lock()
-            .expect("lock")
-            .push((method.to_string(), params));
-    }
-    fn exited(&self, reason: Option<String>) {
-        self.exits.lock().expect("lock").push(reason);
-    }
-}
-
-impl Recorder {
-    fn notifications_named(&self, name: &str) -> Vec<Value> {
-        self.notifications
-            .lock()
-            .expect("lock")
-            .iter()
-            .filter(|(method, _)| method == name)
-            .map(|(_, params)| params.clone())
-            .collect()
-    }
-
-    fn wait_for(&self, what: &str, condition: impl Fn(&Recorder) -> bool) {
-        let started = Instant::now();
-        while started.elapsed() < WAIT {
-            if condition(self) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        panic!("timed out waiting for {what}");
-    }
-}
-
-struct Fixture {
-    _dir: tempfile::TempDir,
-    paths: ExtensionPaths,
-    store: ExtensionStore,
-    events: Arc<Recorder>,
-}
-
-fn node() -> Option<openmind_lsp::node::NodeExecutable> {
-    resolve_host_node(&[], std::env::var_os("PATH"), true).ok()
-}
-
-fn fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-}
-
-fn setup() -> Fixture {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let paths = ExtensionPaths::new(&dir.path().join("Open Mind").join("extensions"));
-    paths.ensure().expect("layout");
-    let store = ExtensionStore::new(paths.clone());
-    Fixture {
-        _dir: dir,
-        paths,
-        store,
-        events: Arc::new(Recorder::default()),
-    }
-}
-
-fn install(fixture: &Fixture, name: &str) -> InstalledExtension {
-    let vsix_path = fixture.paths.cache.join(format!("{name}.vsix"));
-    vsix::pack(&fixtures().join(name), &vsix_path).expect("pack");
-    fixture.store.install(&vsix_path, false).expect("install")
-}
-
-fn descriptor(fixture: &Fixture, extension: &InstalledExtension) -> Value {
-    host_descriptor(&fixture.paths, extension, Some("test"))
-}
-
-fn start(
-    fixture: &Fixture,
-    extensions: &[&InstalledExtension],
-    configuration: Value,
-) -> Option<ExtensionHost> {
-    let node = node()?;
-    let host = ExtensionHost::start(
-        &fixture.paths,
-        HostStart {
-            node,
-            path_prepend: Vec::new(),
-            vars: Vec::new(),
-        },
-        fixture.events.clone(),
-    )
-    .expect("host starts");
-    let descriptors: Vec<Value> = extensions
-        .iter()
-        .map(|extension| descriptor(fixture, extension))
-        .collect();
-    host.request(
-        "host/init",
-        json!({
-            "extensions": descriptors,
-            "configuration": configuration,
-            "workspaceFolders": [{ "path": fixture.paths.root.join("My Site"), "name": "My Site" }],
-            "documents": [],
-        }),
-        WAIT,
-    )
-    .expect("init");
-    Some(host)
-}
+#[path = "support/host_fixture.rs"]
+mod fixture;
+use fixture::*;
 
 #[test]
 fn the_command_extension_activates_lazily_registers_a_command_and_shows_a_message() {
@@ -317,7 +190,7 @@ fn an_unsupported_vscode_api_fails_with_a_clear_message() {
     .expect("manifest");
     std::fs::write(
         folder.join("main.js"),
-        "const vscode = require('vscode');\nexports.activate = () => { try { vscode.debug.asDebugSourceUri({ sourceReference: 1 }); } catch (e) { globalThis.probeMessage = e.message; }\n vscode.commands.registerCommand('probe.message', () => globalThis.probeMessage); };",
+        "const vscode = require('vscode');\nexports.activate = () => { try { vscode.notebooks.registerNotebookCellStatusBarItemProvider('x', {}); } catch (e) { globalThis.probeMessage = e.message; }\n vscode.commands.registerCommand('probe.message', () => globalThis.probeMessage); };",
     )
     .expect("main");
     let vsix_path = fixture.paths.cache.join("probe.vsix");
@@ -337,7 +210,7 @@ fn an_unsupported_vscode_api_fails_with_a_clear_message() {
         .expect("run");
     assert_eq!(
         message,
-        json!("VS Code API 'debug.asDebugSourceUri' is not supported by OpenMind Studio yet.")
+        json!("VS Code API 'notebooks.registerNotebookCellStatusBarItemProvider' is not supported by OpenMind Studio yet.")
     );
     host.stop();
 }
@@ -427,40 +300,6 @@ fn an_ai_provider_extension_installs_as_data_and_its_contribution_moves_with_ena
 
 // ---- Milestone 10.1: the regression pack (permissions, cleanup, duplicates, throwing commands) ------------------------
 
-fn run(host: &ExtensionHost, id: &str) {
-    host.request("host/activate", json!({ "id": id }), WAIT)
-        .unwrap_or_else(|err| panic!("activating {id}: {err}"));
-}
-
-fn call(host: &ExtensionHost, command: &str) -> Result<Value, String> {
-    host.request(
-        "host/executeCommand",
-        json!({ "command": command, "args": [] }),
-        WAIT,
-    )
-    .map_err(|err| err.to_string())
-}
-
-/// An extension made on the spot (`main.js` = `code`) and installed like any other.
-fn install_inline(
-    fixture: &Fixture,
-    name: &str,
-    manifest_extra: &str,
-    code: &str,
-) -> InstalledExtension {
-    let folder = fixture.paths.cache.join(format!("inline-{name}"));
-    std::fs::create_dir_all(&folder).expect("mkdir");
-    std::fs::write(
-        folder.join("package.json"),
-        format!(r#"{{"name":"{name}","version":"1.0.0","publisher":"t","main":"./main.js"{manifest_extra}}}"#),
-    )
-    .expect("manifest");
-    std::fs::write(folder.join("main.js"), code).expect("main");
-    let vsix_path = fixture.paths.cache.join(format!("{name}.vsix"));
-    vsix::pack(&folder, &vsix_path).expect("pack");
-    fixture.store.install(&vsix_path, false).expect("install")
-}
-
 #[test]
 fn a_throwing_command_reports_its_error_and_the_host_and_extension_survive() {
     let fixture = setup();
@@ -490,7 +329,7 @@ fn an_unsupported_api_names_itself_and_is_logged_against_the_extension() {
     };
     run(&host, &extension.id);
     let err = call(&host, "sampleUnsupported.run").expect_err("unsupported");
-    let message = "VS Code API 'debug.asDebugSourceUri' is not supported by OpenMind Studio yet.";
+    let message = "VS Code API 'notebooks.registerNotebookCellStatusBarItemProvider' is not supported by OpenMind Studio yet.";
     assert!(err.contains(message), "{err}");
     let log = host.log().read();
     assert!(
@@ -838,4 +677,3 @@ fn every_sample_installs_disables_enables_and_uninstalls_cleanly() {
     assert!(fixture.store.list().extensions.is_empty());
     assert!(fixture.store.list().broken.is_empty());
 }
-

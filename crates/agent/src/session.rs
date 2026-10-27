@@ -17,6 +17,7 @@ use crate::wire::{request_body, Delta, Message, StreamState};
 
 mod guard;
 mod hooks;
+mod leftovers;
 mod subagent;
 use guard::{TurnGuard, Verdict};
 
@@ -612,7 +613,7 @@ impl Session {
                     continue;
                 }
                 // Stopping with open items on its task list, or with no answer, is not the end of the work.
-                if self.keep_going(&content) {
+                if self.keep_going(&content, ctx.ws.root()) {
                     continue;
                 }
                 return ("done".into(), None);

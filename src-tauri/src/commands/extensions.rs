@@ -142,6 +142,15 @@ impl ExtensionsRuntime {
             }
         }
     }
+
+    /// The guard refused the extension a permission while it ran (in a command, a provider ...): kept as its last error
+    /// so the Extensions view offers to grant it; whether it is active doesn't change.
+    pub(crate) fn record_denied(&self, id: &str, permission: &str) {
+        let mut activity = lock(&self.activity);
+        activity.entry(id.to_string()).or_default().last_error = Some(format!(
+            "Permission '{permission}' is required for this extension API."
+        ));
+    }
 }
 
 /// The settings and themes the enabled extensions add, for the Settings backend.
@@ -186,11 +195,25 @@ impl HostEvents for Sink {
                 params.get("id").and_then(Value::as_str),
                 params.get("error").and_then(Value::as_str),
             ) {
-                self.app.state::<AppState>().extensions.record_activation(
-                    id,
-                    &Err(error.to_string()),
-                );
+                self.app
+                    .state::<AppState>()
+                    .extensions
+                    .record_activation(id, &Err(error.to_string()));
                 crate::state::refresh_soon(&self.app, &[crate::state::Domain::Extensions]);
+            }
+        }
+        if method == "extensions/permissionDenied" {
+            if let (Some(id), Some(permission)) = (
+                params.get("id").and_then(Value::as_str),
+                params.get("permission").and_then(Value::as_str),
+            ) {
+                if openmind_extensions::Permission::parse(permission).is_some() {
+                    self.app
+                        .state::<AppState>()
+                        .extensions
+                        .record_denied(id, permission);
+                    crate::state::refresh_soon(&self.app, &[crate::state::Domain::Extensions]);
+                }
             }
         }
         if method == "log/output" {
@@ -310,7 +333,9 @@ pub struct VsCodeExtensionSource {
 
 /// Only paths under the current user's VS Code extension roots are eligible.
 fn vscode_extension_roots() -> Vec<(&'static str, PathBuf)> {
-    let Some(home) = std::env::var_os("USERPROFILE") else { return Vec::new() };
+    let Some(home) = std::env::var_os("USERPROFILE") else {
+        return Vec::new();
+    };
     let root = PathBuf::from(home);
     vec![
         ("stable", root.join(".vscode").join("extensions")),
@@ -324,17 +349,29 @@ fn detected_vscode_extensions() -> Vec<VsCodeExtensionSource> {
         if let Ok(entries) = std::fs::read_dir(root) {
             for entry in entries.flatten().take(1000) {
                 let path = entry.path();
-                if !path.is_dir() || path.is_symlink() || !path.join("package.json").is_file() { continue; }
+                if !path.is_dir() || path.is_symlink() || !path.join("package.json").is_file() {
+                    continue;
+                }
                 let folder = entry.file_name().to_string_lossy().to_string();
-                if folder.starts_with('.') { continue; }
+                if folder.starts_with('.') {
+                    continue;
+                }
                 found.push(VsCodeExtensionSource {
                     id: format!("{product}:{folder}"),
-                    label: format!("{} — {}", if product == "stable" { "VS Code" } else { "VS Code Insiders" }, folder),
+                    label: format!(
+                        "{} — {}",
+                        if product == "stable" {
+                            "VS Code"
+                        } else {
+                            "VS Code Insiders"
+                        },
+                        folder
+                    ),
                 });
             }
         }
     }
-    found.sort_by(|a,b| a.label.cmp(&b.label));
+    found.sort_by(|a, b| a.label.cmp(&b.label));
     found
 }
 
@@ -345,16 +382,20 @@ pub fn ext_detect_vscode() -> Vec<VsCodeExtensionSource> {
 
 /// Refuse links and unexpectedly large trees before creating the temporary VSIX.
 /// This also avoids copying files outside the VS Code extension directory.
-fn validate_vscode_extension_tree(root: &std::path::Path) -> Result<(), String> {
+pub(crate) fn validate_vscode_extension_tree(root: &std::path::Path) -> Result<(), String> {
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     let mut count = 0usize;
     let mut bytes = 0u64;
     while let Some((folder, depth)) = stack.pop() {
-        if depth > 40 { return Err("VS Code extension directory nesting is too deep.".into()); }
+        if depth > 40 {
+            return Err("VS Code extension directory nesting is too deep.".into());
+        }
         for item in std::fs::read_dir(folder).map_err(|e| e.to_string())? {
             let item = item.map_err(|e| e.to_string())?;
             count += 1;
-            if count > 20_000 { return Err("VS Code extension has too many files.".into()); }
+            if count > 20_000 {
+                return Err("VS Code extension has too many files.".into());
+            }
             let meta = std::fs::symlink_metadata(item.path()).map_err(|e| e.to_string())?;
             if meta.file_type().is_symlink() {
                 return Err("VS Code extension contains a symbolic link or junction; import a trusted VSIX instead.".into());
@@ -382,36 +423,59 @@ pub async fn ext_import_vscode(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<InstalledExtension, String> {
-    let (kind, folder) = source_id.split_once(':').ok_or("Invalid VS Code extension identifier.")?;
-    if folder.is_empty() || folder == "." || folder == ".." ||
-        !folder.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') {
+    let (kind, folder) = source_id
+        .split_once(':')
+        .ok_or("Invalid VS Code extension identifier.")?;
+    if folder.is_empty()
+        || folder == "."
+        || folder == ".."
+        || !folder
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+    {
         return Err("Invalid VS Code extension folder.".into());
     }
-    let root = vscode_extension_roots().into_iter()
-        .find(|(product, _)| *product == kind).map(|(_,path)| path)
+    let root = vscode_extension_roots()
+        .into_iter()
+        .find(|(product, _)| *product == kind)
+        .map(|(_, path)| path)
         .ok_or("VS Code installation wasn't found.")?;
     let candidate = root.join(folder);
     let canonical_root = root.canonicalize().map_err(|e| e.to_string())?;
     let canonical_candidate = candidate.canonicalize().map_err(|e| e.to_string())?;
-    if !canonical_candidate.starts_with(&canonical_root) || !candidate.is_dir() || candidate.is_symlink() {
+    if !canonical_candidate.starts_with(&canonical_root)
+        || !candidate.is_dir()
+        || candidate.is_symlink()
+    {
         return Err("VS Code extension is outside the expected installation folder.".into());
     }
     // The import is initially disabled; users enable it after reviewing its permissions.
     let import = {
         let app = app.clone();
         tokio::task::spawn_blocking(move || {
-            let id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default().as_nanos();
-            let archive = std::env::temp_dir().join(format!("openmind-vscode-{id}-{}.vsix", std::process::id()));
+            let id = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let archive = std::env::temp_dir()
+                .join(format!("openmind-vscode-{id}-{}.vsix", std::process::id()));
             let outcome = (|| {
-                validate_vscode_extension_tree(&canonical_candidate).map_err(openmind_extensions::ExtensionError::Refused)?;
+                validate_vscode_extension_tree(&canonical_candidate)
+                    .map_err(openmind_extensions::ExtensionError::Refused)?;
                 vsix::pack(&canonical_candidate, &archive)?;
-                let installed = app.state::<AppState>().extensions.store.install(&archive, false)?;
+                let installed = app
+                    .state::<AppState>()
+                    .extensions
+                    .store
+                    .install(&archive, false)?;
                 Ok::<_, openmind_extensions::ExtensionError>(installed)
             })();
             let _ = std::fs::remove_file(&archive);
             outcome
-        }).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?
     };
     // Disabled on import; do not implicitly run untrusted migrated code.
     let extension = match state.extensions.store.set_enabled(&import.id, false) {
@@ -545,7 +609,11 @@ mod vscode_import_tests {
         let root = tempfile::tempdir().expect("tempdir");
         std::fs::create_dir(root.path().join("dist")).expect("mkdir");
         std::fs::write(root.path().join("package.json"), "{}").expect("manifest");
-        std::fs::write(root.path().join("dist").join("main.js"), "exports.activate = () => {};").expect("entry");
+        std::fs::write(
+            root.path().join("dist").join("main.js"),
+            "exports.activate = () => {};",
+        )
+        .expect("entry");
         validate_vscode_extension_tree(root.path()).expect("safe tree");
     }
 
@@ -557,4 +625,3 @@ mod vscode_import_tests {
         assert!(validate_vscode_extension_tree(root.path()).is_err());
     }
 }
-

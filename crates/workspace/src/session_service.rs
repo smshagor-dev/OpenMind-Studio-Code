@@ -23,12 +23,13 @@ impl SessionService {
         Self { db }
     }
 
-    /// The previous session, or an empty snapshot if none was saved yet.
+    /// The previous session, or an empty snapshot if none was saved yet. A row created by opening a folder before any
+    /// session was saved holds the column's default, `[]`: that is "nothing saved yet" too.
     pub async fn load(&self) -> Result<SessionSnapshot, WorkspaceError> {
         let repo = SessionRepository::new(self.db.pool());
         match repo.load().await? {
-            Some(json) => Ok(serde_json::from_str(&json)?),
-            None => Ok(SessionSnapshot::default()),
+            Some(json) if json.trim() != "[]" => Ok(serde_json::from_str(&json)?),
+            _ => Ok(SessionSnapshot::default()),
         }
     }
 
@@ -77,6 +78,25 @@ mod tests {
         service.save(&snapshot).await.expect("save");
 
         assert_eq!(service.load().await.expect("load"), snapshot);
+    }
+
+    #[tokio::test]
+    async fn a_folder_opened_before_any_session_was_saved_still_loads() {
+        // Opening a folder first (command line, "Open with OpenMind Studio") creates the row with the column's
+        // default open_tabs, '[]'; the next start must read that as "no tabs", not fail to restore.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = Db::connect(&dir.path().join("test.db"))
+            .await
+            .expect("connect");
+        SessionRepository::new(db.pool())
+            .set_active_project(None)
+            .await
+            .expect("row created");
+        let service = SessionService::new(db);
+        assert_eq!(
+            service.load().await.expect("load"),
+            SessionSnapshot::default()
+        );
     }
 
     #[tokio::test]

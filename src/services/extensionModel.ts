@@ -180,6 +180,17 @@ export function canGrantOutsideWorkspace(extension: InstalledExtension): boolean
   return !extension.permissions.accepted.includes(OUTSIDE_WORKSPACE);
 }
 
+/**
+ * The permission the guard refused an extension (its last error is the host's "Permission '<name>' is required for
+ * this extension API."), if the user hasn't granted it since; null otherwise.
+ */
+export function refusedPermission(extension: InstalledExtension, lastError: string | null): PermissionName | null {
+  const name = lastError?.match(/Permission '([A-Za-z]+)' is required/)?.[1];
+  if (name === undefined || !(name in PERMISSION_INFO)) return null;
+  const permission = name as PermissionName;
+  return extension.permissions.accepted.includes(permission) ? null : permission;
+}
+
 /** Set when an extension's last error was the guard refusing it files outside the open folder. */
 export function outsideWorkspaceBlock(lastError: string | null): string | null {
   return lastError !== null && lastError.includes(`Permission '${OUTSIDE_WORKSPACE}'`)

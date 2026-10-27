@@ -13,7 +13,7 @@ import { createFakeIpc } from "../testUtils/fakeIpcClient";
 const require = createRequire(import.meta.url);
 interface Host { request(method: string, params?: unknown): Promise<unknown>; notify(method: string, params?: unknown): void }
 const { fixture } = require("../../crates/extensions/tests/node/rpc-fixture.cjs") as { fixture: (t: { after(callback: () => Promise<void>): void }, definitions: Record<string, { code: string; permissions: string[] }>) => Promise<Host> };
-const path = "/workspace/save.txt";
+const path = process.platform === "win32" ? "C:\\workspace\\save.txt" : "/workspace/save.txt";
 const edit = { startLine: 0, startColumn: 0, endLine: 0, endColumn: 0, text: "prefix:" };
 function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 async function rig(request: (params: unknown) => Promise<unknown>, timeoutMs = 1750) {

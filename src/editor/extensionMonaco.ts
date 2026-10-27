@@ -25,6 +25,9 @@ const SNIPPET_KIND = monaco.languages.CompletionItemKind.Snippet;
  * The extension features that live in Monaco: languages an extension contributes, its snippets and the
  * editor actions (command palette, right-click menu). The services decide *what*; this only calls Monaco.
  */
+
+/** VS Code's `CompletionItemTag.Deprecated` and `SymbolTag.Deprecated` (1): the only tag either enum has. */
+const DEPRECATED_TAG = 1;
 export function createContributionBinding(editor: EditorService): ContributionBinding {
   const registered = new Set<string>();
   return {
@@ -102,9 +105,10 @@ export function registerHostProvider(
   const disposables: monaco.IDisposable[] = [];
   if (registration.kind === "completion") {
     const commandId = `openmind.extensionCompletion.${registration.handle}`;
-    disposables.push(monaco.editor.registerCommand(commandId, async (_accessor, path: unknown, itemId: unknown) => {
+    disposables.push(monaco.editor.registerCommand(commandId, (_accessor, path: unknown, itemId: unknown) => {
       if (typeof path !== "string" || typeof itemId !== "string") throw new Error("Invalid extension completion command arguments.");
-      await invoke({ path, itemId, action: "command" });
+      // Monaco runs command handlers synchronously; the host call's outcome is the host's to report.
+      void invoke({ path, itemId, action: "command" });
     }));
     const metadata = new WeakMap<monaco.languages.CompletionItem, { id: string; path: string }>();
     const convert = (item: HostCompletionItem, fallback: monaco.IRange, path: string | null): monaco.languages.CompletionItem => ({
@@ -114,7 +118,7 @@ export function registerHostProvider(
       insertTextRules: (typeof item.insertText === "object" ? INSERT_AS_SNIPPET : 0) | (item.keepWhitespace ? monaco.languages.CompletionItemInsertTextRule.KeepWhitespace : 0),
       sortText: item.sortText, filterText: item.filterText, preselect: item.preselect, commitCharacters: item.commitCharacters,
       command: item.hasCommand && item.id && path !== null ? { id: commandId, title: item.label, arguments: [path, item.id] } : undefined,
-      tags: item.tags?.filter(tag => tag === monaco.languages.CompletionItemTag.Deprecated),
+      tags: item.tags?.filter(tag => tag === DEPRECATED_TAG),
       range: item.range ? "insert" in item.range ? { insert: toMonacoRange(item.range.insert), replace: toMonacoRange(item.range.replace) } : toMonacoRange(item.range) : fallback,
       additionalTextEdits: item.additionalTextEdits?.map(edit => ({ range: toMonacoRange(edit.range), text: edit.newText })),
     });
@@ -242,7 +246,7 @@ export function registerHostProvider(
   } else if (registration.kind === "documentSymbol") {
     const convert = (symbol: HostDocumentSymbol): monaco.languages.DocumentSymbol => ({
       name: symbol.name, detail: symbol.detail, kind: symbol.kind,
-      tags: (symbol.tags ?? []).filter((tag) => tag === monaco.languages.SymbolTag.Deprecated),
+      tags: (symbol.tags ?? []).filter((tag) => tag === DEPRECATED_TAG),
       range: toMonacoRange(symbol.range), selectionRange: toMonacoRange(symbol.selectionRange),
       children: (symbol.children ?? []).map(convert), containerName: symbol.containerName,
     });

@@ -1,8 +1,9 @@
 'use strict';
+const { normalize } = require('node:path');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {fixture}=require('./rpc-fixture.cjs');
-const initial={path:'/workspace/a.txt',languageId:'plaintext',text:'unsaved',version:7,isDirty:true};
+const initial={path:normalize('/workspace/a.txt'),languageId:'plaintext',text:'unsaved',version:7,isDirty:true};
 const code=`const v=require('vscode');let old;const events=[];
 exports.activate=()=>{v.workspace.onDidCloseTextDocument(d=>events.push(['close',d.languageId,d.isClosed,d.getText()]));v.workspace.onDidOpenTextDocument(d=>events.push(['open',d.languageId,d.isClosed,d.getText()]));
 v.commands.registerCommand('change',async language=>{old=old||v.workspace.textDocuments[0];const d=await v.languages.setTextDocumentLanguage(v.workspace.textDocuments[0],language);return {language:d.languageId,text:d.getText(),version:d.version,dirty:d.isDirty,oldClosed:old.isClosed,same:old===d,events};});
@@ -15,7 +16,7 @@ async function setup(t, virtual=false){let host;host=await fixture(t,{'test.lang
   host.notify('host/documentLanguageChanged',{...initial,languageId:p.languageId});
   return {...initial,languageId:p.languageId};
  }
-}});host.notify('host/documentOpened',{...initial,...(virtual?{path:'sample:/a',virtual:true}:{} )});await host.request('host/activate',{id:'test.language'});return host;}
+}});host.notify('host/documentOpened',{...initial,...(virtual?{path:'sample:///a',virtual:true}:{} )});await host.request('host/activate',{id:'test.language'});return host;}
 const command=(h,name,...args)=>h.request('host/executeCommand',{command:name,args});
 test('language changes retire old document identity and deliver close before open with dirty content preserved',async t=>{
  const h=await setup(t);const value=await command(h,'change','javascript');

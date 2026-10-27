@@ -1,4 +1,5 @@
 import { virtualDocumentWrite } from "./extensionVirtualDocuments";
+import { normalize } from "node:path";
 import { createRequire } from "node:module";
 import * as monaco from "monaco-editor";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
@@ -96,9 +97,9 @@ it("runs untitled creation, show, edits, snippets, decorations and Save As throu
   expect(await host.request("host/executeCommand", { command: "saveUnsaved" })).toEqual({ saved: true, oldClosed: true, oldText: "hello! world", untitled: false, file: "/tmp/saved.md", text: "hello! world", dirty: false });
   expect(r.ipc.documentSave).toHaveBeenCalledWith("/tmp/saved.md", "hello! world", "utf8");
   expect(await host.request("host/executeCommand", { command: "editSaved" })).toEqual({ applied: true, text: ">hello! world" });
-  expect(await host.request("host/executeCommand", { command: "namedUnsaved" })).toEqual({ language: "typescript", saved: true, oldClosed: true, oldText: "let a=1;", path: "/tmp/named.ts", untitled: false });
+  expect(await host.request("host/executeCommand", { command: "namedUnsaved" })).toEqual({ language: "typescript", saved: true, oldClosed: true, oldText: "let a=1;", path: normalize("/tmp/named.ts"), untitled: false });
   expect(r.ipc.saveDocumentDialog).toHaveBeenCalledTimes(1);
-  expect(r.ipc.documentSave).toHaveBeenLastCalledWith("/tmp/named.ts", "let a=1;", "utf8");
+  expect(r.ipc.documentSave).toHaveBeenLastCalledWith(normalize("/tmp/named.ts"), "let a=1;", "utf8");
 });
 
 it("keeps cancelled and failed saves untitled and dirty, and rejects collisions with another open document", async () => {

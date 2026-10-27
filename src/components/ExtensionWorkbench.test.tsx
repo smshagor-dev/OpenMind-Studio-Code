@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
@@ -12,7 +13,7 @@ interface HostFixture {
 }
 const require = createRequire(import.meta.url);
 const { fixture } = require("../../crates/extensions/tests/node/rpc-fixture.cjs") as {
-  fixture(t: { after(callback: () => Promise<void>): void }, definitions: Record<string, { code: string; permissions: string[] }>): Promise<HostFixture>;
+  fixture: (t: { after(callback: () => Promise<void>): void }, definitions: Record<string, { code: string; permissions: string[] }>) => Promise<HostFixture>;
 };
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { service.hide(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); service.handle("workbench/reset", {}); });
@@ -42,7 +43,7 @@ describe("extension workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Source Control" }));
     await waitFor(() => expect(screen.getByText(/No active extension has registered a source control provider/)).toBeVisible());
     fireEvent.click(screen.getByRole("button", { name: "Close extension tools" }));
-    await waitFor(() => expect(service.getState().visible).toBe(false));
+    await waitFor(() => { expect(service.getState().visible).toBe(false); });
   });
 
   it("creates, edits, restructures and saves a notebook through the real host", async () => {
@@ -69,12 +70,12 @@ describe("extension workbench", () => {
     await screen.findByLabelText("Cell 2 · plaintext");
     expect(screen.getByLabelText("Cell 1 · plaintext")).toHaveValue("keep my first cell");
     fireEvent.click(screen.getByRole("button", { name: "Delete cell 2" }));
-    await waitFor(() => expect(screen.queryByLabelText("Cell 2 · plaintext")).toBeNull());
+    await waitFor(() => { expect(screen.queryByLabelText("Cell 2 · plaintext")).toBeNull(); });
     const destination = root + "/ui-saved.omnb";
     fireEvent.change(screen.getByLabelText("Save to a new file"), { target: { value: destination } });
     fireEvent.click(screen.getByRole("button", { name: "Save as" }));
-    await waitFor(() => expect(service.getState().snapshot.notebooks.documents[0]?.uri).toMatch(/^file:/));
-    const bytes = require("node:fs").readFileSync(destination, "utf8") as string;
+    await waitFor(() => { expect(service.getState().snapshot.notebooks.documents[0]?.uri).toMatch(/^file:/); });
+    const bytes = readFileSync(destination, "utf8");
     const data = JSON.parse(bytes) as { cells: { value: string }[] };
     expect(data.cells).toHaveLength(1); expect(data.cells[0]?.value).toBe("keep my first cell");
     expect(service.getState().error).toBeNull();

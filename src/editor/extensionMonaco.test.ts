@@ -60,7 +60,7 @@ interface RpcFixture {
 }
 const require = createRequire(import.meta.url);
 const { fixture } = require("../../crates/extensions/tests/node/rpc-fixture.cjs") as {
-  fixture(t: { after(callback: () => Promise<void>): void }, definitions: Record<string, { code: string; permissions: string[] }>): Promise<RpcFixture>;
+  fixture: (t: { after(callback: () => Promise<void>): void }, definitions: Record<string, { code: string; permissions: string[] }>) => Promise<RpcFixture>;
 };
 const workspace = path.resolve("provider-workspace").replaceAll("\\", "/");
 const file = path.join(workspace, "main.js");
@@ -217,17 +217,17 @@ describe("extension language providers through the real stdio host and UI bridge
     for (const kind of ["definition", "typeDefinition", "implementation"] as const) {
       const result = await provider(kind)({}, position, token);
       expect(result).toEqual([expect.objectContaining({
-        uri: { value: expect.stringMatching(/^memory:\/+target$/), scheme: "memory" },
+        uri: { value: expect.stringMatching(/^memory:\/+target$/) as unknown, scheme: "memory" },
         range: { startLineNumber: 1, startColumn: 2, endLineNumber: 1, endColumn: 9 },
-        targetSelectionRange: expect.objectContaining({ startColumn: 2 }),
-        originSelectionRange: expect.objectContaining({ endColumn: 9 }),
+        targetSelectionRange: expect.objectContaining({ startColumn: 2 }) as unknown,
+        originSelectionRange: expect.objectContaining({ endColumn: 9 }) as unknown,
       })]);
     }
     expect(await provider("reference")({}, position, { includeDeclaration: true }, token)).toEqual([
-      expect.objectContaining({ uri: expect.objectContaining({ scheme: "file", value: expect.stringMatching(/\/ref\.js$/) }) }),
+      expect.objectContaining({ uri: expect.objectContaining({ scheme: "file", value: expect.stringMatching(/\/ref\.js$/) as unknown }) as unknown }) as unknown,
     ]);
     expect(await provider("highlight")({}, position, token)).toEqual([
-      expect.objectContaining({ kind: 1, range: expect.objectContaining({ startColumn: 2 }) }),
+      expect.objectContaining({ kind: 1, range: expect.objectContaining({ startColumn: 2 }) as unknown }) as unknown,
     ]);
     expect(await provider("documentSymbol")({}, token)).toEqual([
       expect.objectContaining({ name: "root", children: [expect.objectContaining({ name: "child" })] }),
@@ -281,19 +281,20 @@ const advancedToken = {
   isCancellationRequested: false,
   onCancellationRequested: () => ({ dispose() {} }),
 };
-function advancedProvider<T>(kind: string): T {
+function advancedProvider(kind: string): unknown {
   const item = mocked.providers.get(kind);
   if (!item) throw new Error(`Missing ${kind} provider`);
-  return item.provider as T;
+  return item.provider;
 }
 const advancedModel = {} as Monaco.editor.ITextModel;
 const advancedPosition = { lineNumber: 1, column: 7 } as Monaco.Position;
-const advancedRange = {
+const advancedRangeFields: Monaco.IRange = {
   startLineNumber: 1,
   startColumn: 7,
   endLineNumber: 1,
   endColumn: 12,
-} as Monaco.Range;
+};
+const advancedRange = advancedRangeFields as Monaco.Range;
 
 it("prepares rename and returns versioned multi-file edits from the real extension through Monaco", async () => {
   await integrated(
@@ -305,7 +306,7 @@ it("prepares rename and returns versioned multi-file edits from the real extensi
   };`,
     ["languages", "workspaceWrite", "filesystemOutsideWorkspace"],
   );
-  const provider = advancedProvider<Monaco.languages.RenameProvider>("rename");
+  const provider = advancedProvider("rename") as Monaco.languages.RenameProvider;
   const location = await provider.resolveRenameLocation?.(
     advancedModel,
     advancedPosition,
@@ -324,7 +325,7 @@ it("prepares rename and returns versioned multi-file edits from the real extensi
     textEdit: { range: advancedRange, text: "renamed" },
   });
   expect(edit?.edits[1]).toMatchObject({
-    resource: { value: expect.stringContaining("other.js") },
+    resource: { value: expect.stringContaining("other.js") as unknown },
     textEdit: { text: "renamed" },
   });
 });
@@ -346,14 +347,14 @@ it("converts code-action diagnostics/context, resolves original objects and exec
     ["languages", "commands", "workspaceWrite", "filesystemOutsideWorkspace"],
   );
   const provider =
-    advancedProvider<Monaco.languages.CodeActionProvider>("codeAction");
+    advancedProvider("codeAction") as Monaco.languages.CodeActionProvider;
   const list = await provider.provideCodeActions(
     advancedModel,
     advancedRange,
     {
       only: "quickfix",
       trigger: 2,
-      markers: [{ ...advancedRange, severity: 4, message: "Warning" }],
+      markers: [{ ...advancedRangeFields, severity: 4, message: "Warning" }],
     },
     advancedToken,
   );
@@ -371,7 +372,7 @@ it("converts code-action diagnostics/context, resolves original objects and exec
   expect(
     await host.request("host/executeCommand", { command: "action.result" }),
   ).toBe(42);
-  list?.dispose();
+  list.dispose();
 });
 
 it("resolves CodeLens objects, delivers refresh notifications and removes registrations on deactivation", async () => {
@@ -389,7 +390,7 @@ it("resolves CodeLens objects, delivers refresh notifications and removes regist
     ["languages", "commands"],
   );
   const provider =
-    advancedProvider<Monaco.languages.CodeLensProvider>("codeLens");
+    advancedProvider("codeLens") as Monaco.languages.CodeLensProvider;
   const changed = vi.fn();
   const subscription = provider.onDidChange?.(changed);
   const list = await provider.provideCodeLenses(advancedModel, advancedToken);
@@ -412,7 +413,7 @@ it("resolves CodeLens objects, delivers refresh notifications and removes regist
       bridge.handleNotification(message.method, message.params);
   expect(changed).toHaveBeenCalledOnce();
   subscription?.dispose();
-  list?.dispose?.();
+  list.dispose?.();
   await host.request("host/deactivate", { id: "test.monaco" });
   for (const message of host.messages)
     if (message.method === "languages/unregistered")
@@ -436,9 +437,7 @@ it("maps semantic-token builders, legends, typed buffers, range requests and cha
     ["languages", "commands"],
   );
   const provider =
-    advancedProvider<Monaco.languages.DocumentSemanticTokensProvider>(
-      "semanticTokens",
-    );
+    advancedProvider("semanticTokens") as Monaco.languages.DocumentSemanticTokensProvider;
   expect(provider.getLegend()).toEqual({
     tokenTypes: ["variable"],
     tokenModifiers: ["readonly"],
@@ -453,9 +452,7 @@ it("maps semantic-token builders, legends, typed buffers, range requests and cha
     data: new Uint32Array([0, 6, 5, 0, 0, 2, 3, 5, 0, 1]),
   });
   const range =
-    advancedProvider<Monaco.languages.DocumentRangeSemanticTokensProvider>(
-      "rangeSemanticTokens",
-    );
+    advancedProvider("rangeSemanticTokens") as Monaco.languages.DocumentRangeSemanticTokensProvider;
   expect(
     await range.provideDocumentRangeSemanticTokens(
       advancedModel,
@@ -487,7 +484,7 @@ it("resolves inlay hints with label-part locations, private command arguments an
     ["languages", "commands", "workspaceWrite", "filesystemOutsideWorkspace"],
   );
   const provider =
-    advancedProvider<Monaco.languages.InlayHintsProvider>("inlayHints");
+    advancedProvider("inlayHints") as Monaco.languages.InlayHintsProvider;
   const list = await provider.provideInlayHints(
     advancedModel,
     advancedRange,
@@ -516,7 +513,7 @@ it("resolves inlay hints with label-part locations, private command arguments an
     if (message.method === "languages/changed")
       bridge.handleNotification(message.method, message.params);
   expect(changed).toHaveBeenCalledOnce();
-  list?.dispose();
+  list.dispose();
 });
 
 it("connects document colors and color presentations to actual extension classes and range edits", async () => {
@@ -530,7 +527,7 @@ it("connects document colors and color presentations to actual extension classes
     ["languages", "workspaceWrite", "filesystemOutsideWorkspace"],
   );
   const provider =
-    advancedProvider<Monaco.languages.DocumentColorProvider>("color");
+    advancedProvider("color") as Monaco.languages.DocumentColorProvider;
   const values = await provider.provideDocumentColors(
     advancedModel,
     advancedToken,
@@ -568,7 +565,7 @@ it("maps inline trigger/selected context, snippets, filter text and post-edit co
         }
       });
     };`, ['languages', 'commands']);
-  const provider = advancedProvider<Monaco.languages.InlineCompletionsProvider>('inlineCompletion');
+  const provider = advancedProvider('inlineCompletion') as Monaco.languages.InlineCompletionsProvider;
   const model = { getVersionId: () => 1, isDisposed: () => false, getWordAtPosition: () => ({ word: 'val', startColumn: 7, endColumn: 10 }), getValueInRange: () => 'val' } as unknown as Monaco.editor.ITextModel;
   const context = { triggerKind: 1, selectedSuggestionInfo: { range: { startLineNumber: 1, startColumn: 7, endLineNumber: 1, endColumn: 10 }, text: 'value' } } as Monaco.languages.InlineCompletionContext;
   const list = await provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, context, advancedToken);
@@ -578,7 +575,7 @@ it("maps inline trigger/selected context, snippets, filter text and post-edit co
   const automatic = await provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, { ...context, triggerKind: 0 }, advancedToken);
   expect(await host.request('host/executeCommand', { command: 'inline.state' })).toEqual({ trigger: 1 });
   await host.request('host/init', { documents: [{ path: file, languageId: 'javascript', version: 2, text: 'const value = 2;' }] });
-  const command = list?.items[0]?.command; if (!command || !list || !automatic) throw Error('Missing inline completion');
+  const command = list?.items[0]?.command; if (!command || !automatic) throw Error('Missing inline completion');
   await mocked.commands.get(command.id)?.({}, ...(command.arguments ?? []));
   expect(await host.request('host/executeCommand', { command: 'inline.state' })).toEqual({ accepted: 42, trigger: 1 });
   provider.disposeInlineCompletions(list, { kind: 'other' }); provider.disposeInlineCompletions(automatic, { kind: 'other' });
@@ -588,7 +585,7 @@ it("maps inline trigger/selected context, snippets, filter text and post-edit co
 
 it("uses the current word as an omitted inline range and rejects responses after the model changes", async () => {
   await integrated(`const v = require('vscode'); exports.activate = () => v.languages.registerInlineCompletionItemProvider('javascript', { async provideInlineCompletionItems() { await new Promise(resolve => setTimeout(resolve, 30)); return [new v.InlineCompletionItem('value')]; } });`);
-  const provider = advancedProvider<Monaco.languages.InlineCompletionsProvider>('inlineCompletion'); let version = 1;
+  const provider = advancedProvider('inlineCompletion') as Monaco.languages.InlineCompletionsProvider; let version = 1;
   const model = { getVersionId: () => version, isDisposed: () => false, getWordAtPosition: () => ({ word: 'val', startColumn: 7, endColumn: 10 }), getValueInRange: () => 'val' } as unknown as Monaco.editor.ITextModel;
   const context = { triggerKind: 0 } as Monaco.languages.InlineCompletionContext;
   const first = await provider.provideInlineCompletions(model, { lineNumber: 1, column: 10 } as Monaco.Position, context, advancedToken);

@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use openmind_extensions::host::HostStart;
 use openmind_extensions::{
-    activation_order, extensions_for, host_descriptor, resolve_host_node, ExtensionError, ExtensionHost, Trigger,
+    activation_order, extensions_for, host_descriptor, resolve_host_node, ExtensionError,
+    ExtensionHost, Trigger,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -213,6 +214,7 @@ fn timeout_for(method: &str) -> Duration {
 pub async fn ext_host_request(
     method: String,
     params: Value,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
     if !ALLOWED_REQUESTS.contains(&method.as_str()) {
@@ -221,7 +223,7 @@ pub async fn ext_host_request(
     let host = host_or_reason(&state)?;
     if method == "host/activate" {
         let id = params.get("id").and_then(Value::as_str).unwrap_or_default();
-        return activate(&state, &host, id).await;
+        return activate(&app, &state, &host, id).await;
     }
     let timeout = timeout_for(&method);
     tokio::task::spawn_blocking(move || host.request(&method, params, timeout))
@@ -230,7 +232,24 @@ pub async fn ext_host_request(
         .map_err(|err| err.to_string())
 }
 
-async fn activate(state: &AppState, host: &Arc<ExtensionHost>, id: &str) -> Result<Value, String> {
+/// Activates `id` (dependencies first) and records each outcome; whether it activated or why not (its last error) is
+/// part of the extensions every window shows, so they are refreshed afterwards.
+async fn activate(
+    app: &AppHandle,
+    state: &AppState,
+    host: &Arc<ExtensionHost>,
+    id: &str,
+) -> Result<Value, String> {
+    let result = activate_order(state, host, id).await;
+    crate::state::refresh_soon(app, &[crate::state::Domain::Extensions]);
+    result
+}
+
+async fn activate_order(
+    state: &AppState,
+    host: &Arc<ExtensionHost>,
+    id: &str,
+) -> Result<Value, String> {
     let installed = state.extensions.store.list().extensions;
     let order = activation_order(&installed, &[id.to_string()])?;
     let mut result = Value::Null;
@@ -245,7 +264,11 @@ async fn activate(state: &AppState, host: &Arc<ExtensionHost>, id: &str) -> Resu
         let requested_id = extension_id.clone();
         let host = Arc::clone(host);
         let outcome = tokio::task::spawn_blocking(move || {
-            host.request("host/activate", json!({ "id": requested_id }), ACTIVATE_TIMEOUT)
+            host.request(
+                "host/activate",
+                json!({ "id": requested_id }),
+                ACTIVATE_TIMEOUT,
+            )
         })
         .await
         .map_err(|err| err.to_string())?
@@ -305,6 +328,7 @@ pub struct ActivationResult {
 #[tauri::command]
 pub async fn ext_activate_for(
     trigger: Trigger,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<ActivationResult>, String> {
     let ids = extensions_for(&state.extensions.store.list().extensions, &trigger);
@@ -325,7 +349,7 @@ pub async fn ext_activate_for(
         if already {
             continue;
         }
-        let outcome = activate(&state, &host, &id).await;
+        let outcome = activate(&app, &state, &host, &id).await;
         results.push(ActivationResult {
             ok: outcome.is_ok(),
             error: outcome.err(),
@@ -334,5 +358,3 @@ pub async fn ext_activate_for(
     }
     Ok(results)
 }
-
-

@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { normalize } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   extensionDialogOptions,
@@ -65,7 +66,7 @@ it("routes real-host open/save dialog requests through the bridge and native ada
   ]);
   expect(native.open).toHaveBeenCalledWith({
     title: "Select source",
-    defaultPath: "/workspace",
+    defaultPath: normalize("/workspace"),
     filters: [{ name: "TypeScript", extensions: ["ts", "tsx"] }],
     multiple: true,
     directory: false,
@@ -75,7 +76,7 @@ it("routes real-host open/save dialog requests through the bridge and native ada
   ).toEqual({ scheme: "file", path: "/workspace/saved file.ts" });
   expect(native.save).toHaveBeenCalledWith({
     title: undefined,
-    defaultPath: "/workspace/default.ts",
+    defaultPath: normalize("/workspace/default.ts"),
     filters: [{ name: "TypeScript", extensions: ["ts"] }],
   });
 });
