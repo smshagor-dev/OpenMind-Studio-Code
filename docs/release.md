@@ -1,6 +1,6 @@
 # Releasing OpenMind Studio
 
-**Release status (2026-10-17):** v1.0.3 is the current published release; v1.0.4 is prepared but unpublished. The source version is 1.0.4 for the upcoming release. See [v1.0.3 notes](release-notes-1.0.3.md) and [v1.0.4 notes](release-notes-1.0.4.md). Keep publishing status separate from build completion and updater-signature verification. The v1.0.4 Windows files are not trusted Authenticode-signed; university-network physical validation remains pending.
+**Release status (2026-10-27):** v1.0.5 is the current published release; v1.0.4 was published on 2026-10-21. The source workspace version is 1.0.5. See [v1.0.5 notes](release-notes-1.0.5.md), [v1.0.4 notes](release-notes-1.0.4.md), and [v1.0.3 notes](release-notes-1.0.3.md). Published assets, updater signatures, Windows Authenticode signing, CI results, and physical multi-PC validation are distinct release gates; verify each separately.
 
 
 OpenMind Studio ships in three forms. None of them needs administrator rights except the MSI (see below), none changes
