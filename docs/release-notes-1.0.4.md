@@ -1,7 +1,6 @@
-# OpenMind Studio v1.0.4 (built, not yet published)
+# OpenMind Studio v1.0.4 (released October 21, 2026)
 
-Windows (x64, x86) and Linux (x64, x86) packages built from the private source `main` after v1.0.3. Not yet
-published, not Authenticode/GPG-signed, and not yet offered as an automatic update (see "Known limitations").
+This is the historical v1.0.4 release record. v1.0.4 was published on October 21, 2026; asset availability and signatures should be checked against the actual [v1.0.4 release](https://github.com/smshagor-dev/OpenMind-Studio/releases/tag/v1.0.4). These notes are not the current v1.0.5 release notes.
 
 ## New
 

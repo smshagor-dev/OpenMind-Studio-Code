@@ -1,4 +1,4 @@
-# OpenMind Studio v1.0.3 (current published release)
+# OpenMind Studio v1.0.3 (historical release)
 
 Windows (x64, x86), Linux (x64, x86) and — new — macOS (Apple silicon, Intel).
 

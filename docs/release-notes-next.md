@@ -1,7 +1,6 @@
-# OpenMind Studio 1.0.3 (DRAFT, not released)
+# Historical draft: OpenMind Studio v1.0.3
 
-Version: **1.0.3** (new installation modes and automatic updates; no breaking change for existing installations). The
-repository is at 1.0.3; nothing has been tagged or published yet.
+This file preserves an earlier v1.0.3 draft and is not the current release plan. For the current published version, see [v1.0.5 release notes](release-notes-1.0.5.md).
 
 Release status: **PILOT-READY, release BLOCKED** until the multi-PC pilot (`docs/pilot/multi-pc-pilot.md`) has passed on
 real computers and the installers are signed for the intended channel (see "Release gate" in `docs/release.md`).

@@ -10,17 +10,11 @@ no administrator rights, no dependency on globally installed software, and nothi
 
 ## Release status
 
-- **Current published release: v1.0.3.** Download from the [official releases page](https://github.com/smshagor-dev/OpenMind-Studio/releases). Read [v1.0.3 release notes](docs/release-notes-1.0.3.md).
-- **Upcoming: v1.0.4.** Source code and release packages have been prepared, but publication is pending. See [v1.0.4 release notes](docs/release-notes-1.0.4.md). The source package version may therefore show `1.0.4` while the latest publicly available version remains `1.0.3`.
+- **Current published release: v1.0.5 (October 27, 2026).** Download from the [official releases page](https://github.com/smshagor-dev/OpenMind-Studio/releases/tag/v1.0.5) and read the [v1.0.5 release notes](docs/release-notes-1.0.5.md).
+- **Previous release: v1.0.4 (October 21, 2026).** Read the [v1.0.4 release notes](docs/release-notes-1.0.4.md).
+- v1.0.5 adds VS Code extension import/runtime integration, richer editor and document APIs, recovery improvements, OpenMind AI Cloud settings refinements, and PascalABC.NET integration on Windows. Package availability is determined by the assets actually attached to the public release.
 
-### What's coming in v1.0.4
-
-- Network Deployment for discovering, trusting and installing from LAN deployments, with signed-package verification and a diagnostic test.
-- Per-user Desktop shortcuts for shared Windows installations, with IT deployment controls.
-- Fixes for shared runtimes, concurrent language-tool installation, mapped-drive profiles, and per-computer caches.
-- Security hardening for network discovery and package serving.
-
-The v1.0.4 packages are not Authenticode-signed. Physical multi-computer university-network validation is still pending; deployment across separate subnets requires manual addressing. Do not treat prepared builds as publicly released.
+**Verification:** Release publication does not imply that all local and GitHub CI checks have passed. Windows Authenticode publisher signing and Tauri updater signatures are separate; review package signatures before distributing to managed environments.
 
 ## What it does
 
@@ -42,9 +36,9 @@ The v1.0.4 packages are not Authenticode-signed. Physical multi-computer univers
 
 **Available foundation:** The project includes a configurable AI chat/provider integration. AI requests depend on the provider and model configured by the user; this is not a bundled, guaranteed-offline coding agent.
 
-**Planned / not release-verified:** A full workspace-aware coding agent with multi-file edits, tool execution, approval controls, persistent task state, and end-to-end autonomous coding workflows is an upcoming direction. These capabilities are **not advertised as completed in v1.0.3 or v1.0.4** without source-level tests and release validation.
+**Validation scope:** The workspace-aware coding agent introduced in v1.0.4 supports permission-controlled file and command tools, but full autonomous, end-to-end reliability across arbitrary projects remains unverified. v1.0.5 primarily improves extension, document, and editor integration.
 
-For v1.0.4, see the [release notes](docs/release-notes-1.0.4.md) for verified changes. AI coding-agent work is not included in the confirmed v1.0.4 change list.
+For current changes, see the [v1.0.5 release notes](docs/release-notes-1.0.5.md).
 
 ## Platforms
 
